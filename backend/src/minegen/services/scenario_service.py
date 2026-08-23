@@ -9,6 +9,7 @@ data/scenarios/{scenario_id}/
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 from minegen.core.models import Scenario, ScenarioCreate, ScenarioSummary
@@ -22,11 +23,21 @@ class ScenarioStore:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.root.mkdir(parents=True, exist_ok=True)
+        self._locks: dict[str, threading.RLock] = {}
+        self._locks_guard = threading.Lock()
 
     # -- paths ------------------------------------------------------------- #
 
     def scenario_dir(self, scenario_id: str) -> Path:
         return self.root / scenario_id
+
+    def lock(self, scenario_id: str) -> threading.RLock:
+        """Per-scenario re-entrant lock. Derived-state invalidation (deleting
+        arrays.npz / derived/*) and derived-artifact persistence (fingerprint
+        check + write) must be mutually exclusive, or a finishing background
+        job could resurrect a file the mutation just deleted (rules 40/46/60)."""
+        with self._locks_guard:
+            return self._locks.setdefault(scenario_id, threading.RLock())
 
     def scenario_path(self, scenario_id: str) -> Path:
         return self.scenario_dir(scenario_id) / "scenario.json"

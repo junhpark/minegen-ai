@@ -7,6 +7,8 @@ invalidated (the world service owns that lifecycle)."""
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -27,6 +29,43 @@ class TargetsNotGeneratedError(LookupError):
 
 class DeclineNotGeneratedError(LookupError):
     pass
+
+
+class StaleInputsError(RuntimeError):
+    """The scenario/world/targets revision changed while a design job was
+    running (rule 60). The stale result is discarded, never persisted."""
+
+    code = "JOB_INPUTS_CHANGED"
+
+    def __init__(self, scenario_id: str) -> None:
+        super().__init__(
+            f"inputs of scenario '{scenario_id}' changed while the job was running; "
+            "the stale result was discarded (regenerate to get a current one)"
+        )
+
+
+@dataclass(frozen=True)
+class InputFingerprint:
+    """Revision fingerprint of a decline job's inputs: (exists, size, mtime_ns)
+    of scenario.json, arrays.npz and targets.json. Every invalidating mutation
+    (scenario PUT, world regeneration, target regeneration, deletion) rewrites
+    or removes at least one of these files, so equality of fingerprints means
+    the inputs are the same revision — even when regenerated content is
+    byte-identical, the revision is considered new (rules 40/46)."""
+
+    entries: tuple[tuple[str, bool, int, int], ...]
+
+    @staticmethod
+    def _stat(path: Path) -> tuple[str, bool, int, int]:
+        try:
+            st = path.stat()
+        except FileNotFoundError:
+            return (path.name, False, 0, 0)
+        return (path.name, True, st.st_size, st.st_mtime_ns)
+
+    @classmethod
+    def capture(cls, paths: list[Path]) -> InputFingerprint:
+        return cls(entries=tuple(cls._stat(p) for p in paths))
 
 
 class DesignService:
@@ -70,13 +109,14 @@ class DesignService:
             generated,
         )
         payload = targets.to_dict()
-        path = self.targets_path(scenario_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        self._targets[scenario_id] = targets
-        decline = self.decline_path(scenario_id)
-        if decline.exists():
-            decline.unlink()  # rule 46: a decline built on old targets is stale
+        with self.store.lock(scenario_id):
+            path = self.targets_path(scenario_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            self._targets[scenario_id] = targets
+            decline = self.decline_path(scenario_id)
+            if decline.exists():
+                decline.unlink()  # rule 46: a decline built on old targets is stale
         return payload
 
     # -- decline (Phase 04) ------------------------------------------------ #
@@ -105,20 +145,40 @@ class DesignService:
         self._targets[scenario_id] = targets
         return targets
 
+    def _input_paths(self, scenario_id: str) -> list[Path]:
+        return [
+            self.store.scenario_path(scenario_id),
+            self.store.arrays_path(scenario_id),
+            Path(self.targets_path(scenario_id)),
+        ]
+
+    def input_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._input_paths(scenario_id))
+
     def generate_decline(
         self,
         scenario_id: str,
         max_levels: int | None = None,
         on_progress: ProgressCallback = no_progress,
     ) -> dict[str, Any]:
+        # Capture the input revision BEFORE loading anything: a mutation that
+        # lands between capture and load makes the check fail (fail-safe),
+        # never the other way around.
+        fingerprint = self.input_fingerprint(scenario_id)
         scenario, _, ev = self.evaluator(scenario_id)
         targets = self._targets_object(scenario_id)
         gen = ChainedDeclineGenerator(ev, scenario.ramp, scenario.design.search)
         result = gen.generate(targets, max_levels=max_levels, on_progress=on_progress)
         payload = result.to_dict()
-        path = self.decline_path(scenario_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload), encoding="utf-8")
+        # Persist atomically w.r.t. invalidation: the same lock guards
+        # WorldService.invalidate's deletions, so a stale job can never write
+        # after a mutation cleared derived/ (rules 40/46/60).
+        with self.store.lock(scenario_id):
+            if self.input_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            path = self.decline_path(scenario_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(payload), encoding="utf-8")
         return payload
 
     def decline(self, scenario_id: str) -> dict[str, Any]:

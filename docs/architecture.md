@@ -158,7 +158,10 @@ go under `geology`, not at the scenario root.
   registry + 2-worker thread pool; one job per scenario at a time. Algorithms
   emit `ProgressEvent`s through a plain callback (`design/progress.py`);
   the job service records them; `GET /jobs/{id}` and `/ws/jobs/{id}` expose
-  them. Job state is lost on restart (v0.1). No queue, no database.
+  them. Jobs capture an input-revision fingerprint and re-verify it under
+  the per-scenario store lock before persisting; mutated inputs →
+  `JOB_INPUTS_CHANGED`, nothing written (rule 60). Job state is lost on
+  restart (v0.1). No queue, no database.
 
 ## Non-goals (v0.1)
 

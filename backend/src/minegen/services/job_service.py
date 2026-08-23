@@ -106,8 +106,11 @@ class JobService:
                 with self._lock:
                     job.status = JobStatus.FAILED
                     job.error = {
-                        "code": "JOB_FAILED",
-                        "message": f"{type(exc).__name__}: {exc}",
+                        # exceptions may carry a structured code (e.g. the
+                        # stale-input guard raises code JOB_INPUTS_CHANGED)
+                        "code": getattr(exc, "code", "JOB_FAILED"),
+                        "message": str(exc) or f"{type(exc).__name__}",
+                        "exception": type(exc).__name__,
                         "traceback": traceback.format_exc(),
                     }
                     job.finished_at = time.time()

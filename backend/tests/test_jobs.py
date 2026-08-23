@@ -87,7 +87,7 @@ def test_job_registry_lifecycle_and_duplicate_protection() -> None:
         failing = svc.submit("s3", "DECLINE", lambda _: (_ for _ in ()).throw(ValueError("boom")))
         f = svc.wait(failing.id, timeout=5)
         assert f.status.value == "FAILED" and f.error is not None
-        assert "ValueError: boom" in f.error["message"]
+        assert f.error["message"] == "boom" and f.error["exception"] == "ValueError"
         assert [j["jobId"] for j in svc.list("s1")] == [again.id, job.id]
     finally:
         svc.shutdown()
@@ -169,3 +169,133 @@ def test_job_websocket_streams_until_done(client: TestClient) -> None:
     assert any(m["progress"].get("stage") == "CANDIDATE_STARTED" for m in progress)
     with client.websocket_connect("/ws/jobs/missing") as ws:
         assert ws.receive_json()["code"] == "JOB_NOT_FOUND"
+
+
+# -- stale-input protection (rule 60, PR #1 blocker) ---------------------------
+
+
+def test_input_fingerprint_detects_every_invalidating_mutation(
+    store, world_service, design_service, client: TestClient
+) -> None:  # type: ignore[no-untyped-def]
+    sid = _prepare(client)
+    fp0 = design_service.input_fingerprint(sid)
+    assert fp0 == design_service.input_fingerprint(sid)  # stable while nothing changes
+
+    # target regeneration → new revision even though the content is identical
+    client.post(f"/api/v1/scenarios/{sid}/design/targets")
+    fp1 = design_service.input_fingerprint(sid)
+    assert fp1 != fp0
+
+    # world regeneration → new revision (and clears targets)
+    client.post(f"/api/v1/scenarios/{sid}/world/generate")
+    fp2 = design_service.input_fingerprint(sid)
+    assert fp2 != fp1
+
+    # scenario PUT → scenario.json rewritten, derived state deleted
+    doc = client.get(f"/api/v1/scenarios/{sid}").json()
+    doc.pop("id"), doc.pop("schemaVersion")
+    doc["seed"] = 999
+    client.put(f"/api/v1/scenarios/{sid}", json=doc)
+    fp3 = design_service.input_fingerprint(sid)
+    assert fp3 != fp2
+    assert not store.arrays_path(sid).exists()  # missing files are part of the fingerprint
+
+
+def test_stale_decline_job_never_persists_and_fails_structured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reviewer's race: a slow decline job is RUNNING while its inputs are
+    invalidated AND regenerated; the old job then finishes. The stale result
+    must not be written, the job must fail with JOB_INPUTS_CHANGED, and the
+    regenerated world/targets stay authoritative."""
+    import threading
+
+    from minegen.design.mine_designer import ChainedDeclineGenerator
+
+    started, proceed = threading.Event(), threading.Event()
+    original = ChainedDeclineGenerator.generate
+
+    def slow_generate(self, targets, **kwargs):  # type: ignore[no-untyped-def]
+        started.set()
+        assert proceed.wait(timeout=30), "test did not release the paused job"
+        return original(self, targets, **kwargs)
+
+    monkeypatch.setattr(ChainedDeclineGenerator, "generate", slow_generate)
+
+    sid = _prepare(client)
+    jid = client.post(f"/api/v1/scenarios/{sid}/design/decline", params={"maxLevels": 1}).json()[
+        "jobId"
+    ]
+    assert started.wait(timeout=30)
+
+    # invalidate AND regenerate the inputs while the job is paused mid-search
+    doc = client.get(f"/api/v1/scenarios/{sid}").json()
+    doc.pop("id"), doc.pop("schemaVersion")
+    doc["seed"] = 999
+    assert client.put(f"/api/v1/scenarios/{sid}", json=doc).status_code == 200
+    assert client.post(f"/api/v1/scenarios/{sid}/world/generate").status_code == 200
+    new_targets = client.post(f"/api/v1/scenarios/{sid}/design/targets").json()
+
+    proceed.set()  # let the stale job finish
+    deadline = time.time() + 60
+    snap = None
+    while time.time() < deadline:
+        snap = client.get(f"/api/v1/jobs/{jid}").json()
+        if snap["status"] in ("SUCCEEDED", "FAILED"):
+            break
+        time.sleep(0.05)
+
+    assert snap is not None and snap["status"] == "FAILED", snap
+    assert snap["error"]["code"] == "JOB_INPUTS_CHANGED"
+    assert snap["result"] is None  # the stale result is not exposed anywhere
+
+    # old decline.json was NOT recreated; regenerated world/targets are authoritative
+    r = client.get(f"/api/v1/scenarios/{sid}/design/decline")
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "DECLINE_NOT_GENERATED"
+    scene = client.get(f"/api/v1/scenarios/{sid}/scene").json()
+    assert scene["decline"] is None
+    assert scene["accessTargets"] == new_targets
+
+    # the scenario is free for a fresh job afterwards (no auto-rerun happened)
+    r = client.post(f"/api/v1/scenarios/{sid}/design/decline", params={"maxLevels": 1})
+    assert r.status_code == 202
+
+
+def test_sync_decline_with_concurrent_invalidation_returns_409(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same guard on the synchronous path: mutate inputs while the inline call
+    runs (from a helper thread) → 409 JOB_INPUTS_CHANGED, nothing persisted."""
+    import threading
+
+    from minegen.design.mine_designer import ChainedDeclineGenerator
+
+    started, proceed = threading.Event(), threading.Event()
+    original = ChainedDeclineGenerator.generate
+
+    def slow_generate(self, targets, **kwargs):  # type: ignore[no-untyped-def]
+        started.set()
+        assert proceed.wait(timeout=30)
+        return original(self, targets, **kwargs)
+
+    monkeypatch.setattr(ChainedDeclineGenerator, "generate", slow_generate)
+    sid = _prepare(client)
+
+    result: dict[str, object] = {}
+
+    def run_sync() -> None:
+        r = client.post(
+            f"/api/v1/scenarios/{sid}/design/decline", params={"maxLevels": 1, "sync": "true"}
+        )
+        result["status"] = r.status_code
+        result["body"] = r.json()
+
+    t = threading.Thread(target=run_sync)
+    t.start()
+    assert started.wait(timeout=30)
+    client.post(f"/api/v1/scenarios/{sid}/design/targets")  # bumps the targets revision
+    proceed.set()
+    t.join(timeout=60)
+    assert result["status"] == 409, result
+    assert result["body"]["detail"]["code"] == "JOB_INPUTS_CHANGED"  # type: ignore[index]
+    assert client.get(f"/api/v1/scenarios/{sid}/design/decline").status_code == 409

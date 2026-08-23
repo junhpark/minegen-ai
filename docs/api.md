@@ -36,6 +36,8 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      derived/decline.json.
     GET  /api/v1/scenarios/{id}/design/decline       409 DECLINE_NOT_GENERATED if missing
     GET  /api/v1/jobs?scenario_id=                    job records (newest first, no result)
+    (jobs fail with error.code JOB_INPUTS_CHANGED — nothing persisted — when
+     scenario/world/targets were mutated while the job ran; rule 60)
     GET  /api/v1/jobs/{jobId}?includeResult=true     status QUEUED|RUNNING|SUCCEEDED|FAILED,
                                                      progress {stage, phase, level, total_levels,
                                                      candidate, total_candidates, progress,

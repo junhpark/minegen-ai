@@ -12,6 +12,7 @@ from minegen.core.models import ApiModel, ErrorDetail
 from minegen.services.design_service import (
     DeclineNotGeneratedError,
     DesignService,
+    StaleInputsError,
     TargetsNotGeneratedError,
 )
 from minegen.services.job_service import JobAlreadyRunningError, JobService
@@ -110,7 +111,10 @@ def generate_decline(
         raise _guard(scenario_id, e) from e
     if sync:
         response.status_code = status.HTTP_200_OK
-        return svc.generate_decline(scenario_id, max_levels)
+        try:
+            return svc.generate_decline(scenario_id, max_levels)
+        except StaleInputsError as e:
+            raise _error(status.HTTP_409_CONFLICT, e.code, str(e)) from e
     try:
         job = jobs.submit(
             scenario_id,

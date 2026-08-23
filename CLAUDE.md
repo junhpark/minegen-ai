@@ -324,6 +324,19 @@ cleverness.
     scenario at a time (`409 JOB_ALREADY_RUNNING`). Progress reporting must
     never change a search result.
 
+    Stale-input protection: a design job captures an input-revision
+    fingerprint (exists/size/mtime_ns of scenario.json, arrays.npz and
+    targets.json) before loading its inputs, and re-verifies it under the
+    per-scenario store lock immediately before persisting. Any invalidating
+    mutation (scenario PUT, world regeneration, target regeneration,
+    deletion) changes the fingerprint — regeneration counts as a new
+    revision even when the content is byte-identical. On mismatch the job
+    persists nothing and terminates FAILED with the structured error code
+    `JOB_INPUTS_CHANGED`; it never reruns automatically. The same lock
+    guards derived-state deletion in `WorldService.invalidate`, so a
+    finishing stale job cannot write after a mutation cleared `derived/`
+    (rules 40/46).
+
 57. Turning primitives carry a curvature penalty
     (`turn_penalty_factor × L_h × min cost`, default 0.5) so declines do not
     zig-zag between equal-cost L/R/S children. The penalty is additive and
