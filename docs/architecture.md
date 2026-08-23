@@ -49,6 +49,7 @@ parent/child (CLAUDE.md rule 13).
       world/           terrain, orebody, block model, geology (rock quality,
                        faults), voxel grid
       design/          cost field, level access targets, motion primitives,
+                       smoothing + shared sample validation (Phase 05),
                        chained Hybrid-A* decline generator, smoothing,
                        constraints, level generator, mine designer
       geometry/        centerline, tunnel profile, tunnel mesh (gravity-aligned

@@ -237,6 +237,58 @@ export interface DeclinePayload {
   centerline: { points: number[]; pointCount: number }
 }
 
+export interface SmoothedSegmentReport {
+  rawLength: number
+  smoothedLength: number | null
+  fieldCostRaw: number
+  fieldCostSmoothed: number | null
+  fieldCostDeltaPct: number | null
+  maxGradient: number
+  minPlanRadius: number | null
+  maxDeviationFromRaw: number
+  endpointPositionError: number
+  startHeadingErrorDeg: number
+  endHeadingErrorDeg: number
+  invalidSampleCount: number
+  rejectionReasonCounts: Record<string, number>
+  monotonicityViolations: number
+  gradeViolations: number
+  radiusViolations: number
+  corridorViolations: number
+  repairs: number
+  valid: boolean
+  effectiveSource: 'SMOOTHED' | 'RAW_FALLBACK'
+  fallbackReason: string | null
+}
+
+export interface SmoothedSegmentPayload {
+  levelId: string
+  candidateId: string
+  smoothed: { points: number[]; pointCount: number } | null
+  effectiveSource: 'SMOOTHED' | 'RAW_FALLBACK'
+  effectiveCenterline: { points: number[]; pointCount: number }
+  boundaryTangents: { start: [number, number, number]; end: [number, number, number] }
+  report: SmoothedSegmentReport
+}
+
+export interface SmoothedDeclinePayload {
+  status: 'SUCCESS' | 'SUCCESS_WITH_FALLBACK' | 'FAILED'
+  failureReason: string | null
+  segments: SmoothedSegmentPayload[]
+  totals: {
+    segments: number
+    smoothedSegments: number
+    fallbackSegments: number
+    rawLength: number
+    effectiveLength: number
+    fieldCostRaw: number
+    fieldCostEffective: number
+    maxGradient: number
+    minimumPlanRadius: number | null
+    maxDeviation: number
+  }
+}
+
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
 
 export interface JobProgress {
@@ -265,7 +317,7 @@ export interface JobRecord {
   progress: Partial<JobProgress>
   error: { code: string; message: string } | null
   version: number
-  result?: DeclinePayload | null
+  result?: DeclinePayload | SmoothedDeclinePayload | null
 }
 
 export interface JobSubmission {
@@ -294,4 +346,5 @@ export interface WorldScene {
   stats: WorldStats
   accessTargets: AccessTargetsPayload | null
   decline: DeclinePayload | null
+  smoothedDecline: SmoothedDeclinePayload | null
 }

@@ -275,6 +275,23 @@ class DeclineSearchConfig(ApiModel):
         return self
 
 
+class SmoothingConfig(ApiModel):
+    """Phase 05 smoothing + revalidation parameters (rules 61–63)."""
+
+    control_spacing: PositiveFloat = 5.0
+    output_spacing: PositiveFloat = 2.0
+    bending_weight: NonNegativeFloat = 1.0
+    fidelity_weight: NonNegativeFloat = 0.1
+    step_size: PositiveFloat = 0.03
+    max_iterations: Annotated[int, Field(ge=1, le=10_000)] = 200
+    max_deviation_from_raw: PositiveFloat = 10.0
+    max_repairs: Annotated[int, Field(ge=0, le=10)] = 3
+    repair_blend_factor: Annotated[float, Field(gt=0, lt=1)] = 0.5
+    radius_numerical_tolerance: NonNegativeFloat = 0.05
+    grade_numerical_tolerance: NonNegativeFloat = 1e-5
+    max_field_cost_increase_pct: NonNegativeFloat = 5.0
+
+
 class DesignConfig(ApiModel):
     """Phase 03 parameters: cost weights, exclusions and access-target
     lattice. Cost units are dimensionless 'cost per metre' with base 1.0;
@@ -297,6 +314,7 @@ class DesignConfig(ApiModel):
     candidate_along_strike_span: NonNegativeFloat = 100.0
     portal_footwall_distance: PositiveFloat = 350.0
     search: DeclineSearchConfig = Field(default_factory=DeclineSearchConfig)
+    smoothing: SmoothingConfig = Field(default_factory=SmoothingConfig)
 
 
 class TunnelProfile(ApiModel):

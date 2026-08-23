@@ -26,6 +26,7 @@ const DEFAULT_VISIBLE: LayerId[] = [
   'faults',
   'accessTargets',
   'rawSearchPath',
+  'smoothedDecline',
   'ramp',
   'levels',
   'crosscuts',

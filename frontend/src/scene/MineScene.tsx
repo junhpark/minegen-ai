@@ -8,6 +8,7 @@ import { FaultLayer } from './FaultLayer'
 import { GradeBlocksLayer } from './GradeBlocksLayer'
 import { OrebodyLayer } from './OrebodyLayer'
 import { RawDeclineLayer } from './RawDeclineLayer'
+import { SmoothedDeclineLayer } from './SmoothedDeclineLayer'
 import { RockQualitySliceLayer } from './RockQualitySliceLayer'
 import { TerrainLayer } from './TerrainLayer'
 
@@ -58,6 +59,9 @@ export function MineScene() {
       ) : null}
       {scene?.accessTargets && visible.has('accessTargets') ? (
         <AccessTargetsLayer targets={scene.accessTargets} />
+      ) : null}
+      {scene?.smoothedDecline && visible.has('smoothedDecline') ? (
+        <SmoothedDeclineLayer smoothed={scene.smoothedDecline} />
       ) : null}
       {scene?.decline && visible.has('rawSearchPath') ? (
         <RawDeclineLayer decline={scene.decline} />

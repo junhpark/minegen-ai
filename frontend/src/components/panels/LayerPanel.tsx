@@ -34,7 +34,8 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
   {
     title: 'Excavations',
     rows: [
-      { id: 'rawSearchPath', label: 'Raw decline path', phase: 4 },
+      { id: 'rawSearchPath', label: 'Raw search path', phase: 4 },
+      { id: 'smoothedDecline', label: 'Smoothed / effective decline', phase: 5 },
       { id: 'ramp', label: 'Ramp', phase: 6 },
       { id: 'levels', label: 'Levels', phase: 8 },
       { id: 'crosscuts', label: 'Crosscuts', phase: 8 },

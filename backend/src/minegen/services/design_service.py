@@ -16,7 +16,13 @@ import numpy as np
 from minegen.core.models import Scenario
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.design.mine_designer import ChainedDeclineGenerator
-from minegen.design.progress import ProgressCallback, no_progress
+from minegen.design.progress import (
+    ProgressCallback,
+    ProgressEvent,
+    ProgressStage,
+    no_progress,
+)
+from minegen.design.smoothing import DeclineSmoother
 from minegen.design.targets import AccessTargetSet, generate_access_targets, resolve_portal
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
@@ -25,6 +31,14 @@ from minegen.world.synthetic_world import SyntheticWorld
 
 class TargetsNotGeneratedError(LookupError):
     pass
+
+
+class SmoothedNotGeneratedError(LookupError):
+    """decline_smoothed.json does not exist for the scenario."""
+
+    def __init__(self, scenario_id: str) -> None:
+        super().__init__(f"smoothed decline not generated for scenario {scenario_id}")
+        self.scenario_id = scenario_id
 
 
 class DeclineNotGeneratedError(LookupError):
@@ -117,6 +131,9 @@ class DesignService:
             decline = self.decline_path(scenario_id)
             if decline.exists():
                 decline.unlink()  # rule 46: a decline built on old targets is stale
+            smoothed = self.smoothed_path(scenario_id)
+            if smoothed.exists():
+                smoothed.unlink()  # rule 64: derived from the deleted decline
         return payload
 
     # -- decline (Phase 04) ------------------------------------------------ #
@@ -179,7 +196,83 @@ class DesignService:
             path = self.decline_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload), encoding="utf-8")
+            smoothed = self.smoothed_path(scenario_id)
+            if smoothed.exists():
+                smoothed.unlink()  # rule 64: the old smoothed artifact is stale
         return payload
+
+    # -- smoothing (Phase 05, rules 61–64) ---------------------------------- #
+
+    def smoothed_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / "decline_smoothed.json"
+
+    def _smoothing_input_paths(self, scenario_id: str) -> list[Path]:
+        return [*self._input_paths(scenario_id), Path(self.decline_path(scenario_id))]
+
+    def smoothing_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._smoothing_input_paths(scenario_id))
+
+    def generate_smoothed(
+        self, scenario_id: str, on_progress: ProgressCallback = no_progress
+    ) -> dict[str, Any]:
+        """Phase 05: smooth + fully revalidate the persisted decline. The
+        fingerprint additionally covers decline.json; persistence follows the
+        same locked stale-input protocol as generate_decline (rule 60)."""
+        fingerprint = self.smoothing_fingerprint(scenario_id)
+        decline_payload = self.decline(scenario_id)  # 409 if not generated
+        scenario, _, ev = self.evaluator(scenario_id)
+        smoother = DeclineSmoother(ev, scenario.ramp, scenario.design.smoothing)
+
+        def progress(i: int, n: int, level_id: str, stage: str) -> None:
+            on_progress(
+                ProgressEvent(
+                    stage=ProgressStage(stage),
+                    phase="DECLINE_SMOOTHING",
+                    level=min(i + 1, n),
+                    total_levels=n,
+                    candidate=0,
+                    total_candidates=0,
+                    progress=min(i, n) / n if n else 1.0,
+                    expanded_states=0,
+                    level_id=level_id,
+                )
+            )
+
+        result = smoother.smooth(decline_payload, on_progress=progress)
+        payload = result.to_dict()
+        n_seg = len(result.segments)
+        on_progress(
+            ProgressEvent(
+                stage=ProgressStage.SMOOTHING_COMPLETED,
+                phase="DECLINE_SMOOTHING",
+                level=n_seg,
+                total_levels=n_seg,
+                candidate=0,
+                total_candidates=0,
+                progress=1.0,
+                expanded_states=0,
+                message=result.status,
+            )
+        )
+        with self.store.lock(scenario_id):
+            if self.smoothing_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            path = self.smoothed_path(scenario_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(payload), encoding="utf-8")
+        return payload
+
+    def smoothed(self, scenario_id: str) -> dict[str, Any]:
+        self.store.get(scenario_id)
+        if not self.worlds.is_generated(scenario_id):
+            from minegen.services.world_service import WorldNotGeneratedError
+
+            raise WorldNotGeneratedError(scenario_id)
+        path = self.smoothed_path(scenario_id)
+        if not path.is_file():
+            raise SmoothedNotGeneratedError(scenario_id)
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
 
     def decline(self, scenario_id: str) -> dict[str, Any]:
         self.store.get(scenario_id)
