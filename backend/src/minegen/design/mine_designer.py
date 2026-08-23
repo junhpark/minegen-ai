@@ -30,6 +30,7 @@ from minegen.core.models import DeclineSearchConfig, RampConstraints
 from minegen.design.astar_3d import HybridAStar, SegmentResult
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.design.motion_primitives import Pose, azimuth_between
+from minegen.design.progress import ProgressCallback, ProgressEvent, ProgressStage, no_progress
 from minegen.design.targets import AccessCandidate, AccessTargetSet, LevelAccessTargets
 
 FloatArray = npt.NDArray[np.float64]
@@ -161,9 +162,48 @@ class ChainedDeclineGenerator:
         self.cfg = cfg
         self.astar = HybridAStar(evaluator, ramp, cfg)
 
-    def generate(self, targets: AccessTargetSet, *, max_levels: int | None = None) -> DeclineResult:
+    def generate(
+        self,
+        targets: AccessTargetSet,
+        *,
+        max_levels: int | None = None,
+        on_progress: ProgressCallback = no_progress,
+    ) -> DeclineResult:
         t0 = time.perf_counter()
         levels = targets.levels if max_levels is None else targets.levels[:max_levels]
+        n_levels = len(levels)
+        expanded_total = 0
+
+        def emit(
+            stage: ProgressStage,
+            li: int,
+            ci: int,
+            n_c: int,
+            *,
+            level_id: str = "",
+            candidate_id: str = "",
+            candidate_status: str = "",
+            message: str = "",
+        ) -> None:
+            # progress = completed levels + fraction of the current level's candidates
+            frac = (li + (ci / n_c if n_c else 0.0)) / n_levels if n_levels else 1.0
+            on_progress(
+                ProgressEvent(
+                    stage=stage,
+                    phase="DECLINE_SEARCH",
+                    level=min(li + 1, n_levels),
+                    total_levels=n_levels,
+                    candidate=ci,
+                    total_candidates=n_c,
+                    progress=min(1.0, frac),
+                    expanded_states=expanded_total,
+                    message=message,
+                    level_id=level_id,
+                    candidate_id=candidate_id,
+                    candidate_status=candidate_status,
+                )
+            )
+
         portal = np.asarray(targets.portal, dtype=np.float64)
         start_pos = portal
         start_heading: float | None = None  # None → free (portal)
@@ -171,18 +211,35 @@ class ChainedDeclineGenerator:
         results: list[LevelResult] = []
         failed = False
 
-        for lv in levels:
+        for li, lv in enumerate(levels):
             if failed:
                 results.append(LevelResult(lv, LevelStatus.SKIPPED))
                 continue
             cands = lv.valid_candidates[: self.cfg.max_candidates_per_level]
+            emit(ProgressStage.LEVEL_STARTED, li, 0, len(cands), level_id=lv.level_id)
             if not cands:
                 results.append(LevelResult(lv, LevelStatus.NO_VALID_CANDIDATES))
                 failed = True
+                emit(
+                    ProgressStage.LEVEL_COMPLETED,
+                    li,
+                    0,
+                    0,
+                    level_id=lv.level_id,
+                    message="NO_VALID_CANDIDATES",
+                )
                 continue
 
             cres: list[CandidateSearchResult] = []
-            for c in cands:
+            for ci, c in enumerate(cands):
+                emit(
+                    ProgressStage.CANDIDATE_STARTED,
+                    li,
+                    ci,
+                    len(cands),
+                    level_id=lv.level_id,
+                    candidate_id=c.id,
+                )
                 heading = (
                     azimuth_between(start_pos, c.position)
                     if start_heading is None
@@ -190,28 +247,57 @@ class ChainedDeclineGenerator:
                 )
                 start = Pose(float(start_pos[0]), float(start_pos[1]), float(start_pos[2]), heading)
                 res = self.astar.search(start, c.position, cover_established=cover_established)
+                expanded_total += res.diagnostics.expanded_states
                 score = math.inf
                 if res.success:
                     nla = c.next_level_accessibility or 0.0
                     score = res.cost + nla * self.ev.minimum_cost_per_m
                 cres.append(CandidateSearchResult(c, heading, res, score))
+                emit(
+                    ProgressStage.CANDIDATE_COMPLETED,
+                    li,
+                    ci + 1,
+                    len(cands),
+                    level_id=lv.level_id,
+                    candidate_id=c.id,
+                    candidate_status=res.status.value,
+                )
 
             ok = [r for r in cres if r.result.success]
             if not ok:
                 results.append(LevelResult(lv, LevelStatus.INFEASIBLE, cres))
                 failed = True
+                emit(
+                    ProgressStage.LEVEL_COMPLETED,
+                    li,
+                    len(cands),
+                    len(cands),
+                    level_id=lv.level_id,
+                    message="INFEASIBLE",
+                )
                 continue
             best = min(ok, key=lambda r: r.selection_score)
             best.selected = True
             results.append(LevelResult(lv, LevelStatus.SUCCESS, cres))
+            emit(
+                ProgressStage.LEVEL_COMPLETED,
+                li,
+                len(cands),
+                len(cands),
+                level_id=lv.level_id,
+                candidate_id=best.candidate.id,
+                message="SUCCESS",
+            )
             assert best.result.end_pose is not None
             start_pos = best.result.end_pose.position
             start_heading = best.result.end_pose.heading  # rule 22
             cover_established = best.result.cover_established_at_end
 
-        return DeclineResult(
+        result = DeclineResult(
             portal=portal,
             levels=results,
             elapsed_ms=(time.perf_counter() - t0) * 1000.0,
             search_config=self.cfg,
         )
+        emit(ProgressStage.DECLINE_COMPLETED, n_levels, 0, 0, message=result.status)
+        return result

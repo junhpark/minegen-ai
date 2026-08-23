@@ -237,6 +237,44 @@ export interface DeclinePayload {
   centerline: { points: number[]; pointCount: number }
 }
 
+export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+
+export interface JobProgress {
+  stage: string
+  phase: string
+  level: number
+  total_levels: number
+  candidate: number
+  total_candidates: number
+  progress: number
+  expanded_states: number
+  message: string
+  level_id: string
+  candidate_id: string
+  candidate_status: string
+}
+
+export interface JobRecord {
+  jobId: string
+  scenarioId: string
+  kind: string
+  status: JobStatus
+  createdAt: number
+  startedAt: number | null
+  finishedAt: number | null
+  progress: Partial<JobProgress>
+  error: { code: string; message: string } | null
+  version: number
+  result?: DeclinePayload | null
+}
+
+export interface JobSubmission {
+  jobId: string
+  status: JobStatus
+  scenarioId: string
+  kind: string
+}
+
 export interface WorldScene {
   scenarioId: string
   coordinateSystem: 'ENU_Z_UP'

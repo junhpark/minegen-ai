@@ -148,7 +148,8 @@ Cover transition: before `minimum_surface_cover` is first reached,
 `INSUFFICIENT_COVER` samples are forgiven; afterwards never.
 
     h  = sqrt(max(L_dubinsCS, Δz/g)² + Δz²) · min_cost          (admissible)
-    f  = g + ε·h                                                  (ε = 2)
+    f  = g + ε·h                                                  (ε = 2, heuristic inflation —
+                                                                   no formal ε-bound is claimed, rule 55)
     order = (⌊f / bucket⌋, tie_break(pose), f),  bucket = 2·L_h·min_cost
     tie_break (cone):  Δz/g > standoff → |d_h − standoff| (3·R ring)
                        else            → |L_dubinsCS − Δz/g|   (approach cone)

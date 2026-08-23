@@ -5,6 +5,8 @@ import type {
   AccessTargetsPayload,
   CostEvaluationRow,
   DeclinePayload,
+  JobRecord,
+  JobSubmission,
   SliceAxis,
   SliceField,
   SlicePayload,
@@ -77,11 +79,14 @@ export const api = {
   generateTargets: (id: string) =>
     request<AccessTargetsPayload>(`/scenarios/${id}/design/targets`, { method: 'POST' }),
   getTargets: (id: string) => request<AccessTargetsPayload>(`/scenarios/${id}/design/targets`),
-  generateDecline: (id: string, maxLevels?: number) =>
-    request<DeclinePayload>(
+  /** Submits an asynchronous decline job (202). Poll `getJob` or use `jobSocketUrl`. */
+  submitDecline: (id: string, maxLevels?: number) =>
+    request<JobSubmission>(
       `/scenarios/${id}/design/decline${maxLevels ? `?maxLevels=${String(maxLevels)}` : ''}`,
       { method: 'POST' },
     ),
+  getJob: (jobId: string) => request<JobRecord>(`/jobs/${jobId}`),
+  jobSocketUrl: (jobId: string) => `${API_BASE_URL.replace(/^http/, 'ws')}/ws/jobs/${jobId}`,
   getDecline: (id: string) => request<DeclinePayload>(`/scenarios/${id}/design/decline`),
   evaluateCost: (id: string, points: [number, number, number][]) =>
     request<{ count: number; results: CostEvaluationRow[] }>(

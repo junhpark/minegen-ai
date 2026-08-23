@@ -27,10 +27,22 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  /api/v1/scenarios/{id}/design/targets       409 TARGETS_NOT_GENERATED if missing
     POST /api/v1/scenarios/{id}/design/cost/evaluate {"points": [[x,y,z], …]} (≤ 200k) →
                                                      per-point cost components + reasons
-    POST /api/v1/scenarios/{id}/design/decline       chained Hybrid-A* decline (raw centerline);
-                                                     ?maxLevels=n; persists derived/decline.json;
-                                                     synchronous (≈ 30 s default scenario)
+    POST /api/v1/scenarios/{id}/design/decline       submits a chained Hybrid-A* decline job →
+                                                     202 {jobId, status: QUEUED, scenarioId, kind};
+                                                     ?maxLevels=n; ?sync=true runs inline (200,
+                                                     tests/CLI). 409 JOB_ALREADY_RUNNING (detail
+                                                     carries jobId) while a job for the scenario
+                                                     is QUEUED/RUNNING. Result persists to
+                                                     derived/decline.json.
     GET  /api/v1/scenarios/{id}/design/decline       409 DECLINE_NOT_GENERATED if missing
+    GET  /api/v1/jobs?scenario_id=                    job records (newest first, no result)
+    GET  /api/v1/jobs/{jobId}?includeResult=true     status QUEUED|RUNNING|SUCCEEDED|FAILED,
+                                                     progress {stage, phase, level, total_levels,
+                                                     candidate, total_candidates, progress,
+                                                     expanded_states, …}, result, error
+    WS   /ws/jobs/{jobId}                            {"type":"progress", …record…} on every
+                                                     change (≤ 10 Hz), then {"type":"done"};
+                                                     {"type":"error","code":"JOB_NOT_FOUND"}
     GET  …/scene                                     includes "accessTargets" and "decline" (or null)
 
 ## Planned
@@ -39,7 +51,6 @@ meters (`docs/coordinate-system.md`). Schemas live in
     POST /api/v1/scenarios/{id}/sequence/generate       Phase 10
     GET  /api/v1/scenarios/{id}/timeline                Phase 10
     POST /api/v1/scenarios/{id}/infrastructure/optimize Phase 11
-    WS   /ws/jobs/{jobId}                               Phase 04+ (async jobs)
 
 ## Conventions
 

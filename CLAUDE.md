@@ -285,22 +285,44 @@ cleverness.
     returns a structured SEGMENT_INFEASIBLE result with per-candidate
     diagnostics.
 
-55. The heuristic stays admissible: `h = sqrt(max(L_dubinsCS, Δz/g_max)² + Δz²)
-    × minimum cost/m`, where `L_dubinsCS` is the exact turn-then-straight
-    horizontal length with free final heading (falls back to the plain
-    distance when the target is inside a turning circle). Search ordering is
-    weighted A* (`f = g + ε·h`, default ε = 2, bounded suboptimality ε) with
-    a quantized-f tie-break (`cone` mode: standoff ring while descending,
-    approach cone `|L_dock − Δz/g|` when the vertical budget is comparable
-    to the distance). ε, the bucket, the tie-break mode and the admissible
-    bound `h(start)` are all recorded in the diagnostics; ε = 1 and bucket
-    = 0 restore plain A*.
+55. ε-weighted Hybrid-A* search. The heuristic stays admissible:
+    `h = sqrt(max(L_dubinsCS, Δz/g_max)² + Δz²) × minimum cost/m`, where
+    `L_dubinsCS` is the exact turn-then-straight horizontal length with free
+    final heading (plain distance when the target is inside a turning
+    circle). Ordering is `(⌊(g + ε·h)/bucket⌋, docking tie-break, g + ε·h)`
+    with ε = 2 and `cone` tie-break by default (standoff ring while
+    descending, approach cone `|L_dock − Δz/g|` once the vertical budget is
+    comparable to the distance).
 
-56. Closed-set dominance is decided on `f = g + ε·h`, never on `g` alone.
-    With a 1 m z bin and 0.85 m max-grade steps, a flat child and a
-    descending child of one parent alias to the same cell; their `g` differs
-    by < 1 % while their `h` differs by ≈ Δz/g_max. Re-opening a cell with a
-    strictly better `f` is allowed.
+    The v0.1 implementation does NOT claim a formal ε-suboptimality bound,
+    because in addition to heuristic inflation it uses (1) quantized-f,
+    focal-style ordering, (2) aggregation of continuous states into
+    discretized closed keys, and (3) f-based cell dominance (rule 56). ε is
+    a search-aggressiveness (heuristic-inflation) parameter, not a
+    guarantee. Measured: ε = 1 and 1.5 exhaust 20k expansions on the small
+    scenario; ε = 2 solves it in 3,152. ε, bucket, tie-break mode and the
+    admissible bound `h(start)` are recorded in every search's diagnostics;
+    ε = 1 and bucket = 0 restore plain (still cell-aggregated) A* ordering.
+    A formal bounded-suboptimal variant (A*ε / focal search over
+    `f ≤ ε·f_min`) is a future research option, not a v0.1 requirement.
+
+56. Heuristic cell dominance: closed-set dominance is decided on
+    `f = g + ε·h`, never on `g` alone. With a 1 m z bin and 0.85 m max-grade
+    steps, a flat child and a descending child of one parent alias to the
+    same cell; their `g` differs by < 1 % while their `h` differs by
+    ≈ Δz/g_max — comparing `g` silently dropped every descent. Re-opening a
+    cell with a strictly better `f` is allowed. This is an engineering
+    resolution of key aliasing, not an optimality-preserving pruning rule
+    (two poses sharing a key are different physical states); Pareto labels
+    `(g, h)` per cell are a research-version option.
+
+60. Long-running design operations run as asynchronous jobs. Algorithms
+    emit progress through a plain callback (`ProgressCallback`) and know
+    nothing about jobs, threads or WebSockets; the job service consumes the
+    callback and exposes state over `GET /jobs/{id}` and `/ws/jobs/{id}`.
+    The v0.1 registry is in-memory (state is lost on restart), one job per
+    scenario at a time (`409 JOB_ALREADY_RUNNING`). Progress reporting must
+    never change a search result.
 
 57. Turning primitives carry a curvature penalty
     (`turn_penalty_factor × L_h × min cost`, default 0.5) so declines do not

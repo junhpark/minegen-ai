@@ -14,6 +14,7 @@ import numpy as np
 from minegen.core.models import Scenario
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.design.mine_designer import ChainedDeclineGenerator
+from minegen.design.progress import ProgressCallback, no_progress
 from minegen.design.targets import AccessTargetSet, generate_access_targets, resolve_portal
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
@@ -104,11 +105,16 @@ class DesignService:
         self._targets[scenario_id] = targets
         return targets
 
-    def generate_decline(self, scenario_id: str, max_levels: int | None = None) -> dict[str, Any]:
+    def generate_decline(
+        self,
+        scenario_id: str,
+        max_levels: int | None = None,
+        on_progress: ProgressCallback = no_progress,
+    ) -> dict[str, Any]:
         scenario, _, ev = self.evaluator(scenario_id)
         targets = self._targets_object(scenario_id)
         gen = ChainedDeclineGenerator(ev, scenario.ramp, scenario.design.search)
-        result = gen.generate(targets, max_levels=max_levels)
+        result = gen.generate(targets, max_levels=max_levels, on_progress=on_progress)
         payload = result.to_dict()
         path = self.decline_path(scenario_id)
         path.parent.mkdir(parents=True, exist_ok=True)
