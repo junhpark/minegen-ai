@@ -62,7 +62,9 @@ def test_decline_lifecycle(client: TestClient) -> None:
     client.post(f"/api/v1/scenarios/{sid}/design/targets")
     assert client.get(f"/api/v1/scenarios/{sid}/design/decline").status_code == 409
 
-    r = client.post(f"/api/v1/scenarios/{sid}/design/decline", params={"maxLevels": 2})
+    r = client.post(
+        f"/api/v1/scenarios/{sid}/design/decline", params={"maxLevels": 2, "sync": "true"}
+    )
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["status"] == "SUCCESS" and d["completedLevels"] == 2

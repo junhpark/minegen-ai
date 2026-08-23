@@ -4,22 +4,25 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import Field
 
-from minegen.api.deps import get_design_service
+from minegen.api.deps import get_design_service, get_job_service
 from minegen.core.models import ApiModel, ErrorDetail
 from minegen.services.design_service import (
     DeclineNotGeneratedError,
     DesignService,
+    StaleInputsError,
     TargetsNotGeneratedError,
 )
+from minegen.services.job_service import JobAlreadyRunningError, JobService
 from minegen.services.scenario_service import ScenarioNotFoundError
 from minegen.services.world_service import WorldNotGeneratedError
 
 router = APIRouter(prefix="/scenarios/{scenario_id}/design", tags=["design"])
 
 Service = Annotated[DesignService, Depends(get_design_service)]
+Jobs = Annotated[JobService, Depends(get_job_service)]
 
 
 class EvaluateRequest(ApiModel):
@@ -83,19 +86,56 @@ def get_targets(scenario_id: str, svc: Service) -> dict[str, Any]:
         raise _guard(scenario_id, e) from e
 
 
-@router.post("/decline")
+@router.post("/decline", status_code=status.HTTP_202_ACCEPTED)
 def generate_decline(
     scenario_id: str,
     svc: Service,
+    jobs: Jobs,
+    response: Response,
     max_levels: Annotated[int | None, Query(ge=1, le=200, alias="maxLevels")] = None,
+    sync: Annotated[
+        bool, Query(description="Run inline and return the result (tests/CLI).")
+    ] = False,
 ) -> dict[str, Any]:
-    """Chained Hybrid-A* decline (raw centerline, Phase 04). Synchronous:
-    the default scenario takes on the order of a minute. Async jobs are
-    planned (SRS §52)."""
+    """Chained Hybrid-A* decline (raw centerline, Phase 04).
+
+    Default: submit an asynchronous job → ``202 {jobId, status}``; poll
+    ``GET /jobs/{jobId}`` or subscribe to ``/ws/jobs/{jobId}``. The result is
+    also persisted to ``derived/decline.json`` and served by ``GET …/decline``.
+    ``?sync=true`` runs inline (≈ 30 s for the default scenario)."""
+    # validate preconditions up front so the caller gets 404/409 immediately
     try:
-        return svc.generate_decline(scenario_id, max_levels)
+        svc.evaluator(scenario_id)
+        svc._targets_object(scenario_id)
     except (ScenarioNotFoundError, WorldNotGeneratedError, TargetsNotGeneratedError) as e:
         raise _guard(scenario_id, e) from e
+    if sync:
+        response.status_code = status.HTTP_200_OK
+        try:
+            return svc.generate_decline(scenario_id, max_levels)
+        except StaleInputsError as e:
+            raise _error(status.HTTP_409_CONFLICT, e.code, str(e)) from e
+    try:
+        job = jobs.submit(
+            scenario_id,
+            "DECLINE",
+            lambda on_progress: svc.generate_decline(scenario_id, max_levels, on_progress),
+        )
+    except JobAlreadyRunningError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ErrorDetail(
+                code="JOB_ALREADY_RUNNING",
+                message=f"scenario '{scenario_id}' already has job '{e.job_id}' running",
+            ).model_dump(by_alias=True)
+            | {"jobId": e.job_id},
+        ) from e
+    return {
+        "jobId": job.id,
+        "status": "QUEUED",  # as submitted; the pool may already be running it
+        "scenarioId": scenario_id,
+        "kind": job.kind,
+    }
 
 
 @router.get("/decline")

@@ -121,18 +121,19 @@ class WorldService:
         ``arrays.npz`` and every file under ``derived/``. Called whenever the
         scenario document changes; after this, world endpoints answer
         409 WORLD_NOT_GENERATED until the world is regenerated."""
-        self._cache.pop(scenario_id, None)
-        arrays = self.store.arrays_path(scenario_id)
-        if arrays.exists():
-            arrays.unlink()
-        derived = self.store.derived_dir(scenario_id)
-        if derived.is_dir():
-            for p in sorted(derived.rglob("*"), reverse=True):
-                if p.is_file():
-                    p.unlink()
-                else:
-                    p.rmdir()
-        derived.mkdir(parents=True, exist_ok=True)
+        with self.store.lock(scenario_id):
+            self._cache.pop(scenario_id, None)
+            arrays = self.store.arrays_path(scenario_id)
+            if arrays.exists():
+                arrays.unlink()
+            derived = self.store.derived_dir(scenario_id)
+            if derived.is_dir():
+                for p in sorted(derived.rglob("*"), reverse=True):
+                    if p.is_file():
+                        p.unlink()
+                    else:
+                        p.rmdir()
+            derived.mkdir(parents=True, exist_ok=True)
 
     def is_generated(self, scenario_id: str) -> bool:
         return scenario_id in self._cache or self.store.arrays_path(scenario_id).is_file()

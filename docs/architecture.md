@@ -119,6 +119,7 @@ fault is added.
     02 Synthetic world (terrain, orebody, block model, rock quality, faults)   done
     03 Design cost evaluator & level access targets   done
     04 Chained Hybrid-A* decline generator (raw path)   done
+    04.5 Async jobs + progress + CI                      done
     05 Ramp smoothing + revalidation   ← next
     06 Tunnel mesh (gravity-aligned sweep)
     07 MineNetwork
@@ -153,8 +154,14 @@ go under `geology`, not at the scenario root.
 ## Persistence and jobs (v0.1)
 
 - Scenarios: `data/scenarios/{id}/scenario.json` + `arrays.npz` + `derived/`.
-- Long-running work: FastAPI background task + in-memory job registry +
-  `/ws/jobs/{jobId}` progress messages. No queue, no database.
+- Long-running work (rule 60): `services/job_service.py` — in-memory
+  registry + 2-worker thread pool; one job per scenario at a time. Algorithms
+  emit `ProgressEvent`s through a plain callback (`design/progress.py`);
+  the job service records them; `GET /jobs/{id}` and `/ws/jobs/{id}` expose
+  them. Jobs capture an input-revision fingerprint and re-verify it under
+  the per-scenario store lock before persisting; mutated inputs →
+  `JOB_INPUTS_CHANGED`, nothing written (rule 60). Job state is lost on
+  restart (v0.1). No queue, no database.
 
 ## Non-goals (v0.1)
 

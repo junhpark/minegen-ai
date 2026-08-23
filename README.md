@@ -17,6 +17,7 @@ platform. Research prototype / proof of concept.
 | 02    | Synthetic world: terrain, orebody, block model, rock quality, faults | done  |
 | 03    | Design cost evaluator & level-aware footwall access targets  | done  |
 | 04    | Chained Hybrid-A* decline generator (raw centerline)         | done  |
+| 04.5  | Async job infrastructure, WebSocket progress, GitHub CI      | done  |
 | 05    | Ramp smoothing + revalidation                                | next  |
 | 06–16 | See `docs/architecture.md`                                   | —     |
 
@@ -46,6 +47,13 @@ Set `VITE_API_BASE_URL` if the backend is not on `localhost:8000`.
 
 Or both with Docker: `docker compose up`.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs the full backend gate (ruff check, ruff
+format --check, mypy strict, pytest) and frontend gate (typecheck, eslint,
+prettier --check, vitest, build) on every push to `main` and every pull
+request.
+
 ## Quality gates
 
 Every phase must pass all of these before it is considered complete:
@@ -55,8 +63,11 @@ Every phase must pass all of these before it is considered complete:
 
 ## Phase 04 smoke test
 
-1. With access targets generated, click **Generate decline (Hybrid-A*)**
-   (≈ 30 s for the default scenario; the button shows progress).
+1. With access targets generated, click **Generate decline (Hybrid-A*)**.
+   A job is submitted; the panel shows a progress bar with level / candidate
+   counters and expanded states (polled every 0.5 s from `GET /jobs/{id}`;
+   `/ws/jobs/{id}` streams the same records). Clicking again while it runs is
+   refused with `JOB_ALREADY_RUNNING`.
 2. An amber/chalk polyline (alternating per level) runs from the portal cone
    through every level's selected candidate; faint red lines are the other
    successful candidates. Labels show `Lnn Cxx <length> m`.

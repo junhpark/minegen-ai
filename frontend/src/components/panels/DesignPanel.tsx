@@ -1,4 +1,6 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { JobProgress } from '@/components/panels/JobProgress'
 import { api, ApiError } from '@/api/client'
 import { PanelSection } from '@/components/layout/PanelSection'
 import { useScenarioStore } from '@/stores/scenarioStore'
@@ -22,14 +24,32 @@ export function DesignPanel() {
       setLayerVisible('accessTargets', true)
     },
   })
+  // asynchronous decline job: submit → poll GET /jobs/{id} → apply result
+  const [jobId, setJobId] = useState<string | null>(null)
   const generateDecline = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('generate the world first')
-      const d = await api.generateDecline(scene.scenarioId)
-      setScene({ ...scene, decline: d })
-      setLayerVisible('rawSearchPath', true)
+      const job = await api.submitDecline(scene.scenarioId)
+      setJobId(job.jobId)
     },
   })
+  const job = useQuery({
+    queryKey: ['job', jobId],
+    queryFn: () => api.getJob(jobId as string),
+    enabled: jobId !== null,
+    refetchInterval: (q) => {
+      const s = q.state.data?.status
+      return s === 'SUCCEEDED' || s === 'FAILED' ? false : 500
+    },
+  })
+  const jobRunning = job.data?.status === 'QUEUED' || job.data?.status === 'RUNNING'
+  useEffect(() => {
+    const rec = job.data
+    if (rec?.status === 'SUCCEEDED' && rec.result && scene && scene.decline !== rec.result) {
+      setScene({ ...scene, decline: rec.result })
+      setLayerVisible('rawSearchPath', true)
+    }
+  }, [job.data, scene, setScene, setLayerVisible])
   const err = generate.error ?? generateDecline.error
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
@@ -106,15 +126,18 @@ export function DesignPanel() {
       <button
         type="button"
         onClick={() => generateDecline.mutate()}
-        disabled={!targets || generateDecline.isPending}
+        disabled={!targets || generateDecline.isPending || jobRunning}
         className="plate mt-3 w-full rounded-sm bg-lamp px-3 py-1.5 text-[13px] text-rock-950 hover:bg-lamp-deep hover:text-chalk disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {generateDecline.isPending
-          ? 'Searching decline… (≈ 30 s)'
+        {generateDecline.isPending || jobRunning
+          ? 'Generating decline…'
           : decline
             ? 'Regenerate decline'
             : 'Generate decline (Hybrid-A*)'}
       </button>
+      {job.data && (jobRunning || job.data.status === 'FAILED') ? (
+        <JobProgress job={job.data} />
+      ) : null}
       {decline ? (
         <div className="readout mt-2 text-[11px]">
           <div className="flex justify-between text-chalk-dim">
