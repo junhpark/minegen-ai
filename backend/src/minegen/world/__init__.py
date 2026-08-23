@@ -1,0 +1,1 @@
+"""MineGen-AI subpackage."""

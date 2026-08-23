@@ -1,0 +1,379 @@
+"""Pydantic domain schemas used at the API boundary.
+
+Conventions
+-----------
+* Coordinates are ENU Z-up meters (``docs/coordinate-system.md``).
+* Wire format is camelCase; Python attribute names are snake_case.
+* These are *boundary* models. Bulk numerical data (block model fields, cost
+  fields, meshes) live in NumPy arrays and are never expanded into lists of
+  these objects (CLAUDE.md rule 6).
+"""
+
+from __future__ import annotations
+
+import math
+import uuid
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic.alias_generators import to_camel
+
+from minegen.core.enums import MiningMethodType, OrebodyType
+
+
+class ApiModel(BaseModel):
+    """Base for every schema crossing the API boundary."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        extra="forbid",
+        # Rule 34: API/domain floats are finite. NaN / ±inf are rejected at the
+        # boundary; +inf exists only inside numerical cost fields (Phase 03).
+        allow_inf_nan=False,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Geometry primitives
+# --------------------------------------------------------------------------- #
+
+
+class Point3D(ApiModel):
+    x: float
+    y: float
+    z: float
+
+    def as_tuple(self) -> tuple[float, float, float]:
+        return (self.x, self.y, self.z)
+
+    def distance_to(self, other: Point3D) -> float:
+        return math.dist(self.as_tuple(), other.as_tuple())
+
+
+class Vector3D(Point3D):
+    """Same shape as Point3D; semantic marker for directions."""
+
+
+class BoundingBox(ApiModel):
+    min: Point3D
+    max: Point3D
+
+    @model_validator(mode="after")
+    def _check_order(self) -> BoundingBox:
+        if self.min.x > self.max.x or self.min.y > self.max.y or self.min.z > self.max.z:
+            raise ValueError("bounding box min must be <= max on every axis")
+        return self
+
+    def contains(self, p: Point3D) -> bool:
+        return (
+            self.min.x <= p.x <= self.max.x
+            and self.min.y <= p.y <= self.max.y
+            and self.min.z <= p.z <= self.max.z
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Scenario configuration
+# --------------------------------------------------------------------------- #
+
+PositiveFloat = Annotated[float, Field(gt=0)]
+NonNegativeFloat = Annotated[float, Field(ge=0)]
+Fraction = Annotated[float, Field(ge=0, le=1)]
+
+
+class WorldConfig(ApiModel):
+    """Extent of the synthetic world.
+
+    * Horizontal origin is at the center: x ∈ [−size_x/2, +size_x/2],
+      y ∈ [−size_y/2, +size_y/2].
+    * ``depth`` is the **model depth below the terrain reference elevation**
+      (``TerrainConfig.base_elevation``), rule 35. With base_elevation = 300
+      and depth = 600 the model bottom is at z = −300. Terrain relief may
+      push the actual bounding-box top above the reference elevation.
+    """
+
+    size_x: PositiveFloat = 1200.0
+    size_y: PositiveFloat = 1200.0
+    depth: PositiveFloat = 600.0
+
+    def bottom_elevation(self, reference_elevation: float) -> float:
+        return reference_elevation - self.depth
+
+    def bounds(self, reference_elevation: float, top_z: float | None = None) -> BoundingBox:
+        """Bounding box from the model bottom to ``top_z`` (defaults to the
+        reference elevation; pass the actual terrain maximum once known)."""
+        top = reference_elevation if top_z is None else top_z
+        return BoundingBox(
+            min=Point3D(
+                x=-self.size_x / 2,
+                y=-self.size_y / 2,
+                z=self.bottom_elevation(reference_elevation),
+            ),
+            max=Point3D(x=self.size_x / 2, y=self.size_y / 2, z=top),
+        )
+
+
+class TerrainConfig(ApiModel):
+    grid_spacing: PositiveFloat = 10.0
+    base_elevation: float = 300.0
+    relief: NonNegativeFloat = 100.0
+    octaves: Annotated[int, Field(ge=1, le=8)] = 4
+
+
+class OrebodyConfig(ApiModel):
+    """Tabular orebody (v0.1). ``height`` is the down-dip length
+    (CLAUDE.md rule 28), not the vertical extent."""
+
+    orebody_type: OrebodyType = OrebodyType.TABULAR
+    center: Point3D
+    strike_deg: Annotated[float, Field(ge=0, lt=360)]
+    dip_deg: Annotated[float, Field(gt=0, le=90)]
+    length: PositiveFloat
+    height: PositiveFloat
+    thickness: PositiveFloat
+    mean_grade: NonNegativeFloat = 4.0
+    grade_variability: NonNegativeFloat = 0.3
+    # Spatial continuity of grade is a property of the mineralization, not of
+    # the host rock mass, so it is parameterized separately from rock quality.
+    grade_correlation_length_xy: PositiveFloat = 80.0
+    grade_correlation_length_z: PositiveFloat = 40.0
+    density: PositiveFloat = 2.8
+
+    @property
+    def vertical_extent(self) -> float:
+        return self.height * math.sin(math.radians(self.dip_deg))
+
+
+class FaultConfig(ApiModel):
+    """Synthetic planar fault with a core zone and a damage zone
+    (CLAUDE.md rule 27).
+
+    Widths are **perpendicular half-widths measured from the fault plane**
+    (rule 36). For signed distance ``d`` to the plane::
+
+        |d| <= core_half_width                      → core
+        core_half_width < |d| <= influence_half_width → damage zone
+        otherwise                                   → undisturbed rock
+
+    The total disturbed thickness is therefore ``2 × influence_half_width``.
+    """
+
+    origin: Point3D
+    strike_deg: Annotated[float, Field(ge=0, lt=360)]
+    dip_deg: Annotated[float, Field(gt=0, le=90)]
+    core_half_width: PositiveFloat = 2.5
+    influence_half_width: PositiveFloat = 20.0
+    core_penalty: NonNegativeFloat = 50.0
+    damage_zone_penalty: NonNegativeFloat = 10.0
+
+    @model_validator(mode="after")
+    def _check_widths(self) -> FaultConfig:
+        if self.influence_half_width < self.core_half_width:
+            raise ValueError("influence_half_width must be >= core_half_width")
+        return self
+
+
+class RockQualityConfig(ApiModel):
+    """Parameters of the seeded spatially-correlated rock-quality field
+    (0–100 scale, RMR/Q-like but dimensionless and synthetic)."""
+
+    mean: Annotated[float, Field(ge=0, le=100)] = 65.0
+    std: NonNegativeFloat = 12.0
+    correlation_length_xy: PositiveFloat = 80.0
+    correlation_length_z: PositiveFloat = 40.0
+    minimum: Annotated[float, Field(ge=0, le=100)] = 20.0
+    maximum: Annotated[float, Field(ge=0, le=100)] = 90.0
+
+    @model_validator(mode="after")
+    def _check_range(self) -> RockQualityConfig:
+        if self.maximum <= self.minimum:
+            raise ValueError("maximum must be > minimum")
+        if not (self.minimum <= self.mean <= self.maximum):
+            raise ValueError("mean must lie within [minimum, maximum]")
+        return self
+
+
+class GeologyConfig(ApiModel):
+    """Container for every synthetic geological field. Future members:
+    water, lithology, alteration, joint sets, in-situ stress."""
+
+    rock_quality: RockQualityConfig = Field(default_factory=RockQualityConfig)
+    faults: list[FaultConfig] = Field(default_factory=list)
+
+
+class BlockModelConfig(ApiModel):
+    dx: PositiveFloat = 10.0
+    dy: PositiveFloat = 10.0
+    dz: PositiveFloat = 10.0
+
+
+class RampConstraints(ApiModel):
+    """Engineering constraints for the chained Hybrid-A* decline generator.
+
+    ``max_gradient`` is vertical/horizontal (0.12 = 12 %)."""
+
+    max_gradient: Annotated[float, Field(gt=0, le=0.25)] = 0.12
+    min_turn_radius: PositiveFloat = 18.0
+    tunnel_width: PositiveFloat = 5.0
+    tunnel_height: PositiveFloat = 5.0
+    clearance: NonNegativeFloat = 3.0
+    footwall_access_offset: NonNegativeFloat = 20.0  # rule 29
+    level_drift_gradient: Annotated[float, Field(ge=0, le=0.05)] = 0.0  # rule 30
+
+
+class RestrictedZone(ApiModel):
+    """Axis-aligned no-go box (v0.1). Points inside are invalid for design."""
+
+    name: str = "restricted"
+    min: Point3D
+    max: Point3D
+
+    @model_validator(mode="after")
+    def _check_order(self) -> RestrictedZone:
+        if self.min.x > self.max.x or self.min.y > self.max.y or self.min.z > self.max.z:
+            raise ValueError("restricted zone min must be <= max on every axis")
+        return self
+
+
+class DeclineSearchConfig(ApiModel):
+    """Chained Hybrid-A* settings (rules 47–55)."""
+
+    xy_resolution: PositiveFloat = 5.0
+    z_resolution: PositiveFloat = 1.0
+    heading_bins: Annotated[int, Field(ge=8, le=72)] = 16
+    grade_fractions: list[Annotated[float, Field(ge=0, le=1)]] = Field(
+        default_factory=lambda: [0.0, 0.5, 1.0]
+    )
+    max_sample_spacing: PositiveFloat = 2.0
+    goal_shot_radius_primitives: PositiveFloat = 5.0
+    goal_shot_max_heading_change_deg: Annotated[float, Field(gt=0, le=90)] = 45.0
+    vertical_tolerance: NonNegativeFloat = 0.5
+    max_expansions_per_candidate: Annotated[int, Field(ge=100, le=5_000_000)] = 250_000
+    max_candidates_per_level: Annotated[int, Field(ge=1, le=25)] = 5
+    tie_break_bucket_primitives: NonNegativeFloat = 2.0
+    # Added to every turning primitive's cost (in units of one straight
+    # primitive at minimum cost). Keeps declines from zig-zagging; h ignores it.
+    turn_penalty_factor: NonNegativeFloat = 0.5
+    tie_break_mode: Literal["horizontal", "docking", "cone"] = "cone"
+    # "cone" mode: while descending, prefer states on a ring of this many
+    # minimum radii around the access target (a spiral-decline layout prior)
+    standoff_radius_factor: PositiveFloat = 3.0
+    # Weighted A*: f = g + ε·h with the admissible h (rule 25). ε = 1 is plain
+    # A*; ε > 1 bounds suboptimality by ε and is what makes long descents
+    # tractable when real cost/m exceeds the minimum used by h.
+    heuristic_weight: Annotated[float, Field(ge=1.0, le=5.0)] = 2.0
+    max_search_seconds: PositiveFloat | None = None
+    allow_reverse_grade: bool = False  # reserved (rule 49)
+
+    @model_validator(mode="after")
+    def _check(self) -> DeclineSearchConfig:
+        if not self.grade_fractions:
+            raise ValueError("grade_fractions must not be empty")
+        if self.allow_reverse_grade:
+            raise ValueError("allow_reverse_grade is reserved for a future version")
+        return self
+
+
+class DesignConfig(ApiModel):
+    """Phase 03 parameters: cost weights, exclusions and access-target
+    lattice. Cost units are dimensionless 'cost per metre' with base 1.0;
+    monetary calibration is out of scope for v0.1."""
+
+    base_cost_per_m: PositiveFloat = 1.0
+    rock_penalty_weight: NonNegativeFloat = 2.0
+    orebody_exclusion_buffer: NonNegativeFloat = 5.0
+    # Soft sterilization penalty decays from the hard buffer over this range.
+    # buffer + range = 20 m = the default footwall access offset, so level
+    # access targets at the design offset are neutral; closer is discouraged.
+    orebody_sterilization_weight: NonNegativeFloat = 5.0
+    orebody_sterilization_range: PositiveFloat = 15.0
+    minimum_surface_cover: NonNegativeFloat = 0.0
+    restricted_zones: list[RestrictedZone] = Field(default_factory=list)
+
+    top_mining_margin: NonNegativeFloat = 10.0
+    bottom_mining_margin: NonNegativeFloat = 10.0
+    candidate_count: Annotated[int, Field(ge=1, le=25)] = 5
+    candidate_along_strike_span: NonNegativeFloat = 100.0
+    portal_footwall_distance: PositiveFloat = 350.0
+    search: DeclineSearchConfig = Field(default_factory=DeclineSearchConfig)
+
+
+class TunnelProfile(ApiModel):
+    """Horseshoe profile: flat floor, vertical walls, arched crown."""
+
+    width: PositiveFloat = 5.0
+    wall_height: PositiveFloat = 2.5
+    crown_radius: PositiveFloat = 2.5
+
+    @property
+    def total_height(self) -> float:
+        return self.wall_height + self.crown_radius
+
+
+class MiningConfig(ApiModel):
+    method: MiningMethodType = MiningMethodType.LONGHOLE_OPEN_STOPING
+    sublevel_interval: PositiveFloat = 25.0
+    stope_length: PositiveFloat = 30.0
+    minimum_pillar: NonNegativeFloat = 5.0
+
+
+# --------------------------------------------------------------------------- #
+# Scenario document
+# --------------------------------------------------------------------------- #
+
+
+class ScenarioCreate(ApiModel):
+    """Payload for ``POST /scenarios``. Every field has a default so an empty
+    body produces a valid baseline scenario."""
+
+    name: str = "Untitled synthetic mine"
+    seed: int = 42
+    world: WorldConfig = Field(default_factory=WorldConfig)
+    terrain: TerrainConfig = Field(default_factory=TerrainConfig)
+    orebody: OrebodyConfig = Field(
+        default_factory=lambda: OrebodyConfig(
+            center=Point3D(x=200.0, y=100.0, z=0.0),
+            strike_deg=35.0,
+            dip_deg=70.0,
+            length=600.0,
+            height=350.0,
+            thickness=12.0,
+            mean_grade=4.2,
+        )
+    )
+    geology: GeologyConfig = Field(default_factory=GeologyConfig)
+    block_model: BlockModelConfig = Field(default_factory=BlockModelConfig)
+    portal: Point3D | None = Field(
+        default=None,
+        description="Portal location on the terrain surface. If None, Phase 03 picks one.",
+    )
+    ramp: RampConstraints = Field(default_factory=RampConstraints)
+    design: DesignConfig = Field(default_factory=DesignConfig)
+    tunnel_profile: TunnelProfile = Field(default_factory=TunnelProfile)
+    mining: MiningConfig = Field(default_factory=MiningConfig)
+
+
+class Scenario(ScenarioCreate):
+    """Persisted scenario document."""
+
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
+    schema_version: int = 1
+
+
+class ScenarioSummary(ApiModel):
+    id: str
+    name: str
+    seed: int
+
+
+class HealthResponse(ApiModel):
+    status: str
+    app: str
+    version: str
+    coordinate_system: str
+
+
+class ErrorDetail(ApiModel):
+    code: str
+    message: str

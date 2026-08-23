@@ -1,0 +1,345 @@
+# MineGen-AI Development Rules
+
+MineGen-AI is a browser-based research platform for generative underground
+mine design. Read `docs/architecture.md` and `docs/coordinate-system.md`
+before touching any module.
+
+Before coding any requested phase:
+
+1. inspect existing repository files
+2. respect current architecture
+3. identify affected modules
+4. implement only the requested phase
+5. write tests
+6. run tests
+7. run lint/type checks
+8. summarize changed files
+9. identify remaining technical debt
+
+Never rewrite unrelated working modules. When implementing numerical methods,
+favor correctness, determinism, testability and engineering transparency over
+cleverness.
+
+## Core rules
+
+1. Never implement the whole platform in one step.
+
+2. Build one vertical slice at a time, in the order given in
+   `docs/architecture.md` (Phase 01 … Phase 16). Do not skip phases.
+
+3. Backend canonical coordinate system:
+   X East, Y North, Z Up, meters.
+
+4. Never introduce Three.js coordinate conventions into backend code.
+
+5. Separate:
+   domain model,
+   numerical algorithm,
+   API,
+   rendering.
+
+6. Large numerical arrays must use NumPy.
+   Do not create millions of Python/Pydantic block objects.
+
+7. Every random generator must accept a deterministic seed.
+
+8. Every core algorithm requires tests before integration.
+
+9. Do not silently relax engineering constraints.
+
+10. If no feasible ramp exists, return a structured failure.
+
+11. Raw A* paths must never be rendered as final engineering designs.
+
+12. Every smoothed path must be revalidated.
+
+13. Mine geometry and MineNetwork must remain synchronized.
+    Both are derived from the same centerline; neither is derived from the other.
+
+14. Do not use deep learning in v0.1.
+
+15. Do not add external dependencies without explaining why.
+    Add a dependency in the phase that first needs it, not before.
+
+16. Prefer simple, transparent algorithms first.
+
+17. Frontend rendering must not contain engineering calculations.
+
+18. API schemas must be typed.
+
+19. TypeScript strict mode must remain enabled.
+
+20. Do not replace working architecture simply to reduce code length.
+
+## Additional architecture invariants
+
+21. A mine decline is not designed as one Portal-to-Orebody path.
+
+    The decline is a chained sequence of engineering access targets:
+
+        Portal
+        → Level 1 access
+        → Level 2 access
+        → Level 3 access
+        → ...
+
+    Each level may contain multiple candidate access targets
+    (`LevelAccessTargets { level_id, elevation, candidates[] }`).
+    v0.1 evaluates K = 3–5 candidates per level using segment cost plus a
+    next-level accessibility heuristic. Beam search / dynamic programming
+    over the candidate lattice is a later refinement, not a rewrite.
+
+22. Every ramp segment must pass its terminal continuous position and heading
+    to the next segment as the start position and initial heading.
+
+23. Hybrid A* states remain continuous:
+
+    x, y, z and heading are floating-point engineering states.
+
+    Discretization is used only for closed/open-set indexing
+    (`closed_key = (ix, iy, iz, ih)`).
+
+    Never snap the physical ramp trajectory to the search grid.
+    The "5 m XY / 1 m Z" figures are closed-set discretization resolutions,
+    not state snapping resolutions.
+
+24. Heading discretization and turning motion primitives must be
+    geometrically consistent.
+
+    For heading-bin angle Δθ and turn radius R:
+
+        arc_length = R × Δθ
+
+    Vertical displacement is `dz = gradient × horizontal_arc_length`,
+    accumulated as a float. It must not be rounded at each search step.
+
+25. The ramp heuristic must include the lower bound imposed by the maximum
+    gradient (gradient = vertical / horizontal):
+
+        horizontal_min        = abs(dz) / max_gradient
+        grade_limited_length  = sqrt(horizontal_min^2 + dz^2)
+        h_distance            = max(euclidean_distance, grade_limited_length)
+
+    If the search objective is monetary or weighted cost, multiply
+    `h_distance` by the minimum feasible cost per meter. Non-negative
+    additive penalties (fault, rock quality, sterilization) are never
+    included in the heuristic.
+
+26. Ordinary ramp, drift and crosscut tunnel profiles must use a
+    gravity-aligned sweep frame, never a parallel-transport frame.
+
+    Backend global up is `Z = (0, 0, 1)`. For centerline tangent `t`:
+
+        forward = normalize(t)
+        up      = normalize(Z − dot(Z, forward) × forward)
+        right   = normalize(cross(forward, up))      # driver's right
+
+    `(right, forward, up)` is a right-handed basis (`right × forward = up`).
+    This keeps tunnel floors gravity-aligned so they do not bank along spiral
+    declines. See `docs/coordinate-system.md` for the full definition.
+
+    Parallel-transport frames are reserved for future near-vertical
+    raise/shaft geometries where `|dot(t, Z)| → 1`.
+
+27. Synthetic geology must exist before route optimization.
+
+    Phase 02 must provide:
+
+    - a deterministic (seeded) spatially-correlated rock-quality field
+    - support for scenario-defined synthetic fault planes
+      (origin, strike, dip, core_half_width, influence_half_width,
+       core_penalty, damage_zone_penalty). Faults are geometric entities
+      declared in the scenario document; they are NOT generated from the
+      seed. Seed-driven procedural fields are terrain, rock quality and
+      grade only.
+    - fault signed-distance / zone / influence measurements per block
+      (visualization and diagnostics)
+
+    Phase 02 acceptance scenarios shall include at least one fault.
+    Phase 03 cost evaluation must never be based only on constant
+    excavation cost, and must use the analytic FaultPlane objects as the
+    source of truth (per-fault penalties), not the block-model fault arrays.
+
+28. Strike and dip convention is fixed:
+
+    - strike is clockwise azimuth from +Y (North)
+    - dip direction = strike + 90 degrees (right-hand rule)
+    - orebody `height` means down-dip length, not vertical extent
+
+29. Default footwall access offset is approximately 20 m and must remain
+    configurable. Architecture must permit depth-dependent offset rules later.
+
+30. Level drift gradient is configurable. v0.1 may default to zero for
+    geometric simplicity; the schema must permit small drainage gradients.
+
+31. The mine development timeline must support continuous chainage progress
+    from 0.0 to 1.0. A DEVELOPING tunnel is not simply fully visible.
+
+32. Frontend `TunnelMeshFactory` performs visualization assembly only.
+    It may convert backend positions/normals/indices into Three.js
+    `BufferGeometry` but must never perform mine-engineering geometry
+    calculations.
+
+33. Walkthrough collision geometry must be designed so individual excavation
+    colliders can be enabled/disabled according to timeline state without
+    rebuilding the complete physics world.
+
+34. API and domain floats are finite. Every `ApiModel` uses
+    `allow_inf_nan=False`; NaN / ±inf requests are rejected with 422.
+    `+inf` is permitted only inside numerical cost fields (NumPy arrays in
+    Phase 03+), never in a schema, a JSON payload or a persisted document.
+
+35. `WorldConfig.depth` is the model depth measured **below**
+    `TerrainConfig.base_elevation`. The model bottom is
+    `base_elevation − depth`. It is not an absolute bottom elevation.
+    Terrain relief may raise the bounding-box top above the reference.
+
+36. Fault zone widths are perpendicular **half-widths** measured from the
+    fault plane (`core_half_width`, `influence_half_width`). Classification
+    uses `|signed_distance|`. Total disturbed thickness is twice the half-width.
+
+37. Synthetic geology parameters live under `scenario.geology`
+    (`rock_quality`, `faults`, and future members). Do not add geological
+    fields at the scenario root.
+
+38. Completion reports must quote the exact commands and paths that were
+    executed. Do not abbreviate endpoint paths or summarize a command that
+    was not run.
+
+39. Block-model ore semantics: the analytic `Orebody` is the geometric
+    source of truth and may outcrop. Persisted `ore_fraction` is the fraction
+    of each block that is inside the analytic orebody AND below the terrain
+    surface, from one shared sub-sample pattern; AIR/ROCK classification uses
+    the same sub-samples (`solid_fraction < 0.5 → AIR`). Hence
+    `orebody.volume()` is the mineralized-body volume and
+    `block_model.ore_volume()` is the in-situ (below-ground) ore volume.
+    Mine statistics (`faultCoreBlocks`, `rockQualityMean`, …) count rock
+    blocks only; the fields themselves remain defined everywhere.
+
+40. Replacing a scenario document invalidates ALL derived state: the
+    in-memory cache, `arrays.npz` and every file under `derived/`. Until
+    regeneration, world/scene/slice endpoints answer 409 WORLD_NOT_GENERATED.
+    Each later phase stores its derived products under `derived/` so this
+    single invalidation stays the choke point. Routers obtain services via
+    FastAPI dependencies, never by calling `get_*_service()` directly.
+
+41. Phase 03 design cost is a continuous query service
+    (`DesignCostEvaluator.evaluate_points(N×3)`), not a dense search-grid
+    volume. Hybrid-A* owns search discretization in Phase 04.
+
+42. Geological measurement and engineering cost interpretation remain
+    separate. Rock-quality fields are interpolated from the block model;
+    fault penalties are evaluated from analytic `FaultPlane` geometry and
+    per-fault parameters; orebody exclusion uses the analytic signed
+    distance. Overlapping fault penalties are summed (v0.1).
+
+43. Decline access targets are level-aware footwall targets. For each
+    level, candidates share the level elevation and the perpendicular
+    footwall offset `q = thickness/2 + footwall_access_offset`; only their
+    along-strike coordinate varies:
+
+        P = C + u_coord·u + v_coord·v + q·w,   v_coord = (z_level − C.z − q·w.z) / v.z
+
+44. Invalid access candidates are retained with explicit rejection
+    reasons. They are not silently deleted.
+
+45. Phase 03 must not implement Hybrid-A* or any path search.
+    `next_level_accessibility` is the admissible heuristic distance only.
+
+46. Regenerating the world clears `derived/` first; every later derived
+    product (targets, decline, network, …) is invalid once its inputs change.
+
+47. Phase 04 Hybrid-A* physical states remain continuous.
+    Closed-set discretization is 5 m XY, 1 m Z and 16 heading bins
+    by default. Discretization never snaps geometry.
+
+48. Turning primitives change heading by exactly one heading bin.
+    With minimum radius R and heading-bin angle Δθ, the primitive
+    horizontal arc length is R·Δθ. Straight primitives use the same
+    horizontal length.
+
+49. v0.1 decline search is monotonic downward by default.
+    Grade primitives are {0, −0.5·gmax, −gmax}. Upward grades are
+    reserved for a future optional mode.
+
+50. Primitive feasibility and cost are evaluated along the complete
+    primitive, not only at its endpoint. Sampling spacing must be no
+    greater than min(2 m, smallest fault core half-width).
+
+51. Phase 04 must terminate a successful segment at the exact access
+    target. A geometrically valid, fully sampled goal-shot connector
+    may be used; distance tolerance alone is not an acceptable final
+    endpoint.
+
+52. The portal transition is the only exception to minimum-cover
+    enforcement. Before minimum cover is first achieved, shallow
+    underground samples may be accepted; after it is achieved, the
+    path may never violate minimum cover again.
+
+53. Candidate chaining in v0.1 is greedy, level by level. Every valid
+    candidate up to K=5 is searched; selection uses actual segment cost
+    plus the next-level admissible lower bound. Terminal continuous
+    position and heading are inherited by the next segment.
+
+54. Search failure never relaxes engineering constraints. Exhaustion
+    returns a structured SEGMENT_INFEASIBLE result with per-candidate
+    diagnostics.
+
+55. The heuristic stays admissible: `h = sqrt(max(L_dubinsCS, Δz/g_max)² + Δz²)
+    × minimum cost/m`, where `L_dubinsCS` is the exact turn-then-straight
+    horizontal length with free final heading (falls back to the plain
+    distance when the target is inside a turning circle). Search ordering is
+    weighted A* (`f = g + ε·h`, default ε = 2, bounded suboptimality ε) with
+    a quantized-f tie-break (`cone` mode: standoff ring while descending,
+    approach cone `|L_dock − Δz/g|` when the vertical budget is comparable
+    to the distance). ε, the bucket, the tie-break mode and the admissible
+    bound `h(start)` are all recorded in the diagnostics; ε = 1 and bucket
+    = 0 restore plain A*.
+
+56. Closed-set dominance is decided on `f = g + ε·h`, never on `g` alone.
+    With a 1 m z bin and 0.85 m max-grade steps, a flat child and a
+    descending child of one parent alias to the same cell; their `g` differs
+    by < 1 % while their `h` differs by ≈ Δz/g_max. Re-opening a cell with a
+    strictly better `f` is allowed.
+
+57. Turning primitives carry a curvature penalty
+    (`turn_penalty_factor × L_h × min cost`, default 0.5) so declines do not
+    zig-zag between equal-cost L/R/S children. The penalty is additive and
+    non-negative; `h` ignores it.
+
+58. The default portal is chosen for burial: among footwall-side surface
+    candidates, maximize the minimum (terrain − max-grade entry line)
+    clearance from 20 m to 120 m along the heading toward the orebody.
+    A portal facing a slope that falls away faster than g_max cannot start
+    a decline, whatever the search does.
+
+59. The goal-shot window is `goal_shot_radius_primitives × L_h` (default
+    5 → ≈ 35 m ≈ 2·R_min) and the connector is single-arc first, then
+    arc-then-straight (minimum-radius turn until facing the target, then
+    straight). Within 3·L_h a single arc with R ≥ R_min exists for < 40 % of
+    poses even when aligned within 45°; the wider window with the two-piece
+    connector is what makes exact docking reliable.
+
+## Persistence (v0.1)
+
+No database. Scenarios are stored on disk:
+
+    data/scenarios/{scenario_id}/
+        scenario.json      # Pydantic scenario document
+        arrays.npz         # NumPy fields (block model, …) — deleted on PUT
+        derived/           # generated design artefacts — emptied on PUT
+
+## Naming
+
+The core design algorithm is the **Chained Hybrid-A\* Decline Generator**
+("level-aware chained Hybrid-A* for engineering-constrained underground
+decline generation"). Use this name in code, docs and API descriptions
+instead of "constrained A* ramp generator".
+
+## Tooling
+
+Backend: `cd backend && pytest && ruff check . && ruff format --check . && mypy src`
+Frontend: `cd frontend && npm run typecheck && npm run lint && npm test && npm run build`
+
+All four backend commands and all four frontend commands must pass before a
+phase is considered complete.

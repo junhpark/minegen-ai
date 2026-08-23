@@ -1,0 +1,259 @@
+// Scene / world payloads mirroring backend/src/minegen/export/scene_manifest.py.
+// Coordinates ENU Z-up meters. Converted only in scene/ components.
+
+export type SliceAxis = 'x' | 'y' | 'z'
+export type SliceField = 'rockQuality' | 'grade' | 'faultInfluence' | 'faultZone' | 'oreFraction'
+
+export interface SliceAxisSpec {
+  axis: SliceAxis
+  origin: number
+  spacing: number
+  n: number
+}
+
+export interface SlicePayload {
+  field: SliceField
+  axis: SliceAxis
+  index: number
+  count: number
+  /** coordinate of the slice plane along `axis` */
+  coordinate: number
+  rows: SliceAxisSpec
+  cols: SliceAxisSpec
+  /** row-major rows × cols */
+  values: number[]
+  min: number
+  max: number
+}
+
+export interface TerrainPayload {
+  x0: number
+  y0: number
+  spacing: number
+  nx: number
+  ny: number
+  /** row-major (i over x, j over y) */
+  z: number[]
+  zMin: number
+  zMax: number
+}
+
+export interface OrebodyPayload {
+  type: string
+  center: [number, number, number]
+  u: [number, number, number]
+  v: [number, number, number]
+  w: [number, number, number]
+  halfExtents: [number, number, number]
+  volumeM3: number
+  tonnes: number
+  bboxMin: [number, number, number]
+  bboxMax: [number, number, number]
+  positions: number[]
+  indices: number[]
+}
+
+export interface FaultPayload {
+  id: string
+  strikeDeg: number
+  dipDeg: number
+  coreHalfWidth: number
+  influenceHalfWidth: number
+  origin: [number, number, number]
+  normal: [number, number, number]
+  /** flat ordered convex polygon, vertexCount × 3 */
+  polygon: number[]
+  vertexCount: number
+}
+
+export interface OreBlocksPayload {
+  count: number
+  spacing: [number, number, number]
+  centers: number[]
+  grade: number[]
+  gradeMin: number
+  gradeMax: number
+}
+
+export interface BlockGridPayload {
+  origin: [number, number, number]
+  spacing: [number, number, number]
+  shape: [number, number, number]
+}
+
+export interface ArrayStat {
+  dtype: string
+  bytes: number
+}
+
+export interface BlockModelStats {
+  shape: [number, number, number]
+  nBlocks: number
+  spacing: [number, number, number]
+  origin: [number, number, number]
+  nOreBlocks: number
+  nAirBlocks: number
+  nRockBlocks: number
+  oreVolumeM3: number
+  oreTonnes: number
+  meanOreGrade: number
+  rockQualityMean: number
+  faultCoreBlocks: number
+  faultDamageBlocks: number
+  arrays: Record<string, ArrayStat>
+  totalBytes: number
+  totalMB: number
+}
+
+export interface WorldStats {
+  terrain: { nx: number; ny: number; spacing: number; zMin: number; zMax: number }
+  orebody: Omit<OrebodyPayload, 'positions' | 'indices'>
+  faults: number
+  blockModel: BlockModelStats
+}
+
+export interface AccessCandidatePayload {
+  id: string
+  levelId: string
+  position: [number, number, number]
+  uCoord: number
+  vCoord: number
+  footwallOffset: number
+  valid: boolean
+  rejectionReasons: string[]
+  rockQuality: number | null
+  faultPenalty: number | null
+  pointCostPerM: number | null
+  nextLevelAccessibility: number | null
+}
+
+export interface LevelTargetsPayload {
+  levelId: string
+  index: number
+  elevation: number
+  nValid: number
+  nRejected: number
+  candidates: AccessCandidatePayload[]
+}
+
+export interface AccessTargetsPayload {
+  portal: [number, number, number]
+  portalGenerated: boolean
+  nLevels: number
+  nCandidates: number
+  nValid: number
+  nRejected: number
+  levels: LevelTargetsPayload[]
+}
+
+export interface CostEvaluationRow {
+  point: [number, number, number]
+  valid: boolean
+  totalCostPerM: number | null
+  baseCost: number | null
+  rockPenalty: number | null
+  faultPenalty: number | null
+  orebodyPenalty: number | null
+  rockQuality: number | null
+  nearestFaultDistance: number | null
+  orebodyDistance: number | null
+  rejectionReasons: string[]
+}
+
+export interface SearchDiagnostics {
+  expandedStates: number
+  generatedStates: number
+  closedStates: number
+  peakOpenSize: number
+  prunedOvershoot: number
+  rejectedPrimitives: number
+  goalShotAttempts: number
+  goalShotFailures: Record<string, number>
+  elapsedMs: number
+  termination: string
+  tieBreakBucket: number
+  heuristicWeight: number
+  admissibleBound: number
+  bestApproach: { horizontal: number | null; dz: number | null; depth: number }
+}
+
+export interface SegmentPathPayload {
+  points: number[]
+  pointCount: number
+  primitives: {
+    steering: string
+    grade: number
+    curvature: number
+    horizontalLength: number
+    length3d: number
+    endHeadingDeg: number
+  }[]
+  length: number
+  maxGrade: number
+  minRadius: number | null
+  startHeadingDeg: number
+  endHeadingDeg: number
+}
+
+export interface CandidateSearchPayload {
+  candidateId: string
+  initialHeadingDeg: number
+  selectionScore: number | null
+  selected: boolean
+  status: 'SUCCESS' | 'INFEASIBLE' | 'EXPANSION_LIMIT' | 'TIME_LIMIT'
+  generalizedCost: number | null
+  rawPathLength: number | null
+  maxGrade: number | null
+  minimumRadius: number | null
+  endHeadingDeg: number | null
+  diagnostics: SearchDiagnostics
+  path: SegmentPathPayload | null
+}
+
+export interface LevelDeclinePayload {
+  levelId: string
+  elevation: number
+  status: 'SUCCESS' | 'INFEASIBLE' | 'NO_VALID_CANDIDATES' | 'SKIPPED'
+  selectedCandidateId: string | null
+  candidateResults: CandidateSearchPayload[]
+}
+
+export interface DeclinePayload {
+  status: 'SUCCESS' | 'PARTIAL' | 'NO_LEVELS'
+  portal: [number, number, number]
+  nLevels: number
+  completedLevels: number
+  elapsedMs: number
+  totals: {
+    rawLength: number
+    generalizedCost: number
+    expandedStates: number
+    searches: number
+    maxGrade: number
+    minimumRadius: number | null
+  }
+  searchConfig: Record<string, unknown>
+  levels: LevelDeclinePayload[]
+  centerline: { points: number[]; pointCount: number }
+}
+
+export interface WorldScene {
+  scenarioId: string
+  coordinateSystem: 'ENU_Z_UP'
+  world: {
+    sizeX: number
+    sizeY: number
+    depth: number
+    bottomElevation: number
+    referenceElevation: number
+  }
+  terrain: TerrainPayload
+  orebody: OrebodyPayload
+  faults: FaultPayload[]
+  oreBlocks: OreBlocksPayload
+  blockGrid: BlockGridPayload
+  rockQuality: { min: number; max: number; defaultSlice: SlicePayload }
+  stats: WorldStats
+  accessTargets: AccessTargetsPayload | null
+  decline: DeclinePayload | null
+}

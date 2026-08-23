@@ -1,0 +1,67 @@
+@import 'tailwindcss';
+
+/*
+  MineGen-AI design tokens.
+  Palette: rock (slate with a blue-grey cast), chalk (survey marks),
+  lamp (headlamp amber, accent only), ore (orebody teal, layer swatch only).
+*/
+@theme {
+  --color-rock-950: #0f1316;
+  --color-rock-900: #161b20;
+  --color-rock-800: #1f262d;
+  --color-rock-700: #2c353e;
+  --color-rock-600: #3c4751;
+  --color-chalk: #e4dfd3;
+  --color-chalk-dim: #9aa1a5;
+  --color-mute: #6b747c;
+  --color-lamp: #f0b84a;
+  --color-lamp-deep: #b8801c;
+  --color-ore: #4fb3a5;
+  --color-danger: #d9655a;
+
+  --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-rock-900);
+  color: var(--color-chalk);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* survey-plate label: condensed, uppercase, tracked */
+.plate {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* instrument readout */
+.readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-lamp);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
