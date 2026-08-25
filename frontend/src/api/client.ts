@@ -5,6 +5,7 @@ import type {
   AccessTargetsPayload,
   CostEvaluationRow,
   DeclinePayload,
+  SmoothedDeclinePayload,
   JobRecord,
   JobSubmission,
   SliceAxis,
@@ -88,6 +89,11 @@ export const api = {
   getJob: (jobId: string) => request<JobRecord>(`/jobs/${jobId}`),
   jobSocketUrl: (jobId: string) => `${API_BASE_URL.replace(/^http/, 'ws')}/ws/jobs/${jobId}`,
   getDecline: (id: string) => request<DeclinePayload>(`/scenarios/${id}/design/decline`),
+  /** Submits an asynchronous smoothing job (202, kind SMOOTH). */
+  submitSmooth: (id: string) =>
+    request<JobSubmission>(`/scenarios/${id}/design/decline/smooth`, { method: 'POST' }),
+  getSmoothedDecline: (id: string) =>
+    request<SmoothedDeclinePayload>(`/scenarios/${id}/design/decline/smooth`),
   evaluateCost: (id: string, points: [number, number, number][]) =>
     request<{ count: number; results: CostEvaluationRow[] }>(
       `/scenarios/${id}/design/cost/evaluate`,

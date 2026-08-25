@@ -35,6 +35,13 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      is QUEUED/RUNNING. Result persists to
                                                      derived/decline.json.
     GET  /api/v1/scenarios/{id}/design/decline       409 DECLINE_NOT_GENERATED if missing
+    POST …/design/decline/smooth                     submits a smoothing + revalidation job
+                                                     (kind SMOOTH) → 202 {jobId, …}; ?sync=true
+                                                     runs inline. 409 DECLINE_NOT_GENERATED
+                                                     without a persisted decline. Result persists
+                                                     to derived/decline_smoothed.json; regenerating
+                                                     the decline or targets deletes it (rule 64).
+    GET  …/design/decline/smooth                     409 SMOOTHED_NOT_GENERATED if missing
     GET  /api/v1/jobs?scenario_id=                    job records (newest first, no result)
     (jobs fail with error.code JOB_INPUTS_CHANGED — nothing persisted — when
      scenario/world/targets were mutated while the job ran; rule 60)
@@ -45,7 +52,8 @@ meters (`docs/coordinate-system.md`). Schemas live in
     WS   /ws/jobs/{jobId}                            {"type":"progress", …record…} on every
                                                      change (≤ 10 Hz), then {"type":"done"};
                                                      {"type":"error","code":"JOB_NOT_FOUND"}
-    GET  …/scene                                     includes "accessTargets" and "decline" (or null)
+    GET  …/scene                                     includes "accessTargets", "decline" and
+                                                     "smoothedDecline" (or null)
 
 ## Planned
     GET  /api/v1/scenarios/{id}/design                  Phase 04+

@@ -355,6 +355,51 @@ cleverness.
     poses even when aligned within 45°; the wider window with the two-piece
     connector is what makes exact docking reliable.
 
+61. Pose-preserving smoothing. Phase 05 smooths each selected Phase 04
+    decline segment while preserving every level-access position exactly and
+    the prescribed boundary tangent: horizontal direction = the Phase 04
+    inherited heading; boundary grade = the mean of the incoming/outgoing
+    raw local grades clamped to [−g_max, 0]; adjacent segments share the
+    resulting 3D tangent. Endpoint headings are enforced as explicit tangent
+    boundary conditions of the spline (clamped cubic Hermite in XY), never
+    by freezing the first/last two control points. z is piecewise-linear
+    between smoothed control points with isotonic clamping and boundary-
+    grade end intervals, so monotonic descent and |grade| ≤ g_max hold by
+    construction (cubic z interpolation overshoots at grade breaks). The
+    final curve stays inside the configured deviation corridor, measured as
+    the minimum distance from every final sample to the raw polyline. No
+    endpoint or access target may move during smoothing.
+
+62. Full geometric and design revalidation. Every candidate smoothed curve
+    is fully revalidated: design exclusions through the same
+    ``DesignCostEvaluator`` sample validator Phase 04 uses (the first portal
+    segment retains rule 52 cover-transition semantics via the shared
+    helper), gradient = vertical/horizontal from the curve derivative,
+    minimum turning radius evaluated in XY plan view (never 3D
+    circumradius) with numerical tolerance R_xy ≥ R_min − 0.05 m.
+    Validation sampling is no coarser than min(1 m, smallest fault core
+    half-width). An invalid sample is never silently accepted.
+
+63. Cost preservation and explicit repair/fallback. Smoothing must not undo
+    Phase 04 cost-aware routing: raw and smoothed field cost
+    (∫ cost/m ds, turn penalties excluded) are recomputed with the same
+    evaluator; default maximum increase +5 %. Violations trigger
+    deterministic local repair (blend the affected control window toward
+    raw by the repair factor, then revalidate the whole segment), at most
+    ``max_repairs`` times. Afterwards the segment explicitly falls back to
+    its revalidated raw centerline: ``smoothed = null``,
+    ``effectiveSource = RAW_FALLBACK``, reason persisted. Invalid geometry
+    is never returned silently; if the raw input itself fails revalidation
+    the phase result is FAILED, not a fallback.
+
+64. The Phase 05 artifact is the Phase 06 input. Tunnel sweep may consume
+    only the validated effective centerline produced by Phase 05
+    (``effectiveSource = SMOOTHED | RAW_FALLBACK`` per segment), never the
+    Phase 04 raw artifact directly. Dependency chain: regenerating the
+    world clears derived/; regenerating targets deletes decline.json AND
+    decline_smoothed.json; persisting a new decline deletes the old
+    decline_smoothed.json.
+
 ## Persistence (v0.1)
 
 No database. Scenarios are stored on disk:

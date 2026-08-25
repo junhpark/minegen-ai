@@ -6,6 +6,7 @@ import { PanelSection } from '@/components/layout/PanelSection'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { fmtMeters } from '@/utils/format'
+import type { DeclinePayload, SmoothedDeclinePayload } from '@/types/scene'
 
 /** Phase 03: access-target generation. Values are echoed from the API. */
 export function DesignPanel() {
@@ -15,12 +16,14 @@ export function DesignPanel() {
   const setLayerVisible = useViewerStore((s) => s.setLayerVisible)
   const targets = scene?.accessTargets ?? null
   const decline = scene?.decline ?? null
+  const smoothed = scene?.smoothedDecline ?? null
 
   const generate = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('generate the world first')
       const t = await api.generateTargets(scene.scenarioId)
-      setScene({ ...scene, accessTargets: t, decline: null })
+      // rule 64: regenerated targets invalidate the decline AND its smoothing
+      setScene({ ...scene, accessTargets: t, decline: null, smoothedDecline: null })
       setLayerVisible('accessTargets', true)
     },
   })
@@ -46,11 +49,43 @@ export function DesignPanel() {
   useEffect(() => {
     const rec = job.data
     if (rec?.status === 'SUCCEEDED' && rec.result && scene && scene.decline !== rec.result) {
-      setScene({ ...scene, decline: rec.result })
+      // a new decline invalidates the previous smoothed artifact (rule 64)
+      setScene({ ...scene, decline: rec.result as DeclinePayload, smoothedDecline: null })
       setLayerVisible('rawSearchPath', true)
     }
   }, [job.data, scene, setScene, setLayerVisible])
-  const err = generate.error ?? generateDecline.error
+  // Phase 05 smoothing job: submit → poll → apply smoothedDecline
+  const [smoothJobId, setSmoothJobId] = useState<string | null>(null)
+  const smoothDecline = useMutation({
+    mutationFn: async () => {
+      if (!scene) throw new Error('generate the decline first')
+      const job = await api.submitSmooth(scene.scenarioId)
+      setSmoothJobId(job.jobId)
+    },
+  })
+  const smoothJob = useQuery({
+    queryKey: ['job', smoothJobId],
+    queryFn: () => api.getJob(smoothJobId as string),
+    enabled: smoothJobId !== null,
+    refetchInterval: (q) => {
+      const s = q.state.data?.status
+      return s === 'SUCCEEDED' || s === 'FAILED' ? false : 500
+    },
+  })
+  const smoothRunning = smoothJob.data?.status === 'QUEUED' || smoothJob.data?.status === 'RUNNING'
+  useEffect(() => {
+    const rec = smoothJob.data
+    if (
+      rec?.status === 'SUCCEEDED' &&
+      rec.result &&
+      scene &&
+      scene.smoothedDecline !== rec.result
+    ) {
+      setScene({ ...scene, smoothedDecline: rec.result as SmoothedDeclinePayload })
+      setLayerVisible('smoothedDecline', true)
+    }
+  }, [smoothJob.data, scene, setScene, setLayerVisible])
+  const err = generate.error ?? generateDecline.error ?? smoothDecline.error
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
 
@@ -170,6 +205,74 @@ export function DesignPanel() {
           </ul>
           <div className="mt-1 text-mute">
             raw Hybrid-A* centerline · not an engineering design (rule 11)
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => smoothDecline.mutate()}
+        disabled={!decline || smoothDecline.isPending || smoothRunning || jobRunning}
+        className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {smoothDecline.isPending || smoothRunning
+          ? 'Smoothing decline…'
+          : smoothed
+            ? 'Re-smooth decline'
+            : 'Smooth decline (Phase 05)'}
+      </button>
+      {smoothJob.data && (smoothRunning || smoothJob.data.status === 'FAILED') ? (
+        <JobProgress job={smoothJob.data} />
+      ) : null}
+      {smoothed ? (
+        <div className="readout mt-2 text-[11px]">
+          <div className="flex justify-between text-chalk-dim">
+            <span className={smoothed.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+              {smoothed.status}
+            </span>
+            <span>
+              {smoothed.totals.segments} segments ·{' '}
+              <span className="text-lamp">{smoothed.totals.smoothedSegments} smoothed</span> ·{' '}
+              <span className={smoothed.totals.fallbackSegments > 0 ? 'text-danger' : ''}>
+                {smoothed.totals.fallbackSegments} fallback
+              </span>
+            </span>
+          </div>
+          <div className="mt-1 flex justify-between text-mute">
+            <span>{smoothed.totals.effectiveLength.toFixed(0)} m effective</span>
+            <span>
+              cost{' '}
+              {smoothed.totals.fieldCostDeltaPct === null
+                ? '—'
+                : `${smoothed.totals.fieldCostDeltaPct.toFixed(2)}%`}
+            </span>
+            <span>
+              min R{' '}
+              {smoothed.totals.minimumPlanRadius === null
+                ? '—'
+                : smoothed.totals.minimumPlanRadius.toFixed(2)}{' '}
+              m
+            </span>
+          </div>
+          <ul className="mt-1 max-h-40 overflow-y-auto">
+            {smoothed.segments.map((s) => (
+              <li key={s.levelId} className="flex justify-between py-0.5 text-chalk-dim">
+                <span>
+                  {s.levelId}{' '}
+                  <span className={s.effectiveSource === 'SMOOTHED' ? 'text-mute' : 'text-danger'}>
+                    {s.effectiveSource === 'SMOOTHED'
+                      ? `${s.report.repairs > 0 ? `${String(s.report.repairs)}r ` : ''}Δ${(s.report.fieldCostDeltaPct ?? 0).toFixed(2)}%`
+                      : 'RAW FALLBACK'}
+                  </span>
+                </span>
+                <span>
+                  {s.report.minPlanRadius === null ? '—' : `${s.report.minPlanRadius.toFixed(1)} m`}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-1 text-mute">
+            validated effective centerline · Phase 06 tunnel input (rule 64)
           </div>
         </div>
       ) : null}

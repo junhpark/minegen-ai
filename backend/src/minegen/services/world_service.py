@@ -108,6 +108,10 @@ class WorldService:
         scene["decline"] = (
             json.loads(decline.read_text(encoding="utf-8")) if decline.is_file() else None
         )
+        smoothed = derived / "decline_smoothed.json"
+        scene["smoothedDecline"] = (
+            json.loads(smoothed.read_text(encoding="utf-8")) if smoothed.is_file() else None
+        )
         return scene
 
     def slice(

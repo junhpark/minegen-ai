@@ -170,7 +170,47 @@ lower levels mostly 40–250); raw decline 3,834.4 m vs Σ admissible bounds
 7,221 (cost/bound 1.89 = mean cost/m); wall 32 s at ≈ 1,900 expansions/s.
 Small scenario, ε = 1.0 / 1.5: EXPANSION_LIMIT at 20k (plateau); ε = 2:
 3,152 expansions.
-## Phase 05 — smoothing + revalidation     (pending)
+## Phase 05 — smoothing + revalidation (`design/smoothing.py`, rules 61–64)
+
+Per selected Phase 04 segment: lossless primitive simplification (equal
+curvature+grade runs merge; endpoint/heading error < 1e-9) → junction-aligned
+analytic control grid (curvature-adaptive spacing ≤ 0.09·R on arcs, ≤ 5 m on
+straights) → iterative constrained smoothing of the control polygon
+(J = w_b·bending + w_f·fidelity, gradient descent; endpoints AND the first/
+last interior control anchored; corridor projection to the raw polyline;
+isotonic z) → grade/radius feasibility projection (deterministic bisection of
+the displacement field: on grade-saturated raw segments the feasible
+displacement is ≈ 0 and is found up front) → curve construction → full
+revalidation → deterministic local repair (blend the violating control window
+toward raw by the repair factor; whole-segment revalidation each round; ≤
+`maxRepairs`) → explicit RAW_FALLBACK otherwise. A raw segment that itself
+fails revalidation makes the phase FAILED, never a fallback.
+
+Curve representation: XY is a clamped cubic Hermite over the 3D chord-length
+parameter — boundary tangent DIRECTIONS are the Phase 04 headings (explicit
+boundary conditions, never frozen points), interior directions blend the raw
+analytic tangents with the centered-difference change of the deformed
+polygon, and magnitudes are (1 + θ²/16)/√(1 + g²) (arc-reproduction ×
+horizontal-speed correction; unit magnitudes leave a ±1.4 % plan-curvature
+oscillation on R_min arcs). z is piecewise-LINEAR in the cumulative
+horizontal arc length between controls, so the physical grade of every
+interval equals the control secant exactly; the shared boundary grades
+(clamped mean of adjacent raw grades, rule 61) are met by projecting the
+interior z-profile into the feasible band implied by g_max (reconstruction
+excess of O(1e-5) is spread uniformly).
+
+Revalidation (rule 62): sampling min(1 m, smallest fault core half-width);
+the same `design/validation.py` sample walk Phase 04 uses (portal rule 52
+cover transition included); grade from the curve derivative within
+[−g_max − 1e-5, +1e-5]; XY plan radius ≥ R_min − 0.05 m; corridor ≤ 10 m on
+final samples; field cost ∫c ds (turn penalties excluded) ≤ raw × 1.05
+(rule 63). Every violation counts into the segment report.
+
+### Measured (default scenario, 13 levels, K = 5 decline → smoothing)
+See the Phase 05 completion report: all segments SMOOTHED with 0 repairs and
+0 fallbacks; max grade 12.0000 %, min plan radius ≥ 17.95 m, per-segment
+field-cost delta ≤ +0.1 %, endpoint/heading errors 0.
+
 ## Phase 06 — gravity-aligned tunnel sweep (pending)
 ## Phase 07 — MineNetwork                  (pending)
 ## Phase 08 — levels & crosscuts           (pending)

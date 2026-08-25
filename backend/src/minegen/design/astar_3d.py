@@ -25,8 +25,7 @@ import numpy as np
 import numpy.typing as npt
 
 from minegen.core.models import DeclineSearchConfig, RampConstraints
-from minegen.design.constraints import RejectionReason
-from minegen.design.cost_field import DesignCostEvaluator
+from minegen.design.cost_field import CostEvaluation, DesignCostEvaluator
 from minegen.design.motion_primitives import (
     Pose,
     Primitive,
@@ -34,6 +33,7 @@ from minegen.design.motion_primitives import (
     Steering,
     dubins_cs_length,
 )
+from minegen.design.validation import validate_samples
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -242,28 +242,37 @@ class HybridAStar:
             n = p.samples.shape[0]
             sl = slice(offset, offset + n)
             offset += n
-            valid = ev.valid[sl]
-            established = cover_established
             if not transition_possible:
-                if not valid.all():
+                # fast path: no forgiveness possible, a single all() decides
+                if not ev.valid[sl].all():
                     out.append(None)
                     continue
+                established = cover_established
             else:
-                reasons = ev.rejection_reasons[sl]
-                cover = surface[sl] - p.samples[:, 2]
-                ok = True
-                for i in range(n):
-                    if not valid[i] and (
-                        established
-                        or any(r is not RejectionReason.INSUFFICIENT_COVER for r in reasons[i])
-                    ):
-                        ok = False  # only INSUFFICIENT_COVER is forgiven, only before cover
-                        break
-                    if not established and cover[i] >= self.min_cover:
-                        established = True
-                if not ok:
+                sub = CostEvaluation(
+                    points=p.samples,
+                    valid=ev.valid[sl],
+                    total_cost_per_m=ev.total_cost_per_m[sl],
+                    base_cost=ev.base_cost[sl],
+                    rock_penalty=ev.rock_penalty[sl],
+                    fault_penalty=ev.fault_penalty[sl],
+                    orebody_penalty=ev.orebody_penalty[sl],
+                    rock_quality=ev.rock_quality[sl],
+                    nearest_fault_distance=ev.nearest_fault_distance[sl],
+                    orebody_distance=ev.orebody_distance[sl],
+                    rejection_reasons=ev.rejection_reasons[sl],
+                )
+                res = validate_samples(
+                    sub,
+                    surface[sl] - p.samples[:, 2],
+                    cover_established=cover_established,
+                    minimum_cover=self.min_cover,
+                    stop_at_first=True,
+                )
+                if not res.ok:
                     out.append(None)
                     continue
+                established = res.cover_established
             c = finite_cost[sl]
             cost = float(np.dot(0.5 * (c[1:] + c[:-1]), np.diff(p.sample_arc)))
             out.append((cost, established))

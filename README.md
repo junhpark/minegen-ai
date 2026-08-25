@@ -61,6 +61,19 @@ Every phase must pass all of these before it is considered complete:
     cd backend  && pytest && ruff check . && ruff format --check . && mypy src
     cd frontend && npm run typecheck && npm run lint && npm test && npm run build
 
+## Phase 05 smoke test
+
+1. With a decline generated, click **Smooth decline (Phase 05)**. A SMOOTH
+   job runs (progress per segment); on success the mint **Smoothed /
+   effective decline** layer appears: one solid centerline per segment
+   (red + label = RAW_FALLBACK, never hidden).
+2. The Design panel shows `N segments · N smoothed · 0 fallback`, the
+   effective length, total field-cost delta and minimum plan radius, plus a
+   per-segment list (repairs, Δcost %, min R).
+3. The raw search path stays available as its own layer for comparison.
+4. Regenerating the decline, targets or world deletes the smoothed artifact
+   (rule 64); the panel and layer clear accordingly.
+
 ## Phase 04 smoke test
 
 1. With access targets generated, click **Generate decline (Hybrid-A*)**.

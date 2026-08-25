@@ -12,6 +12,7 @@ from minegen.core.models import ApiModel, ErrorDetail
 from minegen.services.design_service import (
     DeclineNotGeneratedError,
     DesignService,
+    SmoothedNotGeneratedError,
     StaleInputsError,
     TargetsNotGeneratedError,
 )
@@ -56,6 +57,12 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             status.HTTP_409_CONFLICT,
             "DECLINE_NOT_GENERATED",
             f"scenario '{scenario_id}' has no decline; POST …/design/decline first",
+        )
+    if isinstance(exc, SmoothedNotGeneratedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "SMOOTHED_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no smoothed decline; POST …/design/decline/smooth first",
         )
     raise exc
 
@@ -143,4 +150,71 @@ def get_decline(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.decline(scenario_id)
     except (ScenarioNotFoundError, WorldNotGeneratedError, DeclineNotGeneratedError) as e:
+        raise _guard(scenario_id, e) from e
+
+
+@router.post("/decline/smooth", status_code=status.HTTP_202_ACCEPTED)
+def smooth_decline(
+    scenario_id: str,
+    svc: Service,
+    jobs: Jobs,
+    response: Response,
+    sync: Annotated[
+        bool, Query(description="Run inline and return the result (tests/CLI).")
+    ] = False,
+) -> dict[str, Any]:
+    """Phase 05: smooth + fully revalidate the persisted decline (rules 61–64).
+
+    Default: submit an asynchronous job (kind ``SMOOTH``) → ``202 {jobId,
+    status}``. The result is persisted to ``derived/decline_smoothed.json``
+    and served by ``GET …/decline/smooth``. Requires an existing decline
+    (409 ``DECLINE_NOT_GENERATED`` otherwise)."""
+    try:
+        svc.evaluator(scenario_id)
+        svc.decline(scenario_id)  # precondition: raw decline must exist
+    except (
+        ScenarioNotFoundError,
+        WorldNotGeneratedError,
+        TargetsNotGeneratedError,
+        DeclineNotGeneratedError,
+    ) as e:
+        raise _guard(scenario_id, e) from e
+    if sync:
+        response.status_code = status.HTTP_200_OK
+        try:
+            return svc.generate_smoothed(scenario_id)
+        except StaleInputsError as e:
+            raise _error(status.HTTP_409_CONFLICT, e.code, str(e)) from e
+    try:
+        job = jobs.submit(
+            scenario_id,
+            "SMOOTH",
+            lambda on_progress: svc.generate_smoothed(scenario_id, on_progress),
+        )
+    except JobAlreadyRunningError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ErrorDetail(
+                code="JOB_ALREADY_RUNNING",
+                message=f"scenario '{scenario_id}' already has job '{e.job_id}' running",
+            ).model_dump(by_alias=True)
+            | {"jobId": e.job_id},
+        ) from e
+    return {
+        "jobId": job.id,
+        "status": "QUEUED",
+        "scenarioId": scenario_id,
+        "kind": job.kind,
+    }
+
+
+@router.get("/decline/smooth")
+def get_smoothed_decline(scenario_id: str, svc: Service) -> dict[str, Any]:
+    try:
+        return svc.smoothed(scenario_id)
+    except (
+        ScenarioNotFoundError,
+        WorldNotGeneratedError,
+        SmoothedNotGeneratedError,
+    ) as e:
         raise _guard(scenario_id, e) from e
