@@ -369,3 +369,170 @@ def test_polyline_arclength_monotone(smoothed) -> None:  # type: ignore[no-untyp
     pts = np.array([[0.0, 0.0, 0.0], [3.0, 4.0, 0.0], [3.0, 4.0, 5.0]])
     s = polyline_arclength(pts)
     assert s.tolist() == [0.0, 5.0, 10.0]
+
+
+# -- PR #2 blockers: rule 52 chaining, raw geometry revalidation, totals -------
+
+
+def _segment_level(ps, start_pose, specs, level_id):  # type: ignore[no-untyped-def]
+    """Build one decline-payload level from (steering, curvature, grade, L)
+    specs; returns (level_dict, end_pose)."""
+    prims = []
+    pose = start_pose
+    for st, k, g, length in specs:
+        prim = ps.primitive(pose, st, k, g, length)
+        prims.append(prim)
+        pose = prim.end
+    pts = np.vstack([prims[0].samples] + [p.samples[1:] for p in prims[1:]])
+    level = {
+        "levelId": level_id,
+        "selectedCandidateId": "C1",
+        "candidateResults": [
+            {
+                "candidateId": "C1",
+                "path": {
+                    "points": pts.ravel().tolist(),
+                    "startHeadingDeg": math.degrees(start_pose.heading),
+                    "endHeadingDeg": math.degrees(pose.heading),
+                    "primitives": [
+                        {
+                            "steering": p.steering.name,
+                            "curvature": p.curvature,
+                            "grade": p.grade,
+                            "horizontalLength": p.horizontal_length,
+                        }
+                        for p in prims
+                    ],
+                },
+            }
+        ],
+    }
+    return level, pose
+
+
+def _flat_cover_setup(min_cover: float):  # type: ignore[no-untyped-def]
+    """Flat 100 m terrain, orebody far away: a clean shallow corridor for
+    portal cover-transition tests."""
+    from minegen.core.models import Point3D as Pt3
+    from minegen.core.models import TerrainConfig
+    from minegen.design.cost_field import DesignContext
+
+    sc = small_scenario(with_fault=False)
+    sc.terrain = TerrainConfig(grid_spacing=10, base_elevation=100, relief=0, octaves=1)
+    sc.orebody.center = Pt3(x=150.0, y=150.0, z=-120.0)
+    w = generate_world(sc)
+    ctx = DesignContext.decline(sc.design.model_copy(update={"minimum_surface_cover": min_cover}))
+    ev = DesignCostEvaluator(w, sc.design, ctx)
+    return sc, ev
+
+
+def test_cover_state_carries_across_segments() -> None:
+    """PR #2 blocker 1 regression: minimum cover is NOT reached by the end of
+    the first segment and only established during the second. The rule 52
+    state must be carried sequentially — assuming `i > 0 → established`
+    would reject the shallow start of segment 2."""
+    sc, ev = _flat_cover_setup(min_cover=15.0)
+    ps = _ps(sc)
+    smoother = DeclineSmoother(ev, sc.ramp, sc.design.smoothing)
+    # segment 1: shallow descent from just below the flat 100 m surface;
+    # cover ends at ≈ 6.5 m < 15 m (never established)
+    start = Pose(-100.0, -150.0, 99.5, 0.0)
+    lv1, pose1 = _segment_level(ps, start, [(Steering.STRAIGHT, 0.0, -0.06, 100.0)], "L01")
+    # segment 2: continues steeper (with grade slack for the boundary-grade
+    # contract); cover crosses 15 m mid-segment
+    lv2, _ = _segment_level(ps, pose1, [(Steering.STRAIGHT, 0.0, -0.10, 200.0)], "L02")
+    result = smoother.smooth({"levels": [lv1, lv2]})
+    assert result.status == "SUCCESS", result.failure_reason
+    assert [s.effective_source for s in result.segments] == ["SMOOTHED", "SMOOTHED"]
+    assert result.segments[0].cover_established_after is False
+    assert result.segments[1].cover_established_after is True
+    for s in result.segments:
+        assert s.report.invalid_sample_count == 0
+    # sharpness: the same segment-2 walk with cover assumed established
+    # (the old `i > 0` behavior) rejects its shallow start
+    from minegen.design.smoothing import resample_polyline as _rs
+    from minegen.design.validation import evaluate_and_validate as _ev
+
+    pts2 = _rs(result.segments[1].raw_points, smoother.segment_smoother.validation_spacing)
+    _, val_assumed, _ = _ev(ev, pts2, cover_established=True, stop_at_first=False)
+    assert not val_assumed.ok and val_assumed.invalid_count > 0
+    _, val_carried, _ = _ev(ev, pts2, cover_established=False, stop_at_first=False)
+    assert val_carried.ok and val_carried.cover_established is True
+
+
+def test_raw_excessive_grade_fails_not_fallback() -> None:
+    """PR #2 blocker 3 regression: a raw segment steeper than g_max must make
+    the phase FAILED — never RAW_FALLBACK."""
+    sc, ev = _flat_cover_setup(min_cover=0.0)
+    ps = _ps(sc)
+    smoother = DeclineSmoother(ev, sc.ramp, sc.design.smoothing)
+    lv, _ = _segment_level(
+        ps, Pose(-100.0, -150.0, 50.0, 0.0), [(Steering.STRAIGHT, 0.0, -0.20, 150.0)], "L01"
+    )
+    result = smoother.smooth({"levels": [lv]})
+    assert result.status == "FAILED"
+    assert result.failure_reason is not None
+    assert "raw segment L01 failed revalidation" in result.failure_reason
+    assert "grade" in result.failure_reason
+    assert result.segments == []
+
+
+def test_raw_undersized_radius_fails_not_fallback() -> None:
+    """PR #2 blocker 3 regression: a raw arc tighter than R_min must make the
+    phase FAILED — never RAW_FALLBACK."""
+    sc, ev = _flat_cover_setup(min_cover=0.0)
+    ps = _ps(sc)
+    smoother = DeclineSmoother(ev, sc.ramp, sc.design.smoothing)
+    lv, _ = _segment_level(
+        ps,
+        Pose(-100.0, -150.0, 50.0, 0.0),
+        [(Steering.RIGHT, 1.0 / 10.0, -0.06, 10.0 * math.pi / 2)],
+        "L01",
+    )
+    result = smoother.smooth({"levels": [lv]})
+    assert result.status == "FAILED"
+    assert result.failure_reason is not None
+    assert "raw segment L01 failed revalidation" in result.failure_reason
+    assert "radius" in result.failure_reason
+
+
+def test_raw_chain_discontinuity_fails() -> None:
+    """Raw endpoint/continuity validity: a positional gap between consecutive
+    raw segments is FAILED, never a fallback."""
+    sc, ev = _flat_cover_setup(min_cover=0.0)
+    ps = _ps(sc)
+    smoother = DeclineSmoother(ev, sc.ramp, sc.design.smoothing)
+    lv1, pose1 = _segment_level(
+        ps, Pose(-100.0, -150.0, 50.0, 0.0), [(Steering.STRAIGHT, 0.0, -0.06, 100.0)], "L01"
+    )
+    shifted = Pose(pose1.x + 5.0, pose1.y, pose1.z, pose1.heading)
+    lv2, _ = _segment_level(ps, shifted, [(Steering.STRAIGHT, 0.0, -0.06, 100.0)], "L02")
+    result = smoother.smooth({"levels": [lv1, lv2]})
+    assert result.status == "FAILED"
+    assert result.failure_reason is not None and "discontinuity" in result.failure_reason
+
+
+def test_totals_field_cost_delta_pct(smoothed) -> None:  # type: ignore[no-untyped-def]
+    """PR #2 blocker 2: totals carry the engineering delta; the frontend only
+    displays it (rule 17). Zero raw cost yields null, not a division."""
+    *_, result = smoothed
+    totals = result.to_dict()["totals"]
+    expected = (
+        (totals["fieldCostEffective"] - totals["fieldCostRaw"]) / totals["fieldCostRaw"] * 100
+    )
+    assert totals["fieldCostDeltaPct"] == pytest.approx(expected, abs=1e-12)
+    # zero-raw-cost safety
+    from minegen.design.smoothing import SmoothedDecline, SmoothedSegment
+
+    seg = SmoothedSegment(
+        level_id="L01",
+        candidate_id="C1",
+        raw_points=np.zeros((2, 3)),
+        effective_points=np.zeros((2, 3)),
+        effective_source="RAW_FALLBACK",
+        report=SegmentReport(valid=True, effective_source="RAW_FALLBACK"),
+        start_tangent=np.array([0.0, 1.0, 0.0]),
+        end_tangent=np.array([0.0, 1.0, 0.0]),
+    )
+    empty = SmoothedDecline(status="SUCCESS_WITH_FALLBACK", segments=[seg])
+    assert empty.to_dict()["totals"]["fieldCostDeltaPct"] is None

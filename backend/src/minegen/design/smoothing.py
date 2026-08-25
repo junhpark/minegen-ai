@@ -23,6 +23,7 @@ Phase 06 input (rule 64).
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass, field
 from typing import Any
@@ -554,6 +555,8 @@ class SegmentReport:
     valid: bool = False
     effective_source: str = "RAW_FALLBACK"
     fallback_reason: str | None = None
+    # rule 52 chaining state after walking this centerline (not serialized)
+    cover_established_after: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         def f(v: float | None) -> float | None:
@@ -629,6 +632,7 @@ class SegmentSmoother:
         )
         report.invalid_sample_count = val.invalid_count
         report.rejection_reason_counts = val.rejection_reason_counts
+        report.cover_established_after = val.cover_established
         if not val.ok:
             cover = self.ev.surface_elevation(pts) - pts[:, 2]
             mask, _ = accepted_mask(
@@ -690,6 +694,7 @@ class SmoothedSegment:
     report: SegmentReport
     start_tangent: FloatArray
     end_tangent: FloatArray
+    cover_established_after: bool = True  # rule 52 chaining state (not serialized)
 
     def to_dict(self) -> dict[str, Any]:
         smoothed = (
@@ -758,6 +763,9 @@ class SmoothedDecline:
                 "effectiveLength": eff_len,
                 "fieldCostRaw": cost_raw,
                 "fieldCostEffective": cost_eff,
+                "fieldCostDeltaPct": (
+                    (cost_eff - cost_raw) / cost_raw * 100.0 if cost_raw > 0.0 else None
+                ),
                 "maxGradient": float(
                     max((s.report.max_gradient for s in self.segments), default=0.0)
                 ),
@@ -779,6 +787,7 @@ class RawSegment:
     points: FloatArray
     start_heading: float
     end_heading: float
+    pin_error: float = 0.0  # |analytic reconstruction end − stored endpoint|
 
     @property
     def first_grade(self) -> float:
@@ -818,8 +827,11 @@ def segments_from_decline_payload(payload: dict[str, Any], ps: PrimitiveSet) -> 
             )
             prims.append(prim)
             pose = prim.end
-        # pin the terminal sample/pose to the stored exact endpoint
+        # pin the terminal sample/pose to the stored exact endpoint; the gap
+        # between the analytic reconstruction and the stored endpoint is a
+        # raw-validity input (a corrupted artifact shows up here)
         last = prims[-1]
+        pin_error = float(np.linalg.norm(last.samples[-1] - pts[-1]))
         samples = last.samples.copy()
         samples[-1] = pts[-1]
         prims[-1] = Primitive(
@@ -838,6 +850,7 @@ def segments_from_decline_payload(payload: dict[str, Any], ps: PrimitiveSet) -> 
                 candidate_id=sel_id,
                 primitives=prims,
                 points=pts,
+                pin_error=pin_error,
                 start_heading=math.radians(path["startHeadingDeg"]),
                 end_heading=math.radians(path["endHeadingDeg"]),
             )
@@ -890,21 +903,44 @@ class DeclineSmoother:
                 status="FAILED", segments=[], failure_reason="decline has no selected segments"
             )
         grades = boundary_grades(segments, self.ramp.max_gradient)
+        # raw chain continuity (endpoint/heading) is part of raw validity:
+        # a broken chain must FAIL, never launder through a fallback
+        for a, b in itertools.pairwise(segments):
+            gap = float(np.linalg.norm(a.points[-1] - b.points[0]))
+            turn = abs(_wrap_angle(b.start_heading - a.end_heading))
+            if gap > 1e-6 or turn > 1e-6:
+                return SmoothedDecline(
+                    status="FAILED",
+                    segments=[],
+                    failure_reason=(
+                        f"raw segment {b.level_id} failed revalidation: chain "
+                        f"discontinuity (position {gap:.3e} m, heading {turn:.3e} rad)"
+                    ),
+                )
         min_cover = self.ev.context.minimum_surface_cover
         out: list[SmoothedSegment] = []
         any_fallback = False
+        # rule 52: the cover-established state is carried sequentially through
+        # the validation walk of each ACCEPTED effective segment — never
+        # assumed from the segment index
+        cover_established = min_cover <= 0.0
         for i, (seg, (g_start, g_end)) in enumerate(zip(segments, grades, strict=True)):
             if on_progress is not None:
                 on_progress(i, len(segments), seg.level_id, "SEGMENT_STARTED")
-            cover_established = min_cover <= 0.0 or i > 0
-            result = self.smooth_segment(seg, g_start, g_end, cover_established=cover_established)
+            result, failure = self.smooth_segment(
+                seg, g_start, g_end, cover_established=cover_established
+            )
             if result is None:  # raw itself failed revalidation
                 return SmoothedDecline(
                     status="FAILED",
                     segments=out,
-                    failure_reason=f"raw segment {seg.level_id} failed revalidation",
+                    failure_reason=(
+                        f"raw segment {seg.level_id} failed revalidation"
+                        + (f": {failure}" if failure else "")
+                    ),
                 )
             out.append(result)
+            cover_established = result.cover_established_after
             any_fallback = any_fallback or result.effective_source == "RAW_FALLBACK"
             if on_progress is not None:
                 on_progress(i + 1, len(segments), seg.level_id, "SEGMENT_COMPLETED")
@@ -921,13 +957,13 @@ class DeclineSmoother:
         end_grade: float,
         *,
         cover_established: bool,
-    ) -> SmoothedSegment | None:
+    ) -> tuple[SmoothedSegment | None, str | None]:
         cfg = self.cfg
         sm = self.segment_smoother
         raw_poly = seg.points
-        raw_report = self._raw_report(seg, cover_established=cover_established)
+        raw_report, raw_failure = self._raw_report(seg, cover_established=cover_established)
         if raw_report is None:
-            return None  # raw invalid → phase FAILED (rule 63)
+            return None, raw_failure  # raw invalid → phase FAILED (rule 63)
 
         simplified = simplify_primitives(seg.primitives, self.ps)
         raw_controls, raw_tangents = control_grid(simplified, cfg.control_spacing, raw_poly[-1])
@@ -985,12 +1021,13 @@ class DeclineSmoother:
                     report=report,
                     start_tangent=curve.start_tangent,
                     end_tangent=curve.end_tangent,
-                )
+                    cover_established_after=report.cover_established_after,
+                ), None
             if attempt >= cfg.max_repairs:
                 fb = raw_report
                 fb.repairs = attempt
                 fb.fallback_reason = self._fallback_reason(violations, cost_ok, report)
-                fb.valid = True  # the raw centerline itself is validated
+                fb.valid = True  # the raw centerline passed full revalidation
                 fb.effective_source = "RAW_FALLBACK"
                 return SmoothedSegment(
                     level_id=seg.level_id,
@@ -1001,31 +1038,66 @@ class DeclineSmoother:
                     report=fb,
                     start_tangent=boundary_tangent(seg.start_heading, start_grade),
                     end_tangent=boundary_tangent(seg.end_heading, end_grade),
-                )
+                    cover_established_after=fb.cover_established_after,
+                ), None
             attempt += 1
             controls = self._repair(controls, raw_controls, curve, violations, cost_ok)
 
     # -- helpers ------------------------------------------------------------ #
 
-    def _raw_report(self, seg: RawSegment, *, cover_established: bool) -> SegmentReport | None:
+    def _raw_report(
+        self, seg: RawSegment, *, cover_established: bool
+    ) -> tuple[SegmentReport | None, str | None]:
+        """Full raw revalidation (rules 62–63): design/sample validity AND
+        geometry (monotonic z, grade band, XY plan radius, endpoint
+        reconstruction). A raw segment failing ANY check makes the phase
+        FAILED — it is never accepted as RAW_FALLBACK."""
         sm = self.segment_smoother
+        cfg = self.cfg
+        problems: list[str] = []
         pts = resample_polyline(seg.points, sm.validation_spacing)
         _, val, _ = evaluate_and_validate(
             self.ev, pts, cover_established=cover_established, stop_at_first=False
         )
         if not val.ok:
-            return None
+            reasons = ", ".join(f"{k} x{v}" for k, v in sorted(val.rejection_reason_counts.items()))
+            problems.append(f"{val.invalid_count} invalid samples ({reasons})")
+        # geometry of the exact raw path (samples lie on the analytic arcs)
+        mono_bad = int((np.diff(seg.points[:, 2]) > 1e-9).sum())
+        if mono_bad:
+            problems.append(f"{mono_bad} monotonicity violations")
+        g_tol = cfg.grade_numerical_tolerance
+        bad_grades = [
+            p.grade
+            for p in seg.primitives
+            if p.grade > g_tol or p.grade < -self.ramp.max_gradient - g_tol
+        ]
+        if bad_grades:
+            problems.append(
+                f"grade outside [-{self.ramp.max_gradient:g}, 0]: "
+                + ", ".join(f"{g:.4f}" for g in bad_grades[:3])
+            )
+        radii = [p.radius for p in seg.primitives if math.isfinite(p.radius)]
+        r_floor = self.ramp.min_turn_radius - cfg.radius_numerical_tolerance
+        bad_radii = [r for r in radii if r < r_floor]
+        if bad_radii:
+            problems.append(
+                f"plan radius below {r_floor:g} m: " + ", ".join(f"{r:.2f}" for r in bad_radii[:3])
+            )
+        if seg.pin_error > 1e-3:
+            problems.append(f"endpoint reconstruction error {seg.pin_error:.3e} m")
+        if problems:
+            return None, "; ".join(problems)
         report = SegmentReport(
             raw_length=float(polyline_arclength(seg.points)[-1]),
             field_cost_raw=sm.field_cost(pts, cover_established=cover_established),
             valid=True,
             effective_source="RAW_FALLBACK",
+            cover_established_after=val.cover_established,
         )
-        # geometry metrics of the raw path (exact samples lie on the arcs)
         report.max_gradient = float(max(abs(p.grade) for p in seg.primitives))
-        radii = [p.radius for p in seg.primitives if math.isfinite(p.radius)]
         report.min_plan_radius = float(min(radii)) if radii else None
-        return report
+        return report, None
 
     def _fill_smoothed_metrics(
         self,
@@ -1117,6 +1189,10 @@ class DeclineSmoother:
         for i in sel:
             out[i] = raw_controls[i] + (out[i] - raw_controls[i]) * (1.0 - beta)
         return out
+
+
+def _wrap_angle(a: float) -> float:
+    return (a + math.pi) % (2.0 * math.pi) - math.pi
 
 
 def _heading_error(dxy: FloatArray, heading: float) -> float:

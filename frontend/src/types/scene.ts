@@ -283,6 +283,7 @@ export interface SmoothedDeclinePayload {
     effectiveLength: number
     fieldCostRaw: number
     fieldCostEffective: number
+    fieldCostDeltaPct: number | null
     maxGradient: number
     minimumPlanRadius: number | null
     maxDeviation: number

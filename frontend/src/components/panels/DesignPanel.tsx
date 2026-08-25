@@ -242,12 +242,9 @@ export function DesignPanel() {
             <span>{smoothed.totals.effectiveLength.toFixed(0)} m effective</span>
             <span>
               cost{' '}
-              {(
-                ((smoothed.totals.fieldCostEffective - smoothed.totals.fieldCostRaw) /
-                  smoothed.totals.fieldCostRaw) *
-                100
-              ).toFixed(2)}
-              %
+              {smoothed.totals.fieldCostDeltaPct === null
+                ? '—'
+                : `${smoothed.totals.fieldCostDeltaPct.toFixed(2)}%`}
             </span>
             <span>
               min R{' '}
