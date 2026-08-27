@@ -15,6 +15,7 @@ from minegen.services.design_service import (
     SmoothedNotGeneratedError,
     StaleInputsError,
     TargetsNotGeneratedError,
+    TunnelNotGeneratedError,
 )
 from minegen.services.job_service import JobAlreadyRunningError, JobService
 from minegen.services.scenario_service import ScenarioNotFoundError
@@ -63,6 +64,12 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             status.HTTP_409_CONFLICT,
             "SMOOTHED_NOT_GENERATED",
             f"scenario '{scenario_id}' has no smoothed decline; POST …/design/decline/smooth first",
+        )
+    if isinstance(exc, TunnelNotGeneratedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "TUNNEL_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no tunnel mesh; POST …/design/tunnel first",
         )
     raise exc
 
@@ -218,3 +225,87 @@ def get_smoothed_decline(scenario_id: str, svc: Service) -> dict[str, Any]:
         SmoothedNotGeneratedError,
     ) as e:
         raise _guard(scenario_id, e) from e
+
+
+@router.post("/tunnel", status_code=status.HTTP_202_ACCEPTED)
+def generate_tunnel(
+    scenario_id: str,
+    svc: Service,
+    jobs: Jobs,
+    response: Response,
+    sync: Annotated[
+        bool, Query(description="Run inline and return the report (tests/CLI).")
+    ] = False,
+) -> dict[str, Any]:
+    """Phase 06: gravity-aligned tunnel sweep of the Phase 05 effective
+    centerline (rules 65–67). Async job kind ``MESH`` → 202; requires a
+    persisted smoothed decline (409 ``SMOOTHED_NOT_GENERATED`` otherwise)."""
+    try:
+        svc.evaluator(scenario_id)
+        svc.smoothed(scenario_id)  # precondition
+    except (
+        ScenarioNotFoundError,
+        WorldNotGeneratedError,
+        TargetsNotGeneratedError,
+        DeclineNotGeneratedError,
+        SmoothedNotGeneratedError,
+    ) as e:
+        raise _guard(scenario_id, e) from e
+    if sync:
+        response.status_code = status.HTTP_200_OK
+        try:
+            return svc.generate_tunnel(scenario_id)
+        except StaleInputsError as e:
+            raise _error(status.HTTP_409_CONFLICT, e.code, str(e)) from e
+    try:
+        job = jobs.submit(
+            scenario_id,
+            "MESH",
+            lambda on_progress: svc.generate_tunnel(scenario_id, on_progress),
+        )
+    except JobAlreadyRunningError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ErrorDetail(
+                code="JOB_ALREADY_RUNNING",
+                message=f"scenario '{scenario_id}' already has job '{e.job_id}' running",
+            ).model_dump(by_alias=True)
+            | {"jobId": e.job_id},
+        ) from e
+    return {
+        "jobId": job.id,
+        "status": "QUEUED",
+        "scenarioId": scenario_id,
+        "kind": job.kind,
+    }
+
+
+@router.get("/tunnel")
+def get_tunnel(scenario_id: str, svc: Service) -> dict[str, Any]:
+    try:
+        return svc.tunnel(scenario_id)
+    except (
+        ScenarioNotFoundError,
+        WorldNotGeneratedError,
+        TunnelNotGeneratedError,
+    ) as e:
+        raise _guard(scenario_id, e) from e
+
+
+@router.get("/tunnel/mesh.glb")
+def get_tunnel_glb(scenario_id: str, svc: Service) -> Response:
+    """Binary glTF artifact; the report's ``meshUrl`` carries a
+    revision-busting ``?v=`` query (rule 67)."""
+    try:
+        data = svc.tunnel_glb(scenario_id)
+    except (
+        ScenarioNotFoundError,
+        WorldNotGeneratedError,
+        TunnelNotGeneratedError,
+    ) as e:
+        raise _guard(scenario_id, e) from e
+    return Response(
+        content=data,
+        media_type="model/gltf-binary",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )

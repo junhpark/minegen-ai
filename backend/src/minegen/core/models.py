@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 import uuid
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
@@ -318,15 +318,31 @@ class DesignConfig(ApiModel):
 
 
 class TunnelProfile(ApiModel):
-    """Horseshoe profile: flat floor, vertical walls, arched crown."""
+    """Horseshoe SHAPE + meshing parameters only (rules 65/67).
 
-    width: PositiveFloat = 5.0
+    Tunnel width and height come exclusively from ``RampConstraints`` —
+    duplicating them here caused two dimension sources; Phase 06 removed the
+    old ``width``/``crown_radius`` fields. The circular crown radius is
+    DERIVED from (width, height, wall_height):
+    ``rise = height − wall_height``, ``R_c = (a² + rise²) / (2·rise)`` with
+    ``a = width / 2`` — never an independent input."""
+
     wall_height: PositiveFloat = 2.5
-    crown_radius: PositiveFloat = 2.5
+    arch_segments: Annotated[int, Field(ge=2, le=64)] = 8
+    ring_max_spacing: PositiveFloat = 2.0
+    ring_max_turn_deg: PositiveFloat = 7.0
+    crease_angle_deg: Annotated[float, Field(gt=0, lt=180)] = 40.0
 
-    @property
-    def total_height(self) -> float:
-        return self.wall_height + self.crown_radius
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_deprecated_dimensions(cls, data: Any) -> Any:
+        """Deprecated migration: pre-Phase-06 scenarios persisted ``width`` and
+        ``crownRadius`` here; both are ignored — dimensions come exclusively
+        from ``RampConstraints`` and the crown radius is derived (rule 65/67)."""
+        if isinstance(data, dict):
+            for legacy in ("width", "crownRadius", "crown_radius"):
+                data.pop(legacy, None)
+        return data
 
 
 class MiningConfig(ApiModel):

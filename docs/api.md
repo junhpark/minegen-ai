@@ -42,6 +42,15 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      to derived/decline_smoothed.json; regenerating
                                                      the decline or targets deletes it (rule 64).
     GET  …/design/decline/smooth                     409 SMOOTHED_NOT_GENERATED if missing
+
+    POST …/design/tunnel                             submits a tunnel-mesh job (Phase 06)
+                                                     202 {jobId, kind: MESH} · ?sync=true runs inline
+                                                     409 SMOOTHED_NOT_GENERATED without a smoothed decline
+    GET  …/design/tunnel                             persisted mesh report (rule 67)
+                                                     409 TUNNEL_NOT_GENERATED if missing
+    GET  …/design/tunnel/mesh.glb                    binary glTF, model/gltf-binary,
+                                                     immutable cache headers; use the report's
+                                                     cache-busted meshUrl (?v=<sha16>)
     GET  /api/v1/jobs?scenario_id=                    job records (newest first, no result)
     (jobs fail with error.code JOB_INPUTS_CHANGED — nothing persisted — when
      scenario/world/targets were mutated while the job ran; rule 60)

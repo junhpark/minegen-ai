@@ -6,7 +6,7 @@ import { PanelSection } from '@/components/layout/PanelSection'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { fmtMeters } from '@/utils/format'
-import type { DeclinePayload, SmoothedDeclinePayload } from '@/types/scene'
+import type { DeclinePayload, SmoothedDeclinePayload, TunnelMeshReport } from '@/types/scene'
 
 /** Phase 03: access-target generation. Values are echoed from the API. */
 export function DesignPanel() {
@@ -17,13 +17,20 @@ export function DesignPanel() {
   const targets = scene?.accessTargets ?? null
   const decline = scene?.decline ?? null
   const smoothed = scene?.smoothedDecline ?? null
+  const tunnel = scene?.tunnelMesh ?? null
 
   const generate = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('generate the world first')
       const t = await api.generateTargets(scene.scenarioId)
       // rule 64: regenerated targets invalidate the decline AND its smoothing
-      setScene({ ...scene, accessTargets: t, decline: null, smoothedDecline: null })
+      setScene({
+        ...scene,
+        accessTargets: t,
+        decline: null,
+        smoothedDecline: null,
+        tunnelMesh: null,
+      })
       setLayerVisible('accessTargets', true)
     },
   })
@@ -50,7 +57,12 @@ export function DesignPanel() {
     const rec = job.data
     if (rec?.status === 'SUCCEEDED' && rec.result && scene && scene.decline !== rec.result) {
       // a new decline invalidates the previous smoothed artifact (rule 64)
-      setScene({ ...scene, decline: rec.result as DeclinePayload, smoothedDecline: null })
+      setScene({
+        ...scene,
+        decline: rec.result as DeclinePayload,
+        smoothedDecline: null,
+        tunnelMesh: null,
+      })
       setLayerVisible('rawSearchPath', true)
     }
   }, [job.data, scene, setScene, setLayerVisible])
@@ -81,11 +93,41 @@ export function DesignPanel() {
       scene &&
       scene.smoothedDecline !== rec.result
     ) {
-      setScene({ ...scene, smoothedDecline: rec.result as SmoothedDeclinePayload })
+      setScene({
+        ...scene,
+        smoothedDecline: rec.result as SmoothedDeclinePayload,
+        tunnelMesh: null,
+      })
       setLayerVisible('smoothedDecline', true)
     }
   }, [smoothJob.data, scene, setScene, setLayerVisible])
-  const err = generate.error ?? generateDecline.error ?? smoothDecline.error
+  // Phase 06 tunnel-mesh job: submit → poll → apply tunnelMesh report
+  const [tunnelJobId, setTunnelJobId] = useState<string | null>(null)
+  const generateTunnel = useMutation({
+    mutationFn: async () => {
+      if (!scene) throw new Error('smooth the decline first')
+      const job = await api.submitTunnel(scene.scenarioId)
+      setTunnelJobId(job.jobId)
+    },
+  })
+  const tunnelJob = useQuery({
+    queryKey: ['job', tunnelJobId],
+    queryFn: () => api.getJob(tunnelJobId as string),
+    enabled: tunnelJobId !== null,
+    refetchInterval: (q) => {
+      const s = q.state.data?.status
+      return s === 'SUCCEEDED' || s === 'FAILED' ? false : 400
+    },
+  })
+  const tunnelRunning = tunnelJob.data?.status === 'QUEUED' || tunnelJob.data?.status === 'RUNNING'
+  useEffect(() => {
+    const rec = tunnelJob.data
+    if (rec?.status === 'SUCCEEDED' && rec.result && scene && scene.tunnelMesh !== rec.result) {
+      setScene({ ...scene, tunnelMesh: rec.result as TunnelMeshReport })
+      setLayerVisible('tunnelMesh', true)
+    }
+  }, [tunnelJob.data, scene, setScene, setLayerVisible])
+  const err = generate.error ?? generateDecline.error ?? smoothDecline.error ?? generateTunnel.error
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
 
@@ -273,6 +315,73 @@ export function DesignPanel() {
           </ul>
           <div className="mt-1 text-mute">
             validated effective centerline · Phase 06 tunnel input (rule 64)
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => generateTunnel.mutate()}
+        disabled={
+          !smoothed ||
+          smoothed.status === 'FAILED' ||
+          generateTunnel.isPending ||
+          tunnelRunning ||
+          smoothRunning ||
+          jobRunning
+        }
+        className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {generateTunnel.isPending || tunnelRunning
+          ? 'Sweeping tunnel mesh…'
+          : tunnel
+            ? 'Regenerate tunnel mesh'
+            : 'Generate tunnel mesh (Phase 06)'}
+      </button>
+      {tunnelJob.data && (tunnelRunning || tunnelJob.data.status === 'FAILED') ? (
+        <JobProgress job={tunnelJob.data} />
+      ) : null}
+      {tunnel ? (
+        <div className="readout mt-2 text-[11px]">
+          <div className="flex justify-between text-chalk-dim">
+            <span className={tunnel.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+              {tunnel.status}
+            </span>
+            {tunnel.status === 'SUCCESS' ? (
+              <span>
+                {tunnel.ringCount} rings · {tunnel.triangleCount} tris ·{' '}
+                {tunnel.watertight && tunnel.manifold && tunnel.geometricallyClosed ? (
+                  <span className="text-lamp">watertight</span>
+                ) : (
+                  <span className="text-danger">open</span>
+                )}
+              </span>
+            ) : null}
+          </div>
+          {tunnel.status === 'SUCCESS' ? (
+            <div className="mt-1 flex justify-between text-mute">
+              <span>
+                {tunnel.nominalExcavationVolume === undefined
+                  ? '—'
+                  : `${tunnel.nominalExcavationVolume.toFixed(0)} m³ nominal`}
+              </span>
+              <span>
+                mesh Δ{' '}
+                {tunnel.volumeDifferencePct === undefined || tunnel.volumeDifferencePct === null
+                  ? '—'
+                  : `${tunnel.volumeDifferencePct.toFixed(3)}%`}
+              </span>
+              <span>
+                {tunnel.excavationSurfaceArea === undefined
+                  ? '—'
+                  : `${tunnel.excavationSurfaceArea.toFixed(0)} m² walls`}
+              </span>
+            </div>
+          ) : (
+            <div className="mt-1 text-danger">{tunnel.failureReason}</div>
+          )}
+          <div className="mt-1 text-mute">
+            gravity-aligned sweep of the effective centerline (rules 65–67)
           </div>
         </div>
       ) : null}

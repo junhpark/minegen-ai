@@ -400,6 +400,40 @@ cleverness.
     decline_smoothed.json; persisting a new decline deletes the old
     decline_smoothed.json.
 
+65. Gravity-aligned floor-centerline sweep (Phase 06). Phase 06 consumes only
+    the Phase 05 validated effective centerline. The centerline represents
+    the tunnel floor centerline. Tunnel width and height come exclusively
+    from ``RampConstraints``. Every ring uses the existing
+    ``gravity_aligned_frame``: ``forward = normalize(t)``,
+    ``up = normalize(Z − dot(Z, forward)·forward)``,
+    ``right = cross(forward, up)``. The profile plane is perpendicular to
+    the 3D tangent; no Frenet or parallel-transport roll is used for
+    ordinary ramps. Phase 06 may linearly subdivide the validated polyline
+    but may not smooth, spline-fit, move, or redesign it.
+
+66. Excavation mesh validity (Phase 06). The logical tunnel mesh is a
+    continuous closed tube with one shared ring at every Phase 05 segment
+    boundary and separate removable portal/terminal cap primitives. Before
+    render-vertex splitting, the logical mesh must be manifold, watertight,
+    non-degenerate, consistently outward-oriented, and have zero junction
+    gaps. The full excavation envelope is checked against hard spatial
+    exclusions; portal terrain intersection is permitted only until the
+    complete profile first becomes buried, after which terrain breakthrough
+    is invalid. Mesh failure is explicit; invalid geometry is never
+    persisted silently.
+
+67. Engineering quantities and artifact contract (Phase 06). Tunnel
+    dimensions and engineering quantities are computed in the backend.
+    Because each gravity-aligned profile is perpendicular to the 3D
+    centerline tangent, nominal excavation volume is
+    ``profileArea × 3D centerline length``; no grade cosine correction is
+    applied. A closed-mesh signed volume is independently calculated for
+    QA. Phase 06 persists ``tunnel_mesh.glb`` plus a typed report
+    containing geometry, topology, volume, surface-area and
+    artifact-revision metadata. A new Phase 05 artifact invalidates both
+    Phase 06 files.
+
+
 ## Persistence (v0.1)
 
 No database. Scenarios are stored on disk:

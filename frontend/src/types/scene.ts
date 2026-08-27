@@ -290,6 +290,44 @@ export interface SmoothedDeclinePayload {
   }
 }
 
+export interface TunnelSegmentSummary {
+  segmentId: string
+  effectiveSource: 'SMOOTHED' | 'RAW_FALLBACK'
+  ringIntervals: number
+}
+
+export interface TunnelMeshReport {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  length3d?: number
+  profileArea?: number
+  crownRadius?: number
+  profileEnvelopeReach?: number
+  nominalExcavationVolume?: number
+  meshEnclosedVolume?: number
+  volumeDifferencePct?: number | null
+  excavationSurfaceArea?: number
+  closedMeshSurfaceArea?: number
+  ringCount?: number
+  logicalVertexCount?: number
+  renderVertexCount?: number
+  triangleCount?: number
+  watertight?: boolean
+  manifold?: boolean
+  geometricallyClosed?: boolean
+  degenerateTriangles?: number
+  outwardOrientation?: boolean
+  junctionGapMax?: number
+  maxLocalTurnDeg?: number
+  envelopeViolations?: number
+  envelopeReasonCounts?: Record<string, number>
+  burialRing?: number
+  selfIntersectionCheck?: string
+  segments?: TunnelSegmentSummary[]
+  artifactRevision: string | null
+  meshUrl: string | null
+}
+
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
 
 export interface JobProgress {
@@ -318,7 +356,7 @@ export interface JobRecord {
   progress: Partial<JobProgress>
   error: { code: string; message: string } | null
   version: number
-  result?: DeclinePayload | SmoothedDeclinePayload | null
+  result?: DeclinePayload | SmoothedDeclinePayload | TunnelMeshReport | null
 }
 
 export interface JobSubmission {
@@ -348,4 +386,5 @@ export interface WorldScene {
   accessTargets: AccessTargetsPayload | null
   decline: DeclinePayload | null
   smoothedDecline: SmoothedDeclinePayload | null
+  tunnelMesh: TunnelMeshReport | null
 }

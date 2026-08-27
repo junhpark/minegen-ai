@@ -67,5 +67,6 @@ export const LAYER_IDS = [
   'networkGraph',
   'rawSearchPath',
   'smoothedDecline',
+  'tunnelMesh',
 ] as const
 export type LayerId = (typeof LAYER_IDS)[number]

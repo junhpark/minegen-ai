@@ -27,6 +27,7 @@ const DEFAULT_VISIBLE: LayerId[] = [
   'accessTargets',
   'rawSearchPath',
   'smoothedDecline',
+  'tunnelMesh',
   'ramp',
   'levels',
   'crosscuts',
