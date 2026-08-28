@@ -139,13 +139,30 @@ bisection — then straight). Grade = Δz / total horizontal ∈ [−g_max, 0],
 |heading change| ≤ 45°. `dubins_cs_length()` gives the same horizontal length
 in closed form and is used as the heuristic's geometric lower bound.
 
-### Hybrid A* (``design/astar_3d.py``, rules 52–57)
-State `(x, y, z, heading, cover_established)` continuous; key
-`(⌊x/5⌋, ⌊y/5⌋, ⌊z/1⌋, round(θ/Δθ) mod 16, cover)`. One batched evaluator
-call per expansion (45 points); a primitive is rejected if any sample is
-invalid; cost = trapezoid of cost/m over 3D arc length (+ turn penalty).
-Cover transition: before `minimum_surface_cover` is first reached,
-`INSUFFICIENT_COVER` samples are forgiven; afterwards never.
+### Hybrid A* (``design/astar_3d.py``, rules 52–57, 66)
+State `(x, y, z, heading, cover_established, burial_established)` continuous;
+key `(⌊x/5⌋, ⌊y/5⌋, ⌊z/1⌋, round(θ/Δθ) mod 16, cover, burial)`. One batched
+evaluator call per expansion (45 centerline points); a primitive is rejected
+if any sample is invalid; cost = trapezoid of cost/m over 3D arc length
+(+ turn penalty). Cover transition: before `minimum_surface_cover` is first
+reached, `INSUFFICIENT_COVER` samples are forgiven; afterwards never.
+
+**Direction-aware excavation-envelope feasibility (rule 66).** Per primitive
+sample the actual heading/grade tangent is analytic (constant curvature and
+grade: `θ(s) = θ_end − κ·(L_h − s)`), and the K tunnel-profile vertices are
+swept with the gravity-aligned frame via the SHARED
+``design/profile.boundary_points`` — the identical geometry the Phase 06 mesh
+excavates. One extra batched ``envelope_masks`` call per expansion (K × 45
+points, boolean masks only): a primitive whose centerline is valid but whose
+wall or roof clips a hard exclusion (world XY/bottom, orebody + buffer,
+restricted zone) is rejected in the search. Above-terrain envelope points
+follow the rule-66 profile-burial transition, tracked as node state: allowed
+until the full ring first buries (portal roof), breakthrough afterwards
+rejects; the initial state is derived from the start ring, and the exact
+transition is re-verified by the Phase 06 gate. The conservative isotropic
+`buffer + profileEnvelopeReach` rule is NOT used: it is a sufficient
+condition only, and a hard `buffer + reach` standoff was measured to strand
+footwall-approach poses at R = 18 m.
 
     h  = sqrt(max(L_dubinsCS, Δz/g)² + Δz²) · min_cost          (admissible)
     f  = g + ε·h                                                  (ε = 2, heuristic inflation —
@@ -157,19 +174,37 @@ Cover transition: before `minimum_surface_cover` is first reached,
 Cell dominance on f (rule 56). Goal shot attempted at pop when d_h ≤ 5·L_h.
 States below `target.z − 0.5` are not expanded (monotonic decline).
 
-### Chaining (``design/mine_designer.py``, rules 21–22, 53–54)
-Greedy per level: every valid candidate (K ≤ 5) is searched from the current
-terminal pose; first segment heading = azimuth(portal → candidate), later
-segments inherit. Selection = segment cost + next_level_accessibility ×
-min_cost. Structured `INFEASIBLE` / `NO_VALID_CANDIDATES` / `SKIPPED`.
+### Chaining (``design/mine_designer.py``, rules 21–22, 53–54, 66)
+Per level every valid candidate (K ≤ 5) is searched from the current terminal
+pose; first segment heading = azimuth(portal → candidate), later segments
+inherit. Selection = segment cost + next_level_accessibility × min_cost.
+Structured `INFEASIBLE` / `NO_VALID_CANDIDATES` / `SKIPPED`.
+
+**Launchability (rule 66).** Every successful non-final arrival must have at
+least one legal forward/downward successor primitive under the same
+envelope-aware contract; otherwise the candidate is demoted to
+`INFEASIBLE` (`termination = NEXT_LAUNCH_INFEASIBLE`).
+
+**Bounded deterministic backtracking.** An arrival can be one-step
+launchable yet strand the NEXT level (measured on the default scenario: the
+L10 best-scored approach heads into the footwall and kills all five L11
+searches at depth 2, while two sibling L10 candidates open every L11 target).
+When a level has no feasible candidate, the nearest ancestor level with an
+untried candidate advances to its next deterministic pick (score order, ties
+by candidate index) and the chain below is re-searched. Each accepted
+backtrack consumes one unit of `max_chain_backtracks` (default 24);
+exhausting the budget fails the frontier level EXPLICITLY. The search itself
+is unchanged: continuous state, deterministic ordering, exact targets,
+Rmin/gmax invariant. The default 13-level chain completes with 3 backtracks.
 
 ### Measured (default scenario, one fault, 13 levels, K = 5)
-65/65 candidate searches succeeded; 51,631 expansions total (L1: 1.0k–6.5k,
-lower levels mostly 40–250); raw decline 3,834.4 m vs Σ admissible bounds
-3,825.2 m (each segment at the grade-limited length); generalized cost
-7,221 (cost/bound 1.89 = mean cost/m); wall 32 s at ≈ 1,900 expansions/s.
-Small scenario, ε = 1.0 / 1.5: EXPANSION_LIMIT at 20k (plateau); ε = 2:
-3,152 expansions.
+Under the envelope-aware contract: 13/13 levels, 3 chain backtracks, wall
+63 s; smoothing 13 smoothed / 0 fallback (ΔfieldCost +0.0539 %); centerline
+min orebody sdf 8.89 m — envelope-clean under the direction-aware check even
+below the isotropic 10 m sufficient bound; Phase 06 SUCCESS with 0 envelope
+violations and volume QA 0.31 %. (Pre-envelope baseline for reference:
+65/65 searches, 51,631 expansions, wall 32 s.) Small scenario, ε = 1.0 / 1.5:
+EXPANSION_LIMIT at 20k (plateau); ε = 2: 3,152 expansions.
 ## Phase 05 — smoothing + revalidation (`design/smoothing.py`, rules 61–64)
 
 Per selected Phase 04 segment: lossless primitive simplification (equal
@@ -215,6 +250,90 @@ field-cost delta ≤ +0.1 %, endpoint/heading errors 0.
 ## Phase 07 — MineNetwork                  (pending)
 ## Phase 08 — levels & crosscuts           (pending)
 ## Phase 09 — longhole stopes              (pending)
+## Phase 06 — tunnel mesh, gravity-aligned sweep (`design/tunnel_mesh.py`, rules 65–67)
+
+Input: the Phase 05 artifact only (rule 64) — per-segment validated effective
+centerlines plus shared boundary tangents. The centerline is the tunnel FLOOR
+centerline.
+
+1. **Profile** (`build_profile`): closed horseshoe polygon, K = archSegments+3
+   vertices, counter-clockwise. Width/height come exclusively from
+   `RampConstraints`; `TunnelProfile` holds shape + meshing parameters only
+   (wallHeight, archSegments, ringMaxSpacing, ringMaxTurnDeg, creaseAngleDeg).
+   The circular crown radius is DERIVED: `rise = H − Hw`,
+   `R_c = (a² + rise²) / (2·rise)`, `a = W/2` (default 5×5, wall 2.5 →
+   semicircular R_c = 2.5). Legacy persisted `width`/`crownRadius` fields are
+   dropped on load (deprecated migration).
+2. **Rings** (`build_ring_chain`): every polyline vertex is a ring; edges
+   longer than `ringMaxSpacing` (2 m) are split LINEARLY — rings lie exactly
+   on the validated polyline, which is never smoothed, spline-fitted, moved
+   or redesigned (rule 65). Consecutive segments share ONE logical boundary
+   ring whose tangent is the persisted shared boundary tangent; interior
+   polyline vertices use the mean of adjacent chord directions, subdivision
+   rings the chord direction. `maxLocalTurnDeg > ringMaxTurnDeg` (7°) →
+   FAILED (Phase 05's ≤2 m output on R ≥ 18 m gives ≤ 6.4°).
+3. **Sweep** (`sweep_rings`): the existing `core.coordinates.
+   gravity_aligned_frame` (rule 26) at every ring — profile plane ⊥ 3D
+   tangent, plumb walls, zero floor cross-slope, no roll. Profile origin =
+   floor centerline point.
+4. **Logical mesh** (`build_logical_mesh`): one continuous quad-strip tube
+   (2 tris/quad) + PORTAL_CAP/TERMINAL_CAP fans with the apex at the profile
+   CENTROID (a floor-centerline apex would degenerate the floor fan tris).
+   Caps are temporary closure surfaces for standalone topology/volume QA —
+   removable when crosscuts/walkthrough arrive.
+5. **Topology validation** (`validate_topology`, rule 66): manifold (every
+   directed edge once), watertight (every undirected edge exactly twice),
+   zero degenerate triangles, outward orientation via signed volume > 0.
+   Checked on the LOGICAL mesh before render splitting.
+6. **Envelope validation** (`validate_envelope`, rule 66): all ring profile
+   vertices against OUTSIDE_WORLD / INSIDE_OREBODY / OREBODY_BUFFER /
+   RESTRICTED_ZONE (always hard) and ABOVE_TERRAIN under the portal
+   profile-burial transition — terrain intersection allowed only until the
+   full profile is first buried; breakthrough afterwards is a violation.
+   OUTSIDE_WORLD caused solely by exceeding the world TOP is the same portal
+   case and is governed by the transition. `minimum_surface_cover` is a
+   centerline constraint and is NOT re-applied to the roof.
+7. **Volumes** (rule 67): the profile is ⊥ the 3D tangent, so
+   `nominalExcavationVolume = analyticProfileArea × length3d` with NO 1/cosθ
+   correction, where `analyticProfileArea = W·H_wall + R_c²(θ − sin θ)/2`
+   (θ = 2·asin(W/2R_c)) is EXACT and invariant under `archSegments`
+   (blocker 2 regression). `meshEnclosedVolume = Σ v₀·(v₁×v₂)/6` over the
+   closed logical mesh; `|Δ| / nominal ≤ 1 %` is a hard QA gate that now
+   includes the tessellation bias (`tessellationBiasPct`, inscribed polygon,
+   ~1/n²: −1.12 % at 8 segments — a legitimate QA failure — vs −0.28 % at
+   the default 16).
+8. **Render mesh** (`build_render_mesh`): crease-split vertices (creaseAngle
+   40°, vertex 0 always split as the UV seam), normals accumulated
+   angle-weighted from ACTUAL triangle geometry (not rotated 2D normals),
+   u = perimeter fraction [0,1], v = 3D chainage (m). Logical vs render
+   vertex counts are reported separately; `geometricallyClosed` is verified
+   by position-weld on the render mesh.
+9. **GLB** (`design/glb_writer.py`): minimal deterministic struct+json+numpy
+   writer (no new dependency, rule 16) — one vertex set, one glTF primitive
+   per segment (extras: segmentId, effectiveSource) + cap primitives
+   (extras: role). Byte-identical for identical input.
+
+Failure at any gate produces `status = FAILED` with an explicit
+`failureReason`; the report is always persisted, the GLB only on SUCCESS.
+Known limitations (technical debt): global self-intersection is NOT checked
+(`selfIntersectionCheck = NOT_IMPLEMENTED`) and the envelope samples profile
+VERTICES (violations strictly between samples can escape detection);
+`RampConstraints.clearance` is not yet a hard constraint.
+
+**Default-scenario envelope conflict — RESOLVED upstream (PR #3 blocker 1).**
+The Phase 04/05 centerline formerly passed at 8.00 m minimum orebody sdf and
+the excavation envelope clipped the 5 m buffer by up to 0.37 m near L11–L12
+(`OREBODY_BUFFER × 9`). Resolution is structural, not a validator weakening
+or buffer tune: the profile/envelope geometry was extracted to the shared
+lower-level ``design/profile.py``; Phase 04 primitive feasibility became
+direction-aware (actual per-sample frames sweeping the profile boundary);
+launchability filters trapped arrivals; and bounded chain backtracking
+escapes arrivals that strand the next level. Rejected alternatives, measured:
+hard `buffer + reach` standoff (footwall-approach poses inescapable at
+R = 18 m — L03 INFEASIBLE at 7 expansions) and soft-cost shaping (not a
+guarantee; min sdf 7.47 m / 5.86 m across two shapings). The Phase 06 gate
+is unchanged and remains the exact authority.
+
 ## Phase 10 — 4D sequencing                (pending)
 ## Phase 11 — router OSP (greedy, CP-SAT)  (pending)
 ## Phase 12 — generic sensor OSP           (pending)

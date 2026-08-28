@@ -6,6 +6,7 @@ import type {
   CostEvaluationRow,
   DeclinePayload,
   SmoothedDeclinePayload,
+  TunnelMeshReport,
   JobRecord,
   JobSubmission,
   SliceAxis,
@@ -94,6 +95,10 @@ export const api = {
     request<JobSubmission>(`/scenarios/${id}/design/decline/smooth`, { method: 'POST' }),
   getSmoothedDecline: (id: string) =>
     request<SmoothedDeclinePayload>(`/scenarios/${id}/design/decline/smooth`),
+  /** Submits an asynchronous tunnel-mesh job (202, kind MESH). */
+  submitTunnel: (id: string) =>
+    request<JobSubmission>(`/scenarios/${id}/design/tunnel`, { method: 'POST' }),
+  getTunnel: (id: string) => request<TunnelMeshReport>(`/scenarios/${id}/design/tunnel`),
   evaluateCost: (id: string, points: [number, number, number][]) =>
     request<{ count: number; results: CostEvaluationRow[] }>(
       `/scenarios/${id}/design/cost/evaluate`,

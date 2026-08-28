@@ -155,6 +155,11 @@ go under `geology`, not at the scenario root.
 ## Persistence and jobs (v0.1)
 
 - Scenarios: `data/scenarios/{id}/scenario.json` + `arrays.npz` + `derived/`.
+  `derived/` now holds `targets.json`, `decline.json`, `decline_smoothed.json`,
+  `tunnel_mesh.json` (Phase 06 report, always persisted with explicit status)
+  and `tunnel_mesh.glb` (excavation mesh, SUCCESS only). Invalidation chain:
+  world → targets → decline → smoothed → tunnel mesh — regenerating any stage
+  deletes every downstream artifact (rules 64/67).
 - Long-running work (rule 60): `services/job_service.py` — in-memory
   registry + 2-worker thread pool; one job per scenario at a time. Algorithms
   emit `ProgressEvent`s through a plain callback (`design/progress.py`);

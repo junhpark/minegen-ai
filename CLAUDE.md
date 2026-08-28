@@ -251,7 +251,13 @@ cleverness.
 
 47. Phase 04 Hybrid-A* physical states remain continuous.
     Closed-set discretization is 5 m XY, 1 m Z and 16 heading bins
-    by default. Discretization never snaps geometry.
+    by default. Discretization never snaps geometry. The
+    cover-established (rule 52) and profile-burial-established
+    (rule 66) flags carried by the search are history-dependent
+    boolean STATE LABELS on nodes and closed keys — they distinguish
+    otherwise-identical poses reached with different transition
+    history; they are not geometric discretization dimensions and
+    have no resolution.
 
 48. Turning primitives change heading by exactly one heading bin.
     With minimum radius R and heading-bin angle Δθ, the primitive
@@ -276,10 +282,25 @@ cleverness.
     underground samples may be accepted; after it is achieved, the
     path may never violate minimum cover again.
 
-53. Candidate chaining in v0.1 is greedy, level by level. Every valid
-    candidate up to K=5 is searched; selection uses actual segment cost
-    plus the next-level admissible lower bound. Terminal continuous
-    position and heading are inherited by the next segment.
+53. Candidate chaining in v0.1 is deterministic per level with
+    bounded backtracking. Every valid candidate up to K=5 is
+    searched; candidates are ordered by actual segment cost plus the
+    next-level admissible lower bound (ties by candidate index). The
+    next segment inherits the terminal continuous position and
+    heading and the cover-established and profile-burial-established
+    state. Every successful NON-FINAL arrival must additionally be
+    launchable: at least one legal forward/downward successor
+    primitive must exist under the same envelope-aware feasibility
+    contract, otherwise the candidate is demoted to INFEASIBLE
+    (NEXT_LAUNCH_INFEASIBLE). When a level has no feasible candidate,
+    the NEAREST ancestor level with an untried candidate advances to
+    its next deterministic pick and the chain below it is
+    re-searched. Each accepted backtrack consumes one unit of
+    max_chain_backtracks (default 24); exhausting the budget — or
+    exhausting the root level — fails the frontier level with an
+    explicit INFEASIBLE result. Backtracking never relaxes any
+    engineering constraint (rule 54) and never alters the per-level
+    search itself.
 
 54. Search failure never relaxes engineering constraints. Exhaustion
     returns a structured SEGMENT_INFEASIBLE result with per-candidate
@@ -399,6 +420,40 @@ cleverness.
     world clears derived/; regenerating targets deletes decline.json AND
     decline_smoothed.json; persisting a new decline deletes the old
     decline_smoothed.json.
+
+65. Gravity-aligned floor-centerline sweep (Phase 06). Phase 06 consumes only
+    the Phase 05 validated effective centerline. The centerline represents
+    the tunnel floor centerline. Tunnel width and height come exclusively
+    from ``RampConstraints``. Every ring uses the existing
+    ``gravity_aligned_frame``: ``forward = normalize(t)``,
+    ``up = normalize(Z − dot(Z, forward)·forward)``,
+    ``right = cross(forward, up)``. The profile plane is perpendicular to
+    the 3D tangent; no Frenet or parallel-transport roll is used for
+    ordinary ramps. Phase 06 may linearly subdivide the validated polyline
+    but may not smooth, spline-fit, move, or redesign it.
+
+66. Excavation mesh validity (Phase 06). The logical tunnel mesh is a
+    continuous closed tube with one shared ring at every Phase 05 segment
+    boundary and separate removable portal/terminal cap primitives. Before
+    render-vertex splitting, the logical mesh must be manifold, watertight,
+    non-degenerate, consistently outward-oriented, and have zero junction
+    gaps. The full excavation envelope is checked against hard spatial
+    exclusions; portal terrain intersection is permitted only until the
+    complete profile first becomes buried, after which terrain breakthrough
+    is invalid. Mesh failure is explicit; invalid geometry is never
+    persisted silently.
+
+67. Engineering quantities and artifact contract (Phase 06). Tunnel
+    dimensions and engineering quantities are computed in the backend.
+    Because each gravity-aligned profile is perpendicular to the 3D
+    centerline tangent, nominal excavation volume is
+    ``profileArea × 3D centerline length``; no grade cosine correction is
+    applied. A closed-mesh signed volume is independently calculated for
+    QA. Phase 06 persists ``tunnel_mesh.glb`` plus a typed report
+    containing geometry, topology, volume, surface-area and
+    artifact-revision metadata. A new Phase 05 artifact invalidates both
+    Phase 06 files.
+
 
 ## Persistence (v0.1)
 

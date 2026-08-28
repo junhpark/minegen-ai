@@ -112,6 +112,10 @@ class WorldService:
         scene["smoothedDecline"] = (
             json.loads(smoothed.read_text(encoding="utf-8")) if smoothed.is_file() else None
         )
+        tunnel = derived / "tunnel_mesh.json"
+        scene["tunnelMesh"] = (
+            json.loads(tunnel.read_text(encoding="utf-8")) if tunnel.is_file() else None
+        )
         return scene
 
     def slice(

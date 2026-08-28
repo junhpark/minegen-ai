@@ -1,3 +1,5 @@
+import { Suspense } from 'react'
+import { API_BASE_URL } from '@/api/client'
 import { Grid, Text } from '@react-three/drei'
 import { mineToThree } from '@/geometry/coordinateTransform'
 import { useScenarioStore } from '@/stores/scenarioStore'
@@ -9,6 +11,7 @@ import { GradeBlocksLayer } from './GradeBlocksLayer'
 import { OrebodyLayer } from './OrebodyLayer'
 import { RawDeclineLayer } from './RawDeclineLayer'
 import { SmoothedDeclineLayer } from './SmoothedDeclineLayer'
+import { TunnelMeshLayer } from './TunnelMeshLayer'
 import { RockQualitySliceLayer } from './RockQualitySliceLayer'
 import { TerrainLayer } from './TerrainLayer'
 
@@ -59,6 +62,13 @@ export function MineScene() {
       ) : null}
       {scene?.accessTargets && visible.has('accessTargets') ? (
         <AccessTargetsLayer targets={scene.accessTargets} />
+      ) : null}
+      {scene?.tunnelMesh?.status === 'SUCCESS' &&
+      scene.tunnelMesh.meshUrl &&
+      visible.has('tunnelMesh') ? (
+        <Suspense fallback={null}>
+          <TunnelMeshLayer url={`${API_BASE_URL}${scene.tunnelMesh.meshUrl}`} />
+        </Suspense>
       ) : null}
       {scene?.smoothedDecline && visible.has('smoothedDecline') ? (
         <SmoothedDeclineLayer smoothed={scene.smoothedDecline} />

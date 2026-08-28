@@ -6,6 +6,7 @@ invalidated (the world service owns that lifecycle)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,7 @@ from minegen.design.progress import (
 )
 from minegen.design.smoothing import DeclineSmoother
 from minegen.design.targets import AccessTargetSet, generate_access_targets, resolve_portal
+from minegen.design.tunnel_mesh import TunnelMeshBuilder
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
 from minegen.world.synthetic_world import SyntheticWorld
@@ -31,6 +33,14 @@ from minegen.world.synthetic_world import SyntheticWorld
 
 class TargetsNotGeneratedError(LookupError):
     pass
+
+
+class TunnelNotGeneratedError(LookupError):
+    """tunnel_mesh.json does not exist for the scenario."""
+
+    def __init__(self, scenario_id: str) -> None:
+        super().__init__(f"tunnel mesh not generated for scenario {scenario_id}")
+        self.scenario_id = scenario_id
 
 
 class SmoothedNotGeneratedError(LookupError):
@@ -134,6 +144,7 @@ class DesignService:
             smoothed = self.smoothed_path(scenario_id)
             if smoothed.exists():
                 smoothed.unlink()  # rule 64: derived from the deleted decline
+            self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
         return payload
 
     # -- decline (Phase 04) ------------------------------------------------ #
@@ -184,7 +195,9 @@ class DesignService:
         fingerprint = self.input_fingerprint(scenario_id)
         scenario, _, ev = self.evaluator(scenario_id)
         targets = self._targets_object(scenario_id)
-        gen = ChainedDeclineGenerator(ev, scenario.ramp, scenario.design.search)
+        gen = ChainedDeclineGenerator(
+            ev, scenario.ramp, scenario.design.search, scenario.tunnel_profile
+        )
         result = gen.generate(targets, max_levels=max_levels, on_progress=on_progress)
         payload = result.to_dict()
         # Persist atomically w.r.t. invalidation: the same lock guards
@@ -199,6 +212,7 @@ class DesignService:
             smoothed = self.smoothed_path(scenario_id)
             if smoothed.exists():
                 smoothed.unlink()  # rule 64: the old smoothed artifact is stale
+            self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
         return payload
 
     # -- smoothing (Phase 05, rules 61–64) ---------------------------------- #
@@ -260,6 +274,7 @@ class DesignService:
             path = self.smoothed_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload), encoding="utf-8")
+            self._delete_tunnel_artifacts(scenario_id)  # rule 67: mesh is stale
         return payload
 
     def smoothed(self, scenario_id: str) -> dict[str, Any]:
@@ -273,6 +288,96 @@ class DesignService:
             raise SmoothedNotGeneratedError(scenario_id)
         data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return data
+
+    # -- tunnel mesh (Phase 06, rules 65–67) -------------------------------- #
+
+    def tunnel_report_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / "tunnel_mesh.json"
+
+    def tunnel_glb_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / "tunnel_mesh.glb"
+
+    def _delete_tunnel_artifacts(self, scenario_id: str) -> None:
+        for path in (self.tunnel_report_path(scenario_id), self.tunnel_glb_path(scenario_id)):
+            if path.exists():
+                path.unlink()
+
+    def _tunnel_input_paths(self, scenario_id: str) -> list[Path]:
+        return [*self._smoothing_input_paths(scenario_id), Path(self.smoothed_path(scenario_id))]
+
+    def tunnel_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._tunnel_input_paths(scenario_id))
+
+    def generate_tunnel(
+        self, scenario_id: str, on_progress: ProgressCallback = no_progress
+    ) -> dict[str, Any]:
+        """Phase 06: gravity-aligned sweep of the Phase 05 effective
+        centerline (rules 65–67). The fingerprint covers all five upstream
+        inputs; persistence follows the locked stale-input protocol
+        (rule 60). The GLB is written only on SUCCESS; the report is always
+        persisted with an explicit status."""
+        fingerprint = self.tunnel_fingerprint(scenario_id)
+        smoothed_payload = self.smoothed(scenario_id)  # 409 if not generated
+        scenario, _, ev = self.evaluator(scenario_id)
+        builder = TunnelMeshBuilder(ev, scenario.ramp, scenario.tunnel_profile)
+
+        def progress(i: int, n: int, label: str, stage: str) -> None:
+            on_progress(
+                ProgressEvent(
+                    stage=ProgressStage(stage),
+                    phase="TUNNEL_MESH",
+                    level=min(i + 1, n) if n else 1,
+                    total_levels=max(n, 1),
+                    candidate=0,
+                    total_candidates=0,
+                    progress=min(i, n) / n if n else 1.0,
+                    expanded_states=0,
+                    level_id=label,
+                )
+            )
+
+        result = builder.build(smoothed_payload, on_progress=progress)
+        payload = dict(result.report)
+        if result.glb is not None:
+            revision = hashlib.sha256(result.glb).hexdigest()
+            payload["artifactRevision"] = revision
+            payload["meshUrl"] = (
+                f"/api/v1/scenarios/{scenario_id}/design/tunnel/mesh.glb?v={revision[:16]}"
+            )
+        else:
+            payload["artifactRevision"] = None
+            payload["meshUrl"] = None
+        with self.store.lock(scenario_id):
+            if self.tunnel_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            report_path = self.tunnel_report_path(scenario_id)
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(json.dumps(payload), encoding="utf-8")
+            glb_path = self.tunnel_glb_path(scenario_id)
+            if result.glb is not None:
+                glb_path.write_bytes(result.glb)
+            elif glb_path.exists():
+                glb_path.unlink()  # never leave a stale GLB beside a FAILED report
+        return payload
+
+    def tunnel(self, scenario_id: str) -> dict[str, Any]:
+        self.store.get(scenario_id)
+        if not self.worlds.is_generated(scenario_id):
+            from minegen.services.world_service import WorldNotGeneratedError
+
+            raise WorldNotGeneratedError(scenario_id)
+        path = self.tunnel_report_path(scenario_id)
+        if not path.is_file():
+            raise TunnelNotGeneratedError(scenario_id)
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
+
+    def tunnel_glb(self, scenario_id: str) -> bytes:
+        report = self.tunnel(scenario_id)
+        glb_path = self.tunnel_glb_path(scenario_id)
+        if report.get("status") != "SUCCESS" or not glb_path.is_file():
+            raise TunnelNotGeneratedError(scenario_id)
+        return glb_path.read_bytes()
 
     def decline(self, scenario_id: str) -> dict[str, Any]:
         self.store.get(scenario_id)

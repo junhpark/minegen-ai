@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 import uuid
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
@@ -242,6 +242,12 @@ class DeclineSearchConfig(ApiModel):
     xy_resolution: PositiveFloat = 5.0
     z_resolution: PositiveFloat = 1.0
     heading_bins: Annotated[int, Field(ge=8, le=72)] = 16
+    # Chain-level bounded backtracking (rule 66 launchability follow-through):
+    # when a level has no feasible candidate, the nearest ancestor level with
+    # an untried candidate advances to its next deterministic pick and the
+    # chain below is re-searched. Each accepted backtrack consumes one unit;
+    # exhausting the budget fails the level explicitly.
+    max_chain_backtracks: Annotated[int, Field(ge=0, le=200)] = 24
     grade_fractions: list[Annotated[float, Field(ge=0, le=1)]] = Field(
         default_factory=lambda: [0.0, 0.5, 1.0]
     )
@@ -305,6 +311,7 @@ class DesignConfig(ApiModel):
     # access targets at the design offset are neutral; closer is discouraged.
     orebody_sterilization_weight: NonNegativeFloat = 5.0
     orebody_sterilization_range: PositiveFloat = 15.0
+
     minimum_surface_cover: NonNegativeFloat = 0.0
     restricted_zones: list[RestrictedZone] = Field(default_factory=list)
 
@@ -318,15 +325,31 @@ class DesignConfig(ApiModel):
 
 
 class TunnelProfile(ApiModel):
-    """Horseshoe profile: flat floor, vertical walls, arched crown."""
+    """Horseshoe SHAPE + meshing parameters only (rules 65/67).
 
-    width: PositiveFloat = 5.0
+    Tunnel width and height come exclusively from ``RampConstraints`` —
+    duplicating them here caused two dimension sources; Phase 06 removed the
+    old ``width``/``crown_radius`` fields. The circular crown radius is
+    DERIVED from (width, height, wall_height):
+    ``rise = height − wall_height``, ``R_c = (a² + rise²) / (2·rise)`` with
+    ``a = width / 2`` — never an independent input."""
+
     wall_height: PositiveFloat = 2.5
-    crown_radius: PositiveFloat = 2.5
+    arch_segments: Annotated[int, Field(ge=2, le=64)] = 16
+    ring_max_spacing: PositiveFloat = 2.0
+    ring_max_turn_deg: PositiveFloat = 7.0
+    crease_angle_deg: Annotated[float, Field(gt=0, lt=180)] = 40.0
 
-    @property
-    def total_height(self) -> float:
-        return self.wall_height + self.crown_radius
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_deprecated_dimensions(cls, data: Any) -> Any:
+        """Deprecated migration: pre-Phase-06 scenarios persisted ``width`` and
+        ``crownRadius`` here; both are ignored — dimensions come exclusively
+        from ``RampConstraints`` and the crown radius is derived (rule 65/67)."""
+        if isinstance(data, dict):
+            for legacy in ("width", "crownRadius", "crown_radius"):
+                data.pop(legacy, None)
+        return data
 
 
 class MiningConfig(ApiModel):

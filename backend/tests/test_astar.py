@@ -38,7 +38,7 @@ def test_closed_key_shares_cell_but_coordinates_stay_continuous() -> None:
     _sc, _, _, a = flat_world()
     p1 = Pose(12.3, -4.7, -50.2, math.radians(10.0))
     p2 = Pose(13.9, -1.1, -50.9, math.radians(8.0))  # same 5 m cell, same 1 m z bin, same bin
-    assert a.key(p1, True) == a.key(p2, True)
+    assert a.key(p1, True, True) == a.key(p2, True, True)
     assert p1 != p2
     # a real search path: sample coordinates are never multiples of the grid
     a2 = a
@@ -72,7 +72,7 @@ def test_fault_core_crossing_primitive_is_penalized_between_endpoints() -> None:
     assert np.all(ends == 0.0)
     mids = ev.fault_penalty(straight.samples[1:-1])[0]
     assert mids.max() == pytest.approx(500.0)
-    res = a.evaluate_primitives([straight], True)[0]
+    res = a.evaluate_primitives([straight], True, True)[0]
     assert res is not None
     # integrated cost carries the core penalty (trapezoid over 2 m samples)
     assert res[0] > 500.0 * 1.0  # at least one 2 m interval at ~half weight
@@ -87,7 +87,7 @@ def test_restricted_zone_between_endpoints_rejects_primitive() -> None:
     assert not (3.0 <= straight.samples[0, 0] <= 4.0) and not (
         3.0 <= straight.samples[-1, 0] <= 4.0
     )
-    assert a.evaluate_primitives([straight], True)[0] is None
+    assert a.evaluate_primitives([straight], True, True)[0] is None
 
 
 def test_orebody_buffer_crossing_primitive_is_rejected() -> None:
@@ -101,7 +101,7 @@ def test_orebody_buffer_crossing_primitive_is_rejected() -> None:
     straight = next(p for p in prims if p.steering is Steering.STRAIGHT and p.grade == 0.0)
     sdf = ev.orebody_distance(straight.samples)
     assert (sdf > 0).all() and sdf.min() < 5.0  # outside the orebody, inside the buffer
-    assert a.evaluate_primitives([straight], True)[0] is None
+    assert a.evaluate_primitives([straight], True, True)[0] is None
 
 
 # -- portal transition (rule 52) ----------------------------------------------
@@ -121,15 +121,15 @@ def test_portal_cover_transition() -> None:
         return base.__class__(**{**base.__dict__, "samples": samples})
 
     # shallow descent from the surface, cover never reaches 15 m: accepted, not established
-    res = a.evaluate_primitives([prim_with_z([100, 99, 98, 97, 96])], False)[0]
+    res = a.evaluate_primitives([prim_with_z([100, 99, 98, 97, 96])], False, False)[0]
     assert res is not None and res[1] is False
     # reaching 15 m cover inside the primitive: accepted, established
-    res = a.evaluate_primitives([prim_with_z([90, 88, 86, 84, 82])], False)[0]
+    res = a.evaluate_primitives([prim_with_z([90, 88, 86, 84, 82])], False, False)[0]
     assert res is not None and res[1] is True
     # once established, coming back up to < 15 m cover is rejected
-    assert a.evaluate_primitives([prim_with_z([82, 83, 84, 85, 90])], True)[0] is None
+    assert a.evaluate_primitives([prim_with_z([82, 83, 84, 85, 90])], True, True)[0] is None
     # not yet established and going back above the terrain is still rejected
-    assert a.evaluate_primitives([prim_with_z([99, 100.5, 99, 98, 97])], False)[0] is None
+    assert a.evaluate_primitives([prim_with_z([99, 100.5, 99, 98, 97])], False, False)[0] is None
     # full search from the surface establishes cover before finishing
     r = a.search(
         Pose(-100.0, 0.0, surface, math.pi / 2),

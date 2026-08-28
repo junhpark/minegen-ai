@@ -61,6 +61,27 @@ Every phase must pass all of these before it is considered complete:
     cd backend  && pytest && ruff check . && ruff format --check . && mypy src
     cd frontend && npm run typecheck && npm run lint && npm test && npm run build
 
+## Phase 06 smoke test
+
+1. With a smoothed decline persisted, click **Generate tunnel mesh
+   (Phase 06)**. A MESH job runs the gravity-aligned sweep of the effective
+   centerline (rules 65–67).
+2. The **Tunnel mesh** layer shows the excavated tube (arched horseshoe
+   profile, plumb walls, welded segment junctions, removable portal/terminal
+   caps).
+3. The design panel reports nominal excavation volume, mesh/nominal volume
+   difference (QA gate ≤ 1 %), wall surface area, ring/triangle counts and
+   the watertight/manifold/closed verdicts — all backend-computed.
+4. Regenerating the smoothed decline (or anything upstream) deletes
+   `tunnel_mesh.json`/`tunnel_mesh.glb`; the mesh URL is revision-busted with
+   `?v=<sha16>` of the GLB SHA-256.
+5. The full 13-level DEFAULT scenario meshes end-to-end: the former
+   L11–L12 orebody-buffer conflict was resolved upstream by the
+   direction-aware Phase 04 envelope feasibility contract with
+   launchability and bounded chain backtracking (see docs/algorithms.md,
+   Phase 04/06). Expect `chainBacktracks: 3` in the decline payload and
+   0 envelope violations in the tunnel report.
+
 ## Phase 05 smoke test
 
 1. With a decline generated, click **Smooth decline (Phase 05)**. A SMOOTH
