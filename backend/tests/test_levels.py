@@ -231,10 +231,8 @@ def test_empty_station_lattice_fails_explicitly(tmp_path) -> None:  # type: igno
             "thickness": 12.0,
         },
     )
-    from minegen.world.orebody import TabularOrebody as _T
-
     ob = world.orebody
-    assert isinstance(ob, _T)
+    assert isinstance(ob, TabularOrebody)
     assert builder.station_us(ob) == []
     seg = _entry_segment(world, sc, u_entry=0.0, level_z=40.0)
     payload = builder.build(_smoothed(seg), "rev")
