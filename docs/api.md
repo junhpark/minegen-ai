@@ -68,6 +68,12 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      without a Phase 05 artifact)
     GET  /api/v1/scenarios/{id}/design/levels        Phase 08: persisted typed LevelsPayload
                                                      (409 LEVELS_NOT_GENERATED after invalidation)
+    POST /api/v1/scenarios/{id}/design/stopes        Phase 09: synchronous planned stopes
+                                                     (typed StopesPayload; 409 LEVELS_NOT_GENERATED
+                                                     without the Phase 08 artifact; UNSUPPORTED
+                                                     methods yield explicit FAILED payloads)
+    GET  /api/v1/scenarios/{id}/design/stopes        Phase 09: persisted typed StopesPayload
+                                                     (409 STOPES_NOT_GENERATED after invalidation)
     POST /api/v1/scenarios/{id}/network/generate     Phase 07/08: synchronous MineNetwork rebuild
                                                      (typed NetworkPayload; 409 SMOOTHED_NOT_GENERATED /
                                                      LEVELS_NOT_GENERATED without prerequisites)

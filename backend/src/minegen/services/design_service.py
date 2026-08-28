@@ -29,6 +29,8 @@ from minegen.design.targets import AccessTargetSet, generate_access_targets, res
 from minegen.design.tunnel_mesh import TunnelMeshBuilder
 from minegen.levels.builder import LevelDevelopmentBuilder
 from minegen.levels.models import LevelsPayload
+from minegen.mining.methods.base import strategy_for, unsupported_method_payload
+from minegen.mining.models import StopesPayload
 from minegen.network.builder import MineNetworkBuilder
 from minegen.network.models import NetworkPayload
 from minegen.services.scenario_service import ScenarioStore
@@ -38,6 +40,10 @@ from minegen.world.synthetic_world import SyntheticWorld
 
 class TargetsNotGeneratedError(LookupError):
     pass
+
+
+class StopesNotGeneratedError(LookupError):
+    """stopes.json does not exist for the scenario."""
 
 
 class LevelsNotGeneratedError(LookupError):
@@ -159,6 +165,7 @@ class DesignService:
                 smoothed.unlink()  # rule 64: derived from the deleted decline
             self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
             self._delete_levels_artifact(scenario_id)  # rule 74 chain
+            self._delete_stopes_artifact(scenario_id)  # rule 79 chain
             self._delete_network_artifact(scenario_id)  # rule 68 chain
         return payload
 
@@ -229,6 +236,7 @@ class DesignService:
                 smoothed.unlink()  # rule 64: the old smoothed artifact is stale
             self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
             self._delete_levels_artifact(scenario_id)  # rule 74 chain
+            self._delete_stopes_artifact(scenario_id)  # rule 79 chain
             self._delete_network_artifact(scenario_id)  # rule 68 chain
         return payload
 
@@ -293,6 +301,7 @@ class DesignService:
             path.write_text(json.dumps(payload), encoding="utf-8")
             self._delete_tunnel_artifacts(scenario_id)  # rule 67: mesh is stale
             self._delete_levels_artifact(scenario_id)  # rule 74: levels are stale
+            self._delete_stopes_artifact(scenario_id)  # rule 79: stopes are stale
             self._delete_network_artifact(scenario_id)  # rule 68: network is stale
         return payload
 
@@ -353,6 +362,7 @@ class DesignService:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(serialized, encoding="utf-8")
             self._delete_network_artifact(scenario_id)  # rule 74: rebuild, never patch
+            self._delete_stopes_artifact(scenario_id)  # rule 79 chain
         return payload
 
     def levels(self, scenario_id: str) -> LevelsPayload:
@@ -361,6 +371,68 @@ class DesignService:
         if not path.is_file():
             raise LevelsNotGeneratedError(scenario_id)
         return LevelsPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+
+    # -- stopes (Phase 09, rules 75–80) --------------------------------------- #
+
+    def stopes_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / "stopes.json"
+
+    def _delete_stopes_artifact(self, scenario_id: str) -> None:
+        path = self.stopes_path(scenario_id)
+        if path.exists():
+            path.unlink()
+
+    def _stopes_input_paths(self, scenario_id: str) -> list[Path]:
+        return [
+            Path(self.store.scenario_path(scenario_id)),
+            Path(self.store.arrays_path(scenario_id)),
+            Path(self.levels_path(scenario_id)),
+        ]
+
+    def stopes_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._stopes_input_paths(scenario_id))
+
+    def generate_stopes(self, scenario_id: str) -> StopesPayload:
+        """Synchronous Phase 09 stope generation (rules 75–80): consumes the
+        validated levels artifact only, resolves the scenario mining method
+        through the explicit strategy factory (rule 78 — unsupported methods
+        fail, never silently substitute), and leaves tunnel/network untouched
+        (rule 79)."""
+        fingerprint = self.stopes_fingerprint(scenario_id)
+        levels_payload = self.levels(scenario_id)  # 409 if not generated
+        scenario, world, _ = self.evaluator(scenario_id)
+        hard_ev = DesignCostEvaluator(
+            world, scenario.design, DesignContext.crosscut(scenario.design)
+        )
+        source_revision = hashlib.sha256(
+            json.dumps(fingerprint.entries, sort_keys=True).encode()
+        ).hexdigest()[:16]
+        strategy = strategy_for(scenario.mining.method)
+        if strategy is None:
+            payload = unsupported_method_payload(scenario.mining.method, source_revision)
+        else:
+            payload = strategy.generate(
+                scenario,
+                world,
+                levels_payload.model_dump(mode="json", by_alias=True),
+                hard_ev,
+                source_revision,
+            )
+        serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
+        with self.store.lock(scenario_id):
+            if self.stopes_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            path = self.stopes_path(scenario_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(serialized, encoding="utf-8")
+        return payload
+
+    def stopes(self, scenario_id: str) -> StopesPayload:
+        self.store.get(scenario_id)
+        path = self.stopes_path(scenario_id)
+        if not path.is_file():
+            raise StopesNotGeneratedError(scenario_id)
+        return StopesPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
 
     # -- mine network (Phase 07, rules 13, 68–70) ---------------------------- #
 

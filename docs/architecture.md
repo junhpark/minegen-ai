@@ -124,8 +124,8 @@ fault is added.
     05 Ramp smoothing + revalidation   done
     06 Tunnel mesh (gravity-aligned sweep)   done
     07 MineNetwork   done
-    08 Levels & crosscuts   ← current
-    09 Stopes & mining method
+    08 Levels & crosscuts   done
+    09 Stopes & mining method   ← current & mining method
     10 4D mining sequence
     11 Communication OSP
     12 Generic sensor OSP
@@ -159,18 +159,21 @@ go under `geology`, not at the scenario root.
   `tunnel_mesh.json` (Phase 06 report, always persisted with explicit status),
   `tunnel_mesh.glb` (excavation mesh, SUCCESS only), `levels.json` (Phase 08
   typed LevelsPayload — the validated centerline artifact owning DRIFT and
-  CROSSCUT geometry, rule 71) and `network.json` (Phase 07/08 typed
+  CROSSCUT geometry, rule 71), `stopes.json` (Phase 09 typed StopesPayload —
+  planned stope prisms in the analytic orebody frame, rule 75) and `network.json` (Phase 07/08 typed
   NetworkPayload — deterministic serialization of the typed contract, never
   a raw NetworkX dump). Invalidation chain (rules 64/67/68/74):
 
       smoothed ──┬── tunnel_mesh
-                 └── levels ── network
+                 └── levels ──┬── network
+                              └── stopes
 
   Tunnel mesh and the levels branch are SIBLINGS of the smoothed centerline:
-  a new smoothed (or upstream) artifact deletes tunnel + levels + network;
-  regenerating levels deletes the network only (rebuilt, never patched) and
-  never touches the tunnel; regenerating the network or the tunnel touches
-  nothing else. Regenerating any stage deletes every downstream artifact.
+  a new smoothed (or upstream) artifact deletes tunnel + levels + network +
+  stopes; regenerating levels deletes network AND stopes (both rebuilt, never
+  patched) and never touches the tunnel; regenerating the network, tunnel or
+  stopes touches nothing else. Regenerating any stage deletes every
+  downstream artifact.
 - Long-running work (rule 60): `services/job_service.py` — in-memory
   registry + 2-worker thread pool; one job per scenario at a time. Algorithms
   emit `ProgressEvent`s through a plain callback (`design/progress.py`);

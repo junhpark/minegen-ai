@@ -307,6 +307,62 @@ export interface NetworkNode {
   stationU?: number | null
 }
 
+export interface StopeReport {
+  upperAnchorError: number
+  lowerAnchorError: number
+  hardInvalidSamples: number
+  strikePillarClearance?: number | null
+  finite: boolean
+  valid: boolean
+  failureReason: string | null
+}
+
+export interface Stope {
+  id: string
+  method: 'LONGHOLE_OPEN_STOPING'
+  stationIndex: number
+  stationU: number
+  upperLevelId: string
+  lowerLevelId: string
+  upperAccessNodeId: string
+  lowerAccessNodeId: string
+  localBounds: {
+    uMin: number
+    uMax: number
+    vMin: number
+    vMax: number
+    wMin: number
+    wMax: number
+  }
+  geometry: { vertices: number[]; triangleIndices: number[] }
+  strikeLength: number
+  downDipSpan: number
+  verticalHeight: number
+  thickness: number
+  geometricVolumeM3: number
+  tonnes: number
+  meanGradeProxy: number | null
+  report: StopeReport
+  plannedState: 'PLANNED'
+}
+
+export interface StopesPayload {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  sourceRevision: string
+  method: string
+  stopes: Stope[]
+  metrics: {
+    stopeCount: number
+    levelIntervalCount: number
+    stationsPerInterval: number
+    totalGeometricVolumeM3: number
+    totalTonnes: number
+    geometricExtractionFractionOfOrebody: number
+    weightedMeanGradeProxy: number | null
+  } | null
+}
+
 export interface LevelDevelopmentReport {
   startWeldError: number
   envelopeHardViolations: number
@@ -522,4 +578,5 @@ export interface WorldScene {
   tunnelMesh: TunnelMeshReport | null
   levels: LevelsPayload | null
   network: NetworkPayload | null
+  stopes: StopesPayload | null
 }

@@ -13,6 +13,7 @@ import type {
   SliceField,
   SlicePayload,
   SmoothedDeclinePayload,
+  StopesPayload,
   TunnelMeshReport,
   WorldScene,
   WorldStats,
@@ -105,6 +106,10 @@ export const api = {
   generateLevels: (id: string) =>
     request<LevelsPayload>(`/scenarios/${id}/design/levels`, { method: 'POST' }),
   getLevels: (id: string) => request<LevelsPayload>(`/scenarios/${id}/design/levels`),
+  /** Synchronous Phase 09 planned stopes (rules 75–80). */
+  generateStopes: (id: string) =>
+    request<StopesPayload>(`/scenarios/${id}/design/stopes`, { method: 'POST' }),
+  getStopes: (id: string) => request<StopesPayload>(`/scenarios/${id}/design/stopes`),
   /** Synchronous Phase 07 network generation (reserved /network namespace). */
   generateNetwork: (id: string) =>
     request<NetworkPayload>(`/scenarios/${id}/network/generate`, { method: 'POST' }),

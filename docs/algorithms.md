@@ -319,6 +319,34 @@ developments (220 drift pieces + 221 crosscuts), network 455 nodes / 454
 edges (13 RAMP + 220 DRIFT + 221 CROSSCUT), single component, max weld
 1.4e-14 m, every underground node at one surface path.
 
+## Phase 09 — stopes & mining method (`mining/`, rules 75–80)
+
+Stope generation goes through the explicit MiningMethodStrategy factory:
+v0.1 implements LONGHOLE_OPEN_STOPING; every other reserved method returns a
+typed UNSUPPORTED_METHOD failure — never a silent longhole substitute
+(rule 78). The generator consumes the validated Phase 08 `levels.json` ONLY
+(the station lattice is never recomputed): for every adjacent completed
+level pair and station index, the paired CROSSCUT terminals — gated onto the
+footwall face and station plane within 1e-6 m — anchor an orebody-aligned
+rectangular prism in the analytic local frame: `u ∈ stationU ±
+stope_length/2`, `v` between the two terminal local-v coordinates, `w = ±
+half_thickness` (rules 75–76). Missing/duplicate/mismatched pairs FAIL the
+artifact; required stopes are never silently skipped.
+
+Validation per stope (rule 77): positive dimensions, bounds inside the
+analytic extent, hard world/terrain/cover/zone sampling over a deterministic
+≤5 m prism lattice (crosscut context: the ore volume itself is legal),
+finite metrics, strike pillar ≥ `minimum_pillar` between neighbours plus the
+Phase 08 end-pillar contract; vertically adjacent stopes share their
+boundary face by construction. `meanGradeProxy` samples the existing
+BlockModel ore-flagged grades on a coarse interior lattice — a deterministic
+planning proxy, never a reserve/resource claim. Measured (default): 204
+stopes = 12 intervals × 17 stations, 1.95 Mm³ / 5.47 Mt, extraction fraction
+0.775, weighted grade proxy ≈ 4.01, exact 5 m strike pillars, all anchors ≤
+1e-6 m. Stopes are production volumes — never MineNetwork edges; the two
+STOPE_ACCESS anchors are the link (rule 76), and Phase 10 owns temporal
+states beyond `plannedState = PLANNED` (rule 80).
+
 The volumetric level-development mesh is deliberately DEFERRED: independent
 capped tubes overlapped at T-junctions would leave false internal walls at
 every crosscut mouth; junction openings belong to a later mesh/walkthrough
