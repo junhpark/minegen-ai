@@ -22,6 +22,7 @@ from minegen.world.synthetic_world import generate_world
 
 
 def _setup(tmp_path, **scenario_overrides):  # type: ignore[no-untyped-def]
+    tmp_path.mkdir(parents=True, exist_ok=True)
     store = ScenarioStore(root=tmp_path)
     sc = store.get(store.create(ScenarioCreate(**scenario_overrides)).id)
     world = generate_world(sc)
@@ -187,3 +188,56 @@ def test_levels_payload_determinism(tmp_path) -> None:  # type: ignore[no-untype
     assert m.total_crosscut_length3d == pytest.approx(
         math.fsum(d.length3d for d in a.developments if d.kind is DevelopmentKind.CROSSCUT)
     )
+
+
+def test_minimum_surface_cover_enforced_on_developments(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Blocker-1 regression: a development centerline below terrain but with
+    LESS than minimum_surface_cover must FAIL — Phase 08 has no portal
+    transition, so envelope masks alone (which skip cover) are not enough."""
+    sc, world, builder = _setup(
+        tmp_path,
+        terrain={"gridSpacing": 10, "baseElevation": 100, "relief": 0, "octaves": 1},
+        design={"minimumSurfaceCover": 80.0},
+    )
+    # entry ~40 m below the flat 100 m terrain: below terrain, cover 60 < 80
+    seg = _entry_segment(world, sc, u_entry=0.0, level_z=60.0)
+    payload = builder.build(_smoothed(seg), "rev")
+    assert payload.status == "FAILED"
+    assert payload.failure_reason is not None and "centerline" in payload.failure_reason
+    bad = [d for d in payload.developments if not d.report.valid]
+    assert bad and all(d.report.centerline_invalid_samples > 0 for d in bad)
+    assert all(d.report.field_cost == 0.0 for d in bad)  # inf never laundered
+    # identical geometry with no cover demand passes
+    sc2, world2, builder2 = _setup(
+        tmp_path / "b",
+        terrain={"gridSpacing": 10, "baseElevation": 100, "relief": 0, "octaves": 1},
+    )
+    ok = builder2.build(_smoothed(_entry_segment(world2, sc2, 0.0, 60.0)), "rev")
+    assert ok.status == "SUCCESS", ok.failure_reason
+
+
+def test_empty_station_lattice_fails_explicitly(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Blocker-4 regression: a strike extent too short for even one planned
+    stope-access station is FAILED, never SUCCESS-with-zero-crosscuts."""
+    sc, world, builder = _setup(
+        tmp_path,
+        orebody={
+            "orebodyType": "TABULAR",
+            "center": {"x": 200.0, "y": 100.0, "z": 0.0},
+            "strikeDeg": 35.0,
+            "dipDeg": 70.0,
+            "length": 36.0,
+            "height": 350.0,
+            "thickness": 12.0,
+        },
+    )
+    from minegen.world.orebody import TabularOrebody as _T
+
+    ob = world.orebody
+    assert isinstance(ob, _T)
+    assert builder.station_us(ob) == []
+    seg = _entry_segment(world, sc, u_entry=0.0, level_z=40.0)
+    payload = builder.build(_smoothed(seg), "rev")
+    assert payload.status == "FAILED"
+    assert payload.developments == [] and payload.levels == []
+    assert payload.failure_reason is not None and "stope-access station" in payload.failure_reason

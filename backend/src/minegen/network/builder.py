@@ -142,13 +142,17 @@ def _surface_path_counts(
 
 
 class MineNetworkBuilder:
-    """Builds the Phase 07 RAMP subgraph from the smoothed decline payload.
+    """Builds the MineNetwork from its owning centerline artifacts: the
+    Phase 05 RAMP centerlines plus (when provided) the Phase 08
+    level-development centerlines (rule 73).
 
-    Nodes: one PORTAL plus one LEVEL_ENTRY per completed level, with
-    deterministic namespaced IDs (``PORTAL``, ``LEVEL_ENTRY:L01``, …).
-    Coordinates come from the effective centerline endpoints — Phase 05
-    endpoint preservation makes the last point the exact selected access
-    target, keeping rule 13 clean (never re-read from targets.json)."""
+    Nodes carry deterministic namespaced IDs (``PORTAL``,
+    ``LEVEL_ENTRY:L01``, ``JUNCTION:L01:S+03``, ``STOPE_ACCESS:L01:S+03``).
+    Coordinates come from the artifact centerline endpoints — Phase 05
+    endpoint preservation makes the ramp arrival the exact selected access
+    target, keeping rule 13 clean (never re-read from targets.json). Edge
+    scalars are always RECOMPUTED from the owning centerline; declared
+    development scalars are cross-checked, never trusted."""
 
     def __init__(self, scenario: Scenario) -> None:
         self.scenario = scenario
@@ -259,9 +263,17 @@ class MineNetworkBuilder:
         if levels_payload is not None:
             entry_by_level = {n.level_id: n for n in nodes if n.type is NodeType.LEVEL_ENTRY}
             developments = levels_payload["developments"]
+            # station index lookup per level (crosscuts carry u AND k), so
+            # JUNCTION ids are station-index based — stable under any pitch
+            station_index: dict[tuple[str, float], int] = {
+                (d["levelId"], float(d["stationU"])): int(d["stationIndex"])
+                for d in developments
+                if d["kind"] == "CROSSCUT"
+            }
             # per level: register a node for every breakpoint u (stations +
             # entry); a station within tolerance of the LEVEL_ENTRY reuses it
             node_by_key: dict[tuple[str, float], NetworkNode] = {}
+            max_edge_len_err = 0.0
 
             def dev_pts(dev: dict[str, Any]) -> FloatArray:
                 return np.asarray(dev["centerline"]["points"], dtype=np.float64).reshape(-1, 3)
@@ -280,12 +292,23 @@ class MineNetworkBuilder:
                             float(np.linalg.norm(np.asarray(existing.position) - pos)),
                         )
                         return existing
+                k: int | None = None
+                for (lvl, su), idx_k in station_index.items():
+                    if lvl == level_id and abs(su - u) <= STATION_MERGE_TOLERANCE:
+                        k = idx_k
+                        break
+                node_id = (
+                    f"{NodeType.JUNCTION.value}:{level_id}:S{k:+03d}"
+                    if k is not None
+                    else f"{NodeType.JUNCTION.value}:{level_id}:U{u:+08.1f}"
+                )
                 node = NetworkNode(
-                    id=f"{NodeType.JUNCTION.value}:{level_id}:U{u:+08.1f}",
+                    id=node_id,
                     type=NodeType.JUNCTION,
                     position=(float(pos[0]), float(pos[1]), float(pos[2])),
                     level_id=level_id,
                     elevation=float(pos[2]),
+                    station_index=k,
                     station_u=u,
                 )
                 node_by_key[(level_id, u)] = node
@@ -296,7 +319,11 @@ class MineNetworkBuilder:
             for idx, dev in enumerate(developments):
                 pts = dev_pts(dev)
                 level_id = dev["levelId"]
-                length_3d = float(dev["length3d"])
+                # rule 13 (blocker 2): edge scalars are RECOMPUTED from the
+                # owning centerline; the declared development scalar is only
+                # cross-checked, never trusted
+                length_3d, mean_signed, max_abs = _polyline_metrics(pts)
+                max_edge_len_err = max(max_edge_len_err, abs(length_3d - float(dev["length3d"])))
                 if dev["kind"] == "DRIFT":
                     a = breakpoint_node(level_id, float(dev["fromU"]), pts[0])
                     b = breakpoint_node(level_id, float(dev["toU"]), pts[-1])
@@ -306,8 +333,8 @@ class MineNetworkBuilder:
                         from_node=a.id,
                         to_node=b.id,
                         length3d=length_3d,
-                        mean_gradient_signed=float(dev["meanGradientSigned"]),
-                        max_abs_gradient=float(dev["maxAbsGradient"]),
+                        mean_gradient_signed=mean_signed,
+                        max_abs_gradient=max_abs,
                         cross_section=cross_section,
                         effective_source="ANALYTIC",
                         field_cost=float(dev["report"]["fieldCost"]),
@@ -336,8 +363,8 @@ class MineNetworkBuilder:
                         from_node=a.id,
                         to_node=terminal.id,
                         length3d=length_3d,
-                        mean_gradient_signed=float(dev["meanGradientSigned"]),
-                        max_abs_gradient=float(dev["maxAbsGradient"]),
+                        mean_gradient_signed=mean_signed,
+                        max_abs_gradient=max_abs,
                         cross_section=cross_section,
                         effective_source="ANALYTIC",
                         field_cost=float(dev["report"]["fieldCost"]),
@@ -356,16 +383,23 @@ class MineNetworkBuilder:
         undirected = graph.to_undirected(as_view=True)
         components = nx.number_connected_components(undirected)
         connected = components == 1
+        edge_len_err = max_edge_len_err if levels_payload is not None else 0.0
         validation = NetworkValidation(
             max_node_sync_error=max_weld,
+            max_edge_length_sync_error=edge_len_err,
             sync_tolerance=SYNC_TOLERANCE,
-            synchronized=max_weld <= SYNC_TOLERANCE,
+            synchronized=max_weld <= SYNC_TOLERANCE and edge_len_err <= SYNC_TOLERANCE,
             connected=connected,
             connected_components=components,
         )
-        if not validation.synchronized:
+        if max_weld > SYNC_TOLERANCE:
             failure = (
                 f"centerline weld error {max_weld:.3e} m exceeds {SYNC_TOLERANCE:.0e} (rule 68)"
+            )
+        elif edge_len_err > SYNC_TOLERANCE:
+            failure = (
+                f"declared development length diverges from its owning centerline by "
+                f"{edge_len_err:.3e} m (> {SYNC_TOLERANCE:.0e}, rule 13)"
             )
         elif not connected:
             failure = f"network is not a single physical component ({components})"

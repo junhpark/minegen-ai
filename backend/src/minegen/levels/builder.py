@@ -133,11 +133,23 @@ class LevelDevelopmentBuilder:
         hard, above = ev.envelope_masks(boundary)
         return _EnvelopeCheck(hard=int(hard.sum()), above=int(above.sum()))
 
-    def _field_cost(self, ev: DesignCostEvaluator, points: FloatArray) -> float:
+    def _centerline_and_cost(
+        self, ev: DesignCostEvaluator, points: FloatArray
+    ) -> tuple[int, float]:
+        """(invalid centerline samples, field cost). Phase 08 has no
+        Phase 04-style portal transition, so EVERY development centerline
+        must independently satisfy its DesignContext hard constraints —
+        including ``minimum_surface_cover``, which the envelope masks
+        intentionally do not apply (blocker 1). The field cost is only
+        defined for a fully valid centerline; invalid +inf costs are never
+        silently converted to zero and carried on."""
         res = ev.evaluate_points(points)
+        invalid = int((~res.valid).sum())
+        if invalid > 0:
+            return invalid, 0.0
         arc = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))])
-        c = np.nan_to_num(res.total_cost_per_m, posinf=0.0)
-        return float(np.dot(0.5 * (c[1:] + c[:-1]), np.diff(arc)))
+        c = res.total_cost_per_m
+        return 0, float(np.dot(0.5 * (c[1:] + c[:-1]), np.diff(arc)))
 
     # -- build --------------------------------------------------------------- #
 
@@ -180,6 +192,14 @@ class LevelDevelopmentBuilder:
         drift_dir /= float(np.linalg.norm(drift_dir))
         stations = self.station_us(ob)
         pitch = self.station_pitch()
+        if not stations:
+            margin = self.scenario.mining.stope_length / 2.0 + self.scenario.mining.minimum_pillar
+            return _failed(
+                source_revision,
+                "orebody strike extent cannot accommodate one planned "
+                f"stope-access station (half-length {ob.half_length:g} m < "
+                f"stope_length/2 + minimum_pillar = {margin:g} m, rule 72)",
+            )
 
         developments: list[Development] = []
         summaries: list[LevelSummary] = []
@@ -217,13 +237,15 @@ class LevelDevelopmentBuilder:
                 u0, u1 = breakpoints[i], breakpoints[i + 1]
                 pts = _sample_line(drift_point(u0), drift_point(u1))
                 length_3d, mean_signed, max_abs = _polyline_stats(pts)
+                cl_invalid, field_cost = self._centerline_and_cost(self.drift_ev, pts)
                 env = self._envelope(self.drift_ev, pts, drift_dir)
-                valid = env.hard == 0 and env.above == 0
+                valid = cl_invalid == 0 and env.hard == 0 and env.above == 0
                 if not valid:
                     level_valid = False
                     fail(
-                        f"{level_id} drift piece [{u0:.1f}, {u1:.1f}] violates the "
-                        f"hard excavation envelope ({env.hard} hard, {env.above} above-terrain)"
+                        f"{level_id} drift piece [{u0:.1f}, {u1:.1f}] violates hard "
+                        f"constraints ({cl_invalid} centerline, {env.hard} envelope, "
+                        f"{env.above} above-terrain)"
                     )
                 developments.append(
                     Development(
@@ -238,11 +260,14 @@ class LevelDevelopmentBuilder:
                         max_abs_gradient=max_abs,
                         report=DevelopmentReport(
                             start_weld_error=0.0,
+                            centerline_invalid_samples=cl_invalid,
                             envelope_hard_violations=env.hard,
                             envelope_above_terrain=env.above,
-                            field_cost=self._field_cost(self.drift_ev, pts),
+                            field_cost=field_cost,
                             valid=valid,
-                            failure_reason=None if valid else "ENVELOPE",
+                            failure_reason=None
+                            if valid
+                            else ("CENTERLINE" if cl_invalid else "ENVELOPE"),
                         ),
                     )
                 )
@@ -265,6 +290,7 @@ class LevelDevelopmentBuilder:
                 interior = int(np.sum(sdf_pre < -1e-9))
                 # start weld against the drift breakpoint (exact by construction)
                 weld = float(np.linalg.norm(start - drift_point(u_s)))
+                cl_invalid, field_cost = self._centerline_and_cost(self.crosscut_ev, pts)
                 env = self._envelope(self.crosscut_ev, pts, toward)
                 length_3d, mean_signed, max_abs = _polyline_stats(pts)
                 if reason is None and abs(sdf_end) > TERMINAL_SDF_TOLERANCE:
@@ -273,6 +299,8 @@ class LevelDevelopmentBuilder:
                     reason = "pre-terminal centerline passes through the orebody"
                 if reason is None and weld > WELD_TOLERANCE:
                     reason = f"start weld error {weld:.3e} m"
+                if reason is None and cl_invalid > 0:
+                    reason = f"{cl_invalid} centerline samples violate hard constraints"
                 if reason is None and (env.hard > 0 or env.above > 0):
                     reason = (
                         f"hard excavation envelope ({env.hard} hard, {env.above} above-terrain)"
@@ -295,11 +323,12 @@ class LevelDevelopmentBuilder:
                         max_abs_gradient=max_abs,
                         report=DevelopmentReport(
                             start_weld_error=weld,
+                            centerline_invalid_samples=cl_invalid,
                             envelope_hard_violations=env.hard,
                             envelope_above_terrain=env.above,
                             terminal_sdf=abs(sdf_end),
                             interior_breach_samples=interior,
-                            field_cost=self._field_cost(self.crosscut_ev, pts),
+                            field_cost=field_cost,
                             valid=reason is None,
                             failure_reason=reason,
                         ),

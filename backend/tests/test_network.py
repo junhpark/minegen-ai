@@ -345,3 +345,32 @@ def test_failed_levels_artifact_never_yields_a_network(tmp_path) -> None:  # typ
     assert not res.success
     assert res.payload.nodes == [] and res.payload.edges == []
     assert res.payload.failure_reason is not None and "levels" in res.payload.failure_reason
+
+
+def test_corrupted_declared_length_fails_network(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Blocker-2 regression: network edge scalars are recomputed from the
+    owning centerline; a declared length3d diverging from the geometry by
+    +1 m must FAIL the network (rule 13)."""
+    store = ScenarioStore(root=tmp_path)
+    sc = _scenario(store)
+    p0 = np.array([0.0, 0.0, 100.0])
+    p1 = np.array([0.0, 100.0, 88.0])
+    smoothed = _payload(_segment("L01", p0, p1))
+    levels = _levels_payload_for(p1)
+    ok = MineNetworkBuilder(sc).build(smoothed, "rev", levels_payload=levels)
+    assert ok.success and ok.payload.validation is not None
+    assert ok.payload.validation.max_edge_length_sync_error <= 1e-6
+
+    corrupted = json.loads(json.dumps(levels))
+    corrupted["developments"][0]["length3d"] += 1.0  # centerline unchanged
+    res = MineNetworkBuilder(sc).build(smoothed, "rev", levels_payload=corrupted)
+    assert not res.success
+    assert res.payload.validation is not None
+    assert res.payload.validation.max_edge_length_sync_error == pytest.approx(1.0)
+    assert res.payload.validation.synchronized is False
+    assert (
+        res.payload.failure_reason is not None and "owning centerline" in res.payload.failure_reason
+    )
+    # the recomputed edge scalar still reflects the true geometry
+    drift = next(e for e in res.payload.edges if e.id == "DRIFT:L01:00")
+    assert drift.length3d == pytest.approx(40.0)

@@ -9,7 +9,6 @@ import { fmtMeters } from '@/utils/format'
 import type {
   DeclinePayload,
   LevelsPayload,
-  NetworkPayload,
   SmoothedDeclinePayload,
   TunnelMeshReport,
 } from '@/types/scene'
@@ -36,6 +35,8 @@ export function DesignPanel() {
         decline: null,
         smoothedDecline: null,
         tunnelMesh: null,
+        levels: null,
+        network: null,
       })
       setLayerVisible('accessTargets', true)
     },
@@ -68,6 +69,8 @@ export function DesignPanel() {
         decline: rec.result as DeclinePayload,
         smoothedDecline: null,
         tunnelMesh: null,
+        levels: null,
+        network: null,
       })
       setLayerVisible('rawSearchPath', true)
     }
@@ -99,9 +102,12 @@ export function DesignPanel() {
       scene &&
       scene.smoothedDecline !== rec.result
     ) {
+      // rule 74: a new smoothed artifact invalidates tunnel + levels + network
       setScene({
         ...scene,
         smoothedDecline: rec.result as SmoothedDeclinePayload,
+        levels: null,
+        network: null,
         tunnelMesh: null,
       })
       setLayerVisible('smoothedDecline', true)
@@ -144,31 +150,23 @@ export function DesignPanel() {
     },
     onSuccess: (payload: LevelsPayload) => {
       if (!scene) return
+      // rule 74: levels regeneration invalidates the network only (tunnel kept)
       setScene({ ...scene, levels: payload, network: null })
-      setNetwork(null)
       setLayerVisible('levels', true)
       setLayerVisible('crosscuts', true)
     },
   })
 
-  // Phase 07 network: synchronous generation, report-only display (rule 69/70)
-  const [network, setNetwork] = useState<NetworkPayload | null>(null)
-  // Stale-state guard (rule 68): the backend deletes network.json whenever a
-  // new smoothed/upstream artifact appears, so the displayed report must be
-  // cleared when the scenario changes or the Phase 05 artifact changes.
-  // Tunnel regeneration keeps the SAME smoothedDecline reference (siblings),
-  // so this effect deliberately does not fire for it.
-  const scenarioId = scene?.scenarioId ?? null
-  useEffect(() => {
-    setNetwork(null)
-  }, [scenarioId, smoothed])
+  // Phase 07/08 network: the scene manifest is the single source of truth —
+  // the backend deletes network.json on upstream invalidation, the manifest
+  // reload restores it, and the setScene calls above mirror rule 74 exactly.
+  const network = scene?.network ?? null
   const generateNetwork = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('smooth the decline first')
       return api.generateNetwork(scene.scenarioId)
     },
     onSuccess: (payload) => {
-      setNetwork(payload)
       if (scene) setScene({ ...scene, network: payload })
       setLayerVisible('network', true)
     },
@@ -533,7 +531,7 @@ export function DesignPanel() {
             <div className="mt-1 text-danger">{network.failureReason}</div>
           )}
           <div className="mt-1 text-mute">
-            RAMP subgraph of the effective centerline (rules 68–70)
+            RAMP + DRIFT + CROSSCUT graph rebuilt from smoothed + levels (rules 68–74)
           </div>
         </div>
       ) : null}

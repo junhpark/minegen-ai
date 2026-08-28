@@ -30,6 +30,7 @@ class DevelopmentReport(ApiModel):
     required development fails the artifact, never silently omitted."""
 
     start_weld_error: float
+    centerline_invalid_samples: int = 0  # blocker-1 gate: hard-context validity
     envelope_hard_violations: int
     envelope_above_terrain: int
     terminal_sdf: float | None = None  # crosscut only: |sdf| at first contact

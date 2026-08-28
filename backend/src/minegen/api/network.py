@@ -2,7 +2,8 @@
 
 The reserved ``/scenarios/{id}/network`` namespace. Generation is
 SYNCHRONOUS: rule 60 reserves async jobs for long-running design operations,
-and the RAMP subgraph (14 nodes / 13 edges on the default scenario) is tiny.
+and the full RAMP + DRIFT + CROSSCUT graph rebuild (455 nodes / 454 edges on
+the default scenario) completes in a few seconds.
 """
 
 from __future__ import annotations

@@ -100,6 +100,7 @@ class NetworkMetrics(ApiModel):
 
 class NetworkValidation(ApiModel):
     max_node_sync_error: float
+    max_edge_length_sync_error: float = 0.0  # recomputed vs declared (rule 13)
     sync_tolerance: float
     synchronized: bool
     connected: bool

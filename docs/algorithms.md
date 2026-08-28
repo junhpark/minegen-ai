@@ -282,8 +282,9 @@ operations); fingerprint covers `scenario.json` + `decline_smoothed.json`;
 the network and the tunnel mesh are siblings — neither invalidates the
 other, a new smoothed/upstream artifact deletes both (rule 68).
 
-Measured (default 13-level scenario): 14 nodes, 13 RAMP edges, total ramp
-length = smoothed effective length, all `independentSurfacePaths = 1`.
+Measured (default 13-level scenario, Phase 07 RAMP-only baseline —
+superseded by the Phase 08 topology below): 14 nodes, 13 RAMP edges, all
+`independentSurfacePaths = 1`.
 ## Phase 08 — levels & crosscuts (`levels/builder.py`, rules 71–74)
 
 Deterministic analytic geometry, no path search. Per completed level, the

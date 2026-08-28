@@ -386,9 +386,10 @@ class DesignService:
         return InputFingerprint.capture(self._network_input_paths(scenario_id))
 
     def generate_network(self, scenario_id: str) -> NetworkPayload:
-        """Synchronous (rule 60 reserves async jobs for long-running design
-        operations; the RAMP subgraph is tiny). Sibling of the tunnel mesh:
-        neither derivation invalidates the other (rule 68)."""
+        """Synchronous full rebuild from smoothed + levels (rule 74: never
+        patched from a stale artifact; rule 60 reserves async jobs for
+        long-running operations). Sibling branch of the tunnel mesh: neither
+        invalidates the other (rule 68)."""
         fingerprint = self.network_fingerprint(scenario_id)
         smoothed_payload = self.smoothed(scenario_id)  # 409 if not generated
         levels_payload = self.levels(scenario_id)  # 409 if not generated (rule 74)
