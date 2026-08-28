@@ -5,13 +5,14 @@ import type {
   AccessTargetsPayload,
   CostEvaluationRow,
   DeclinePayload,
-  SmoothedDeclinePayload,
-  TunnelMeshReport,
   JobRecord,
   JobSubmission,
+  NetworkPayload,
   SliceAxis,
   SliceField,
   SlicePayload,
+  SmoothedDeclinePayload,
+  TunnelMeshReport,
   WorldScene,
   WorldStats,
 } from '@/types/scene'
@@ -99,6 +100,10 @@ export const api = {
   submitTunnel: (id: string) =>
     request<JobSubmission>(`/scenarios/${id}/design/tunnel`, { method: 'POST' }),
   getTunnel: (id: string) => request<TunnelMeshReport>(`/scenarios/${id}/design/tunnel`),
+  /** Synchronous Phase 07 network generation (reserved /network namespace). */
+  generateNetwork: (id: string) =>
+    request<NetworkPayload>(`/scenarios/${id}/network/generate`, { method: 'POST' }),
+  getNetwork: (id: string) => request<NetworkPayload>(`/scenarios/${id}/network`),
   evaluateCost: (id: string, points: [number, number, number][]) =>
     request<{ count: number; results: CostEvaluationRow[] }>(
       `/scenarios/${id}/design/cost/evaluate`,

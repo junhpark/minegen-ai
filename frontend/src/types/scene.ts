@@ -296,6 +296,64 @@ export interface TunnelSegmentSummary {
   ringIntervals: number
 }
 
+export interface NetworkNode {
+  id: string
+  type: 'PORTAL' | 'LEVEL_ENTRY' | 'JUNCTION' | 'STOPE_ACCESS'
+  position: [number, number, number]
+  levelId?: string
+  candidateId?: string
+  elevation?: number
+}
+
+export interface NetworkEdge {
+  id: string
+  type: 'RAMP' | 'DRIFT' | 'CROSSCUT' | 'RAISE' | 'SHAFT'
+  fromNode: string
+  toNode: string
+  length3d: number
+  meanGradientSigned: number
+  maxAbsGradient: number
+  crossSection: { width: number; height: number; analyticArea: number }
+  effectiveSource: 'SMOOTHED' | 'RAW_FALLBACK'
+  fieldCost: number
+  geometryRef: { artifact: string; segmentIndex: number }
+  simulation: Record<string, unknown>
+}
+
+export interface NetworkPayload {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  sourceRevision: string
+  nodes: NetworkNode[]
+  edges: NetworkEdge[]
+  metrics: {
+    nodeCount: number
+    edgeCount: number
+    levelCount: number
+    totalRampLength3d: number
+    minimumElevation: number
+    verticalDropFromPortal: number
+  }
+  validation: {
+    maxNodeSyncError: number
+    syncTolerance: number
+    synchronized: boolean
+    connected: boolean
+    connectedComponents: number
+  }
+  surfacePathAdvisory: {
+    criterion: string
+    requiredPaths: number
+    advisoryOnly: boolean
+    perNode: {
+      nodeId: string
+      levelId: string
+      independentSurfacePaths: number
+      meetsCriterion: boolean
+    }[]
+  }[]
+}
+
 export interface TunnelMeshReport {
   status: 'SUCCESS' | 'FAILED'
   failureReason: string | null

@@ -454,6 +454,32 @@ cleverness.
     artifact-revision metadata. A new Phase 05 artifact invalidates both
     Phase 06 files.
 
+68. Centerline–network synchronization. Every physical MineNetwork edge
+    is derived from the validated centerline artifact that owns that
+    development and stores only a geometry reference plus scalar
+    attributes; it never owns or duplicates the polyline. In Phase 07,
+    all RAMP edges reference Phase 05 ``effectiveCenterline`` segments.
+    Tunnel mesh and MineNetwork are sibling derivations of the same
+    centerline. Future DRIFT/CROSSCUT/RAISE/SHAFT edges follow the same
+    contract using their own validated centerline artifacts.
+
+69. MineNetwork edge direction and topology. MineNetwork is a
+    ``networkx.MultiDiGraph``. A physical development edge has one
+    canonical direction following its centerline orientation; this
+    direction does not imply one-way physical travel. Physical
+    connectivity, redundancy, and surface-egress topology are evaluated
+    on the undirected projection unless a later simulation explicitly
+    defines directional traversal. Node and edge IDs, ordering, geometry
+    references, and persisted payloads are deterministic.
+
+70. Surface-path redundancy advisory. Phase 07 reports the number of
+    edge-disjoint physical paths from every underground access node to
+    any PORTAL-type surface node. The v0.1 single-decline topology is
+    expected to provide one such path. A two-path criterion may be
+    reported as a design advisory, but Phase 07 does not claim statutory
+    or regulatory compliance and the advisory does not invalidate an
+    otherwise valid network.
+
 
 ## Persistence (v0.1)
 

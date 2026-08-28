@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from minegen import __version__
-from minegen.api import design, health, jobs, scenarios, world
+from minegen.api import design, health, jobs, network, scenarios, world
 from minegen.config import get_settings
 
 API_PREFIX = "/api/v1"
@@ -73,6 +73,7 @@ def create_app() -> FastAPI:
     api.include_router(scenarios.router)
     api.include_router(world.router)
     api.include_router(design.router)
+    api.include_router(network.router)
     api.include_router(jobs.router)
     app.include_router(api)
     app.include_router(jobs.ws_router)

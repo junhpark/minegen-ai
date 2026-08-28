@@ -66,6 +66,7 @@ meters (`docs/coordinate-system.md`). Schemas live in
 
 ## Planned
     GET  /api/v1/scenarios/{id}/design                  Phase 04+
+    POST /api/v1/scenarios/{id}/network/generate        Phase 07 (synchronous)
     GET  /api/v1/scenarios/{id}/network                 Phase 07
     POST /api/v1/scenarios/{id}/sequence/generate       Phase 10
     GET  /api/v1/scenarios/{id}/timeline                Phase 10

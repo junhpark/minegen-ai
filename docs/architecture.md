@@ -121,9 +121,9 @@ fault is added.
     03 Design cost evaluator & level access targets   done
     04 Chained Hybrid-A* decline generator (raw path)   done
     04.5 Async jobs + progress + CI                      done
-    05 Ramp smoothing + revalidation   ← next
-    06 Tunnel mesh (gravity-aligned sweep)
-    07 MineNetwork
+    05 Ramp smoothing + revalidation   done
+    06 Tunnel mesh (gravity-aligned sweep)   done
+    07 MineNetwork   ← current
     08 Levels & crosscuts
     09 Stopes & mining method
     10 4D mining sequence
@@ -158,7 +158,10 @@ go under `geology`, not at the scenario root.
   `derived/` now holds `targets.json`, `decline.json`, `decline_smoothed.json`,
   `tunnel_mesh.json` (Phase 06 report, always persisted with explicit status)
   and `tunnel_mesh.glb` (excavation mesh, SUCCESS only). Invalidation chain:
-  world → targets → decline → smoothed → tunnel mesh — regenerating any stage
+  world → targets → decline → smoothed → {tunnel mesh, network} — the tunnel
+  mesh and the MineNetwork are SIBLING derivations of the smoothed
+  centerline (rule 68): regenerating one never touches the other, while a
+  new smoothed (or upstream) artifact deletes both. Regenerating any stage
   deletes every downstream artifact (rules 64/67).
 - Long-running work (rule 60): `services/job_service.py` — in-memory
   registry + 2-worker thread pool; one job per scenario at a time. Algorithms
