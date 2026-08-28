@@ -6,7 +6,12 @@ import { PanelSection } from '@/components/layout/PanelSection'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { fmtMeters } from '@/utils/format'
-import type { DeclinePayload, SmoothedDeclinePayload, TunnelMeshReport } from '@/types/scene'
+import type {
+  DeclinePayload,
+  NetworkPayload,
+  SmoothedDeclinePayload,
+  TunnelMeshReport,
+} from '@/types/scene'
 
 /** Phase 03: access-target generation. Values are echoed from the API. */
 export function DesignPanel() {
@@ -127,7 +132,31 @@ export function DesignPanel() {
       setLayerVisible('tunnelMesh', true)
     }
   }, [tunnelJob.data, scene, setScene, setLayerVisible])
-  const err = generate.error ?? generateDecline.error ?? smoothDecline.error ?? generateTunnel.error
+  // Phase 07 network: synchronous generation, report-only display (rule 69/70)
+  const [network, setNetwork] = useState<NetworkPayload | null>(null)
+  // Stale-state guard (rule 68): the backend deletes network.json whenever a
+  // new smoothed/upstream artifact appears, so the displayed report must be
+  // cleared when the scenario changes or the Phase 05 artifact changes.
+  // Tunnel regeneration keeps the SAME smoothedDecline reference (siblings),
+  // so this effect deliberately does not fire for it.
+  const scenarioId = scene?.scenarioId ?? null
+  useEffect(() => {
+    setNetwork(null)
+  }, [scenarioId, smoothed])
+  const generateNetwork = useMutation({
+    mutationFn: async () => {
+      if (!scene) throw new Error('smooth the decline first')
+      return api.generateNetwork(scene.scenarioId)
+    },
+    onSuccess: (payload) => setNetwork(payload),
+  })
+
+  const err =
+    generate.error ??
+    generateDecline.error ??
+    smoothDecline.error ??
+    generateTunnel.error ??
+    generateNetwork.error
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
 
@@ -382,6 +411,57 @@ export function DesignPanel() {
           )}
           <div className="mt-1 text-mute">
             gravity-aligned sweep of the effective centerline (rules 65–67)
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => generateNetwork.mutate()}
+        disabled={
+          !smoothed || smoothed.status === 'FAILED' || generateNetwork.isPending || smoothRunning
+        }
+        className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {generateNetwork.isPending
+          ? 'Building network…'
+          : network
+            ? 'Regenerate network'
+            : 'Generate network (Phase 07)'}
+      </button>
+      {network ? (
+        <div className="readout mt-2 text-[11px]">
+          <div className="flex justify-between text-chalk-dim">
+            <span className={network.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+              {network.status}
+            </span>
+            {network.status === 'SUCCESS' && network.metrics && network.validation ? (
+              <span>
+                {network.metrics.nodeCount} nodes · {network.metrics.edgeCount} edges ·{' '}
+                {network.validation.connected ? (
+                  <span className="text-lamp">connected</span>
+                ) : (
+                  <span className="text-danger">split</span>
+                )}
+              </span>
+            ) : null}
+          </div>
+          {network.status === 'SUCCESS' && network.metrics ? (
+            <div className="mt-1 flex justify-between text-mute">
+              <span>{network.metrics.totalRampLength3d.toFixed(0)} m ramps</span>
+              <span>drop {network.metrics.verticalDropFromPortal.toFixed(0)} m</span>
+              <span>
+                surface paths{' '}
+                {network.surfacePathAdvisory[0]
+                  ? `${String(Math.min(...network.surfacePathAdvisory[0].perNode.map((e) => e.independentSurfacePaths)))}/${String(network.surfacePathAdvisory[0].requiredPaths)} advisory`
+                  : '—'}
+              </span>
+            </div>
+          ) : (
+            <div className="mt-1 text-danger">{network.failureReason}</div>
+          )}
+          <div className="mt-1 text-mute">
+            RAMP subgraph of the effective centerline (rules 68–70)
           </div>
         </div>
       ) : null}

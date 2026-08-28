@@ -63,10 +63,15 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      {"type":"error","code":"JOB_NOT_FOUND"}
     GET  …/scene                                     includes "accessTargets", "decline" and
                                                      "smoothedDecline" (or null)
+    POST /api/v1/scenarios/{id}/network/generate     Phase 07: synchronous MineNetwork build
+                                                     (typed NetworkPayload; 409 SMOOTHED_NOT_GENERATED
+                                                     without a Phase 05 artifact)
+    GET  /api/v1/scenarios/{id}/network              Phase 07: persisted typed NetworkPayload
+                                                     (404 NETWORK_NOT_GENERATED after upstream
+                                                     invalidation)
 
 ## Planned
     GET  /api/v1/scenarios/{id}/design                  Phase 04+
-    GET  /api/v1/scenarios/{id}/network                 Phase 07
     POST /api/v1/scenarios/{id}/sequence/generate       Phase 10
     GET  /api/v1/scenarios/{id}/timeline                Phase 10
     POST /api/v1/scenarios/{id}/infrastructure/optimize Phase 11

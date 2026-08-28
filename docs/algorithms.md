@@ -247,7 +247,43 @@ See the Phase 05 completion report: all segments SMOOTHED with 0 repairs and
 field-cost delta ≤ +0.1 %, endpoint/heading errors 0.
 
 ## Phase 06 — gravity-aligned tunnel sweep (pending)
-## Phase 07 — MineNetwork                  (pending)
+## Phase 07 — MineNetwork (`network/builder.py`, rules 13, 68–70)
+
+The RAMP subgraph derived from the Phase 05 EFFECTIVE centerline — never
+from the mesh. Nodes: one `PORTAL` plus one `LEVEL_ENTRY:<levelId>` per
+completed level; coordinates are the effective-centerline endpoints (Phase
+05 endpoint preservation makes the last point the exact selected access
+target, so `targets.json` is never re-read). Edges: one physical `RAMP`
+per effective segment with scalar attributes only — `length3d`,
+`meanGradientSigned` (Δz / horizontal length in the canonical
+portal→deeper direction, negative descending), `maxAbsGradient`, typed
+`crossSection` (width/height/analyticArea), `effectiveSource`,
+`fieldCost` (fieldCostSmoothed or fieldCostRaw by source), a
+`geometryRef {artifact, segmentIndex}` and typed reserved `simulation`
+keys (haulage/ventilation/communication/rockRisk). The polyline lives
+solely in `decline_smoothed.json` (rule 68).
+
+`networkx.MultiDiGraph` is the in-memory engine only; the persisted/API
+contract is the typed deterministic `derived/network.json`
+(status/sourceRevision/nodes/edges/metrics/validation/
+surfacePathAdvisory) — never a raw NetworkX serialization. Edge direction
+is canonical geometry orientation, not one-way travel; connectivity and
+redundancy run on the undirected physical projection: the multigraph
+collapses to a capacity graph (parallel physical edges accumulate
+capacity) and `independentSurfacePaths` is a max-flow to a virtual
+surface source behind all PORTAL-type nodes (rule 69). The
+`TWO_EDGE_DISJOINT_SURFACE_PATHS` advisory reports per-level counts
+(default chain: 1 everywhere) without any statutory or regulatory
+compliance claim (rule 70). Weld errors > 1e-6 m between consecutive
+segments or a disconnected physical component FAIL the build explicitly.
+
+Generation is synchronous (rule 60 reserves async jobs for long-running
+operations); fingerprint covers `scenario.json` + `decline_smoothed.json`;
+the network and the tunnel mesh are siblings — neither invalidates the
+other, a new smoothed/upstream artifact deletes both (rule 68).
+
+Measured (default 13-level scenario): 14 nodes, 13 RAMP edges, total ramp
+length = smoothed effective length, all `independentSurfacePaths = 1`.
 ## Phase 08 — levels & crosscuts           (pending)
 ## Phase 09 — longhole stopes              (pending)
 ## Phase 06 — tunnel mesh, gravity-aligned sweep (`design/tunnel_mesh.py`, rules 65–67)

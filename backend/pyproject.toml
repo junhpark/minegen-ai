@@ -9,13 +9,14 @@ description = "MineGen-AI backend: generative underground mine design research p
 requires-python = ">=3.12"
 dependencies = [
     # Phase 01: web layer + schemas + numerics foundation.
-    # scipy / networkx / trimesh / ortools are added in the phase that first
-    # needs them (CLAUDE.md rule 15).
+    # scipy / trimesh / ortools are added in the phase that first
+    # needs them (CLAUDE.md rule 15). networkx added in Phase 07 (MineNetwork).
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
     "numpy>=1.26",
+    "networkx>=3.3",
     # Phase 02: scipy.ndimage for anisotropic Gaussian smoothing of the
     # rock-quality / grade fields and for terrain octave upsampling.
     "scipy>=1.13",
@@ -27,6 +28,7 @@ dev = [
     "httpx>=0.27",        # FastAPI TestClient transport
     "ruff>=0.5",
     "mypy>=1.10",
+    "types-networkx",
 ]
 
 [tool.setuptools.packages.find]

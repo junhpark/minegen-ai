@@ -26,6 +26,8 @@ from minegen.design.progress import (
 from minegen.design.smoothing import DeclineSmoother
 from minegen.design.targets import AccessTargetSet, generate_access_targets, resolve_portal
 from minegen.design.tunnel_mesh import TunnelMeshBuilder
+from minegen.network.builder import MineNetworkBuilder
+from minegen.network.models import NetworkPayload
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
 from minegen.world.synthetic_world import SyntheticWorld
@@ -33,6 +35,10 @@ from minegen.world.synthetic_world import SyntheticWorld
 
 class TargetsNotGeneratedError(LookupError):
     pass
+
+
+class NetworkNotFoundError(LookupError):
+    """network.json does not exist for the scenario."""
 
 
 class TunnelNotGeneratedError(LookupError):
@@ -145,6 +151,7 @@ class DesignService:
             if smoothed.exists():
                 smoothed.unlink()  # rule 64: derived from the deleted decline
             self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
+            self._delete_network_artifact(scenario_id)  # rule 68 chain
         return payload
 
     # -- decline (Phase 04) ------------------------------------------------ #
@@ -213,6 +220,7 @@ class DesignService:
             if smoothed.exists():
                 smoothed.unlink()  # rule 64: the old smoothed artifact is stale
             self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
+            self._delete_network_artifact(scenario_id)  # rule 68 chain
         return payload
 
     # -- smoothing (Phase 05, rules 61–64) ---------------------------------- #
@@ -275,6 +283,7 @@ class DesignService:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload), encoding="utf-8")
             self._delete_tunnel_artifacts(scenario_id)  # rule 67: mesh is stale
+            self._delete_network_artifact(scenario_id)  # rule 68: network is stale
         return payload
 
     def smoothed(self, scenario_id: str) -> dict[str, Any]:
@@ -288,6 +297,57 @@ class DesignService:
             raise SmoothedNotGeneratedError(scenario_id)
         data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return data
+
+    # -- mine network (Phase 07, rules 13, 68–70) ---------------------------- #
+
+    def network_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / "network.json"
+
+    def _delete_network_artifact(self, scenario_id: str) -> None:
+        path = self.network_path(scenario_id)
+        if path.exists():
+            path.unlink()
+
+    def _network_input_paths(self, scenario_id: str) -> list[Path]:
+        # the network consumes cross-section config from scenario.json and the
+        # effective centerlines/reports from the smoothed artifact (rule 68)
+        return [
+            Path(self.store.scenario_path(scenario_id)),
+            Path(self.smoothed_path(scenario_id)),
+        ]
+
+    def network_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._network_input_paths(scenario_id))
+
+    def generate_network(self, scenario_id: str) -> NetworkPayload:
+        """Synchronous (rule 60 reserves async jobs for long-running design
+        operations; the RAMP subgraph is tiny). Sibling of the tunnel mesh:
+        neither derivation invalidates the other (rule 68)."""
+        fingerprint = self.network_fingerprint(scenario_id)
+        smoothed_payload = self.smoothed(scenario_id)  # 409 if not generated
+        scenario = self.store.get(scenario_id)
+        source_revision = hashlib.sha256(
+            json.dumps(fingerprint.entries, sort_keys=True).encode()
+        ).hexdigest()[:16]
+        builder = MineNetworkBuilder(scenario)
+        result = builder.build(smoothed_payload, source_revision)
+        # deterministic serialization of the TYPED contract (rule 69): field
+        # order is the model definition order, values are JSON-mode primitives
+        serialized = json.dumps(result.payload.model_dump(mode="json", by_alias=True))
+        with self.store.lock(scenario_id):
+            if self.network_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            path = self.network_path(scenario_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(serialized, encoding="utf-8")
+        return result.payload
+
+    def network(self, scenario_id: str) -> NetworkPayload:
+        self.store.get(scenario_id)  # 404 for unknown scenarios first
+        path = self.network_path(scenario_id)
+        if not path.is_file():
+            raise NetworkNotFoundError(scenario_id)
+        return NetworkPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
 
     # -- tunnel mesh (Phase 06, rules 65–67) -------------------------------- #
 
