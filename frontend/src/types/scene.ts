@@ -305,6 +305,15 @@ export interface NetworkNode {
   elevation?: number
 }
 
+/** Typed RESERVED simulation attributes: later phases fill these; until
+ * then the only legal value per slot is null. */
+export interface SimulationSlots {
+  haulage: null
+  ventilation: null
+  communication: null
+  rockRisk: null
+}
+
 export interface NetworkEdge {
   id: string
   type: 'RAMP' | 'DRIFT' | 'CROSSCUT' | 'RAISE' | 'SHAFT'
@@ -317,7 +326,24 @@ export interface NetworkEdge {
   effectiveSource: 'SMOOTHED' | 'RAW_FALLBACK'
   fieldCost: number
   geometryRef: { artifact: string; segmentIndex: number }
-  simulation: Record<string, unknown>
+  simulation: SimulationSlots
+}
+
+export interface NetworkMetrics {
+  nodeCount: number
+  edgeCount: number
+  levelCount: number
+  totalRampLength3d: number
+  minimumElevation: number
+  verticalDropFromPortal: number
+}
+
+export interface NetworkValidation {
+  maxNodeSyncError: number
+  syncTolerance: number
+  synchronized: boolean
+  connected: boolean
+  connectedComponents: number
 }
 
 export interface NetworkPayload {
@@ -326,21 +352,8 @@ export interface NetworkPayload {
   sourceRevision: string
   nodes: NetworkNode[]
   edges: NetworkEdge[]
-  metrics: {
-    nodeCount: number
-    edgeCount: number
-    levelCount: number
-    totalRampLength3d: number
-    minimumElevation: number
-    verticalDropFromPortal: number
-  }
-  validation: {
-    maxNodeSyncError: number
-    syncTolerance: number
-    synchronized: boolean
-    connected: boolean
-    connectedComponents: number
-  }
+  metrics: NetworkMetrics | null
+  validation: NetworkValidation | null
   surfacePathAdvisory: {
     criterion: string
     requiredPaths: number

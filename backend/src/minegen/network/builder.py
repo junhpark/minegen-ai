@@ -6,19 +6,23 @@ from the mesh — and is a sibling derivation next to the Phase 06 tunnel mesh
 polyline lives solely in the smoothed artifact.
 
 ``networkx.MultiDiGraph`` is the in-memory topology/metric engine only: the
-persisted/API contract is the typed deterministic payload built here, never a
+persisted/API contract is the typed ``NetworkPayload`` built here, never a
 raw NetworkX serialization. Edge direction is the canonical centerline
 orientation (portal → deeper) and does NOT imply one-way physical travel;
 connectivity and surface-path redundancy are evaluated on the undirected
 physical projection (rule 69). The surface-path advisory reports edge-disjoint
 path counts without any statutory or regulatory compliance claim (rule 70).
+
+A FAILED Phase 05 artifact is never consumable: it may contain
+already-completed partial segments, and a partial network built from an
+invalid prerequisite would silently launder that failure. Only SUCCESS and
+SUCCESS_WITH_FALLBACK smoothing artifacts yield a network.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any
 
 import networkx as nx
@@ -27,6 +31,20 @@ import numpy.typing as npt
 
 from minegen.core.models import Scenario
 from minegen.design.profile import build_profile
+from minegen.network.models import (
+    CrossSection,
+    EdgeType,
+    GeometryRef,
+    NetworkEdge,
+    NetworkMetrics,
+    NetworkNode,
+    NetworkPayload,
+    NetworkValidation,
+    NodeType,
+    SimulationSlots,
+    SurfacePathAdvisory,
+    SurfacePathEntry,
+)
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -34,41 +52,34 @@ SYNC_TOLERANCE = 1e-6  # m — node/edge vs centerline synchronization gate
 REQUIRED_SURFACE_PATHS = 2  # advisory criterion only (rule 70)
 ADVISORY_CRITERION = "TWO_EDGE_DISJOINT_SURFACE_PATHS"
 GEOMETRY_ARTIFACT = "decline_smoothed.json"
-
-
-class NodeType(StrEnum):
-    PORTAL = "PORTAL"
-    LEVEL_ENTRY = "LEVEL_ENTRY"
-    JUNCTION = "JUNCTION"  # reserved (Phase 08+)
-    STOPE_ACCESS = "STOPE_ACCESS"  # reserved (Phase 09+)
-
-
-class EdgeType(StrEnum):
-    RAMP = "RAMP"
-    DRIFT = "DRIFT"  # reserved (Phase 08+)
-    CROSSCUT = "CROSSCUT"  # reserved (Phase 08+)
-    RAISE = "RAISE"  # reserved
-    SHAFT = "SHAFT"  # reserved
-
-
-# typed reserved simulation attributes (rule 68 / architecture §4); models
-# fill these in later phases — reserved keys, not an open-ended dict
-RESERVED_SIMULATION: dict[str, None] = {
-    "haulage": None,
-    "ventilation": None,
-    "communication": None,
-    "rockRisk": None,
-}
+CONSUMABLE_SMOOTHED_STATUSES = ("SUCCESS", "SUCCESS_WITH_FALLBACK")
 
 
 @dataclass(frozen=True)
 class NetworkBuildResult:
     graph: nx.MultiDiGraph[str]
-    payload: dict[str, Any]
+    payload: NetworkPayload
 
     @property
     def success(self) -> bool:
-        return bool(self.payload["status"] == "SUCCESS")
+        return self.payload.status == "SUCCESS"
+
+
+def _failed(source_revision: str, reason: str) -> NetworkBuildResult:
+    """Structured failure: zero physical nodes/edges, no metrics/validation."""
+    return NetworkBuildResult(
+        nx.MultiDiGraph(),
+        NetworkPayload(
+            status="FAILED",
+            failure_reason=reason,
+            source_revision=source_revision,
+            nodes=[],
+            edges=[],
+            metrics=None,
+            validation=None,
+            surface_path_advisory=[],
+        ),
+    )
 
 
 def _polyline_metrics(points: FloatArray) -> tuple[float, float, float]:
@@ -133,57 +144,67 @@ class MineNetworkBuilder:
         self._shape = build_profile(scenario.ramp, scenario.tunnel_profile)
 
     def build(self, smoothed_payload: dict[str, Any], source_revision: str) -> NetworkBuildResult:
+        # prerequisite gate: a FAILED smoothing artifact may contain
+        # already-completed partial segments — they never yield a network
+        smoothed_status = smoothed_payload.get("status")
+        if smoothed_status not in CONSUMABLE_SMOOTHED_STATUSES:
+            return _failed(
+                source_revision,
+                f"prerequisite smoothed artifact status {smoothed_status!r} is not "
+                f"consumable (rule 68): only {', '.join(CONSUMABLE_SMOOTHED_STATUSES)} "
+                "yield a MineNetwork; partial segments of a FAILED artifact are ignored",
+            )
+
         segments = smoothed_payload["segments"]
-        graph: nx.MultiDiGraph[str] = nx.MultiDiGraph()
-        nodes: list[dict[str, Any]] = []
-        edges: list[dict[str, Any]] = []
-        failure: str | None = None
+        if not segments:
+            return _failed(source_revision, "smoothed artifact has no effective segments")
 
         polylines: list[FloatArray] = [
             np.asarray(seg["effectiveCenterline"]["points"], dtype=np.float64).reshape(-1, 3)
             for seg in segments
         ]
-        if not polylines:
-            return NetworkBuildResult(
-                graph,
-                self._payload(
-                    "FAILED", source_revision, [], [], {}, {}, [], "no effective segments"
-                ),
-            )
+
+        graph: nx.MultiDiGraph[str] = nx.MultiDiGraph()
+        nodes: list[NetworkNode] = []
+        edges: list[NetworkEdge] = []
+        failure: str | None = None
 
         # -- nodes: PORTAL + LEVEL_ENTRY per completed level ---------------- #
         portal_pos = polylines[0][0]
-        portal_id = "PORTAL"
-        nodes.append(
-            {
-                "id": portal_id,
-                "type": NodeType.PORTAL.value,
-                "position": [float(v) for v in portal_pos],
-            }
+        portal = NetworkNode(
+            id="PORTAL",
+            type=NodeType.PORTAL,
+            position=(float(portal_pos[0]), float(portal_pos[1]), float(portal_pos[2])),
         )
-        graph.add_node(portal_id, **nodes[-1])
+        nodes.append(portal)
+        graph.add_node(portal.id, **portal.model_dump(mode="json", by_alias=True))
+
+        cross_section = CrossSection(
+            width=self.scenario.ramp.tunnel_width,
+            height=self.scenario.ramp.tunnel_height,
+            analytic_area=self._shape.analytic_area,
+        )
 
         max_weld = 0.0
-        prev_node = portal_id
+        prev_node = portal.id
         prev_end = portal_pos
         for idx, (seg, pts) in enumerate(zip(segments, polylines, strict=True)):
             level_id = seg["levelId"]
-            node_id = f"{NodeType.LEVEL_ENTRY.value}:{level_id}"
             end = pts[-1]
             # rule 68 synchronization: this segment must start where the chain
             # currently ends (weld across consecutive effective centerlines)
             weld = float(np.linalg.norm(pts[0] - prev_end))
             max_weld = max(max_weld, weld)
-            node = {
-                "id": node_id,
-                "type": NodeType.LEVEL_ENTRY.value,
-                "position": [float(v) for v in end],
-                "levelId": level_id,
-                "candidateId": seg["candidateId"],
-                "elevation": float(end[2]),
-            }
+            node = NetworkNode(
+                id=f"{NodeType.LEVEL_ENTRY.value}:{level_id}",
+                type=NodeType.LEVEL_ENTRY,
+                position=(float(end[0]), float(end[1]), float(end[2])),
+                level_id=level_id,
+                candidate_id=seg["candidateId"],
+                elevation=float(end[2]),
+            )
             nodes.append(node)
-            graph.add_node(node_id, **node)
+            graph.add_node(node.id, **node.model_dump(mode="json", by_alias=True))
 
             length_3d, mean_signed, max_abs = _polyline_metrics(pts)
             report = seg["report"]
@@ -191,41 +212,39 @@ class MineNetworkBuilder:
             field_cost = (
                 report["fieldCostSmoothed"] if source == "SMOOTHED" else report["fieldCostRaw"]
             )
-            edge = {
-                "id": f"{EdgeType.RAMP.value}:{level_id}",
-                "type": EdgeType.RAMP.value,
-                "fromNode": prev_node,
-                "toNode": node_id,
-                "length3d": length_3d,
-                "meanGradientSigned": mean_signed,
-                "maxAbsGradient": max_abs,
-                "crossSection": {
-                    "width": self.scenario.ramp.tunnel_width,
-                    "height": self.scenario.ramp.tunnel_height,
-                    "analyticArea": self._shape.analytic_area,
-                },
-                "effectiveSource": source,
-                "fieldCost": float(field_cost),
-                "geometryRef": {"artifact": GEOMETRY_ARTIFACT, "segmentIndex": idx},
-                "simulation": dict(RESERVED_SIMULATION),
-            }
+            edge = NetworkEdge(
+                id=f"{EdgeType.RAMP.value}:{level_id}",
+                type=EdgeType.RAMP,
+                from_node=prev_node,
+                to_node=node.id,
+                length3d=length_3d,
+                mean_gradient_signed=mean_signed,
+                max_abs_gradient=max_abs,
+                cross_section=cross_section,
+                effective_source=source,
+                field_cost=float(field_cost),
+                geometry_ref=GeometryRef(artifact=GEOMETRY_ARTIFACT, segment_index=idx),
+                simulation=SimulationSlots(),
+            )
             edges.append(edge)
-            graph.add_edge(prev_node, node_id, key=edge["id"], **edge)
-            prev_node = node_id
+            graph.add_edge(
+                prev_node, node.id, key=edge.id, **edge.model_dump(mode="json", by_alias=True)
+            )
+            prev_node = node.id
             prev_end = end
 
         # -- validation on the undirected physical projection (rule 69) ----- #
         undirected = graph.to_undirected(as_view=True)
         components = nx.number_connected_components(undirected)
         connected = components == 1
-        validation = {
-            "maxNodeSyncError": max_weld,
-            "syncTolerance": SYNC_TOLERANCE,
-            "synchronized": max_weld <= SYNC_TOLERANCE,
-            "connected": connected,
-            "connectedComponents": components,
-        }
-        if not validation["synchronized"]:
+        validation = NetworkValidation(
+            max_node_sync_error=max_weld,
+            sync_tolerance=SYNC_TOLERANCE,
+            synchronized=max_weld <= SYNC_TOLERANCE,
+            connected=connected,
+            connected_components=components,
+        )
+        if not validation.synchronized:
             failure = (
                 f"centerline weld error {max_weld:.3e} m exceeds {SYNC_TOLERANCE:.0e} (rule 68)"
             )
@@ -233,59 +252,40 @@ class MineNetworkBuilder:
             failure = f"network is not a single physical component ({components})"
 
         # -- surface-path redundancy advisory (rule 70, no legal claim) ----- #
-        level_ids = [n["id"] for n in nodes if n["type"] == NodeType.LEVEL_ENTRY.value]
-        counts = _surface_path_counts(graph, [portal_id], level_ids)
-        advisory = {
-            "criterion": ADVISORY_CRITERION,
-            "requiredPaths": REQUIRED_SURFACE_PATHS,
-            "advisoryOnly": True,
-            "perNode": [
-                {
-                    "nodeId": nid,
-                    "levelId": graph.nodes[nid]["levelId"],
-                    "independentSurfacePaths": counts[nid],
-                    "meetsCriterion": counts[nid] >= REQUIRED_SURFACE_PATHS,
-                }
-                for nid in level_ids
+        level_nodes = [n for n in nodes if n.type is NodeType.LEVEL_ENTRY]
+        counts = _surface_path_counts(graph, [portal.id], [n.id for n in level_nodes])
+        advisory = SurfacePathAdvisory(
+            criterion=ADVISORY_CRITERION,
+            required_paths=REQUIRED_SURFACE_PATHS,
+            advisory_only=True,
+            per_node=[
+                SurfacePathEntry(
+                    node_id=n.id,
+                    level_id=n.level_id or "",
+                    independent_surface_paths=counts[n.id],
+                    meets_criterion=counts[n.id] >= REQUIRED_SURFACE_PATHS,
+                )
+                for n in level_nodes
             ],
-        }
-
-        lengths = [e["length3d"] for e in edges]
-        elevations = [n["position"][2] for n in nodes]
-        metrics = {
-            "nodeCount": len(nodes),
-            "edgeCount": len(edges),
-            "levelCount": len(level_ids),
-            "totalRampLength3d": float(math.fsum(lengths)),
-            "minimumElevation": float(min(elevations)),
-            "verticalDropFromPortal": float(portal_pos[2] - min(elevations)),
-        }
-        status = "SUCCESS" if failure is None else "FAILED"
-        return NetworkBuildResult(
-            graph,
-            self._payload(
-                status, source_revision, nodes, edges, metrics, validation, [advisory], failure
-            ),
         )
 
-    @staticmethod
-    def _payload(
-        status: str,
-        source_revision: str,
-        nodes: list[dict[str, Any]],
-        edges: list[dict[str, Any]],
-        metrics: dict[str, Any],
-        validation: dict[str, Any],
-        advisories: list[dict[str, Any]],
-        failure: str | None,
-    ) -> dict[str, Any]:
-        return {
-            "status": status,
-            "failureReason": failure,
-            "sourceRevision": source_revision,
-            "nodes": nodes,
-            "edges": edges,
-            "metrics": metrics,
-            "validation": validation,
-            "surfacePathAdvisory": advisories,
-        }
+        elevations = [n.position[2] for n in nodes]
+        metrics = NetworkMetrics(
+            node_count=len(nodes),
+            edge_count=len(edges),
+            level_count=len(level_nodes),
+            total_ramp_length3d=float(math.fsum(e.length3d for e in edges)),
+            minimum_elevation=float(min(elevations)),
+            vertical_drop_from_portal=float(portal.position[2] - min(elevations)),
+        )
+        payload = NetworkPayload(
+            status="SUCCESS" if failure is None else "FAILED",
+            failure_reason=failure,
+            source_revision=source_revision,
+            nodes=nodes,
+            edges=edges,
+            metrics=metrics,
+            validation=validation,
+            surface_path_advisory=[advisory],
+        )
+        return NetworkBuildResult(graph, payload)

@@ -57,8 +57,8 @@ def test_nodes_edges_attributes_and_geometry_reference(tmp_path) -> None:  # typ
     p2 = np.array([80.0, 160.0, 76.0])
     payload = _payload(_segment("L01", p0, p1), _segment("L02", p1, p2, source="RAW_FALLBACK"))
     res = MineNetworkBuilder(sc).build(payload, "rev123")
-    assert res.success, res.payload["failureReason"]
-    body = res.payload
+    assert res.success, res.payload.failure_reason
+    body = res.payload.model_dump(mode="json", by_alias=True)
     assert body["sourceRevision"] == "rev123"
 
     # namespaced deterministic node IDs; coordinates from the centerline
@@ -121,10 +121,11 @@ def test_weld_error_fails_explicitly(tmp_path) -> None:  # type: ignore[no-untyp
         _payload(_segment("L01", p0, p1), _segment("L02", p1_off, p2)), "rev"
     )
     assert not res.success
-    assert res.payload["status"] == "FAILED"
-    assert "weld error" in res.payload["failureReason"]
-    assert res.payload["validation"]["synchronized"] is False
-    assert res.payload["validation"]["maxNodeSyncError"] == pytest.approx(0.01)
+    assert res.payload.status == "FAILED"
+    assert res.payload.failure_reason is not None and "weld error" in res.payload.failure_reason
+    assert res.payload.validation is not None
+    assert res.payload.validation.synchronized is False
+    assert res.payload.validation.max_node_sync_error == pytest.approx(0.01)
 
 
 def test_surface_path_advisory_single_chain(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -136,13 +137,14 @@ def test_surface_path_advisory_single_chain(tmp_path) -> None:  # type: ignore[n
     res = MineNetworkBuilder(sc).build(
         _payload(_segment("L01", p0, p1), _segment("L02", p1, p2)), "rev"
     )
-    (adv,) = res.payload["surfacePathAdvisory"]
+    body = res.payload.model_dump(mode="json", by_alias=True)
+    (adv,) = body["surfacePathAdvisory"]
     assert adv["criterion"] == "TWO_EDGE_DISJOINT_SURFACE_PATHS"
     assert adv["requiredPaths"] == 2 and adv["advisoryOnly"] is True
     assert [e["independentSurfacePaths"] for e in adv["perNode"]] == [1, 1]
     assert all(e["meetsCriterion"] is False for e in adv["perNode"])
     # no statutory/legal compliance language anywhere in the payload (rule 70)
-    text = json.dumps(res.payload).lower()
+    text = json.dumps(body).lower()
     assert "complian" not in text and "egress" not in text and "statut" not in text
 
 
@@ -177,7 +179,9 @@ def test_payload_determinism(tmp_path) -> None:  # type: ignore[no-untyped-def]
     payload = _payload(_segment("L01", p0, p1))
     a = MineNetworkBuilder(sc).build(payload, "rev")
     b = MineNetworkBuilder(sc).build(json.loads(json.dumps(payload)), "rev")
-    assert json.dumps(a.payload, sort_keys=True) == json.dumps(b.payload, sort_keys=True)
+    assert json.dumps(a.payload.model_dump(mode="json", by_alias=True)) == json.dumps(
+        b.payload.model_dump(mode="json", by_alias=True)
+    )
 
 
 def test_gradient_sign_convention(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -188,8 +192,33 @@ def test_gradient_sign_convention(tmp_path) -> None:  # type: ignore[no-untyped-
     start = np.array([0.0, 0.0, 100.0])
     end = np.array([0.0, 50.0, 94.0])
     res = MineNetworkBuilder(sc).build(_payload(_segment("L01", start, end)), "rev")
-    (edge,) = res.payload["edges"]
-    assert edge["meanGradientSigned"] == pytest.approx(-0.12)
-    assert edge["maxAbsGradient"] == pytest.approx(0.12)
-    assert edge["maxAbsGradient"] >= 0.0
-    assert edge["length3d"] == pytest.approx(math.hypot(50.0, 6.0))
+    (edge,) = res.payload.edges
+    assert edge.mean_gradient_signed == pytest.approx(-0.12)
+    assert edge.max_abs_gradient == pytest.approx(0.12)
+    assert edge.max_abs_gradient >= 0.0
+    assert edge.length3d == pytest.approx(math.hypot(50.0, 6.0))
+
+
+def test_failed_smoothed_artifact_never_yields_a_network(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Blocker-1 regression (rule 68): a FAILED Phase 05 artifact containing
+    an otherwise-valid partial segment must produce an explicit FAILED
+    network with ZERO physical nodes/edges — never a SUCCESS partial graph."""
+    store = ScenarioStore(root=tmp_path)
+    sc = _scenario(store)
+    good_partial = _segment("L01", np.array([0.0, 0.0, 100.0]), np.array([0.0, 100.0, 88.0]))
+    payload = _payload(good_partial)
+    payload["status"] = "FAILED"
+    payload["failureReason"] = "L02 smoothing failed"
+    res = MineNetworkBuilder(sc).build(payload, "rev")
+    assert not res.success
+    body = res.payload
+    assert body.status == "FAILED"
+    assert body.nodes == [] and body.edges == []
+    assert body.metrics is None and body.validation is None
+    assert body.surface_path_advisory == []
+    assert res.graph.number_of_nodes() == 0 and res.graph.number_of_edges() == 0
+    assert body.failure_reason is not None and "prerequisite" in body.failure_reason
+    # SUCCESS_WITH_FALLBACK remains consumable
+    payload["status"] = "SUCCESS_WITH_FALLBACK"
+    ok = MineNetworkBuilder(sc).build(payload, "rev")
+    assert ok.success and len(ok.payload.edges) == 1

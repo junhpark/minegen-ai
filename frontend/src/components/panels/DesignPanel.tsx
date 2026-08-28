@@ -134,6 +134,15 @@ export function DesignPanel() {
   }, [tunnelJob.data, scene, setScene, setLayerVisible])
   // Phase 07 network: synchronous generation, report-only display (rule 69/70)
   const [network, setNetwork] = useState<NetworkPayload | null>(null)
+  // Stale-state guard (rule 68): the backend deletes network.json whenever a
+  // new smoothed/upstream artifact appears, so the displayed report must be
+  // cleared when the scenario changes or the Phase 05 artifact changes.
+  // Tunnel regeneration keeps the SAME smoothedDecline reference (siblings),
+  // so this effect deliberately does not fire for it.
+  const scenarioId = scene?.scenarioId ?? null
+  useEffect(() => {
+    setNetwork(null)
+  }, [scenarioId, smoothed])
   const generateNetwork = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('smooth the decline first')
@@ -426,7 +435,7 @@ export function DesignPanel() {
             <span className={network.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
               {network.status}
             </span>
-            {network.status === 'SUCCESS' ? (
+            {network.status === 'SUCCESS' && network.metrics && network.validation ? (
               <span>
                 {network.metrics.nodeCount} nodes · {network.metrics.edgeCount} edges ·{' '}
                 {network.validation.connected ? (
@@ -437,7 +446,7 @@ export function DesignPanel() {
               </span>
             ) : null}
           </div>
-          {network.status === 'SUCCESS' ? (
+          {network.status === 'SUCCESS' && network.metrics ? (
             <div className="mt-1 flex justify-between text-mute">
               <span>{network.metrics.totalRampLength3d.toFixed(0)} m ramps</span>
               <span>drop {network.metrics.verticalDropFromPortal.toFixed(0)} m</span>

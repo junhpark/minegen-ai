@@ -156,8 +156,10 @@ go under `geology`, not at the scenario root.
 
 - Scenarios: `data/scenarios/{id}/scenario.json` + `arrays.npz` + `derived/`.
   `derived/` now holds `targets.json`, `decline.json`, `decline_smoothed.json`,
-  `tunnel_mesh.json` (Phase 06 report, always persisted with explicit status)
-  and `tunnel_mesh.glb` (excavation mesh, SUCCESS only). Invalidation chain:
+  `tunnel_mesh.json` (Phase 06 report, always persisted with explicit status),
+  `tunnel_mesh.glb` (excavation mesh, SUCCESS only) and `network.json`
+  (Phase 07 typed NetworkPayload — deterministic serialization of the typed
+  contract, never a raw NetworkX dump). Invalidation chain:
   world → targets → decline → smoothed → {tunnel mesh, network} — the tunnel
   mesh and the MineNetwork are SIBLING derivations of the smoothed
   centerline (rule 68): regenerating one never touches the other, while a

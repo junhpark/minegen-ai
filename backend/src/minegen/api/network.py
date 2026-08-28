@@ -7,12 +7,13 @@ and the RAMP subgraph (14 nodes / 13 edges on the default scenario) is tiny.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from minegen.api.deps import get_design_service
 from minegen.core.models import ErrorDetail
+from minegen.network.models import NetworkPayload
 from minegen.services.design_service import (
     DesignService,
     NetworkNotFoundError,
@@ -65,7 +66,7 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
 
 
 @router.post("/generate")
-def generate_network(scenario_id: str, svc: Service) -> dict[str, Any]:
+def generate_network(scenario_id: str, svc: Service) -> NetworkPayload:
     try:
         return svc.generate_network(scenario_id)
     except Exception as exc:
@@ -73,7 +74,7 @@ def generate_network(scenario_id: str, svc: Service) -> dict[str, Any]:
 
 
 @router.get("")
-def get_network(scenario_id: str, svc: Service) -> dict[str, Any]:
+def get_network(scenario_id: str, svc: Service) -> NetworkPayload:
     try:
         return svc.network(scenario_id)
     except Exception as exc:
