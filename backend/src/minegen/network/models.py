@@ -62,6 +62,8 @@ class NetworkNode(ApiModel):
     level_id: str | None = None
     candidate_id: str | None = None
     elevation: float | None = None
+    station_index: int | None = None  # Phase 08 crosscut station k
+    station_u: float | None = None  # strike coordinate of the station
 
 
 class NetworkEdge(ApiModel):
@@ -75,7 +77,7 @@ class NetworkEdge(ApiModel):
     mean_gradient_signed: float  # Δz / horizontal length; negative = descending
     max_abs_gradient: float  # always ≥ 0
     cross_section: CrossSection
-    effective_source: Literal["SMOOTHED", "RAW_FALLBACK"]
+    effective_source: Literal["SMOOTHED", "RAW_FALLBACK", "ANALYTIC"]
     field_cost: float
     geometry_ref: GeometryRef
     simulation: SimulationSlots
@@ -85,7 +87,13 @@ class NetworkMetrics(ApiModel):
     node_count: int
     edge_count: int
     level_count: int
+    junction_count: int = 0
+    stope_access_count: int = 0
+    drift_edge_count: int = 0
+    crosscut_edge_count: int = 0
     total_ramp_length3d: float = Field(alias="totalRampLength3d")
+    total_drift_length3d: float = Field(alias="totalDriftLength3d", default=0.0)
+    total_crosscut_length3d: float = Field(alias="totalCrosscutLength3d", default=0.0)
     minimum_elevation: float
     vertical_drop_from_portal: float
 

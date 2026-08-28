@@ -480,6 +480,41 @@ cleverness.
     or regulatory compliance and the advisory does not invalidate an
     otherwise valid network.
 
+71. Phase 08 level-development geometry. ``levels.json`` is the
+    validated centerline artifact that owns Phase 08 DRIFT and CROSSCUT
+    geometry. A level drift is anchored exactly at its Phase 05
+    LEVEL_ENTRY, follows the orebody strike in plan, and applies
+    ``level_drift_gradient`` using the deterministic canonical +u
+    direction; the access endpoint is never moved. The Phase 03
+    candidate lattice does not define drift extent.
+
+72. Crosscut layout and validation. Planned crosscut stations are
+    derived from the analytic orebody strike extent, not the
+    access-candidate span. v0.1 station pitch is
+    ``stope_length + minimum_pillar``; this is an access-layout proxy,
+    not a final stope design. Crosscuts run horizontally from the
+    footwall drift toward the first orebody contact. Their design
+    context permits the orebody contact/envelope while retaining world,
+    terrain and restricted-zone hard constraints. Invalid required
+    development fails explicitly and is never silently omitted.
+
+73. Phase 08 MineNetwork topology. MineNetwork is rebuilt
+    deterministically from the Phase 05 RAMP centerlines plus Phase 08
+    level-development centerlines. DRIFT edges are split at every graph
+    node. CROSSCUT starts are JUNCTION nodes unless coincident with an
+    existing LEVEL_ENTRY, in which case that node is reused; CROSSCUT
+    terminals are STOPE_ACCESS anchors for Phase 09 and do not imply
+    that a stope already exists. Surface-path redundancy is recomputed
+    for every underground physical node.
+
+74. Phase 08 dependency contract. ``levels.json`` is downstream of the
+    Phase 05 effective centerline and upstream of MineNetwork.
+    Regenerating levels invalidates MineNetwork but never the Phase 06
+    tunnel mesh; regenerating the Phase 05 artifact invalidates tunnel
+    mesh, levels and MineNetwork. MineNetwork is always rebuilt from its
+    owning centerline artifacts and is never incrementally patched from
+    a stale network artifact.
+
 
 ## Persistence (v0.1)
 

@@ -12,6 +12,8 @@ import { OrebodyLayer } from './OrebodyLayer'
 import { RawDeclineLayer } from './RawDeclineLayer'
 import { SmoothedDeclineLayer } from './SmoothedDeclineLayer'
 import { TunnelMeshLayer } from './TunnelMeshLayer'
+import { LevelDevelopmentLayer } from './LevelDevelopmentLayer'
+import { NetworkLayer } from './NetworkLayer'
 import { RockQualitySliceLayer } from './RockQualitySliceLayer'
 import { TerrainLayer } from './TerrainLayer'
 
@@ -70,6 +72,14 @@ export function MineScene() {
           <TunnelMeshLayer url={`${API_BASE_URL}${scene.tunnelMesh.meshUrl}`} />
         </Suspense>
       ) : null}
+      {scene?.levels && (visible.has('levels') || visible.has('crosscuts')) ? (
+        <LevelDevelopmentLayer
+          levels={scene.levels}
+          showDrifts={visible.has('levels')}
+          showCrosscuts={visible.has('crosscuts')}
+        />
+      ) : null}
+      {scene?.network && visible.has('network') ? <NetworkLayer network={scene.network} /> : null}
       {scene?.smoothedDecline && visible.has('smoothedDecline') ? (
         <SmoothedDeclineLayer smoothed={scene.smoothedDecline} />
       ) : null}

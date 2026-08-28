@@ -9,9 +9,11 @@ from pydantic import Field
 
 from minegen.api.deps import get_design_service, get_job_service
 from minegen.core.models import ApiModel, ErrorDetail
+from minegen.levels.models import LevelsPayload
 from minegen.services.design_service import (
     DeclineNotGeneratedError,
     DesignService,
+    LevelsNotGeneratedError,
     SmoothedNotGeneratedError,
     StaleInputsError,
     TargetsNotGeneratedError,
@@ -71,7 +73,40 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             "TUNNEL_NOT_GENERATED",
             f"scenario '{scenario_id}' has no tunnel mesh; POST …/design/tunnel first",
         )
+    if isinstance(exc, LevelsNotGeneratedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "LEVELS_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no level developments; POST …/design/levels first",
+        )
+    if isinstance(exc, StaleInputsError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "STALE_INPUTS",
+            "inputs changed during generation; retry",
+        )
     raise exc
+
+
+@router.post("/levels")
+def generate_levels(scenario_id: str, svc: Service) -> LevelsPayload:
+    """Phase 08 (rules 71–74): synchronous deterministic level developments."""
+    try:
+        return svc.generate_levels(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.get("/levels")
+def get_levels(scenario_id: str, svc: Service) -> LevelsPayload:
+    try:
+        return svc.levels(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
 
 
 @router.post("/cost/evaluate")

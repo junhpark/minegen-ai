@@ -51,6 +51,20 @@ class DesignContext:
             restricted_zones=tuple(cfg.restricted_zones),
         )
 
+    @classmethod
+    def crosscut(cls, cfg: DesignConfig) -> DesignContext:
+        """Phase 08 crosscut context (rule 72): the crosscut deliberately
+        reaches the orebody contact, so the orebody exclusion is disabled
+        (buffer 0, inside allowed) while world, terrain and restricted-zone
+        hard constraints are retained unchanged."""
+        return cls(
+            name="crosscut",
+            orebody_exclusion_buffer=0.0,
+            allow_inside_orebody=True,
+            minimum_surface_cover=cfg.minimum_surface_cover,
+            restricted_zones=tuple(cfg.restricted_zones),
+        )
+
 
 def in_restricted_zone(points: FloatArray, zones: tuple[RestrictedZone, ...]) -> BoolArray:
     p = np.asarray(points, dtype=np.float64)

@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 
 from minegen.core.models import Scenario
+from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.design.mine_designer import ChainedDeclineGenerator
 from minegen.design.progress import (
@@ -26,6 +27,8 @@ from minegen.design.progress import (
 from minegen.design.smoothing import DeclineSmoother
 from minegen.design.targets import AccessTargetSet, generate_access_targets, resolve_portal
 from minegen.design.tunnel_mesh import TunnelMeshBuilder
+from minegen.levels.builder import LevelDevelopmentBuilder
+from minegen.levels.models import LevelsPayload
 from minegen.network.builder import MineNetworkBuilder
 from minegen.network.models import NetworkPayload
 from minegen.services.scenario_service import ScenarioStore
@@ -35,6 +38,10 @@ from minegen.world.synthetic_world import SyntheticWorld
 
 class TargetsNotGeneratedError(LookupError):
     pass
+
+
+class LevelsNotGeneratedError(LookupError):
+    """levels.json does not exist for the scenario."""
 
 
 class NetworkNotFoundError(LookupError):
@@ -151,6 +158,7 @@ class DesignService:
             if smoothed.exists():
                 smoothed.unlink()  # rule 64: derived from the deleted decline
             self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
+            self._delete_levels_artifact(scenario_id)  # rule 74 chain
             self._delete_network_artifact(scenario_id)  # rule 68 chain
         return payload
 
@@ -220,6 +228,7 @@ class DesignService:
             if smoothed.exists():
                 smoothed.unlink()  # rule 64: the old smoothed artifact is stale
             self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
+            self._delete_levels_artifact(scenario_id)  # rule 74 chain
             self._delete_network_artifact(scenario_id)  # rule 68 chain
         return payload
 
@@ -283,6 +292,7 @@ class DesignService:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload), encoding="utf-8")
             self._delete_tunnel_artifacts(scenario_id)  # rule 67: mesh is stale
+            self._delete_levels_artifact(scenario_id)  # rule 74: levels are stale
             self._delete_network_artifact(scenario_id)  # rule 68: network is stale
         return payload
 
@@ -298,6 +308,60 @@ class DesignService:
         data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return data
 
+    # -- level developments (Phase 08, rules 71–74) -------------------------- #
+
+    def levels_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / "levels.json"
+
+    def _delete_levels_artifact(self, scenario_id: str) -> None:
+        path = self.levels_path(scenario_id)
+        if path.exists():
+            path.unlink()
+
+    def _levels_input_paths(self, scenario_id: str) -> list[Path]:
+        # cross-section + mining lattice config from scenario.json, orebody
+        # geometry via arrays.npz, entries from the smoothed artifact
+        return [
+            Path(self.store.scenario_path(scenario_id)),
+            Path(self.store.arrays_path(scenario_id)),
+            Path(self.smoothed_path(scenario_id)),
+        ]
+
+    def levels_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._levels_input_paths(scenario_id))
+
+    def generate_levels(self, scenario_id: str) -> LevelsPayload:
+        """Synchronous deterministic analytic geometry (rule 71; rule 60
+        reserves async jobs for long-running operations). Regenerating levels
+        invalidates the MineNetwork but never the tunnel mesh (rule 74)."""
+        fingerprint = self.levels_fingerprint(scenario_id)
+        smoothed_payload = self.smoothed(scenario_id)  # 409 if not generated
+        scenario, world, drift_ev = self.evaluator(scenario_id)
+        crosscut_ev = DesignCostEvaluator(
+            world, scenario.design, DesignContext.crosscut(scenario.design)
+        )
+        source_revision = hashlib.sha256(
+            json.dumps(fingerprint.entries, sort_keys=True).encode()
+        ).hexdigest()[:16]
+        builder = LevelDevelopmentBuilder(scenario, world.orebody, drift_ev, crosscut_ev)
+        payload = builder.build(smoothed_payload, source_revision)
+        serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
+        with self.store.lock(scenario_id):
+            if self.levels_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            path = self.levels_path(scenario_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(serialized, encoding="utf-8")
+            self._delete_network_artifact(scenario_id)  # rule 74: rebuild, never patch
+        return payload
+
+    def levels(self, scenario_id: str) -> LevelsPayload:
+        self.store.get(scenario_id)
+        path = self.levels_path(scenario_id)
+        if not path.is_file():
+            raise LevelsNotGeneratedError(scenario_id)
+        return LevelsPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+
     # -- mine network (Phase 07, rules 13, 68–70) ---------------------------- #
 
     def network_path(self, scenario_id: str) -> Path:
@@ -309,11 +373,13 @@ class DesignService:
             path.unlink()
 
     def _network_input_paths(self, scenario_id: str) -> list[Path]:
-        # the network consumes cross-section config from scenario.json and the
-        # effective centerlines/reports from the smoothed artifact (rule 68)
+        # the network consumes cross-section config from scenario.json, the
+        # RAMP centerlines from the smoothed artifact (rule 68) and the level
+        # developments from levels.json (rule 74)
         return [
             Path(self.store.scenario_path(scenario_id)),
             Path(self.smoothed_path(scenario_id)),
+            Path(self.levels_path(scenario_id)),
         ]
 
     def network_fingerprint(self, scenario_id: str) -> InputFingerprint:
@@ -325,12 +391,17 @@ class DesignService:
         neither derivation invalidates the other (rule 68)."""
         fingerprint = self.network_fingerprint(scenario_id)
         smoothed_payload = self.smoothed(scenario_id)  # 409 if not generated
+        levels_payload = self.levels(scenario_id)  # 409 if not generated (rule 74)
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
             json.dumps(fingerprint.entries, sort_keys=True).encode()
         ).hexdigest()[:16]
         builder = MineNetworkBuilder(scenario)
-        result = builder.build(smoothed_payload, source_revision)
+        result = builder.build(
+            smoothed_payload,
+            source_revision,
+            levels_payload=levels_payload.model_dump(mode="json", by_alias=True),
+        )
         # deterministic serialization of the TYPED contract (rule 69): field
         # order is the model definition order, values are JSON-mode primitives
         serialized = json.dumps(result.payload.model_dump(mode="json", by_alias=True))

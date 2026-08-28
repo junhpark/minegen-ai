@@ -300,9 +300,63 @@ export interface NetworkNode {
   id: string
   type: 'PORTAL' | 'LEVEL_ENTRY' | 'JUNCTION' | 'STOPE_ACCESS'
   position: [number, number, number]
-  levelId?: string
-  candidateId?: string
-  elevation?: number
+  levelId?: string | null
+  candidateId?: string | null
+  elevation?: number | null
+  stationIndex?: number | null
+  stationU?: number | null
+}
+
+export interface LevelDevelopmentReport {
+  startWeldError: number
+  envelopeHardViolations: number
+  envelopeAboveTerrain: number
+  terminalSdf?: number | null
+  interiorBreachSamples: number
+  fieldCost: number
+  valid: boolean
+  failureReason: string | null
+}
+
+export interface LevelDevelopment {
+  id: string
+  kind: 'DRIFT' | 'CROSSCUT'
+  levelId: string
+  stationIndex?: number | null
+  stationU?: number | null
+  fromU: number
+  toU: number
+  centerline: { points: number[] }
+  length3d: number
+  meanGradientSigned: number
+  maxAbsGradient: number
+  report: LevelDevelopmentReport
+}
+
+export interface LevelsPayload {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  sourceRevision: string
+  developments: LevelDevelopment[]
+  levels: {
+    levelId: string
+    candidateId: string
+    entry: [number, number, number]
+    entryU: number
+    driftPieceCount: number
+    crosscutCount: number
+    valid: boolean
+  }[]
+  metrics: {
+    levelCount: number
+    developmentCount: number
+    driftPieceCount: number
+    crosscutCount: number
+    stationPitch: number
+    stationsPerLevel: number
+    totalDriftLength3d: number
+    totalCrosscutLength3d: number
+  } | null
 }
 
 /** Typed RESERVED simulation attributes: later phases fill these; until
@@ -323,7 +377,7 @@ export interface NetworkEdge {
   meanGradientSigned: number
   maxAbsGradient: number
   crossSection: { width: number; height: number; analyticArea: number }
-  effectiveSource: 'SMOOTHED' | 'RAW_FALLBACK'
+  effectiveSource: 'SMOOTHED' | 'RAW_FALLBACK' | 'ANALYTIC'
   fieldCost: number
   geometryRef: { artifact: string; segmentIndex: number }
   simulation: SimulationSlots
@@ -333,7 +387,13 @@ export interface NetworkMetrics {
   nodeCount: number
   edgeCount: number
   levelCount: number
+  junctionCount: number
+  stopeAccessCount: number
+  driftEdgeCount: number
+  crosscutEdgeCount: number
   totalRampLength3d: number
+  totalDriftLength3d: number
+  totalCrosscutLength3d: number
   minimumElevation: number
   verticalDropFromPortal: number
 }
@@ -460,4 +520,6 @@ export interface WorldScene {
   decline: DeclinePayload | null
   smoothedDecline: SmoothedDeclinePayload | null
   tunnelMesh: TunnelMeshReport | null
+  levels: LevelsPayload | null
+  network: NetworkPayload | null
 }

@@ -16,6 +16,7 @@ from minegen.core.models import ErrorDetail
 from minegen.network.models import NetworkPayload
 from minegen.services.design_service import (
     DesignService,
+    LevelsNotGeneratedError,
     NetworkNotFoundError,
     SmoothedNotGeneratedError,
     StaleInputsError,
@@ -49,6 +50,12 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             status.HTTP_409_CONFLICT,
             "SMOOTHED_NOT_GENERATED",
             f"scenario '{scenario_id}' has no smoothed decline; POST …/design/decline/smooth first",
+        )
+    if isinstance(exc, LevelsNotGeneratedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "LEVELS_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no level developments; POST …/design/levels first",
         )
     if isinstance(exc, NetworkNotFoundError):
         return _error(

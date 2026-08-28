@@ -13,10 +13,19 @@ connectivity and surface-path redundancy are evaluated on the undirected
 physical projection (rule 69). The surface-path advisory reports edge-disjoint
 path counts without any statutory or regulatory compliance claim (rule 70).
 
-A FAILED Phase 05 artifact is never consumable: it may contain
-already-completed partial segments, and a partial network built from an
+A FAILED prerequisite artifact is never consumable: it may contain
+already-completed partial geometry, and a partial network built from an
 invalid prerequisite would silently launder that failure. Only SUCCESS and
-SUCCESS_WITH_FALLBACK smoothing artifacts yield a network.
+SUCCESS_WITH_FALLBACK smoothing artifacts (and a SUCCESS levels artifact)
+yield a network.
+
+Phase 08 (rule 73): the network is REBUILT deterministically from the
+Phase 05 RAMP centerlines plus the Phase 08 level-development centerlines —
+never patched from a stale network artifact. DRIFT edges are split at every
+graph node; a crosscut station coincident with a LEVEL_ENTRY reuses that
+node; crosscut terminals are STOPE_ACCESS anchors for Phase 09 (they do not
+imply an existing stope). Surface-path redundancy covers EVERY underground
+physical node.
 """
 
 from __future__ import annotations
@@ -52,6 +61,8 @@ SYNC_TOLERANCE = 1e-6  # m — node/edge vs centerline synchronization gate
 REQUIRED_SURFACE_PATHS = 2  # advisory criterion only (rule 70)
 ADVISORY_CRITERION = "TWO_EDGE_DISJOINT_SURFACE_PATHS"
 GEOMETRY_ARTIFACT = "decline_smoothed.json"
+LEVELS_ARTIFACT = "levels.json"
+STATION_MERGE_TOLERANCE = 1e-6  # m — co-located LEVEL_ENTRY/JUNCTION reuse
 CONSUMABLE_SMOOTHED_STATUSES = ("SUCCESS", "SUCCESS_WITH_FALLBACK")
 
 
@@ -143,9 +154,14 @@ class MineNetworkBuilder:
         self.scenario = scenario
         self._shape = build_profile(scenario.ramp, scenario.tunnel_profile)
 
-    def build(self, smoothed_payload: dict[str, Any], source_revision: str) -> NetworkBuildResult:
-        # prerequisite gate: a FAILED smoothing artifact may contain
-        # already-completed partial segments — they never yield a network
+    def build(
+        self,
+        smoothed_payload: dict[str, Any],
+        source_revision: str,
+        levels_payload: dict[str, Any] | None = None,
+    ) -> NetworkBuildResult:
+        # prerequisite gates: FAILED artifacts may contain already-completed
+        # partial geometry — they never yield a network (rules 68/74)
         smoothed_status = smoothed_payload.get("status")
         if smoothed_status not in CONSUMABLE_SMOOTHED_STATUSES:
             return _failed(
@@ -153,6 +169,12 @@ class MineNetworkBuilder:
                 f"prerequisite smoothed artifact status {smoothed_status!r} is not "
                 f"consumable (rule 68): only {', '.join(CONSUMABLE_SMOOTHED_STATUSES)} "
                 "yield a MineNetwork; partial segments of a FAILED artifact are ignored",
+            )
+        if levels_payload is not None and levels_payload.get("status") != "SUCCESS":
+            return _failed(
+                source_revision,
+                "prerequisite levels artifact status "
+                f"{levels_payload.get('status')!r} is not consumable (rule 74)",
             )
 
         segments = smoothed_payload["segments"]
@@ -233,6 +255,103 @@ class MineNetworkBuilder:
             prev_node = node.id
             prev_end = end
 
+        # -- Phase 08 level developments (rule 73) --------------------------- #
+        if levels_payload is not None:
+            entry_by_level = {n.level_id: n for n in nodes if n.type is NodeType.LEVEL_ENTRY}
+            developments = levels_payload["developments"]
+            # per level: register a node for every breakpoint u (stations +
+            # entry); a station within tolerance of the LEVEL_ENTRY reuses it
+            node_by_key: dict[tuple[str, float], NetworkNode] = {}
+
+            def dev_pts(dev: dict[str, Any]) -> FloatArray:
+                return np.asarray(dev["centerline"]["points"], dtype=np.float64).reshape(-1, 3)
+
+            def breakpoint_node(level_id: str, u: float, pos: FloatArray) -> NetworkNode:
+                nonlocal max_weld
+                entry = entry_by_level[level_id]
+                entry_weld = float(np.linalg.norm(np.asarray(entry.position) - pos))
+                if entry_weld <= STATION_MERGE_TOLERANCE:
+                    max_weld = max(max_weld, entry_weld)
+                    return entry  # coincident station reuses LEVEL_ENTRY (rule 73)
+                for (lvl, uu), existing in node_by_key.items():
+                    if lvl == level_id and abs(uu - u) <= STATION_MERGE_TOLERANCE:
+                        max_weld = max(
+                            max_weld,
+                            float(np.linalg.norm(np.asarray(existing.position) - pos)),
+                        )
+                        return existing
+                node = NetworkNode(
+                    id=f"{NodeType.JUNCTION.value}:{level_id}:U{u:+08.1f}",
+                    type=NodeType.JUNCTION,
+                    position=(float(pos[0]), float(pos[1]), float(pos[2])),
+                    level_id=level_id,
+                    elevation=float(pos[2]),
+                    station_u=u,
+                )
+                node_by_key[(level_id, u)] = node
+                nodes.append(node)
+                graph.add_node(node.id, **node.model_dump(mode="json", by_alias=True))
+                return node
+
+            for idx, dev in enumerate(developments):
+                pts = dev_pts(dev)
+                level_id = dev["levelId"]
+                length_3d = float(dev["length3d"])
+                if dev["kind"] == "DRIFT":
+                    a = breakpoint_node(level_id, float(dev["fromU"]), pts[0])
+                    b = breakpoint_node(level_id, float(dev["toU"]), pts[-1])
+                    edge = NetworkEdge(
+                        id=dev["id"],
+                        type=EdgeType.DRIFT,
+                        from_node=a.id,
+                        to_node=b.id,
+                        length3d=length_3d,
+                        mean_gradient_signed=float(dev["meanGradientSigned"]),
+                        max_abs_gradient=float(dev["maxAbsGradient"]),
+                        cross_section=cross_section,
+                        effective_source="ANALYTIC",
+                        field_cost=float(dev["report"]["fieldCost"]),
+                        geometry_ref=GeometryRef(artifact=LEVELS_ARTIFACT, segment_index=idx),
+                        simulation=SimulationSlots(),
+                    )
+                else:  # CROSSCUT
+                    a = breakpoint_node(level_id, float(dev["stationU"]), pts[0])
+                    weld = float(np.linalg.norm(np.asarray(a.position) - pts[0]))
+                    max_weld = max(max_weld, weld)
+                    k = int(dev["stationIndex"])
+                    terminal = NetworkNode(
+                        id=f"{NodeType.STOPE_ACCESS.value}:{level_id}:S{k:+03d}",
+                        type=NodeType.STOPE_ACCESS,
+                        position=(float(pts[-1][0]), float(pts[-1][1]), float(pts[-1][2])),
+                        level_id=level_id,
+                        elevation=float(pts[-1][2]),
+                        station_index=k,
+                        station_u=float(dev["stationU"]),
+                    )
+                    nodes.append(terminal)
+                    graph.add_node(terminal.id, **terminal.model_dump(mode="json", by_alias=True))
+                    edge = NetworkEdge(
+                        id=dev["id"],
+                        type=EdgeType.CROSSCUT,
+                        from_node=a.id,
+                        to_node=terminal.id,
+                        length3d=length_3d,
+                        mean_gradient_signed=float(dev["meanGradientSigned"]),
+                        max_abs_gradient=float(dev["maxAbsGradient"]),
+                        cross_section=cross_section,
+                        effective_source="ANALYTIC",
+                        field_cost=float(dev["report"]["fieldCost"]),
+                        geometry_ref=GeometryRef(artifact=LEVELS_ARTIFACT, segment_index=idx),
+                        simulation=SimulationSlots(),
+                    )
+                edges.append(edge)
+                graph.add_edge(
+                    edge.from_node,
+                    edge.to_node,
+                    key=edge.id,
+                    **edge.model_dump(mode="json", by_alias=True),
+                )
+
         # -- validation on the undirected physical projection (rule 69) ----- #
         undirected = graph.to_undirected(as_view=True)
         components = nx.number_connected_components(undirected)
@@ -252,8 +371,10 @@ class MineNetworkBuilder:
             failure = f"network is not a single physical component ({components})"
 
         # -- surface-path redundancy advisory (rule 70, no legal claim) ----- #
-        level_nodes = [n for n in nodes if n.type is NodeType.LEVEL_ENTRY]
-        counts = _surface_path_counts(graph, [portal.id], [n.id for n in level_nodes])
+        # rule 73: the advisory covers EVERY underground physical node, not
+        # only level entries (JUNCTION and STOPE_ACCESS included)
+        underground = [n for n in nodes if n.type is not NodeType.PORTAL]
+        counts = _surface_path_counts(graph, [portal.id], [n.id for n in underground])
         advisory = SurfacePathAdvisory(
             criterion=ADVISORY_CRITERION,
             required_paths=REQUIRED_SURFACE_PATHS,
@@ -265,16 +386,25 @@ class MineNetworkBuilder:
                     independent_surface_paths=counts[n.id],
                     meets_criterion=counts[n.id] >= REQUIRED_SURFACE_PATHS,
                 )
-                for n in level_nodes
+                for n in underground
             ],
         )
 
         elevations = [n.position[2] for n in nodes]
+        ramp_edges = [e for e in edges if e.type is EdgeType.RAMP]
+        drift_edges = [e for e in edges if e.type is EdgeType.DRIFT]
+        crosscut_edges = [e for e in edges if e.type is EdgeType.CROSSCUT]
         metrics = NetworkMetrics(
             node_count=len(nodes),
             edge_count=len(edges),
-            level_count=len(level_nodes),
-            total_ramp_length3d=float(math.fsum(e.length3d for e in edges)),
+            level_count=sum(1 for n in nodes if n.type is NodeType.LEVEL_ENTRY),
+            junction_count=sum(1 for n in nodes if n.type is NodeType.JUNCTION),
+            stope_access_count=sum(1 for n in nodes if n.type is NodeType.STOPE_ACCESS),
+            drift_edge_count=len(drift_edges),
+            crosscut_edge_count=len(crosscut_edges),
+            total_ramp_length3d=float(math.fsum(e.length3d for e in ramp_edges)),
+            total_drift_length3d=float(math.fsum(e.length3d for e in drift_edges)),
+            total_crosscut_length3d=float(math.fsum(e.length3d for e in crosscut_edges)),
             minimum_elevation=float(min(elevations)),
             vertical_drop_from_portal=float(portal.position[2] - min(elevations)),
         )

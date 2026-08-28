@@ -116,6 +116,14 @@ class WorldService:
         scene["tunnelMesh"] = (
             json.loads(tunnel.read_text(encoding="utf-8")) if tunnel.is_file() else None
         )
+        levels = derived / "levels.json"
+        scene["levels"] = (
+            json.loads(levels.read_text(encoding="utf-8")) if levels.is_file() else None
+        )
+        network = derived / "network.json"
+        scene["network"] = (
+            json.loads(network.read_text(encoding="utf-8")) if network.is_file() else None
+        )
         return scene
 
     def slice(

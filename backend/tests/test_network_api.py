@@ -14,6 +14,13 @@ from tests.test_smoothing_api import _decline, _prepare
 from tests.test_tunnel_api import _smooth, _tunnel
 
 
+def _levels(client: TestClient, sid: str) -> dict:  # type: ignore[type-arg]
+    r = client.post(f"/api/v1/scenarios/{sid}/design/levels")
+    assert r.status_code == 200, r.text
+    body: dict = r.json()  # type: ignore[type-arg]
+    return body
+
+
 def _network(client: TestClient, sid: str) -> dict:  # type: ignore[type-arg]
     r = client.post(f"/api/v1/scenarios/{sid}/network/generate")
     assert r.status_code == 200, r.text
@@ -21,11 +28,14 @@ def _network(client: TestClient, sid: str) -> dict:  # type: ignore[type-arg]
     return body
 
 
-def test_network_requires_smoothed(client: TestClient) -> None:
+def test_network_requires_smoothed_and_levels(client: TestClient) -> None:
     sid = _prepare(client)
     _decline(client, sid)
     r = client.post(f"/api/v1/scenarios/{sid}/network/generate")
     assert r.status_code == 409 and r.json()["detail"]["code"] == "SMOOTHED_NOT_GENERATED"
+    _smooth(client, sid)
+    r = client.post(f"/api/v1/scenarios/{sid}/network/generate")
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "LEVELS_NOT_GENERATED"
     r = client.get(f"/api/v1/scenarios/{sid}/network")
     assert r.status_code == 404 and r.json()["detail"]["code"] == "NETWORK_NOT_GENERATED"
     assert client.get("/api/v1/scenarios/nope/network").status_code == 404
@@ -37,14 +47,26 @@ def test_network_lifecycle_and_payload_contract(
     sid = _prepare(client)
     _decline(client, sid)
     _smooth(client, sid)
+    lv = _levels(client, sid)
+    assert lv["status"] == "SUCCESS", lv["failureReason"]
     body = _network(client, sid)
     assert body["status"] == "SUCCESS", body["failureReason"]
 
     smoothed = design_service.smoothed(sid)
     n_levels = len(smoothed["segments"])
-    assert body["metrics"]["nodeCount"] == n_levels + 1
-    assert body["metrics"]["edgeCount"] == n_levels
+    n_dev = len(lv["developments"])
+    n_sa = lv["metrics"]["crosscutCount"]
+    n_j = sum(1 for n in body["nodes"] if n["type"] == "JUNCTION")
+    assert body["metrics"]["nodeCount"] == 1 + n_levels + n_j + n_sa
+    assert body["metrics"]["edgeCount"] == n_levels + n_dev
     assert body["metrics"]["levelCount"] == n_levels
+    assert body["metrics"]["driftEdgeCount"] == lv["metrics"]["driftPieceCount"]
+    assert body["metrics"]["crosscutEdgeCount"] == n_sa
+    # RAMP physical edges unchanged from Phase 07: same ids, refs, lengths
+    ramp = [e for e in body["edges"] if e["type"] == "RAMP"]
+    assert len(ramp) == n_levels
+    for i, e in enumerate(ramp):
+        assert e["geometryRef"] == {"artifact": "decline_smoothed.json", "segmentIndex": i}
 
     # rule 68: node coordinates ARE the effective centerline endpoints
     pts0 = smoothed["segments"][0]["effectiveCenterline"]["points"]
@@ -59,8 +81,9 @@ def test_network_lifecycle_and_payload_contract(
     assert body["validation"]["synchronized"] is True
     assert body["validation"]["connected"] is True
 
-    # single-decline advisory: exactly one surface path everywhere (rule 70)
+    # advisory now spans ALL underground nodes (rule 73), all with one path
     (adv,) = body["surfacePathAdvisory"]
+    assert len(adv["perNode"]) == body["metrics"]["nodeCount"] - 1
     assert all(e["independentSurfacePaths"] == 1 for e in adv["perNode"])
 
     # GET returns the persisted payload byte-identically
@@ -75,16 +98,19 @@ def test_network_lifecycle_and_payload_contract(
 def test_network_and_tunnel_are_siblings(
     client: TestClient, store: ScenarioStore, design_service: DesignService
 ) -> None:
-    """smoothed → {tunnel, network}: a new smoothed artifact deletes BOTH;
-    regenerating one sibling never touches the other (rule 68)."""
+    """smoothed → {tunnel, levels → network}: a new smoothed artifact deletes
+    all three; regenerating a sibling never touches the other branch
+    (rules 68/74)."""
     sid = _prepare(client)
     _decline(client, sid)
     _smooth(client, sid)
     _tunnel(client, sid)
+    _levels(client, sid)
     _network(client, sid)
     tunnel_path = design_service.tunnel_report_path(sid)
     network_path = design_service.network_path(sid)
-    assert tunnel_path.is_file() and network_path.is_file()
+    levels_path = design_service.levels_path(sid)
+    assert tunnel_path.is_file() and network_path.is_file() and levels_path.is_file()
 
     # network regeneration leaves the tunnel untouched
     tunnel_bytes = tunnel_path.read_bytes()
@@ -96,11 +122,20 @@ def test_network_and_tunnel_are_siblings(
     _tunnel(client, sid)
     assert network_path.read_bytes() == network_bytes
 
-    # a new smoothed artifact invalidates BOTH siblings
+    # rule 74: regenerating LEVELS deletes the network only — never the tunnel
+    tunnel_bytes = tunnel_path.read_bytes()
+    _levels(client, sid)
+    assert not network_path.exists()
+    assert tunnel_path.read_bytes() == tunnel_bytes
+    _network(client, sid)
+
+    # a new smoothed artifact invalidates tunnel + levels + network
     _smooth(client, sid)
-    assert not tunnel_path.exists() and not network_path.exists()
+    assert not tunnel_path.exists() and not network_path.exists() and not levels_path.exists()
     r = client.get(f"/api/v1/scenarios/{sid}/network")
     assert r.status_code == 404 and r.json()["detail"]["code"] == "NETWORK_NOT_GENERATED"
+    r = client.get(f"/api/v1/scenarios/{sid}/design/levels")
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "LEVELS_NOT_GENERATED"
 
 
 def test_upstream_regeneration_invalidates_network(
@@ -109,8 +144,10 @@ def test_upstream_regeneration_invalidates_network(
     sid = _prepare(client)
     _decline(client, sid)
     _smooth(client, sid)
+    _levels(client, sid)
     _network(client, sid)
     path = design_service.network_path(sid)
-    assert path.is_file()
-    _decline(client, sid)  # rule 46/68 chain: decline regen clears downstream
-    assert not path.exists()
+    lpath = design_service.levels_path(sid)
+    assert path.is_file() and lpath.is_file()
+    _decline(client, sid)  # rule 46/68/74 chain: decline regen clears downstream
+    assert not path.exists() and not lpath.exists()

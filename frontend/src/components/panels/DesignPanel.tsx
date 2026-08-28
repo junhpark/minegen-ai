@@ -8,6 +8,7 @@ import { useViewerStore } from '@/stores/viewerStore'
 import { fmtMeters } from '@/utils/format'
 import type {
   DeclinePayload,
+  LevelsPayload,
   NetworkPayload,
   SmoothedDeclinePayload,
   TunnelMeshReport,
@@ -132,6 +133,24 @@ export function DesignPanel() {
       setLayerVisible('tunnelMesh', true)
     }
   }, [tunnelJob.data, scene, setScene, setLayerVisible])
+  // Phase 08 levels: synchronous deterministic developments (rules 71–74).
+  // Regenerating levels invalidates the network server-side (rule 74), so
+  // the displayed network report and scene overlay are cleared here too.
+  const levels = scene?.levels ?? null
+  const generateLevels = useMutation({
+    mutationFn: async () => {
+      if (!scene) throw new Error('smooth the decline first')
+      return api.generateLevels(scene.scenarioId)
+    },
+    onSuccess: (payload: LevelsPayload) => {
+      if (!scene) return
+      setScene({ ...scene, levels: payload, network: null })
+      setNetwork(null)
+      setLayerVisible('levels', true)
+      setLayerVisible('crosscuts', true)
+    },
+  })
+
   // Phase 07 network: synchronous generation, report-only display (rule 69/70)
   const [network, setNetwork] = useState<NetworkPayload | null>(null)
   // Stale-state guard (rule 68): the backend deletes network.json whenever a
@@ -148,7 +167,11 @@ export function DesignPanel() {
       if (!scene) throw new Error('smooth the decline first')
       return api.generateNetwork(scene.scenarioId)
     },
-    onSuccess: (payload) => setNetwork(payload),
+    onSuccess: (payload) => {
+      setNetwork(payload)
+      if (scene) setScene({ ...scene, network: payload })
+      setLayerVisible('network', true)
+    },
   })
 
   const err =
@@ -156,6 +179,7 @@ export function DesignPanel() {
     generateDecline.error ??
     smoothDecline.error ??
     generateTunnel.error ??
+    generateLevels.error ??
     generateNetwork.error
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
@@ -417,9 +441,57 @@ export function DesignPanel() {
 
       <button
         type="button"
+        onClick={() => generateLevels.mutate()}
+        disabled={
+          !smoothed || smoothed.status === 'FAILED' || generateLevels.isPending || smoothRunning
+        }
+        className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {generateLevels.isPending
+          ? 'Laying out levels…'
+          : levels
+            ? 'Regenerate levels'
+            : 'Generate levels (Phase 08)'}
+      </button>
+      {levels ? (
+        <div className="readout mt-2 text-[11px]">
+          <div className="flex justify-between text-chalk-dim">
+            <span className={levels.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+              {levels.status}
+            </span>
+            {levels.status === 'SUCCESS' && levels.metrics ? (
+              <span>
+                {levels.metrics.driftPieceCount} drift pieces · {levels.metrics.crosscutCount}{' '}
+                crosscuts · pitch {levels.metrics.stationPitch.toFixed(0)} m
+              </span>
+            ) : null}
+          </div>
+          {levels.status === 'SUCCESS' && levels.metrics ? (
+            <div className="mt-1 flex justify-between text-mute">
+              <span>{levels.metrics.totalDriftLength3d.toFixed(0)} m drifts</span>
+              <span>{levels.metrics.totalCrosscutLength3d.toFixed(0)} m crosscuts</span>
+              <span>{levels.metrics.stationsPerLevel} stations/level</span>
+            </div>
+          ) : (
+            <div className="mt-1 text-danger">{levels.failureReason}</div>
+          )}
+          <div className="mt-1 text-mute">
+            orebody-derived station lattice on the strike drift (rules 71–74)
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
         onClick={() => generateNetwork.mutate()}
         disabled={
-          !smoothed || smoothed.status === 'FAILED' || generateNetwork.isPending || smoothRunning
+          !smoothed ||
+          smoothed.status === 'FAILED' ||
+          !levels ||
+          levels.status === 'FAILED' ||
+          generateNetwork.isPending ||
+          generateLevels.isPending ||
+          smoothRunning
         }
         className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
       >
