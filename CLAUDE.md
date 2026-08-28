@@ -251,7 +251,13 @@ cleverness.
 
 47. Phase 04 Hybrid-A* physical states remain continuous.
     Closed-set discretization is 5 m XY, 1 m Z and 16 heading bins
-    by default. Discretization never snaps geometry.
+    by default. Discretization never snaps geometry. The
+    cover-established (rule 52) and profile-burial-established
+    (rule 66) flags carried by the search are history-dependent
+    boolean STATE LABELS on nodes and closed keys — they distinguish
+    otherwise-identical poses reached with different transition
+    history; they are not geometric discretization dimensions and
+    have no resolution.
 
 48. Turning primitives change heading by exactly one heading bin.
     With minimum radius R and heading-bin angle Δθ, the primitive
@@ -276,10 +282,25 @@ cleverness.
     underground samples may be accepted; after it is achieved, the
     path may never violate minimum cover again.
 
-53. Candidate chaining in v0.1 is greedy, level by level. Every valid
-    candidate up to K=5 is searched; selection uses actual segment cost
-    plus the next-level admissible lower bound. Terminal continuous
-    position and heading are inherited by the next segment.
+53. Candidate chaining in v0.1 is deterministic per level with
+    bounded backtracking. Every valid candidate up to K=5 is
+    searched; candidates are ordered by actual segment cost plus the
+    next-level admissible lower bound (ties by candidate index). The
+    next segment inherits the terminal continuous position and
+    heading and the cover-established and profile-burial-established
+    state. Every successful NON-FINAL arrival must additionally be
+    launchable: at least one legal forward/downward successor
+    primitive must exist under the same envelope-aware feasibility
+    contract, otherwise the candidate is demoted to INFEASIBLE
+    (NEXT_LAUNCH_INFEASIBLE). When a level has no feasible candidate,
+    the NEAREST ancestor level with an untried candidate advances to
+    its next deterministic pick and the chain below it is
+    re-searched. Each accepted backtrack consumes one unit of
+    max_chain_backtracks (default 24); exhausting the budget — or
+    exhausting the root level — fails the frontier level with an
+    explicit INFEASIBLE result. Backtracking never relaxes any
+    engineering constraint (rule 54) and never alters the per-level
+    search itself.
 
 54. Search failure never relaxes engineering constraints. Exhaustion
     returns a structured SEGMENT_INFEASIBLE result with per-candidate
