@@ -282,9 +282,48 @@ operations); fingerprint covers `scenario.json` + `decline_smoothed.json`;
 the network and the tunnel mesh are siblings — neither invalidates the
 other, a new smoothed/upstream artifact deletes both (rule 68).
 
-Measured (default 13-level scenario): 14 nodes, 13 RAMP edges, total ramp
-length = smoothed effective length, all `independentSurfacePaths = 1`.
-## Phase 08 — levels & crosscuts           (pending)
+Measured (default 13-level scenario, Phase 07 RAMP-only baseline —
+superseded by the Phase 08 topology below): 14 nodes, 13 RAMP edges, all
+`independentSurfacePaths = 1`.
+## Phase 08 — levels & crosscuts (`levels/builder.py`, rules 71–74)
+
+Deterministic analytic geometry, no path search. Per completed level, the
+strike DRIFT is anchored exactly at the Phase 05 LEVEL_ENTRY (the endpoint
+is never moved), aligned in plan with the orebody strike `u` and graded by
+`level_drift_gradient` in the canonical +u direction:
+`z(u) = z_entry − g·(u − u_entry)`. No claim is made that a graded drift
+stays on the exact 3D footwall-offset plane — the actual excavation
+envelope is validated with the direction-aware boundary sweep instead.
+
+Planned CROSSCUT stations come from the ANALYTIC orebody strike extent —
+never the Phase 03 candidate span (100 m by default vs a 600 m body). v0.1
+pitch is `stope_length + minimum_pillar` (35 m), symmetric about `u = 0`,
+with `|u| + stope_length/2 + minimum_pillar ≤ half_length` → 17 stations
+per level on the default body: a deterministic planned stope-access
+lattice for Phase 09, not final stope design. Crosscuts run HORIZONTALLY
+(horizontal projection of the footwall→ore direction, not the 3D −w) from
+the drift to the first footwall contact, solved analytically against the
+footwall face plane; hard gates: start weld ≤ 1e-6 m, terminal |sdf| ≤
+1e-6 m, no pre-terminal orebody breach, and `DesignContext.crosscut`
+envelope validation (orebody contact permitted; world, terrain and
+restricted zones retained). Invalid required development FAILs the
+artifact explicitly.
+
+The drift is emitted as PIECES split at every station/entry breakpoint, so
+each MineNetwork DRIFT edge maps 1:1 onto a development in `levels.json`
+(rule 73). The network is rebuilt from smoothed + levels: JUNCTION per
+station (a station coincident with the LEVEL_ENTRY reuses that node),
+STOPE_ACCESS per crosscut terminal, and the surface-path advisory now
+covers EVERY underground physical node. Default 13-level measured: 441
+developments (220 drift pieces + 221 crosscuts), network 455 nodes / 454
+edges (13 RAMP + 220 DRIFT + 221 CROSSCUT), single component, max weld
+1.4e-14 m, every underground node at one surface path.
+
+The volumetric level-development mesh is deliberately DEFERRED: independent
+capped tubes overlapped at T-junctions would leave false internal walls at
+every crosscut mouth; junction openings belong to a later mesh/walkthrough
+step. Phase 08 ships the geometry contract (`levels.json`) and the topology
+contract (network) plus centerline/graph visualization only.
 ## Phase 09 — longhole stopes              (pending)
 ## Phase 06 — tunnel mesh, gravity-aligned sweep (`design/tunnel_mesh.py`, rules 65–67)
 

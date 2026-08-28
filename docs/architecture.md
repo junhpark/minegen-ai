@@ -123,8 +123,8 @@ fault is added.
     04.5 Async jobs + progress + CI                      done
     05 Ramp smoothing + revalidation   done
     06 Tunnel mesh (gravity-aligned sweep)   done
-    07 MineNetwork   ← current
-    08 Levels & crosscuts
+    07 MineNetwork   done
+    08 Levels & crosscuts   ← current
     09 Stopes & mining method
     10 4D mining sequence
     11 Communication OSP
@@ -157,14 +157,20 @@ go under `geology`, not at the scenario root.
 - Scenarios: `data/scenarios/{id}/scenario.json` + `arrays.npz` + `derived/`.
   `derived/` now holds `targets.json`, `decline.json`, `decline_smoothed.json`,
   `tunnel_mesh.json` (Phase 06 report, always persisted with explicit status),
-  `tunnel_mesh.glb` (excavation mesh, SUCCESS only) and `network.json`
-  (Phase 07 typed NetworkPayload — deterministic serialization of the typed
-  contract, never a raw NetworkX dump). Invalidation chain:
-  world → targets → decline → smoothed → {tunnel mesh, network} — the tunnel
-  mesh and the MineNetwork are SIBLING derivations of the smoothed
-  centerline (rule 68): regenerating one never touches the other, while a
-  new smoothed (or upstream) artifact deletes both. Regenerating any stage
-  deletes every downstream artifact (rules 64/67).
+  `tunnel_mesh.glb` (excavation mesh, SUCCESS only), `levels.json` (Phase 08
+  typed LevelsPayload — the validated centerline artifact owning DRIFT and
+  CROSSCUT geometry, rule 71) and `network.json` (Phase 07/08 typed
+  NetworkPayload — deterministic serialization of the typed contract, never
+  a raw NetworkX dump). Invalidation chain (rules 64/67/68/74):
+
+      smoothed ──┬── tunnel_mesh
+                 └── levels ── network
+
+  Tunnel mesh and the levels branch are SIBLINGS of the smoothed centerline:
+  a new smoothed (or upstream) artifact deletes tunnel + levels + network;
+  regenerating levels deletes the network only (rebuilt, never patched) and
+  never touches the tunnel; regenerating the network or the tunnel touches
+  nothing else. Regenerating any stage deletes every downstream artifact.
 - Long-running work (rule 60): `services/job_service.py` — in-memory
   registry + 2-worker thread pool; one job per scenario at a time. Algorithms
   emit `ProgressEvent`s through a plain callback (`design/progress.py`);

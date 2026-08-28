@@ -7,6 +7,7 @@ import type {
   DeclinePayload,
   JobRecord,
   JobSubmission,
+  LevelsPayload,
   NetworkPayload,
   SliceAxis,
   SliceField,
@@ -100,6 +101,10 @@ export const api = {
   submitTunnel: (id: string) =>
     request<JobSubmission>(`/scenarios/${id}/design/tunnel`, { method: 'POST' }),
   getTunnel: (id: string) => request<TunnelMeshReport>(`/scenarios/${id}/design/tunnel`),
+  /** Synchronous Phase 08 level developments (rules 71–74). */
+  generateLevels: (id: string) =>
+    request<LevelsPayload>(`/scenarios/${id}/design/levels`, { method: 'POST' }),
+  getLevels: (id: string) => request<LevelsPayload>(`/scenarios/${id}/design/levels`),
   /** Synchronous Phase 07 network generation (reserved /network namespace). */
   generateNetwork: (id: string) =>
     request<NetworkPayload>(`/scenarios/${id}/network/generate`, { method: 'POST' }),

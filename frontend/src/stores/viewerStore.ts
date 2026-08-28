@@ -31,6 +31,7 @@ const DEFAULT_VISIBLE: LayerId[] = [
   'ramp',
   'levels',
   'crosscuts',
+  'network',
   'stopes',
 ]
 

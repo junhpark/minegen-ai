@@ -222,3 +222,155 @@ def test_failed_smoothed_artifact_never_yields_a_network(tmp_path) -> None:  # t
     payload["status"] = "SUCCESS_WITH_FALLBACK"
     ok = MineNetworkBuilder(sc).build(payload, "rev")
     assert ok.success and len(ok.payload.edges) == 1
+
+
+def _levels_payload_for(entry: np.ndarray, level_id: str = "L01") -> dict:  # type: ignore[type-arg,no-untyped-def]
+    """Hand-built levels payload: two drift pieces split at one JUNCTION
+    station plus one entry-coincident station, and two crosscuts."""
+    e = entry
+
+    def line(a, b, n=5):  # type: ignore[no-untyped-def]
+        t = np.linspace(0.0, 1.0, n)[:, None]
+        return (np.asarray(a)[None, :] * (1 - t) + np.asarray(b)[None, :] * t).ravel().tolist()
+
+    j = e + np.array([40.0, 0.0, 0.0])
+    sa0 = e + np.array([0.0, 25.0, 0.0])
+    sa1 = j + np.array([0.0, 25.0, 0.0])
+
+    def dev(did, kind, frm, to, pts, station_index=None, station_u=None):  # type: ignore[no-untyped-def]
+        return {
+            "id": did,
+            "kind": kind,
+            "levelId": level_id,
+            "stationIndex": station_index,
+            "stationU": station_u,
+            "fromU": frm,
+            "toU": to,
+            "centerline": {"points": pts},
+            "length3d": 40.0 if kind == "DRIFT" else 25.0,
+            "meanGradientSigned": 0.0,
+            "maxAbsGradient": 0.0,
+            "report": {
+                "startWeldError": 0.0,
+                "envelopeHardViolations": 0,
+                "envelopeAboveTerrain": 0,
+                "terminalSdf": 0.0 if kind == "CROSSCUT" else None,
+                "interiorBreachSamples": 0,
+                "fieldCost": 7.0,
+                "valid": True,
+                "failureReason": None,
+            },
+        }
+
+    return {
+        "status": "SUCCESS",
+        "failureReason": None,
+        "sourceRevision": "lv",
+        "developments": [
+            dev("DRIFT:L01:00", "DRIFT", 0.0, 40.0, line(e, j)),
+            # station S+00 coincides with the LEVEL_ENTRY → node reuse
+            dev("CROSSCUT:L01:S+00", "CROSSCUT", 0.0, 0.0, line(e, sa0), 0, 0.0),
+            dev("CROSSCUT:L01:S+01", "CROSSCUT", 40.0, 40.0, line(j, sa1), 1, 40.0),
+        ],
+        "levels": [],
+        "metrics": None,
+    }
+
+
+def test_level_development_topology_weaving(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Rule 73: DRIFT edges split at graph nodes, entry-coincident station
+    reuses LEVEL_ENTRY (no duplicate co-located JUNCTION), STOPE_ACCESS
+    terminals, levels.json geometryRef, advisory over ALL underground
+    nodes."""
+    store = ScenarioStore(root=tmp_path)
+    sc = _scenario(store)
+    p0 = np.array([0.0, 0.0, 100.0])
+    p1 = np.array([0.0, 100.0, 88.0])
+    smoothed = _payload(_segment("L01", p0, p1))
+    levels = _levels_payload_for(p1)
+    res = MineNetworkBuilder(sc).build(smoothed, "rev", levels_payload=levels)
+    assert res.success, res.payload.failure_reason
+    body = res.payload
+
+    ids = [n.id for n in body.nodes]
+    assert "LEVEL_ENTRY:L01" in ids
+    assert sum(1 for n in body.nodes if n.type.value == "JUNCTION") == 1
+    assert sum(1 for n in body.nodes if n.type.value == "STOPE_ACCESS") == 2
+    # co-located station reused the entry: no JUNCTION at the entry position
+    entry = next(n for n in body.nodes if n.id == "LEVEL_ENTRY:L01")
+    for n in body.nodes:
+        if n.type.value == "JUNCTION":
+            assert np.linalg.norm(np.asarray(n.position) - np.asarray(entry.position)) > 1.0
+
+    by_id = {e.id: e for e in body.edges}
+    drift = by_id["DRIFT:L01:00"]
+    assert (drift.from_node, drift.to_node) == ("LEVEL_ENTRY:L01", drift.to_node)
+    assert drift.to_node.startswith("JUNCTION:L01:")
+    assert drift.effective_source == "ANALYTIC"
+    assert drift.geometry_ref.artifact == "levels.json"
+    assert drift.geometry_ref.segment_index == 0
+    cc0 = by_id["CROSSCUT:L01:S+00"]
+    assert cc0.from_node == "LEVEL_ENTRY:L01"  # reuse rule
+    assert cc0.to_node == "STOPE_ACCESS:L01:S+00"
+    cc1 = by_id["CROSSCUT:L01:S+01"]
+    assert cc1.from_node == drift.to_node
+    assert by_id["CROSSCUT:L01:S+01"].geometry_ref.segment_index == 2
+
+    m = body.metrics
+    assert m is not None
+    assert (m.drift_edge_count, m.crosscut_edge_count) == (1, 2)
+    assert (m.junction_count, m.stope_access_count) == (1, 2)
+    assert m.total_drift_length3d == pytest.approx(40.0)
+    assert m.total_crosscut_length3d == pytest.approx(50.0)
+
+    # advisory covers EVERY underground node (LE + J + SA = 4), all with 1
+    (adv,) = body.surface_path_advisory
+    assert len(adv.per_node) == len(body.nodes) - 1
+    assert all(e.independent_surface_paths == 1 for e in adv.per_node)
+    covered = {e.node_id for e in adv.per_node}
+    assert any(n.startswith("STOPE_ACCESS") for n in covered)
+    assert any(n.startswith("JUNCTION") for n in covered)
+
+
+def test_failed_levels_artifact_never_yields_a_network(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    store = ScenarioStore(root=tmp_path)
+    sc = _scenario(store)
+    p0 = np.array([0.0, 0.0, 100.0])
+    p1 = np.array([0.0, 100.0, 88.0])
+    levels = _levels_payload_for(p1)
+    levels["status"] = "FAILED"
+    res = MineNetworkBuilder(sc).build(
+        _payload(_segment("L01", p0, p1)), "rev", levels_payload=levels
+    )
+    assert not res.success
+    assert res.payload.nodes == [] and res.payload.edges == []
+    assert res.payload.failure_reason is not None and "levels" in res.payload.failure_reason
+
+
+def test_corrupted_declared_length_fails_network(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Blocker-2 regression: network edge scalars are recomputed from the
+    owning centerline; a declared length3d diverging from the geometry by
+    +1 m must FAIL the network (rule 13)."""
+    store = ScenarioStore(root=tmp_path)
+    sc = _scenario(store)
+    p0 = np.array([0.0, 0.0, 100.0])
+    p1 = np.array([0.0, 100.0, 88.0])
+    smoothed = _payload(_segment("L01", p0, p1))
+    levels = _levels_payload_for(p1)
+    ok = MineNetworkBuilder(sc).build(smoothed, "rev", levels_payload=levels)
+    assert ok.success and ok.payload.validation is not None
+    assert ok.payload.validation.max_edge_length_sync_error <= 1e-6
+
+    corrupted = json.loads(json.dumps(levels))
+    corrupted["developments"][0]["length3d"] += 1.0  # centerline unchanged
+    res = MineNetworkBuilder(sc).build(smoothed, "rev", levels_payload=corrupted)
+    assert not res.success
+    assert res.payload.validation is not None
+    assert res.payload.validation.max_edge_length_sync_error == pytest.approx(1.0)
+    assert res.payload.validation.synchronized is False
+    assert (
+        res.payload.failure_reason is not None and "owning centerline" in res.payload.failure_reason
+    )
+    # the recomputed edge scalar still reflects the true geometry
+    drift = next(e for e in res.payload.edges if e.id == "DRIFT:L01:00")
+    assert drift.length3d == pytest.approx(40.0)

@@ -61,6 +61,7 @@ export const LAYER_IDS = [
   'backfill',
   'routers',
   'sensors',
+  'network',
   'coverage',
   'hazards',
   'equipment',

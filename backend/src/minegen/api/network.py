@@ -2,7 +2,8 @@
 
 The reserved ``/scenarios/{id}/network`` namespace. Generation is
 SYNCHRONOUS: rule 60 reserves async jobs for long-running design operations,
-and the RAMP subgraph (14 nodes / 13 edges on the default scenario) is tiny.
+and the full RAMP + DRIFT + CROSSCUT graph rebuild (455 nodes / 454 edges on
+the default scenario) completes in a few seconds.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from minegen.core.models import ErrorDetail
 from minegen.network.models import NetworkPayload
 from minegen.services.design_service import (
     DesignService,
+    LevelsNotGeneratedError,
     NetworkNotFoundError,
     SmoothedNotGeneratedError,
     StaleInputsError,
@@ -49,6 +51,12 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             status.HTTP_409_CONFLICT,
             "SMOOTHED_NOT_GENERATED",
             f"scenario '{scenario_id}' has no smoothed decline; POST …/design/decline/smooth first",
+        )
+    if isinstance(exc, LevelsNotGeneratedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "LEVELS_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no level developments; POST …/design/levels first",
         )
     if isinstance(exc, NetworkNotFoundError):
         return _error(
