@@ -300,7 +300,9 @@ export interface TunnelMeshReport {
   status: 'SUCCESS' | 'FAILED'
   failureReason: string | null
   length3d?: number
-  profileArea?: number
+  analyticProfileArea?: number
+  meshProfileArea?: number
+  tessellationBiasPct?: number
   crownRadius?: number
   profileEnvelopeReach?: number
   nominalExcavationVolume?: number

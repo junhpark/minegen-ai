@@ -242,6 +242,12 @@ class DeclineSearchConfig(ApiModel):
     xy_resolution: PositiveFloat = 5.0
     z_resolution: PositiveFloat = 1.0
     heading_bins: Annotated[int, Field(ge=8, le=72)] = 16
+    # Chain-level bounded backtracking (rule 66 launchability follow-through):
+    # when a level has no feasible candidate, the nearest ancestor level with
+    # an untried candidate advances to its next deterministic pick and the
+    # chain below is re-searched. Each accepted backtrack consumes one unit;
+    # exhausting the budget fails the level explicitly.
+    max_chain_backtracks: Annotated[int, Field(ge=0, le=200)] = 24
     grade_fractions: list[Annotated[float, Field(ge=0, le=1)]] = Field(
         default_factory=lambda: [0.0, 0.5, 1.0]
     )
@@ -305,6 +311,7 @@ class DesignConfig(ApiModel):
     # access targets at the design offset are neutral; closer is discouraged.
     orebody_sterilization_weight: NonNegativeFloat = 5.0
     orebody_sterilization_range: PositiveFloat = 15.0
+
     minimum_surface_cover: NonNegativeFloat = 0.0
     restricted_zones: list[RestrictedZone] = Field(default_factory=list)
 
@@ -328,7 +335,7 @@ class TunnelProfile(ApiModel):
     ``a = width / 2`` — never an independent input."""
 
     wall_height: PositiveFloat = 2.5
-    arch_segments: Annotated[int, Field(ge=2, le=64)] = 8
+    arch_segments: Annotated[int, Field(ge=2, le=64)] = 16
     ring_max_spacing: PositiveFloat = 2.0
     ring_max_turn_deg: PositiveFloat = 7.0
     crease_angle_deg: Annotated[float, Field(gt=0, lt=180)] = 40.0

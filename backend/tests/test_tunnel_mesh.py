@@ -167,7 +167,7 @@ def test_topology_volumes_and_removable_caps() -> None:
     assert top.watertight and top.manifold and top.outward_orientation
     assert top.degenerate_triangles == 0
     # rule 67: nominal volume = profile area × 3D length, NO cosine correction
-    nominal = shape.area * length
+    nominal = shape.mesh_area * length
     assert top.signed_volume == pytest.approx(nominal, rel=1e-9)
     # caps are separate removable primitives; without them the tube is open
     render = build_render_mesh(
@@ -287,10 +287,105 @@ def test_profile_envelope_reach() -> None:
     centerline needs on top of a hard buffer to guarantee the excavation
     envelope clears it (1-Lipschitz sdf). Crown apex dominates: 5.0 m for
     any default-height profile."""
-    from minegen.design.tunnel_mesh import profile_envelope_reach
+    from minegen.design.profile import profile_envelope_reach
 
     ramp = RampConstraints()
     assert profile_envelope_reach(ramp, TunnelProfile()) == pytest.approx(5.0, abs=1e-12)
     assert profile_envelope_reach(ramp, TunnelProfile(wallHeight=3.0)) == pytest.approx(
         5.0, abs=1e-9
     )
+
+
+def test_nominal_volume_invariant_under_arch_segments() -> None:
+    """Blocker 2 regression: nominalExcavationVolume uses the ANALYTIC
+    D-profile area, so it must be identical for any tessellation density,
+    while the mesh area converges from below (~1/n²)."""
+    from minegen.design.profile import build_profile as bp
+
+    ramp = RampConstraints()
+    sc, ev = _flat_cover_setup(min_cover=0.0)
+    pts, tan = _straight(np.array([-80.0, -150.0, -50.0]), 0.0, -0.1, 90.0)
+    payload = {"status": "SUCCESS", "segments": [_seg(pts, tan, tan)]}
+    nominals, mesh_areas, statuses = [], [], []
+    for n in (8, 16, 32):
+        builder = TunnelMeshBuilder(
+            ev, sc.ramp, sc.tunnel_profile.model_copy(update={"arch_segments": n})
+        )
+        rep = builder.build(payload).report
+        nominals.append(rep["nominalExcavationVolume"])
+        mesh_areas.append(rep["meshProfileArea"])
+        statuses.append(rep["status"])
+        assert rep["analyticProfileArea"] == pytest.approx(
+            bp(ramp, TunnelProfile()).analytic_area, rel=1e-15
+        )
+        assert rep["tessellationBiasPct"] < 0.0
+    assert nominals[0] == nominals[1] == nominals[2]
+    assert mesh_areas[0] < mesh_areas[1] < mesh_areas[2] < nominals[0] / 90.0
+    # coarse 8-segment tessellation legitimately FAILS the 1 % volume QA
+    # against the analytic nominal (bias −1.12 %) — the reason the default
+    # arch_segments moved to 16, where the gate is comfortably green
+    assert statuses == ["FAILED", "SUCCESS", "SUCCESS"]
+    # default 16 segments keeps the 1 % volume QA comfortably green
+    default_rep = TunnelMeshBuilder(ev, sc.ramp, sc.tunnel_profile).build(payload).report
+    assert abs(default_rep["volumeDifferencePct"]) < 0.5
+
+
+def test_search_rejects_wall_clipping_primitive() -> None:
+    """Blocker 1 regression: a primitive whose CENTERLINE is valid but whose
+    swept wall/roof clips a restricted zone is rejected by the Hybrid-A*
+    feasibility contract itself (direction-aware envelope), not first caught
+    by the Phase 06 gate."""
+    from minegen.core.models import Point3D, RestrictedZone
+    from minegen.design.astar_3d import HybridAStar
+    from minegen.design.motion_primitives import Pose, Steering
+
+    sc, ev0 = _flat_cover_setup(min_cover=0.0)
+    design = sc.design.model_copy(deep=True)
+    start = Pose(-80.0, -150.0, -50.0, 0.0)  # heading north, deep, buried
+    # box east of the path: ≥1.5 m from the centerline, clips the upper wall
+    design.restricted_zones = [
+        RestrictedZone(
+            min=Point3D(x=-78.5, y=-145.0, z=-49.0),
+            max=Point3D(x=-77.6, y=-135.0, z=-45.0),
+        )
+    ]
+    from minegen.design.cost_field import DesignCostEvaluator
+
+    ev = DesignCostEvaluator(ev0.world, design)
+    a = HybridAStar(ev, sc.ramp, sc.design.search)
+    prims = a.prims.expand(start)
+    straight = next(p for p in prims if p.steering is Steering.STRAIGHT and p.grade == 0.0)
+    centerline = ev.evaluate_points(straight.samples)
+    assert bool(centerline.valid.all())  # the centerline alone is fine
+    assert a.evaluate_primitives([straight], True, True)[0] is None  # envelope says no
+    # without the zone the same primitive is accepted
+    a0 = HybridAStar(ev0, sc.ramp, sc.design.search)
+    assert a0.evaluate_primitives([straight], True, True)[0] is not None
+
+
+def test_launchability_rejects_trapped_terminal_pose() -> None:
+    """Blocker 1 regression: a terminal pose walled in ahead has no legal
+    successor primitive under the envelope-aware contract — the designer must
+    treat such an arrival as unusable for a non-final level."""
+    from minegen.core.models import Point3D, RestrictedZone
+    from minegen.design.astar_3d import HybridAStar
+    from minegen.design.cost_field import DesignCostEvaluator
+    from minegen.design.motion_primitives import Pose
+
+    sc, ev0 = _flat_cover_setup(min_cover=0.0)
+    design = sc.design.model_copy(deep=True)
+    end = Pose(-80.0, -150.0, -50.0, 0.0)  # heading north
+    # a wide wall just ahead: every forward/downward successor clips it
+    design.restricted_zones = [
+        RestrictedZone(
+            min=Point3D(x=-140.0, y=-146.0, z=-75.0),
+            max=Point3D(x=-20.0, y=-140.0, z=-25.0),
+        )
+    ]
+    ev = DesignCostEvaluator(ev0.world, design)
+    a = HybridAStar(ev, sc.ramp, sc.design.search)
+    prims = a.prims.expand(end)
+    evals = a.evaluate_primitives(prims, True, True)
+    assert all(e is None for e in evals)  # trapped: not launchable
+    a0 = HybridAStar(ev0, sc.ramp, sc.design.search)
+    assert any(e is not None for e in a0.evaluate_primitives(prims, True, True))

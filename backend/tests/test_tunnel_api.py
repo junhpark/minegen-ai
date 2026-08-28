@@ -52,7 +52,9 @@ def test_tunnel_sync_lifecycle_scene_and_glb(
     # engineering quantities are backend-computed and finite (rules 17/67)
     for key in (
         "length3d",
-        "profileArea",
+        "analyticProfileArea",
+        "meshProfileArea",
+        "tessellationBiasPct",
         "crownRadius",
         "nominalExcavationVolume",
         "meshEnclosedVolume",

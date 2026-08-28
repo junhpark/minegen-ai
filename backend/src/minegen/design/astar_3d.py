@@ -24,7 +24,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from minegen.core.models import DeclineSearchConfig, RampConstraints
+from minegen.core.models import DeclineSearchConfig, RampConstraints, TunnelProfile
 from minegen.design.cost_field import CostEvaluation, DesignCostEvaluator
 from minegen.design.motion_primitives import (
     Pose,
@@ -33,6 +33,7 @@ from minegen.design.motion_primitives import (
     Steering,
     dubins_cs_length,
 )
+from minegen.design.profile import boundary_points, build_profile
 from minegen.design.validation import validate_samples
 
 FloatArray = npt.NDArray[np.float64]
@@ -146,6 +147,7 @@ class SegmentResult:
     diagnostics: SearchDiagnostics
     end_pose: Pose | None
     cover_established_at_end: bool
+    burial_established_at_end: bool = False
 
     @property
     def success(self) -> bool:
@@ -174,6 +176,7 @@ class _Node:
     g: float
     h: float
     cover: bool
+    burial: bool  # rule 66 profile-burial state (portal roof transition)
     parent: _Node | None
     primitive: Primitive | None
     depth: int
@@ -190,10 +193,17 @@ class HybridAStar:
         cfg: DeclineSearchConfig,
         *,
         sample_spacing: float | None = None,
+        tunnel_profile: TunnelProfile | None = None,
     ) -> None:
         self.ev = evaluator
         self.ramp = ramp
         self.cfg = cfg
+        # excavation-envelope feasibility contract (rule 66): every primitive
+        # sample sweeps the ACTUAL tunnel profile boundary with the
+        # heading/grade gravity-aligned frame — the same shared geometry the
+        # Phase 06 mesh excavates. Always on; the default profile applies
+        # when none is given.
+        self.envelope_shape = build_profile(ramp, tunnel_profile or TunnelProfile())
         spacing = sample_spacing if sample_spacing is not None else self.default_sample_spacing()
         self.prims = PrimitiveSet(
             min_turn_radius=ramp.min_turn_radius,
@@ -214,7 +224,7 @@ class HybridAStar:
 
     # -- discretization (rule 47) ------------------------------------------ #
 
-    def key(self, pose: Pose, cover: bool) -> tuple[int, int, int, int, bool]:
+    def key(self, pose: Pose, cover: bool, burial: bool) -> tuple[int, int, int, int, bool, bool]:
         ih = round(pose.heading / self.heading_step) % self.cfg.heading_bins
         return (
             math.floor(pose.x / self.cfg.xy_resolution),
@@ -222,26 +232,83 @@ class HybridAStar:
             math.floor(pose.z / self.cfg.z_resolution),
             ih,
             cover,
+            burial,
         )
+
+    def start_burial_established(self, pose: Pose) -> bool:
+        """Initial rule-66 burial state for a search: True iff the start
+        ring's full profile is already below the terrain (deep level starts);
+        False at the portal, where the roof legitimately daylights until the
+        profile first buries."""
+        t = np.array([[math.sin(pose.heading), math.cos(pose.heading), 0.0]])
+        ring = boundary_points(pose.position[None, :], t, self.envelope_shape).reshape(-1, 3)
+        _, above = self.ev.envelope_masks(ring)
+        return not bool(above.any())
 
     # -- primitive evaluation (rules 50, 52) ------------------------------- #
 
     def evaluate_primitives(
-        self, prims: list[Primitive], cover_established: bool
-    ) -> list[tuple[float, bool] | None]:
-        """For each primitive: ``(integrated cost, cover_established_after)``
-        or ``None`` if any sample is infeasible. One batched evaluator call."""
+        self, prims: list[Primitive], cover_established: bool, burial_established: bool
+    ) -> list[tuple[float, bool, bool] | None]:
+        """For each primitive:
+        ``(integrated cost, cover_established_after, burial_established_after)``
+        or ``None`` if any sample is infeasible. One batched evaluator call
+        for the centerline plus one batched excavation-envelope mask call for
+        the swept tunnel-profile boundary (rule 66): a primitive whose
+        centerline is valid but whose wall or roof would clip a hard
+        exclusion is rejected here, not first discovered by the Phase 06
+        gate. Above-terrain envelope points follow the rule-66 profile-burial
+        transition: allowed until the full ring first buries, breakthrough
+        afterwards rejects the primitive."""
         all_pts = np.vstack([p.samples for p in prims])
         ev = self.ev.evaluate_points(all_pts)
         surface = self.ev.surface_elevation(all_pts)
+        # per-sample unit tangents: every primitive is a constant-curvature,
+        # constant-grade arc, so heading is affine in horizontal arc length:
+        # θ(s) = θ_end − curvature·(Lh − s)
+        tangent_rows = []
+        for p in prims:
+            inv = 1.0 / math.sqrt(1.0 + p.grade * p.grade)
+            s_h = p.sample_arc * inv
+            theta = p.end.heading - p.curvature * (p.horizontal_length - s_h)
+            tangent_rows.append(
+                np.column_stack(
+                    [np.sin(theta) * inv, np.cos(theta) * inv, np.full_like(theta, p.grade * inv)]
+                )
+            )
+        boundary = boundary_points(all_pts, np.vstack(tangent_rows), self.envelope_shape)
+        k = self.envelope_shape.k
+        env_hard, env_above = self.ev.envelope_masks(boundary.reshape(-1, 3))
+        env_hard_any = env_hard.reshape(-1, k).any(axis=1)
+        env_above_any = env_above.reshape(-1, k).any(axis=1)
         finite_cost = ev.base_cost + ev.rock_penalty + ev.fault_penalty + ev.orebody_penalty
-        out: list[tuple[float, bool] | None] = []
+        out: list[tuple[float, bool, bool] | None] = []
         offset = 0
         transition_possible = self.min_cover > 0.0 and not cover_established
         for p in prims:
             n = p.samples.shape[0]
             sl = slice(offset, offset + n)
             offset += n
+            if env_hard_any[sl].any():
+                out.append(None)
+                continue
+            # rule 66 burial walk along the primitive's rings
+            above_rows = env_above_any[sl]
+            if burial_established:
+                if above_rows.any():
+                    out.append(None)
+                    continue
+                burial_after = True
+            else:
+                buried_rows = ~above_rows
+                if buried_rows.any():
+                    first = int(np.argmax(buried_rows))
+                    if above_rows[first:].any():
+                        out.append(None)  # breakthrough after burial
+                        continue
+                    burial_after = True
+                else:
+                    burial_after = False
             if not transition_possible:
                 # fast path: no forgiveness possible, a single all() decides
                 if not ev.valid[sl].all():
@@ -275,7 +342,7 @@ class HybridAStar:
                 established = res.cover_established
             c = finite_cost[sl]
             cost = float(np.dot(0.5 * (c[1:] + c[:-1]), np.diff(p.sample_arc)))
-            out.append((cost, established))
+            out.append((cost, established, burial_after))
         return out
 
     # -- search ------------------------------------------------------------ #
@@ -286,6 +353,7 @@ class HybridAStar:
         target: FloatArray,
         *,
         cover_established: bool = True,
+        burial_established: bool | None = None,
     ) -> SegmentResult:
         t0 = time.perf_counter()
         diag = SearchDiagnostics()
@@ -352,7 +420,12 @@ class HybridAStar:
             return (b, docking(node.pose), f, 0)
 
         counter = 0
-        root = _Node(start, 0.0, h_of(start), cover_established, None, None, 0)
+        burial0 = (
+            burial_established
+            if burial_established is not None
+            else self.start_burial_established(start)
+        )
+        root = _Node(start, 0.0, h_of(start), cover_established, burial0, None, None, 0)
         diag.admissible_bound = root.h
         open_heap: list[tuple[tuple[float, float, float, int], int, _Node]] = []
         heapq.heappush(open_heap, (priority(root), counter, root))
@@ -360,10 +433,10 @@ class HybridAStar:
         # and 0.85 m max-grade steps, a flat child and a descending child of the
         # same parent alias to one cell; their g differs by < 1 % while their h
         # differs by ~Δz/g_max. Comparing g would silently drop every descent.
-        best_f: dict[tuple[int, int, int, int, bool], float] = {
-            self.key(start, cover_established): root.f(eps)
+        best_f: dict[tuple[int, int, int, int, bool, bool], float] = {
+            self.key(start, cover_established, burial0): root.f(eps)
         }
-        expanded: set[tuple[int, int, int, int, bool]] = set()
+        expanded: set[tuple[int, int, int, int, bool, bool]] = set()
 
         def finish(
             status: SegmentStatus,
@@ -371,12 +444,13 @@ class HybridAStar:
             goal: list[Primitive] | None,
             gcost: float,
             cover_after: bool,
+            burial_after: bool,
         ) -> SegmentResult:
             diag.closed_states = len(expanded)
             diag.elapsed_ms = (time.perf_counter() - t0) * 1000.0
             diag.termination = status.value
             if node is None or goal is None:
-                return SegmentResult(status, None, math.inf, diag, None, cover_established)
+                return SegmentResult(status, None, math.inf, diag, None, cover_established, burial0)
             prims: list[Primitive] = []
             cur: _Node | None = node
             while cur is not None and cur.primitive is not None:
@@ -385,18 +459,20 @@ class HybridAStar:
             prims.reverse()
             prims.extend(goal)
             path = SegmentPath(prims, start, goal[-1].end)
-            return SegmentResult(status, path, node.g + gcost, diag, goal[-1].end, cover_after)
+            return SegmentResult(
+                status, path, node.g + gcost, diag, goal[-1].end, cover_after, burial_after
+            )
 
         while open_heap:
             diag.peak_open_size = max(diag.peak_open_size, len(open_heap))
             _, _, node = heapq.heappop(open_heap)
-            k = self.key(node.pose, node.cover)
+            k = self.key(node.pose, node.cover, node.burial)
             if node.f(eps) > best_f.get(k, math.inf) + 1e-9:
                 continue  # stale: a better node for this cell was pushed later
             if deadline is not None and time.perf_counter() > deadline:
-                return finish(SegmentStatus.TIME_LIMIT, None, None, math.inf, False)
+                return finish(SegmentStatus.TIME_LIMIT, None, None, math.inf, False, False)
             if diag.expanded_states >= self.cfg.max_expansions_per_candidate:
-                return finish(SegmentStatus.EXPANSION_LIMIT, None, None, math.inf, False)
+                return finish(SegmentStatus.EXPANSION_LIMIT, None, None, math.inf, False, False)
             if k in expanded:
                 continue  # already expanded with the best f for this cell
             expanded.add(k)
@@ -408,7 +484,7 @@ class HybridAStar:
                 if shot is None:
                     diag.goal_shot_failures[reason] = diag.goal_shot_failures.get(reason, 0) + 1
                 else:
-                    evals = self.evaluate_primitives(shot, node.cover)
+                    evals = self.evaluate_primitives(shot, node.cover, node.burial)
                     if any(e is None for e in evals):
                         diag.goal_shot_failures["INFEASIBLE_SAMPLES"] = (
                             diag.goal_shot_failures.get("INFEASIBLE_SAMPLES", 0) + 1
@@ -416,11 +492,15 @@ class HybridAStar:
                     else:
                         total = 0.0
                         cover_after = node.cover
+                        burial_after = node.burial
                         for e in evals:
                             assert e is not None
                             total += e[0]
                             cover_after = e[1]
-                        return finish(SegmentStatus.SUCCESS, node, shot, total, cover_after)
+                            burial_after = e[2]
+                        return finish(
+                            SegmentStatus.SUCCESS, node, shot, total, cover_after, burial_after
+                        )
 
             # overshoot prune
             if node.pose.z < z_floor:
@@ -435,7 +515,7 @@ class HybridAStar:
                 diag.best_approach_depth = node.depth
                 self._best_node = node
             prims = self.prims.expand(node.pose)
-            results = self.evaluate_primitives(prims, node.cover)
+            results = self.evaluate_primitives(prims, node.cover, node.burial)
             for prim, res in zip(prims, results, strict=True):
                 if res is None:
                     diag.rejected_primitives += 1
@@ -443,12 +523,14 @@ class HybridAStar:
                 if prim.end.z < z_floor:
                     diag.pruned_overshoot += 1
                     continue
-                cost, est = res
+                cost, est, burial_est = res
                 if prim.steering is not Steering.STRAIGHT:
                     cost += turn_cost  # curvature penalty (SRS §14); non-negative, h unaffected
                 g = node.g + cost
-                child = _Node(prim.end, g, h_of(prim.end), est, node, prim, node.depth + 1)
-                ck = self.key(prim.end, est)
+                child = _Node(
+                    prim.end, g, h_of(prim.end), est, burial_est, node, prim, node.depth + 1
+                )
+                ck = self.key(prim.end, est, burial_est)
                 cf = child.f(eps)
                 if cf >= best_f.get(ck, math.inf) - 1e-9:
                     continue
@@ -459,4 +541,4 @@ class HybridAStar:
                 diag.generated_states += 1
                 heapq.heappush(open_heap, (priority(child), counter, child))
 
-        return finish(SegmentStatus.INFEASIBLE, None, None, math.inf, False)
+        return finish(SegmentStatus.INFEASIBLE, None, None, math.inf, False, False)

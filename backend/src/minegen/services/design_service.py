@@ -195,7 +195,9 @@ class DesignService:
         fingerprint = self.input_fingerprint(scenario_id)
         scenario, _, ev = self.evaluator(scenario_id)
         targets = self._targets_object(scenario_id)
-        gen = ChainedDeclineGenerator(ev, scenario.ramp, scenario.design.search)
+        gen = ChainedDeclineGenerator(
+            ev, scenario.ramp, scenario.design.search, scenario.tunnel_profile
+        )
         result = gen.generate(targets, max_levels=max_levels, on_progress=on_progress)
         payload = result.to_dict()
         # Persist atomically w.r.t. invalidation: the same lock guards

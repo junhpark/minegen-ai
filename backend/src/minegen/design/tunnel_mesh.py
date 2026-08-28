@@ -28,6 +28,11 @@ from minegen.core.coordinates import gravity_aligned_frame
 from minegen.core.models import RampConstraints, TunnelProfile
 from minegen.design.constraints import RejectionReason
 from minegen.design.cost_field import DesignCostEvaluator
+from minegen.design.profile import (
+    ProfileShape,
+    boundary_points,
+    build_profile,
+)
 
 FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
@@ -38,85 +43,6 @@ VOLUME_QA_TOLERANCE_PCT = 1.0  # |mesh − nominal| / nominal acceptance (rule 6
 # --------------------------------------------------------------------------- #
 # 1. Profile (rule 67: crown radius is derived, dimensions from RampConstraints)
 # --------------------------------------------------------------------------- #
-
-
-@dataclass(frozen=True)
-class ProfileShape:
-    """Closed horseshoe cross-section in local (right, up) coordinates with
-    the floor centerline at the origin. Vertex order (K = arch_segments + 3):
-    floor_R, wall_R(top), arch interior …, wall_L(top), floor_L (counter-
-    clockwise); the closing edge floor_L → floor_R is the floor."""
-
-    points: FloatArray  # (K, 2) local (x=right, y=up), counter-clockwise
-    area: float
-    perimeter_u: FloatArray  # (K+1,) cumulative perimeter fraction incl. seam
-    crown_radius: float
-    crown_center_y: float
-    centroid: FloatArray  # (2,) polygon centroid (cap fan apex, rule 66)
-
-    @property
-    def k(self) -> int:
-        return int(self.points.shape[0])
-
-
-def build_profile(ramp: RampConstraints, profile: TunnelProfile) -> ProfileShape:
-    width = ramp.tunnel_width
-    height = ramp.tunnel_height
-    wall_h = profile.wall_height
-    if wall_h >= height:
-        raise ValueError(
-            f"wall_height ({wall_h:g}) must be smaller than tunnel_height ({height:g})"
-        )
-    a = width / 2.0
-    rise = height - wall_h
-    crown_radius = (a * a + rise * rise) / (2.0 * rise)
-    center_y = height - crown_radius  # arch circle center on the profile axis
-    # arch from wall_L top (−a, wall_h) to wall_R top (a, wall_h)
-    theta_r = math.atan2(wall_h - center_y, a)
-    theta_l = math.atan2(wall_h - center_y, -a)
-    n = profile.arch_segments
-    # counter-clockwise: from wall_R top over the crown (+90°) to wall_L top
-    if theta_l < theta_r:
-        theta_l += 2.0 * math.pi
-    thetas = np.linspace(theta_r, theta_l, n + 1)
-    arch = np.column_stack(
-        [crown_radius * np.cos(thetas), center_y + crown_radius * np.sin(thetas)]
-    )
-    pts = np.vstack(
-        [
-            [a, 0.0],  # floor_R
-            arch,  # wall_R top … wall_L top (n+1 points)
-            [-a, 0.0],  # floor_L
-        ]
-    )
-    # shoelace area (must be positive: counter-clockwise by construction)
-    x, y = pts[:, 0], pts[:, 1]
-    xn, yn = np.roll(x, -1), np.roll(y, -1)
-    area = 0.5 * float(np.sum(x * yn - xn * y))
-    if area <= 0:
-        raise ValueError("profile construction is not counter-clockwise")
-    cx = float(np.sum((x + xn) * (x * yn - xn * y)) / (6.0 * area))
-    cy = float(np.sum((y + yn) * (x * yn - xn * y)) / (6.0 * area))
-    edges = np.linalg.norm(np.diff(np.vstack([pts, pts[:1]]), axis=0), axis=1)
-    perim = float(edges.sum())
-    u = np.concatenate([[0.0], np.cumsum(edges)]) / perim
-    return ProfileShape(
-        points=pts,
-        area=area,
-        perimeter_u=u,
-        crown_radius=crown_radius,
-        crown_center_y=center_y,
-        centroid=np.array([cx, cy]),
-    )
-
-
-def profile_envelope_reach(ramp: RampConstraints, profile: TunnelProfile) -> float:
-    """Maximal distance of any profile vertex from the floor centerline —
-    the standoff margin the Phase 04/05 centerline must add on top of hard
-    exclusion buffers so the excavation envelope cannot clip them
-    (rule 66). Default 5×5 profile → 5.0 m (crown apex)."""
-    shape = build_profile(ramp, profile)
-    return float(np.linalg.norm(shape.points, axis=1).max())
 
 
 # --------------------------------------------------------------------------- #
@@ -226,19 +152,10 @@ class LogicalMesh:
 
 
 def sweep_rings(chain: RingChain, shape: ProfileShape) -> FloatArray:
-    """Profile vertices in world space: P + x·right + y·up per ring, with the
-    floor centerline at the profile origin (rule 65)."""
-    r = chain.centers.shape[0]
-    k = shape.k
-    out = np.empty((r, k, 3))
-    for i in range(r):
-        frame = gravity_aligned_frame(chain.tangents[i])
-        out[i] = (
-            chain.centers[i][None, :]
-            + shape.points[:, 0:1] * frame.right[None, :]
-            + shape.points[:, 1:2] * frame.up[None, :]
-        )
-    return out
+    """Profile vertices in world space via the SHARED envelope geometry
+    (``design.profile.boundary_points``): the mesh sweeps exactly the
+    boundary the Phase 04 feasibility check validated (rules 65–66)."""
+    return boundary_points(chain.centers, chain.tangents, shape)
 
 
 def build_logical_mesh(chain: RingChain, shape: ProfileShape) -> LogicalMesh:
@@ -665,7 +582,10 @@ class TunnelMeshBuilder:
         progress(len(segments) // 2, len(segments), "", "SEGMENT_COMPLETED")
 
         length_3d = float(chain.chainage[-1])
-        nominal = shape.area * length_3d
+        # rule 67 (blocker 2): engineering nominal volume uses the EXACT
+        # analytic D-profile area — invariant under arch_segments; the
+        # tessellated mesh area is reported separately
+        nominal = shape.analytic_area * length_3d
         volume_diff_pct = (
             abs(topo.signed_volume - nominal) / nominal * 100.0 if nominal > 0 else None
         )
@@ -686,7 +606,9 @@ class TunnelMeshBuilder:
         ]
         report: dict[str, Any] = {
             "length3d": length_3d,
-            "profileArea": shape.area,
+            "analyticProfileArea": shape.analytic_area,
+            "meshProfileArea": shape.mesh_area,
+            "tessellationBiasPct": shape.tessellation_bias_pct,
             "crownRadius": shape.crown_radius,
             "profileEnvelopeReach": float(np.linalg.norm(shape.points, axis=1).max()),
             "nominalExcavationVolume": nominal,

@@ -75,10 +75,12 @@ Every phase must pass all of these before it is considered complete:
 4. Regenerating the smoothed decline (or anything upstream) deletes
    `tunnel_mesh.json`/`tunnel_mesh.glb`; the mesh URL is revision-busted with
    `?v=<sha16>` of the GLB SHA-256.
-5. Note: the full 13-level DEFAULT scenario currently FAILs the envelope
-   gate with a real orebody-buffer conflict near L11–L12 (see
-   docs/algorithms.md, Phase 06) — the failure is explicit and correct.
-   Shorter runs (e.g. `maxLevels=3`) mesh successfully end-to-end.
+5. The full 13-level DEFAULT scenario meshes end-to-end: the former
+   L11–L12 orebody-buffer conflict was resolved upstream by the
+   direction-aware Phase 04 envelope feasibility contract with
+   launchability and bounded chain backtracking (see docs/algorithms.md,
+   Phase 04/06). Expect `chainBacktracks: 3` in the decline payload and
+   0 envelope violations in the tunnel report.
 
 ## Phase 05 smoke test
 

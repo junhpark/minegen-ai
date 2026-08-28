@@ -123,3 +123,70 @@ def test_sealed_level_yields_structured_infeasible_and_skips_rest() -> None:
     assert d["candidateResults"][0]["status"] in ("EXPANSION_LIMIT", "INFEASIBLE")
     assert d["candidateResults"][0]["diagnostics"]["expandedStates"] > 0
     assert sc.ramp.max_gradient == 0.12 and sc.ramp.min_turn_radius == 18.0  # untouched
+
+
+def test_chain_backtracks_out_of_trapped_best_arrival() -> None:
+    """Backtracking regression: level 1's best-scored candidate arrival is
+    one-step launchable (a short pocket ahead) but leaves level 2 with no
+    feasible corridor; the sibling candidate is clean. The chain must advance
+    deterministically to the sibling and complete 2/2 with exactly one
+    accepted backtrack."""
+    from minegen.core.models import Point3D as Pt3
+    from minegen.core.models import RestrictedZone, TerrainConfig
+    from minegen.design.targets import AccessCandidate, AccessTargetSet, LevelAccessTargets
+
+    sc = small_scenario(with_fault=False)
+    sc.terrain = TerrainConfig(grid_spacing=10, base_elevation=100, relief=0, octaves=1)
+    sc.orebody.center = Pt3(x=150.0, y=150.0, z=-400.0)  # far away: no buffer effects
+    sc.design.minimum_surface_cover = 0.0
+    trap = np.array([0.0, 0.0, 60.0])
+    # pocket around the trap arrival (approach from the south stays open):
+    # walls east/west/north leave a ~24 m channel — one successor primitive
+    # fits (launchable) but nothing can turn out of it toward level 2
+    sc.design.restricted_zones = [
+        RestrictedZone(min=Pt3(x=-60.0, y=-40.0, z=30.0), max=Pt3(x=-14.0, y=60.0, z=90.0)),
+        RestrictedZone(min=Pt3(x=14.0, y=-40.0, z=30.0), max=Pt3(x=60.0, y=60.0, z=90.0)),
+        RestrictedZone(min=Pt3(x=-60.0, y=26.0, z=30.0), max=Pt3(x=60.0, y=60.0, z=90.0)),
+    ]
+    w = generate_world(sc)
+    ev = DesignCostEvaluator(w, sc.design)
+
+    def cand(cid: str, level_id: str, pos, nla: float) -> AccessCandidate:  # type: ignore[no-untyped-def]
+        return AccessCandidate(
+            id=cid,
+            level_id=level_id,
+            position=np.asarray(pos, dtype=np.float64),
+            u_coord=0.0,
+            v_coord=0.0,
+            footwall_offset=20.0,
+            valid=True,
+            next_level_accessibility=nla,
+        )
+
+    ts = AccessTargetSet(
+        portal=np.array([0.0, -160.0, 100.0]),
+        portal_generated=False,
+        levels=[
+            LevelAccessTargets(
+                "L01",
+                0,
+                60.0,
+                [
+                    # trap first with a better (lower) accessibility bias
+                    cand("L01-TRAP", "L01", trap, nla=0.0),
+                    cand("L01-ALT", "L01", [90.0, -20.0, 60.0], nla=500.0),
+                ],
+            ),
+            LevelAccessTargets("L02", 1, 35.0, [cand("L02-C01", "L02", [140.0, 60.0, 35.0], 0.0)]),
+        ],
+    )
+    gen = ChainedDeclineGenerator(ev, sc.ramp, sc.design.search)
+    res = gen.generate(ts)
+    assert res.chain_backtracks == 1
+    assert [lr.status for lr in res.levels] == [LevelStatus.SUCCESS, LevelStatus.SUCCESS]
+    sel1 = res.levels[0].selected
+    assert sel1 is not None and sel1.candidate.id == "L01-ALT"
+    trap_res = next(c for c in res.levels[0].candidate_results if c.candidate.id == "L01-TRAP")
+    assert trap_res.result.success  # searched fine and one-step launchable...
+    assert not trap_res.selected  # ...but deselected by the backtrack
+    assert res.status == "SUCCESS" and res.completed_levels == 2

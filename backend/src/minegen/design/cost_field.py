@@ -174,6 +174,38 @@ class DesignCostEvaluator:
         p = np.asarray(points, dtype=np.float64)
         return np.all((p >= self.grid_min) & (p <= self.grid_max), axis=-1)
 
+    # -- excavation-envelope masks (rule 66, Phase 04 feasibility) ---------- #
+
+    def envelope_masks(self, points: FloatArray) -> tuple[BoolArray, BoolArray]:
+        """Lean boolean masks for excavation-ENVELOPE points (tunnel profile
+        boundary, not the centerline): ``(hard_invalid, above_terrain_like)``.
+
+        ``hard_invalid``: outside the world in XY or below its bottom, inside
+        the orebody, inside the orebody exclusion buffer, or inside a
+        restricted zone — always fatal for the envelope.
+        ``above_terrain_like``: above the terrain surface OR above the world
+        TOP (the portal-roof case) — fatal only once surface cover is
+        established (rule 52 at search time; the exact profile-burial
+        transition is re-checked by the Phase 06 gate, rule 66).
+        ``minimum_surface_cover`` is a centerline constraint and is NOT
+        applied to envelope points. No per-point reason lists are built:
+        this runs inside the Hybrid-A* hot loop."""
+        p = np.atleast_2d(np.asarray(points, dtype=np.float64))
+        xy_bottom_out = ~(
+            np.all((p[:, :2] >= self.grid_min[:2]) & (p[:, :2] <= self.grid_max[:2]), axis=1)
+            & (p[:, 2] >= self.grid_min[2])
+        )
+        above_top = p[:, 2] > self.grid_max[2]
+        surface = self.surface_elevation(p)
+        above_terrain_like = (p[:, 2] > surface) | above_top
+        hard = xy_bottom_out.copy()
+        if not self.context.allow_inside_orebody:
+            sdf = self.orebody_distance(p)
+            hard |= sdf < self.context.orebody_exclusion_buffer
+        if self.context.restricted_zones:
+            hard |= in_restricted_zone(p, self.context.restricted_zones)
+        return hard, above_terrain_like
+
     # -- full evaluation --------------------------------------------------- #
 
     def evaluate_points(self, points: FloatArray) -> CostEvaluation:
