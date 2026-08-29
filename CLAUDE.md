@@ -515,6 +515,59 @@ cleverness.
     owning centerline artifacts and is never incrementally patched from
     a stale network artifact.
 
+75. Phase 09 stope geometry ownership. ``stopes.json`` is the validated
+    geometry artifact that owns planned stope geometry. Stopes are
+    orebody-aligned rectangular prisms defined in the analytic
+    ``TabularOrebody`` local frame (u = strike, v = down-dip,
+    w = thickness normal); the analytic orebody — never voxels — is the
+    geometric source of truth, and the backend emits world-space prism
+    meshes. A stope is a production volume, not a development: it is
+    never a MineNetwork edge and Phase 09 never alters MineNetwork
+    topology.
+
+76. Phase 08 access-pair anchoring. Stopes are generated ONLY from the
+    validated Phase 08 ``levels.json`` artifact: the station lattice is
+    never recomputed from the scenario. Each stope spans an adjacent
+    completed level pair at one station index, anchored by the paired
+    CROSSCUT terminal points (both on the footwall face and station
+    plane within 1e-6 m) and referencing its two deterministic
+    STOPE_ACCESS anchor node ids. Missing, duplicated, mismatched or
+    geometrically inconsistent station pairs FAIL the artifact
+    explicitly; a required stope is never silently skipped.
+
+77. Stope pillar, validity and metric contract. Every stope must have
+    positive dimensions, local bounds inside the analytic orebody
+    extent, hard world/terrain/minimum-cover/restricted-zone validation
+    over a deterministic prism sample, and finite metrics. Neighbouring
+    strike stopes must keep a clear gap of at least ``minimum_pillar``
+    and the Phase 08 end-pillar contract; vertically adjacent stopes may
+    share their boundary face. Volume, tonnes and ``meanGradeProxy`` are
+    deterministic planning quantities and are never presented as
+    reserves or resources; the grade proxy is never a hard feasibility
+    criterion.
+
+78. Explicit mining-method strategy. Stope generation goes through the
+    MiningMethodStrategy factory. v0.1 implements
+    LONGHOLE_OPEN_STOPING only; every other reserved method returns a
+    typed explicit UNSUPPORTED_METHOD failure. Silent fallback to
+    another method is forbidden, and no automatic method-selection rule
+    exists until its engineering criteria are explicitly sourced.
+
+79. Phase 09 dependency contract. ``levels.json`` is upstream of BOTH
+    MineNetwork and stopes: regenerating levels deletes network and
+    stopes; regenerating the Phase 05 artifact (or further upstream)
+    deletes tunnel mesh, levels, network and stopes; generating stopes
+    leaves tunnel and network untouched, and generating the network
+    leaves stopes untouched. The stope fingerprint is
+    scenario + arrays + levels.
+
+80. Backend-only stope engineering; Phase 10 owns time. The frontend
+    assembles backend world-space stope vertices only and performs no
+    stope engineering calculations. Phase 09 stopes carry
+    ``plannedState = PLANNED``; temporal state transitions
+    (PLANNED → … → BACKFILLED), scheduling and production sequencing
+    belong to Phase 10.
+
 
 ## Persistence (v0.1)
 

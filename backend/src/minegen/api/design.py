@@ -10,12 +10,14 @@ from pydantic import Field
 from minegen.api.deps import get_design_service, get_job_service
 from minegen.core.models import ApiModel, ErrorDetail
 from minegen.levels.models import LevelsPayload
+from minegen.mining.models import StopesPayload
 from minegen.services.design_service import (
     DeclineNotGeneratedError,
     DesignService,
     LevelsNotGeneratedError,
     SmoothedNotGeneratedError,
     StaleInputsError,
+    StopesNotGeneratedError,
     TargetsNotGeneratedError,
     TunnelNotGeneratedError,
 )
@@ -79,6 +81,12 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             "LEVELS_NOT_GENERATED",
             f"scenario '{scenario_id}' has no level developments; POST …/design/levels first",
         )
+    if isinstance(exc, StopesNotGeneratedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "STOPES_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no planned stopes; POST …/design/stopes first",
+        )
     if isinstance(exc, StaleInputsError):
         return _error(
             status.HTTP_409_CONFLICT,
@@ -103,6 +111,27 @@ def generate_levels(scenario_id: str, svc: Service) -> LevelsPayload:
 def get_levels(scenario_id: str, svc: Service) -> LevelsPayload:
     try:
         return svc.levels(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.post("/stopes")
+def generate_stopes(scenario_id: str, svc: Service) -> StopesPayload:
+    """Phase 09 (rules 75–80): synchronous planned-stope generation."""
+    try:
+        return svc.generate_stopes(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.get("/stopes")
+def get_stopes(scenario_id: str, svc: Service) -> StopesPayload:
+    try:
+        return svc.stopes(scenario_id)
     except HTTPException:
         raise
     except Exception as exc:

@@ -10,6 +10,7 @@ import type {
   DeclinePayload,
   LevelsPayload,
   SmoothedDeclinePayload,
+  StopesPayload,
   TunnelMeshReport,
 } from '@/types/scene'
 
@@ -37,6 +38,7 @@ export function DesignPanel() {
         tunnelMesh: null,
         levels: null,
         network: null,
+        stopes: null,
       })
       setLayerVisible('accessTargets', true)
     },
@@ -71,6 +73,7 @@ export function DesignPanel() {
         tunnelMesh: null,
         levels: null,
         network: null,
+        stopes: null,
       })
       setLayerVisible('rawSearchPath', true)
     }
@@ -108,6 +111,7 @@ export function DesignPanel() {
         smoothedDecline: rec.result as SmoothedDeclinePayload,
         levels: null,
         network: null,
+        stopes: null,
         tunnelMesh: null,
       })
       setLayerVisible('smoothedDecline', true)
@@ -150,10 +154,24 @@ export function DesignPanel() {
     },
     onSuccess: (payload: LevelsPayload) => {
       if (!scene) return
-      // rule 74: levels regeneration invalidates the network only (tunnel kept)
-      setScene({ ...scene, levels: payload, network: null })
+      // rules 74/79: levels regeneration invalidates network + stopes (tunnel kept)
+      setScene({ ...scene, levels: payload, network: null, stopes: null })
       setLayerVisible('levels', true)
       setLayerVisible('crosscuts', true)
+    },
+  })
+
+  // Phase 09 stopes: synchronous planned-stope generation (rules 75–80).
+  const stopes = scene?.stopes ?? null
+  const generateStopes = useMutation({
+    mutationFn: async () => {
+      if (!scene) throw new Error('generate levels first')
+      return api.generateStopes(scene.scenarioId)
+    },
+    onSuccess: (payload: StopesPayload) => {
+      // rule 79: stope regeneration leaves tunnel/network/levels untouched
+      if (scene) setScene({ ...scene, stopes: payload })
+      setLayerVisible('stopes', true)
     },
   })
 
@@ -178,7 +196,8 @@ export function DesignPanel() {
     smoothDecline.error ??
     generateTunnel.error ??
     generateLevels.error ??
-    generateNetwork.error
+    generateNetwork.error ??
+    generateStopes.error
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
 
@@ -532,6 +551,52 @@ export function DesignPanel() {
           )}
           <div className="mt-1 text-mute">
             RAMP + DRIFT + CROSSCUT graph rebuilt from smoothed + levels (rules 68–74)
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => generateStopes.mutate()}
+        disabled={
+          !levels ||
+          levels.status === 'FAILED' ||
+          generateStopes.isPending ||
+          generateLevels.isPending
+        }
+        className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {generateStopes.isPending
+          ? 'Planning stopes…'
+          : stopes
+            ? 'Regenerate stopes'
+            : 'Generate stopes (Phase 09)'}
+      </button>
+      {stopes ? (
+        <div className="readout mt-2 text-[11px]">
+          <div className="flex justify-between text-chalk-dim">
+            <span className={stopes.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+              {stopes.status}
+            </span>
+            {stopes.status === 'SUCCESS' && stopes.metrics ? (
+              <span>
+                {stopes.metrics.stopeCount} stopes · {stopes.metrics.levelIntervalCount} intervals ×{' '}
+                {stopes.metrics.stationsPerInterval} stations
+              </span>
+            ) : null}
+          </div>
+          {stopes.status === 'SUCCESS' && stopes.metrics ? (
+            <div className="mt-1 flex justify-between text-mute">
+              <span>{(stopes.metrics.totalGeometricVolumeM3 / 1e6).toFixed(2)} Mm³</span>
+              <span>{(stopes.metrics.totalTonnes / 1e6).toFixed(2)} Mt</span>
+              <span>grade proxy {stopes.metrics.weightedMeanGradeProxy?.toFixed(2) ?? '—'}</span>
+            </div>
+          ) : (
+            <div className="mt-1 text-danger">{stopes.failureReason}</div>
+          )}
+          <div className="mt-1 text-mute">
+            planned longhole prisms anchored to Phase 08 access pairs (rules 75–80); planning
+            proxies only — not reserves
           </div>
         </div>
       ) : null}

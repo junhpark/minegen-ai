@@ -319,96 +319,39 @@ developments (220 drift pieces + 221 crosscuts), network 455 nodes / 454
 edges (13 RAMP + 220 DRIFT + 221 CROSSCUT), single component, max weld
 1.4e-14 m, every underground node at one surface path.
 
+## Phase 09 — stopes & mining method (`mining/`, rules 75–80)
+
+Stope generation goes through the explicit MiningMethodStrategy factory:
+v0.1 implements LONGHOLE_OPEN_STOPING; every other reserved method returns a
+typed UNSUPPORTED_METHOD failure — never a silent longhole substitute
+(rule 78). The generator consumes the validated Phase 08 `levels.json` ONLY
+(the station lattice is never recomputed): for every adjacent completed
+level pair and station index, the paired CROSSCUT terminals — gated onto the
+footwall face and station plane within 1e-6 m — anchor an orebody-aligned
+rectangular prism in the analytic local frame: `u ∈ stationU ±
+stope_length/2`, `v` between the two terminal local-v coordinates, `w = ±
+half_thickness` (rules 75–76). Missing/duplicate/mismatched pairs FAIL the
+artifact; required stopes are never silently skipped.
+
+Validation per stope (rule 77): positive dimensions, bounds inside the
+analytic extent, hard world/terrain/cover/zone sampling over a deterministic
+≤5 m prism lattice (crosscut context: the ore volume itself is legal),
+finite metrics, strike pillar ≥ `minimum_pillar` between neighbours plus the
+Phase 08 end-pillar contract; vertically adjacent stopes share their
+boundary face by construction. `meanGradeProxy` samples the existing
+BlockModel ore-flagged grades on a coarse interior lattice — a deterministic
+planning proxy, never a reserve/resource claim. Measured (default): 204
+stopes = 12 intervals × 17 stations, 1.95 Mm³ / 5.47 Mt, extraction fraction
+0.775, weighted ore-fraction grade proxy ≈ 3.99 (per-stope 1.85–6.28), exact 5 m strike pillars, all anchors ≤
+1e-6 m. Stopes are production volumes — never MineNetwork edges; the two
+STOPE_ACCESS anchors are the link (rule 76), and Phase 10 owns temporal
+states beyond `plannedState = PLANNED` (rule 80).
+
 The volumetric level-development mesh is deliberately DEFERRED: independent
 capped tubes overlapped at T-junctions would leave false internal walls at
 every crosscut mouth; junction openings belong to a later mesh/walkthrough
 step. Phase 08 ships the geometry contract (`levels.json`) and the topology
 contract (network) plus centerline/graph visualization only.
-## Phase 09 — longhole stopes              (pending)
-## Phase 06 — tunnel mesh, gravity-aligned sweep (`design/tunnel_mesh.py`, rules 65–67)
-
-Input: the Phase 05 artifact only (rule 64) — per-segment validated effective
-centerlines plus shared boundary tangents. The centerline is the tunnel FLOOR
-centerline.
-
-1. **Profile** (`build_profile`): closed horseshoe polygon, K = archSegments+3
-   vertices, counter-clockwise. Width/height come exclusively from
-   `RampConstraints`; `TunnelProfile` holds shape + meshing parameters only
-   (wallHeight, archSegments, ringMaxSpacing, ringMaxTurnDeg, creaseAngleDeg).
-   The circular crown radius is DERIVED: `rise = H − Hw`,
-   `R_c = (a² + rise²) / (2·rise)`, `a = W/2` (default 5×5, wall 2.5 →
-   semicircular R_c = 2.5). Legacy persisted `width`/`crownRadius` fields are
-   dropped on load (deprecated migration).
-2. **Rings** (`build_ring_chain`): every polyline vertex is a ring; edges
-   longer than `ringMaxSpacing` (2 m) are split LINEARLY — rings lie exactly
-   on the validated polyline, which is never smoothed, spline-fitted, moved
-   or redesigned (rule 65). Consecutive segments share ONE logical boundary
-   ring whose tangent is the persisted shared boundary tangent; interior
-   polyline vertices use the mean of adjacent chord directions, subdivision
-   rings the chord direction. `maxLocalTurnDeg > ringMaxTurnDeg` (7°) →
-   FAILED (Phase 05's ≤2 m output on R ≥ 18 m gives ≤ 6.4°).
-3. **Sweep** (`sweep_rings`): the existing `core.coordinates.
-   gravity_aligned_frame` (rule 26) at every ring — profile plane ⊥ 3D
-   tangent, plumb walls, zero floor cross-slope, no roll. Profile origin =
-   floor centerline point.
-4. **Logical mesh** (`build_logical_mesh`): one continuous quad-strip tube
-   (2 tris/quad) + PORTAL_CAP/TERMINAL_CAP fans with the apex at the profile
-   CENTROID (a floor-centerline apex would degenerate the floor fan tris).
-   Caps are temporary closure surfaces for standalone topology/volume QA —
-   removable when crosscuts/walkthrough arrive.
-5. **Topology validation** (`validate_topology`, rule 66): manifold (every
-   directed edge once), watertight (every undirected edge exactly twice),
-   zero degenerate triangles, outward orientation via signed volume > 0.
-   Checked on the LOGICAL mesh before render splitting.
-6. **Envelope validation** (`validate_envelope`, rule 66): all ring profile
-   vertices against OUTSIDE_WORLD / INSIDE_OREBODY / OREBODY_BUFFER /
-   RESTRICTED_ZONE (always hard) and ABOVE_TERRAIN under the portal
-   profile-burial transition — terrain intersection allowed only until the
-   full profile is first buried; breakthrough afterwards is a violation.
-   OUTSIDE_WORLD caused solely by exceeding the world TOP is the same portal
-   case and is governed by the transition. `minimum_surface_cover` is a
-   centerline constraint and is NOT re-applied to the roof.
-7. **Volumes** (rule 67): the profile is ⊥ the 3D tangent, so
-   `nominalExcavationVolume = analyticProfileArea × length3d` with NO 1/cosθ
-   correction, where `analyticProfileArea = W·H_wall + R_c²(θ − sin θ)/2`
-   (θ = 2·asin(W/2R_c)) is EXACT and invariant under `archSegments`
-   (blocker 2 regression). `meshEnclosedVolume = Σ v₀·(v₁×v₂)/6` over the
-   closed logical mesh; `|Δ| / nominal ≤ 1 %` is a hard QA gate that now
-   includes the tessellation bias (`tessellationBiasPct`, inscribed polygon,
-   ~1/n²: −1.12 % at 8 segments — a legitimate QA failure — vs −0.28 % at
-   the default 16).
-8. **Render mesh** (`build_render_mesh`): crease-split vertices (creaseAngle
-   40°, vertex 0 always split as the UV seam), normals accumulated
-   angle-weighted from ACTUAL triangle geometry (not rotated 2D normals),
-   u = perimeter fraction [0,1], v = 3D chainage (m). Logical vs render
-   vertex counts are reported separately; `geometricallyClosed` is verified
-   by position-weld on the render mesh.
-9. **GLB** (`design/glb_writer.py`): minimal deterministic struct+json+numpy
-   writer (no new dependency, rule 16) — one vertex set, one glTF primitive
-   per segment (extras: segmentId, effectiveSource) + cap primitives
-   (extras: role). Byte-identical for identical input.
-
-Failure at any gate produces `status = FAILED` with an explicit
-`failureReason`; the report is always persisted, the GLB only on SUCCESS.
-Known limitations (technical debt): global self-intersection is NOT checked
-(`selfIntersectionCheck = NOT_IMPLEMENTED`) and the envelope samples profile
-VERTICES (violations strictly between samples can escape detection);
-`RampConstraints.clearance` is not yet a hard constraint.
-
-**Default-scenario envelope conflict — RESOLVED upstream (PR #3 blocker 1).**
-The Phase 04/05 centerline formerly passed at 8.00 m minimum orebody sdf and
-the excavation envelope clipped the 5 m buffer by up to 0.37 m near L11–L12
-(`OREBODY_BUFFER × 9`). Resolution is structural, not a validator weakening
-or buffer tune: the profile/envelope geometry was extracted to the shared
-lower-level ``design/profile.py``; Phase 04 primitive feasibility became
-direction-aware (actual per-sample frames sweeping the profile boundary);
-launchability filters trapped arrivals; and bounded chain backtracking
-escapes arrivals that strand the next level. Rejected alternatives, measured:
-hard `buffer + reach` standoff (footwall-approach poses inescapable at
-R = 18 m — L03 INFEASIBLE at 7 expansions) and soft-cost shaping (not a
-guarantee; min sdf 7.47 m / 5.86 m across two shapings). The Phase 06 gate
-is unchanged and remains the exact authority.
-
 ## Phase 10 — 4D sequencing                (pending)
 ## Phase 11 — router OSP (greedy, CP-SAT)  (pending)
 ## Phase 12 — generic sensor OSP           (pending)

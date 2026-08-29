@@ -124,6 +124,10 @@ class WorldService:
         scene["network"] = (
             json.loads(network.read_text(encoding="utf-8")) if network.is_file() else None
         )
+        stopes = derived / "stopes.json"
+        scene["stopes"] = (
+            json.loads(stopes.read_text(encoding="utf-8")) if stopes.is_file() else None
+        )
         return scene
 
     def slice(

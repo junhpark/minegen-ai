@@ -14,6 +14,7 @@ import { SmoothedDeclineLayer } from './SmoothedDeclineLayer'
 import { TunnelMeshLayer } from './TunnelMeshLayer'
 import { LevelDevelopmentLayer } from './LevelDevelopmentLayer'
 import { NetworkLayer } from './NetworkLayer'
+import { StopeLayer } from './StopeLayer'
 import { RockQualitySliceLayer } from './RockQualitySliceLayer'
 import { TerrainLayer } from './TerrainLayer'
 
@@ -80,6 +81,7 @@ export function MineScene() {
         />
       ) : null}
       {scene?.network && visible.has('network') ? <NetworkLayer network={scene.network} /> : null}
+      {scene?.stopes && visible.has('stopes') ? <StopeLayer stopes={scene.stopes} /> : null}
       {scene?.smoothedDecline && visible.has('smoothedDecline') ? (
         <SmoothedDeclineLayer smoothed={scene.smoothedDecline} />
       ) : null}
