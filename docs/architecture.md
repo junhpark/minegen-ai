@@ -173,7 +173,7 @@ go under `geology`, not at the scenario root.
   stopes; regenerating levels deletes network AND stopes (both rebuilt, never
   patched) and never touches the tunnel; regenerating the network, tunnel or
   stopes touches nothing else. Regenerating any stage deletes every
-  downstream artifact.
+  downstream artifact (rules 64/67/68/74/79).
 - Long-running work (rule 60): `services/job_service.py` — in-memory
   registry + 2-worker thread pool; one job per scenario at a time. Algorithms
   emit `ProgressEvent`s through a plain callback (`design/progress.py`);

@@ -78,29 +78,56 @@ def _failed(method: str, source_revision: str, reason: str) -> StopesPayload:
     )
 
 
-def _grade_proxy(world: SyntheticWorld, corners_world: FloatArray) -> float | None:
-    """Deterministic planning proxy from the existing BlockModel grade — the
-    mean grade of ore-flagged blocks whose centers a coarse interior lattice
-    hits. NOT a reserve/resource estimate and never a feasibility criterion."""
+def _grade_proxy(
+    world: SyntheticWorld,
+    orebody: TabularOrebody,
+    bounds: StopeLocalBounds,
+    corners_world: FloatArray,
+) -> float | None:
+    """Deterministic planning proxy from the existing BlockModel grade and
+    ore_fraction — NOT a reserve/resource estimate and never a feasibility
+    criterion. The world-axis AABB of the rotated prism is used ONLY to crop
+    candidate blocks; actual inclusion tests every candidate BLOCK CENTER in
+    the analytic orebody local frame against the stope's true
+    [uMin,uMax] × [vMin,vMax] × [wMin,wMax], so mineralized blocks of a
+    strike neighbour, pillar or vertical interval inside the AABB can never
+    leak into this stope's proxy. Partial blocks contribute through
+    ore_fraction weighting: Σ(grade·oreFraction) / Σ(oreFraction)."""
     bm = world.block_model
     grid = bm.grid
-    mins = corners_world.min(axis=0)
-    maxs = corners_world.max(axis=0)
-    axes = [
-        np.linspace(mins[d], maxs[d], max(2, math.ceil((maxs[d] - mins[d]) / 10.0) + 1))
-        for d in range(3)
-    ]
-    gx, gy, gz = np.meshgrid(*axes, indexing="ij")
-    pts = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
-    idx = np.floor((pts - np.asarray(grid.origin)) / np.asarray(grid.spacing)).astype(int)
-    inb = np.all((idx >= 0) & (idx < np.asarray(grid.shape)), axis=1)
-    if not bool(inb.any()):
+    origin = np.asarray(grid.origin)
+    spacing = np.asarray(grid.spacing)
+    shape = np.asarray(grid.shape)
+    lo = np.clip(np.floor((corners_world.min(axis=0) - origin) / spacing).astype(int), 0, shape - 1)
+    hi = np.clip(np.floor((corners_world.max(axis=0) - origin) / spacing).astype(int), 0, shape - 1)
+    if bool(np.any(hi < lo)):
         return None
-    i, j, k = idx[inb].T
-    flags = bm.ore_flag[i, j, k]
-    if not bool(flags.any()):
+    ii, jj, kk = np.meshgrid(
+        np.arange(lo[0], hi[0] + 1),
+        np.arange(lo[1], hi[1] + 1),
+        np.arange(lo[2], hi[2] + 1),
+        indexing="ij",
+    )
+    idx = np.column_stack([ii.ravel(), jj.ravel(), kk.ravel()])
+    centers = origin + (idx + 0.5) * spacing
+    local = orebody.to_local(centers)
+    inside = (
+        (local[:, 0] >= bounds.u_min)
+        & (local[:, 0] <= bounds.u_max)
+        & (local[:, 1] >= bounds.v_min)
+        & (local[:, 1] <= bounds.v_max)
+        & (local[:, 2] >= bounds.w_min)
+        & (local[:, 2] <= bounds.w_max)
+    )
+    if not bool(inside.any()):
         return None
-    return float(np.mean(bm.grade[i, j, k][flags]))
+    i, j, k = idx[inside].T
+    frac = bm.ore_fraction[i, j, k].astype(np.float64)
+    total = float(frac.sum())
+    if total <= 0.0:
+        return None
+    grades = bm.grade[i, j, k].astype(np.float64)
+    return float(np.dot(grades, frac) / total)
 
 
 class LongholeOpenStopingStrategy:
@@ -153,6 +180,37 @@ class LongholeOpenStopingStrategy:
         stations_by_level: dict[str, set[int]] = {}
         for lvl, k in terminals:
             stations_by_level.setdefault(lvl, set()).add(k)
+
+        # -- Phase 08 station completeness (rule 76): pairwise set equality
+        # alone cannot detect a station removed from EVERY level (or all
+        # crosscuts removed), so the artifact's own declared lattice is the
+        # reference: every level must carry exactly stationsPerLevel unique
+        # crosscut stations, matching its LevelSummary.crosscutCount. -------- #
+        metrics_decl = levels_payload.get("metrics")
+        if not metrics_decl:
+            return _failed(method, source_revision, "levels artifact has no metrics (rule 76)")
+        stations_per_level = int(metrics_decl["stationsPerLevel"])
+        if stations_per_level <= 0:
+            return _failed(
+                method,
+                source_revision,
+                "levels artifact declares zero crosscut stations per level (rule 76)",
+            )
+        if len(set(level_order)) != len(level_order):
+            return _failed(method, source_revision, "duplicate level ids in levels artifact")
+        for summary in levels_payload["levels"]:
+            lvl_id = str(summary["levelId"])
+            actual = len(stations_by_level.get(lvl_id, set()))
+            declared = int(summary["crosscutCount"])
+            if actual != declared or actual != stations_per_level:
+                return _failed(
+                    method,
+                    source_revision,
+                    f"level {lvl_id} carries {actual} unique crosscut stations but the "
+                    f"artifact declares crosscutCount={declared} and "
+                    f"stationsPerLevel={stations_per_level} — a required station is "
+                    "missing (rule 76)",
+                )
 
         stope_len = float(scenario.mining.stope_length)
         min_pillar = float(scenario.mining.minimum_pillar)
@@ -267,7 +325,7 @@ class LongholeOpenStopingStrategy:
                 volume = float(du * dv * dw)
                 tonnes = volume * float(scenario.orebody.density)
                 vertical = float(dv * abs(ob.v[2]))
-                proxy = _grade_proxy(world, corners_world)
+                proxy = _grade_proxy(world, ob, bounds, corners_world)
                 values = [volume, tonnes, du, dv, dw, vertical, up_err, lo_err] + (
                     [proxy] if proxy is not None else []
                 )

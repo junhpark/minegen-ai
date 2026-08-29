@@ -107,8 +107,9 @@ def test_longhole_pairing_bounds_and_metrics(tmp_path) -> None:  # type: ignore[
 
 
 def test_missing_paired_station_fails(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    """Rule 76: a station missing on ONE side of an interval fails the whole
-    artifact — the remaining stopes are never emitted as SUCCESS."""
+    """Rule 76: a station missing on ONE level is caught by the artifact
+    completeness gate (declared crosscutCount / stationsPerLevel) before
+    pairing even starts."""
 
     def drop_one(levels):  # type: ignore[no-untyped-def]
         idx = next(
@@ -121,8 +122,159 @@ def test_missing_paired_station_fails(tmp_path) -> None:  # type: ignore[no-unty
     _, _, payload = _stopes(tmp_path, mutate=drop_one)
     assert payload.status == "FAILED"
     assert payload.failure_reason is not None
-    assert "unpaired stations [3]" in payload.failure_reason
+    assert "required station is missing" in payload.failure_reason
     assert payload.stopes == []
+
+
+def test_station_set_mismatch_fails_pairing(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Rule 76: a count-preserving corruption (station 3 renamed to 99 on
+    L02) slips past the completeness gate and must be caught by the
+    adjacent-level station-set equality gate."""
+
+    def rename(levels):  # type: ignore[no-untyped-def]
+        d = next(
+            d
+            for d in levels["developments"]
+            if d["kind"] == "CROSSCUT" and d["levelId"] == "L02" and d["stationIndex"] == 3
+        )
+        d["stationIndex"] = 99
+        d["id"] = "CROSSCUT:L02:S+99"
+
+    _, _, payload = _stopes(tmp_path, mutate=rename)
+    assert payload.status == "FAILED"
+    assert payload.failure_reason is not None
+    assert "unpaired stations [3, 99]" in payload.failure_reason
+    assert payload.stopes == []
+
+
+def test_station_removed_from_every_level_fails(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Blocker-2 regression: the SAME station removed from EVERY level keeps
+    all pairwise sets equal, so only the artifact-declared lattice can catch
+    it — never a silent 16-station SUCCESS."""
+
+    def drop_everywhere(levels):  # type: ignore[no-untyped-def]
+        levels["developments"] = [
+            d
+            for d in levels["developments"]
+            if not (d["kind"] == "CROSSCUT" and d["stationIndex"] == 3)
+        ]
+
+    _, _, payload = _stopes(tmp_path, mutate=drop_everywhere)
+    assert payload.status == "FAILED"
+    assert payload.failure_reason is not None
+    assert "required station is missing" in payload.failure_reason
+    assert payload.stopes == []
+
+
+def test_all_crosscuts_removed_fails(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Blocker-2 regression: zero CROSSCUT developments in a nominally
+    SUCCESS levels artifact must FAIL — never SUCCESS with zero stopes."""
+
+    def strip(levels):  # type: ignore[no-untyped-def]
+        levels["developments"] = [d for d in levels["developments"] if d["kind"] != "CROSSCUT"]
+
+    _, _, payload = _stopes(tmp_path, mutate=strip)
+    assert payload.status == "FAILED"
+    assert payload.stopes == [] and payload.metrics is None
+    assert payload.failure_reason is not None
+    assert "required station is missing" in payload.failure_reason
+
+
+def test_thirteen_level_default_lattice_yields_204(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Default-acceptance pin without the Hybrid-A* pipeline: 13 synthetic
+    Phase 08 levels × 17 stations ⇒ 12 × 17 = 204 planned stopes."""
+    zs = tuple(60.0 - i * (200.0 / 12.0) for i in range(13))
+    _, _, payload = _stopes(tmp_path, level_zs=zs)
+    assert payload.status == "SUCCESS", payload.failure_reason
+    m = payload.metrics
+    assert m is not None
+    assert m.level_interval_count == 12
+    assert m.stations_per_interval == 17
+    assert m.stope_count == 204 and len(payload.stopes) == 204
+    assert all(s.report.valid for s in payload.stopes)
+
+
+def test_grade_proxy_excludes_aabb_leakage(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Blocker-1 regression: ore blocks inside the world-axis AABB of the
+    rotated prism but OUTSIDE the stope's local bounds can never affect
+    meanGradeProxy, and partial blocks weight by ore_fraction."""
+    from types import SimpleNamespace
+
+    from minegen.core.models import OrebodyConfig
+    from minegen.mining.methods.longhole import _grade_proxy
+    from minegen.mining.models import StopeLocalBounds
+    from minegen.world.block_model import BlockModel
+    from minegen.world.voxel_grid import VoxelGrid
+
+    ob = TabularOrebody(
+        OrebodyConfig(
+            orebody_type="TABULAR",
+            center={"x": 0.0, "y": 0.0, "z": 0.0},
+            strike_deg=35.0,
+            dip_deg=70.0,
+            length=600.0,
+            height=350.0,
+            thickness=12.0,
+        )
+    )
+    bounds = StopeLocalBounds(
+        u_min=-15.0, u_max=15.0, v_min=-10.0, v_max=10.0, w_min=-6.0, w_max=6.0
+    )
+    grid = VoxelGrid(origin=(-60.0, -60.0, -60.0), spacing=(4.0, 4.0, 4.0), shape=(30, 30, 30))
+    shape = grid.shape
+    zeros = np.zeros(shape, dtype=np.float32)
+    frac = np.zeros(shape, dtype=np.float32)
+    grade = np.zeros(shape, dtype=np.float32)
+    centers = (
+        np.asarray(grid.origin)
+        + (np.stack(np.meshgrid(*[np.arange(n) for n in shape], indexing="ij"), axis=-1) + 0.5)
+        * np.asarray(grid.spacing)
+    ).reshape(-1, 3)
+    local = ob.to_local(centers)
+    inside = (
+        (np.abs(local[:, 0]) <= 15.0 - 2.0)
+        & (np.abs(local[:, 1]) <= 10.0 - 2.0)
+        & (np.abs(local[:, 2]) <= 6.0 - 2.0)
+    ).reshape(shape)
+    # inside the stope: grade 3.0 at half ore_fraction
+    frac[inside] = 0.5
+    grade[inside] = 3.0
+    # OUTSIDE the local bounds but well inside the world AABB of the corners:
+    # strike-neighbour ore just past uMax, absurdly high grade
+    neighbour = (
+        (local[:, 0] > 16.0)
+        & (local[:, 0] < 30.0)
+        & (np.abs(local[:, 1]) <= 8.0)
+        & (np.abs(local[:, 2]) <= 4.0)
+    ).reshape(shape)
+    frac[neighbour] = 1.0
+    grade[neighbour] = 100.0
+    bm = BlockModel(
+        grid=grid,
+        rock_type=np.zeros(shape, dtype=np.uint8),
+        ore_fraction=frac,
+        ore_flag=frac >= 0.5,
+        grade=grade,
+        rock_quality=zeros,
+        fault_signed_distance=zeros,
+        fault_zone=np.zeros(shape, dtype=np.uint8),
+        fault_influence=zeros,
+    )
+    world = SimpleNamespace(block_model=bm)
+    lows = np.array([bounds.u_min, bounds.v_min, bounds.w_min])
+    highs = np.array([bounds.u_max, bounds.v_max, bounds.w_max])
+    corners_local = np.array(
+        [[lows[d] if (i >> d) & 1 == 0 else highs[d] for d in range(3)] for i in range(8)]
+    )
+    corners_world = ob.to_world(corners_local)
+    # the world AABB of these corners certainly contains the 100-grade
+    # neighbour blocks — the local-bounds inclusion must exclude them
+    proxy = _grade_proxy(world, ob, bounds, corners_world)  # type: ignore[arg-type]
+    assert proxy == pytest.approx(3.0, abs=1e-6)
+    # zero ore_fraction inside the bounds → null proxy
+    frac[inside] = 0.0
+    proxy2 = _grade_proxy(world, ob, bounds, corners_world)  # type: ignore[arg-type]
+    assert proxy2 is None
 
 
 def test_duplicate_station_fails(tmp_path) -> None:  # type: ignore[no-untyped-def]
