@@ -122,7 +122,8 @@ def test_missing_paired_station_fails(tmp_path) -> None:  # type: ignore[no-unty
     _, _, payload = _stopes(tmp_path, mutate=drop_one)
     assert payload.status == "FAILED"
     assert payload.failure_reason is not None
-    assert "required station is missing" in payload.failure_reason
+    # the aggregate-count or per-level completeness gate fires (both rule 76)
+    assert "rule 76" in payload.failure_reason
     assert payload.stopes == []
 
 
@@ -162,7 +163,7 @@ def test_station_removed_from_every_level_fails(tmp_path) -> None:  # type: igno
     _, _, payload = _stopes(tmp_path, mutate=drop_everywhere)
     assert payload.status == "FAILED"
     assert payload.failure_reason is not None
-    assert "required station is missing" in payload.failure_reason
+    assert "rule 76" in payload.failure_reason
     assert payload.stopes == []
 
 
@@ -177,7 +178,7 @@ def test_all_crosscuts_removed_fails(tmp_path) -> None:  # type: ignore[no-untyp
     assert payload.status == "FAILED"
     assert payload.stopes == [] and payload.metrics is None
     assert payload.failure_reason is not None
-    assert "required station is missing" in payload.failure_reason
+    assert "rule 76" in payload.failure_reason
 
 
 def test_thirteen_level_default_lattice_yields_204(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -414,3 +415,48 @@ def test_stopes_api_lifecycle_and_invalidation(client, design_service) -> None: 
     assert not stopes_path.exists()
     r = client.get(f"/api/v1/scenarios/{sid}/design/stopes")
     assert r.status_code == 409 and r.json()["detail"]["code"] == "STOPES_NOT_GENERATED"
+
+
+def test_whole_level_removed_fails(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Residual-blocker regression: deleting a COMPLETE middle LevelSummary
+    plus every development of that level (Phase 08 metrics untouched) leaves
+    all per-level and pairwise gates satisfied among the survivors — only the
+    levelCount gate can stop L01→L03 from being paired across the gap."""
+
+    def drop_level(levels):  # type: ignore[no-untyped-def]
+        levels["levels"] = [lv for lv in levels["levels"] if lv["levelId"] != "L02"]
+        levels["developments"] = [d for d in levels["developments"] if d["levelId"] != "L02"]
+
+    _, _, payload = _stopes(tmp_path, mutate=drop_level)
+    assert payload.status == "FAILED"
+    assert payload.stopes == []
+    assert payload.failure_reason is not None
+    assert "whole level is missing" in payload.failure_reason
+    # in particular no fabricated L01-L03 interval exists anywhere
+    assert not any("L01-L03" in s.id for s in payload.stopes)
+
+
+def test_foreign_level_crosscut_fails_aggregate_gate(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Residual-blocker regression: an extra CROSSCUT whose levelId is not
+    represented in levels[] escapes every per-summary check and must be
+    caught by the aggregate crosscutCount consistency gate."""
+
+    def add_foreign(levels):  # type: ignore[no-untyped-def]
+        d = json.loads(
+            json.dumps(
+                next(
+                    d
+                    for d in levels["developments"]
+                    if d["kind"] == "CROSSCUT" and d["levelId"] == "L01"
+                )
+            )
+        )
+        d["levelId"] = "L99"
+        d["id"] = "CROSSCUT:L99:S+00"
+        levels["developments"].append(d)
+
+    _, _, payload = _stopes(tmp_path, mutate=add_foreign)
+    assert payload.status == "FAILED"
+    assert payload.failure_reason is not None
+    assert "aggregate artifact inconsistency" in payload.failure_reason
+    assert payload.stopes == []

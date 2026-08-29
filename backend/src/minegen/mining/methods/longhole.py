@@ -198,6 +198,32 @@ class LongholeOpenStopingStrategy:
             )
         if len(set(level_order)) != len(level_order):
             return _failed(method, source_revision, "duplicate level ids in levels artifact")
+        declared_levels = int(metrics_decl["levelCount"])
+        if len(level_order) != declared_levels:
+            return _failed(
+                method,
+                source_revision,
+                f"levels artifact declares levelCount={declared_levels} but carries "
+                f"{len(level_order)} level summaries — a whole level is missing and "
+                "pairing across the gap would fabricate a stope interval (rule 76)",
+            )
+        declared_crosscuts = int(metrics_decl["crosscutCount"])
+        if len(terminals) != declared_crosscuts:
+            return _failed(
+                method,
+                source_revision,
+                f"levels artifact declares crosscutCount={declared_crosscuts} but "
+                f"carries {len(terminals)} crosscut developments — aggregate "
+                "artifact inconsistency (rule 76)",
+            )
+        if declared_crosscuts != declared_levels * stations_per_level:
+            return _failed(
+                method,
+                source_revision,
+                f"declared lattice is inconsistent: crosscutCount={declared_crosscuts} "
+                f"!= levelCount={declared_levels} x stationsPerLevel="
+                f"{stations_per_level} (rule 76)",
+            )
         for summary in levels_payload["levels"]:
             lvl_id = str(summary["levelId"])
             actual = len(stations_by_level.get(lvl_id, set()))
