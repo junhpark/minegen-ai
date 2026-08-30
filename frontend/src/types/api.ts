@@ -140,8 +140,20 @@ export interface CommunicationConfig {
   requiredCoverageFraction: number
 }
 
+/** Phase 12 sensor placement parameters (rules 93–98): SYNTHETIC planning
+ * assumptions — monitoringRangeM is a network-geodesic layout proxy, not a
+ * detection range or gas model. */
+export interface SensorConfig {
+  assetType: AssetType
+  candidateSpacingM: number
+  demandSpacingM: number
+  monitoringRangeM: number
+  requiredCoverageFraction: number
+}
+
 export interface InfrastructureConfig {
   communication: CommunicationConfig
+  sensors: SensorConfig
 }
 
 export interface ScenarioCreate {

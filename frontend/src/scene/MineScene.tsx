@@ -19,7 +19,9 @@ import { TimelineDevelopmentLayer } from './TimelineDevelopmentLayer'
 import { TimelineStopeLayer } from './TimelineStopeLayer'
 import { CommunicationRouterLayer } from './CommunicationRouterLayer'
 import { CommunicationCoverageLayer } from './CommunicationCoverageLayer'
-import { communicationLayersActive } from '@/infrastructure/view'
+import { communicationLayersActive, sensorLayersActive } from '@/infrastructure/view'
+import { SensorLayer } from './SensorLayer'
+import { SensorCoverageLayer } from './SensorCoverageLayer'
 import { staticExcavationVisibleIn4D } from '@/timeline/evaluate'
 import { RockQualitySliceLayer } from './RockQualitySliceLayer'
 import { TerrainLayer } from './TerrainLayer'
@@ -39,6 +41,9 @@ export function MineScene() {
   // rules 88/91: INFRASTRUCTURE mode only; routers are never shown as
   // time-valid installed assets in 4D (installation timing is not modeled)
   const communicationActive = communicationLayersActive(mode, scene?.communication ?? null)
+  // rules 97/98: INFRASTRUCTURE mode only; sensors are never shown as
+  // time-valid installed assets in 4D (installation timing is not modeled)
+  const sensorsActive = sensorLayersActive(mode, scene?.sensors ?? null)
   const showStatic = staticExcavationVisibleIn4D(timelineActive)
   const slice = useSliceStore((s) => s.slice)
 
@@ -99,6 +104,12 @@ export function MineScene() {
       ) : null}
       {communicationActive && scene?.communication && visible.has('coverage') ? (
         <CommunicationCoverageLayer communication={scene.communication} />
+      ) : null}
+      {sensorsActive && scene?.sensors && visible.has('sensors') ? (
+        <SensorLayer sensors={scene.sensors} />
+      ) : null}
+      {sensorsActive && scene?.sensors && visible.has('sensorCoverage') ? (
+        <SensorCoverageLayer sensors={scene.sensors} />
       ) : null}
       {timelineActive && scene?.timeline && scene.smoothedDecline && scene.levels ? (
         <TimelineDevelopmentLayer

@@ -127,8 +127,9 @@ fault is added.
     08 Levels & crosscuts   done
     09 Stopes & mining method   done
     10 4D mining sequence   done
-    11 Communication OSP    ← current
-    12 Generic sensor OSP
+    11 Communication OSP    done
+    12 Generic Sensor OSP   ← current
+    13 First-person walkthrough
     13 First-person walkthrough
     14 Walkthrough object interaction
     15 4D walkthrough integration
@@ -150,9 +151,10 @@ fault is added.
      ├─ mining
      ├─ schedule       Phase 10 temporal planning rates/durations
      │                 (synthetic baseline defaults, rule 82)
-     └─ infrastructure Phase 11 communication planning parameters
-                       (network-geodesic ranges; synthetic planning/demo
-                       assumptions, never RF measurements, rule 88)
+     └─ infrastructure Phase 11 communication + Phase 12 sensor planning
+                       parameters (network-geodesic ranges; synthetic
+                       planning/demo assumptions, never RF measurements or
+                       gas models, rules 88/95)
 
 Future geology members (water, lithology, alteration, joint sets, stress)
 go under `geology`, not at the scenario root.
@@ -172,11 +174,14 @@ go under `geology`, not at the scenario root.
   only, never geometry, rules 81–86) and `communication.json` (Phase 11
   typed CommunicationPayload — deterministic connected communication
   placement baseline owning placement/coverage planning state only, never
-  geometry or topology, rules 87–92). Invalidation chain (rules
-  64/67/68/74/86/92):
+  geometry or topology, rules 87–92) and `sensors.json` (Phase 12 typed
+  SensorPayload — deterministic monitoring-placement baseline owning
+  sensor-placement planning state only, rules 93–98). Invalidation chain
+  (rules 64/67/68/74/86/92/98):
 
       smoothed ──┬── tunnel_mesh
                  └── levels ──┬── network ─┬─ communication
+                              │            ├─ sensors
                               └── stopes  ─┴─ timeline
                                   (network + stopes → timeline)
 
@@ -184,12 +189,13 @@ go under `geology`, not at the scenario root.
   a new smoothed (or upstream) artifact deletes tunnel + levels + network +
   stopes; regenerating levels deletes network AND stopes (both rebuilt, never
   patched) and never touches the tunnel; regenerating the network deletes
-  `timeline.json` AND `communication.json`; regenerating stopes deletes only
-  `timeline.json` (communication and timeline are SIBLINGS below the
-  network — stopes/timeline regeneration never touches communication);
-  regenerating the timeline or communication touches nothing upstream and
-  not each other. Regenerating any stage deletes every downstream artifact
-  (rules 64/67/68/74/79/86/92).
+  `timeline.json`, `communication.json` AND `sensors.json`; regenerating
+  stopes deletes only `timeline.json` (communication, sensors and timeline
+  are SIBLINGS below the network — stopes/timeline regeneration never
+  touches communication or sensors); regenerating the timeline,
+  communication or sensors touches nothing upstream and none of the other
+  siblings. Regenerating any stage deletes every downstream artifact
+  (rules 64/67/68/74/79/86/92/98).
 - Long-running work (rule 60): `services/job_service.py` — in-memory
   registry + 2-worker thread pool; one job per scenario at a time. Algorithms
   emit `ProgressEvent`s through a plain callback (`design/progress.py`);

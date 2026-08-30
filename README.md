@@ -18,8 +18,15 @@ platform. Research prototype / proof of concept.
 | 03    | Design cost evaluator & level-aware footwall access targets  | done  |
 | 04    | Chained Hybrid-A* decline generator (raw centerline)         | done  |
 | 04.5  | Async job infrastructure, WebSocket progress, GitHub CI      | done  |
-| 05    | Ramp smoothing + revalidation                                | next  |
-| 06–16 | See `docs/architecture.md`                                   | —     |
+| 05    | Ramp smoothing + revalidation                                | done  |
+| 06    | Tunnel mesh                                                  | done  |
+| 07    | MineNetwork                                                  | done  |
+| 08    | Level development                                            | done  |
+| 09    | Stopes / mining method                                       | done  |
+| 10    | 4D MineTimeline                                              | done  |
+| 11    | Communication OSP                                            | done  |
+| 12    | Generic Sensor OSP                                           | current |
+| 13–16 | See `docs/architecture.md`                                   | planned |
 
 ## Layout
 
@@ -146,7 +153,13 @@ Every phase must pass all of these before it is considered complete:
 
 ## API
 
-See `docs/api.md`. Phase 01 exposes:
+See `docs/api.md` for the authoritative endpoint reference. Phase 12 adds
+the sensor placement baseline alongside Phase 11 communication:
+
+    POST/GET /api/v1/scenarios/{id}/infrastructure/communication
+    POST/GET /api/v1/scenarios/{id}/infrastructure/sensors
+
+Phase 01 exposes:
 
     GET  /api/v1/health
     POST /api/v1/scenarios

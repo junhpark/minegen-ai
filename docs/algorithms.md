@@ -399,7 +399,49 @@ Accepted default (454 edges / 15,820 m, default config): 547 candidates,
 coverage 1.000, serving mean 36.2 m / max 91.3 m, 99 backhaul links,
 max 38 hops, ~0.4 s, byte-deterministic modulo sourceRevision.
 
-## Phase 12 — generic sensor OSP           (pending)
+## Phase 12 — Generic Sensor OSP (rules 93–98)
+
+`sensors.json` is a deterministic monitoring-placement baseline for
+`GAS_SENSOR` only (all other asset types return
+`UNSUPPORTED_SENSOR_ASSET_TYPE`; RAISE/SHAFT edges return
+`UNSUPPORTED_SENSOR_EDGE_TYPE`). Direct inputs are scenario + network +
+owning centerlines — communication.json, stopes and timeline are NOT
+inputs: communication, sensors and timeline are siblings below the network
+(rule 97), so requiring MESH_ROUTER connectivity for a GAS_SENSOR would
+silently smuggle in a second unsupported physical assumption.
+
+Shared engineering (rule 93): `InfrastructureNetworkDomain`
+(`infrastructure/network_domain.py`) owns MineNetwork integrity gates,
+owning-geometry resolution (1e-6 m length sync, canonical fromNode→toNode
+orientation), deterministic NODE/EDGE sampling (`SENSOR:CAND|DEMAND:...`
+ids with the same endpoint-dedup contract as Phase 11) and the
+network-geodesic distance machinery. Both builders consume it; neither
+reimplements it.
+
+**`NETWORK_DISTANCE_MONITORING_THRESHOLD_V0_1` is NOT a physical
+gas-detection model.** A sensor candidate covers a monitoring demand iff
+the shortest PHYSICAL path distance through the MineNetwork is ≤
+monitoringRangeM (+1e-6 m). It is a monitoring-LAYOUT spacing proxy —
+never Euclidean through rock (605 m-vs-5 m regression pinned), and no
+ppm/airflow/diffusion/response-time/probability is computed. The
+`SensorCoverageModel` strategy (`infrastructure/coverage.py`) owns the
+distance→coverage conversion and is injectable, so a physically grounded
+model can replace it without touching `SensorBuilder`.
+
+**`GREEDY_SET_COVER_V0_1` is deterministic but not globally optimal**
+(`optimalityClaim = false`). From the EMPTY set it repeatedly selects the
+candidate with the highest uncovered-demand gain (unit sensor cost,
+uniform demand weights — explicit v0.1 assumptions, rule 96), ties broken
+by lexicographically smallest candidate id; unmeetable targets fail typed
+(`INFEASIBLE_SENSOR_COVERAGE`). No connectivity requirement exists for
+sensors. Assignment eligibility is strategy-owned: each covered demand is
+served by its nearest covering sensor, ties by smallest sensor asset id.
+
+Accepted default (454 edges / 15,820 m, default config — same 40/20 m
+sampling as Phase 11, hence identical 547 candidates / 1,063 demands): 131
+selected sensors (greedy baseline sensor count), coverage 1.000,
+monitoring mean 30.1 m / max 60.0 m, ~0.2 s, byte-deterministic modulo
+sourceRevision.
 
 ## Phase 10 — MineTimeline (rules 81–86)
 

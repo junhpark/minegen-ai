@@ -2,6 +2,7 @@ import { ScenarioPanel } from '@/components/panels/ScenarioPanel'
 import { LayerPanel } from '@/components/panels/LayerPanel'
 import { DesignPanel } from '@/components/panels/DesignPanel'
 import { CommunicationPanel } from '@/components/panels/CommunicationPanel'
+import { SensorPanel } from '@/components/panels/SensorPanel'
 import { useViewerStore } from '@/stores/viewerStore'
 
 export function LeftPanel() {
@@ -11,7 +12,14 @@ export function LeftPanel() {
   return (
     <aside className="flex w-[280px] shrink-0 flex-col overflow-y-auto border-r border-rock-700 bg-rock-800">
       <ScenarioPanel />
-      {mode === 'INFRASTRUCTURE' ? <CommunicationPanel /> : <DesignPanel />}
+      {mode === 'INFRASTRUCTURE' ? (
+        <>
+          <CommunicationPanel />
+          <SensorPanel />
+        </>
+      ) : (
+        <DesignPanel />
+      )}
       <LayerPanel />
     </aside>
   )

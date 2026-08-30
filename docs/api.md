@@ -100,10 +100,22 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      Phase 11: persisted typed CommunicationPayload
                                                      (409 COMMUNICATION_NOT_GENERATED after
                                                      network/upstream invalidation)
+    POST /api/v1/scenarios/{id}/infrastructure/sensors
+                                                     Phase 12: synchronous deterministic monitoring
+                                                     placement baseline (typed SensorPayload;
+                                                     GAS_SENSOR only; network-geodesic layout proxy,
+                                                     not gas dispersion or detection modelling;
+                                                     communication.json is NOT required — siblings;
+                                                     409 NETWORK_NOT_GENERATED / SMOOTHED_NOT_GENERATED /
+                                                     LEVELS_NOT_GENERATED without prerequisites;
+                                                     regeneration touches nothing else, rule 98)
+    GET  /api/v1/scenarios/{id}/infrastructure/sensors
+                                                     Phase 12: persisted typed SensorPayload
+                                                     (409 SENSORS_NOT_GENERATED after
+                                                     network/upstream invalidation)
 
 ## Planned
     GET  /api/v1/scenarios/{id}/design                  Phase 04+
-    POST /api/v1/scenarios/{id}/infrastructure/sensors  Phase 12
 
 ## Conventions
 

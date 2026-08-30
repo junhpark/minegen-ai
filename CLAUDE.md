@@ -666,3 +666,38 @@ phase is considered complete.
     network/upstream regeneration invalidates communication, while
     stopes/timeline do not. Frontend only assembles backend placement and
     coverage results and performs no communication engineering.
+93. **Shared infrastructure network domain**:
+    MineNetwork integrity, owning-centerline resolution, backend
+    NetworkLocation sampling, and physical network-geodesic distance are
+    shared infrastructure-domain responsibilities. Communication and sensor
+    builders must not independently reimplement these engineering
+    calculations.
+
+94. **Sensor artifact ownership**:
+    sensors.json owns sensor-placement planning state only: candidates,
+    monitoring demands, selected sensors, assignments and metrics. It never
+    owns or mutates mine geometry, MineNetwork, communication or time.
+
+95. **Sensor monitoring proxy**:
+    Phase 12 sensor coverage is a network-geodesic monitoring-layout proxy.
+    It is never Euclidean through rock and does not represent gas
+    transport, sensor response, detection probability or calibrated
+    sensing range.
+
+96. **Deterministic sensor placement**:
+    Phase 12 uses deterministic GREEDY_SET_COVER_V0_1 with stable ID
+    tie-breaking and makes no global-optimality claim. Uniform demand and
+    unit sensor cost are explicit v0.1 assumptions.
+
+97. **Independent static sensor scope**:
+    Phase 12 sensors are static final-layout monitoring placements.
+    Communication feasibility, power feasibility and installation timing
+    are not modeled. communication.json, timeline.json and sensors.json
+    remain independent sibling derived artifacts unless a later phase
+    explicitly defines a coupling model.
+
+98. **Sensor dependency/frontend responsibility**:
+    scenario + network + owning centerlines → sensors. Network/upstream
+    regeneration invalidates sensors; stopes, timeline and communication
+    regeneration do not. Frontend only assembles backend sensor
+    placement/coverage results and performs no sensor engineering.

@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from minegen.api.deps import get_infrastructure_service
-from minegen.infrastructure.models import CommunicationPayload
+from minegen.infrastructure.models import CommunicationPayload, SensorPayload
 from minegen.services.design_service import (
     LevelsNotGeneratedError,
     NetworkNotFoundError,
@@ -18,6 +18,7 @@ from minegen.services.design_service import (
 from minegen.services.infrastructure_service import (
     CommunicationNotGeneratedError,
     InfrastructureService,
+    SensorsNotGeneratedError,
 )
 from minegen.services.scenario_service import ScenarioNotFoundError
 
@@ -51,6 +52,12 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             "LEVELS_NOT_GENERATED",
             f"scenario '{scenario_id}' has no levels; POST …/design/levels first",
         )
+    if isinstance(exc, SensorsNotGeneratedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "SENSORS_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no sensor plan; POST …/infrastructure/sensors first",
+        )
     if isinstance(exc, CommunicationNotGeneratedError):
         return _error(
             status.HTTP_409_CONFLICT,
@@ -83,6 +90,28 @@ def generate_communication(scenario_id: str, svc: Service) -> CommunicationPaylo
 def get_communication(scenario_id: str, svc: Service) -> CommunicationPayload:
     try:
         return svc.communication(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.post("/sensors")
+def generate_sensors(scenario_id: str, svc: Service) -> SensorPayload:
+    """Phase 12 (rules 93–98): synchronous deterministic monitoring-placement
+    baseline. Does NOT require communication.json (siblings, rule 97)."""
+    try:
+        return svc.generate_sensors(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.get("/sensors")
+def get_sensors(scenario_id: str, svc: Service) -> SensorPayload:
+    try:
+        return svc.sensors(scenario_id)
     except HTTPException:
         raise
     except Exception as exc:
