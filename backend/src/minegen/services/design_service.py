@@ -173,6 +173,7 @@ class DesignService:
             self._delete_levels_artifact(scenario_id)  # rule 74 chain
             self._delete_stopes_artifact(scenario_id)  # rule 79 chain
             self._delete_timeline_artifact(scenario_id)  # rule 86 chain
+            self._delete_communication_artifact(scenario_id)  # rule 92 chain
             self._delete_network_artifact(scenario_id)  # rule 68 chain
         return payload
 
@@ -245,6 +246,7 @@ class DesignService:
             self._delete_levels_artifact(scenario_id)  # rule 74 chain
             self._delete_stopes_artifact(scenario_id)  # rule 79 chain
             self._delete_timeline_artifact(scenario_id)  # rule 86 chain
+            self._delete_communication_artifact(scenario_id)  # rule 92 chain
             self._delete_network_artifact(scenario_id)  # rule 68 chain
         return payload
 
@@ -311,6 +313,7 @@ class DesignService:
             self._delete_levels_artifact(scenario_id)  # rule 74: levels are stale
             self._delete_stopes_artifact(scenario_id)  # rule 79: stopes are stale
             self._delete_timeline_artifact(scenario_id)  # rule 86: timeline is stale
+            self._delete_communication_artifact(scenario_id)  # rule 92: stale
             self._delete_network_artifact(scenario_id)  # rule 68: network is stale
         return payload
 
@@ -373,6 +376,7 @@ class DesignService:
             self._delete_network_artifact(scenario_id)  # rule 74: rebuild, never patch
             self._delete_stopes_artifact(scenario_id)  # rule 79 chain
             self._delete_timeline_artifact(scenario_id)  # rule 86 chain
+            self._delete_communication_artifact(scenario_id)  # rule 92 chain
         return payload
 
     def levels(self, scenario_id: str) -> LevelsPayload:
@@ -452,6 +456,13 @@ class DesignService:
 
     def _delete_timeline_artifact(self, scenario_id: str) -> None:
         path = self.timeline_path(scenario_id)
+        if path.exists():
+            path.unlink()
+
+    def _delete_communication_artifact(self, scenario_id: str) -> None:
+        # rule 92: communication.json lives beside the other derived artifacts;
+        # the path contract is shared with InfrastructureService
+        path = self.store.derived_dir(scenario_id) / "communication.json"
         if path.exists():
             path.unlink()
 
@@ -556,6 +567,7 @@ class DesignService:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(serialized, encoding="utf-8")
             self._delete_timeline_artifact(scenario_id)  # rule 86: rebuild, never patch
+            self._delete_communication_artifact(scenario_id)  # rule 92
         return result.payload
 
     def network(self, scenario_id: str) -> NetworkPayload:

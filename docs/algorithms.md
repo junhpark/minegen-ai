@@ -353,7 +353,51 @@ every crosscut mouth; junction openings belong to a later mesh/walkthrough
 step. Phase 08 ships the geometry contract (`levels.json`) and the topology
 contract (network) plus centerline/graph visualization only.
 ## Phase 10 — 4D sequencing                (pending)
-## Phase 11 — router OSP (greedy, CP-SAT)  (pending)
+## Phase 11 — Communication OSP (rules 87–92)
+
+`communication.json` is a deterministic connected communication placement
+baseline for `MESH_ROUTER` only (all other asset types return
+`UNSUPPORTED_COMMUNICATION_ASSET_TYPE`). Direct inputs are scenario +
+network + owning centerlines (`decline_smoothed.json`, `levels.json`);
+stopes/timeline/tunnel are NOT inputs — communication and timeline are
+siblings below the network.
+
+Pipeline: network integrity gate (unique ids, exactly one PORTAL, resolvable
+endpoints, RAMP/DRIFT/CROSSCUT only — RAISE/SHAFT return
+`UNSUPPORTED_COMMUNICATION_EDGE_TYPE`) → owning-geometry resolution
+(type↔artifact match, segmentIndex bounds, ≥2 finite points, recomputed
+length within 1e-6 m, canonical fromNode→toNode orientation within 1e-6 m)
+→ deterministic candidate/demand sampling (every node + interior edge
+points at k·spacing strictly inside the edge; stable
+`COMM:CAND|DEMAND:NODE:{id}` / `…:EDGE:{id}:P{k}` ids; uniform demand
+weights) → network-geodesic distances → coverage/backhaul sets →
+connected-greedy solve → PORTAL-rooted BFS backhaul tree → per-demand
+serving assignment → §22 hard gates.
+
+**`NETWORK_DISTANCE_THRESHOLD_V0_1` is NOT an RF propagation model.** A
+candidate covers a demand iff the shortest PHYSICAL path distance through
+the MineNetwork is ≤ coverageRangeM (+1e-6 m tolerance); backhaul uses the
+same metric against backhaulRangeM. Two points 5 m apart through rock but
+605 m apart along the tunnels have communication distance 605 m (regression
+pinned). No RSSI/dBm/frequency/antenna/Fresnel/ray-tracing is computed; the
+strategy interface allows a calibrated propagation model to replace it
+later. All config defaults are synthetic planning/demo assumptions.
+
+**`CONNECTED_GREEDY_PATH_SET_COVER_V0_1` is deterministic and
+feasible/connected but NOT guaranteed globally optimal**
+(`optimalityClaim = false`). Starting from the mandatory PORTAL root, each
+iteration adds the whole shortest candidate-hop path (multi-source BFS,
+id-ordered neighbours) maximizing (gain/cost, gain, −cost, smallest id),
+where gain counts newly covered demand of ALL new routers on the path — a
+pure relay router can be added as part of a path to a useful downstream
+router. Unmeetable targets fail typed
+(`INFEASIBLE_COMMUNICATION_COVERAGE`). No RNG, no new dependencies.
+
+Accepted default (454 edges / 15,820 m, default config): 547 candidates,
+1,063 demands, 100 selected routers (connected-greedy baseline count),
+coverage 1.000, serving mean 36.2 m / max 91.3 m, 99 backhaul links,
+max 38 hops, ~0.4 s, byte-deterministic modulo sourceRevision.
+
 ## Phase 12 — generic sensor OSP           (pending)
 
 ## Phase 10 — MineTimeline (rules 81–86)

@@ -128,6 +128,21 @@ export interface ScheduleConfig {
   backfillCureDays: number
 }
 
+/** Phase 11 communication planning parameters (rules 87–92): SYNTHETIC
+ * planning/demo assumptions — network-geodesic ranges, not RF parameters. */
+export interface CommunicationConfig {
+  assetType: string
+  candidateSpacingM: number
+  demandSpacingM: number
+  coverageRangeM: number
+  backhaulRangeM: number
+  requiredCoverageFraction: number
+}
+
+export interface InfrastructureConfig {
+  communication: CommunicationConfig
+}
+
 export interface ScenarioCreate {
   name: string
   seed: number
@@ -142,6 +157,7 @@ export interface ScenarioCreate {
   tunnelProfile: TunnelProfile
   mining: MiningConfig
   schedule: ScheduleConfig
+  infrastructure: InfrastructureConfig
 }
 
 export interface Scenario extends ScenarioCreate {

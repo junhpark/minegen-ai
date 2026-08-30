@@ -132,6 +132,12 @@ class WorldService:
         scene["timeline"] = (
             json.loads(timeline.read_text(encoding="utf-8")) if timeline.is_file() else None
         )
+        communication = derived / "communication.json"
+        scene["communication"] = (
+            json.loads(communication.read_text(encoding="utf-8"))
+            if communication.is_file()
+            else None
+        )
         return scene
 
     def slice(

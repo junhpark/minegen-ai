@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from minegen.api.deps import (
     get_design_service,
+    get_infrastructure_service,
     get_job_service,
     get_scenario_store,
     get_world_service,
@@ -25,6 +26,7 @@ from minegen.core.models import (
 )
 from minegen.main import create_app
 from minegen.services.design_service import DesignService
+from minegen.services.infrastructure_service import InfrastructureService
 from minegen.services.job_service import JobService
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
@@ -63,6 +65,9 @@ def client(
     app.dependency_overrides[get_scenario_store] = lambda: store
     app.dependency_overrides[get_world_service] = lambda: world_service
     app.dependency_overrides[get_design_service] = lambda: design_service
+    app.dependency_overrides[get_infrastructure_service] = lambda: InfrastructureService(
+        store, design_service
+    )
     app.dependency_overrides[get_job_service] = lambda: job_service
     # the WebSocket handler resolves the registry without DI; point it at the same instance
     import minegen.api.jobs as jobs_module

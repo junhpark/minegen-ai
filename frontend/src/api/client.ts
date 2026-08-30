@@ -3,6 +3,7 @@
 import type { HealthResponse, Scenario, ScenarioCreate, ScenarioSummary } from '@/types/api'
 import type {
   AccessTargetsPayload,
+  CommunicationPayload,
   CostEvaluationRow,
   DeclinePayload,
   JobRecord,
@@ -111,6 +112,13 @@ export const api = {
   generateStopes: (id: string) =>
     request<StopesPayload>(`/scenarios/${id}/design/stopes`, { method: 'POST' }),
   getStopes: (id: string) => request<StopesPayload>(`/scenarios/${id}/design/stopes`),
+  /** Synchronous Phase 11 communication baseline (rules 87–92). */
+  generateCommunication: (id: string) =>
+    request<CommunicationPayload>(`/scenarios/${id}/infrastructure/communication`, {
+      method: 'POST',
+    }),
+  getCommunication: (id: string) =>
+    request<CommunicationPayload>(`/scenarios/${id}/infrastructure/communication`),
   /** Synchronous Phase 10 timeline baseline (rules 81–86). */
   generateTimeline: (id: string) =>
     request<TimelinePayload>(`/scenarios/${id}/design/timeline`, { method: 'POST' }),

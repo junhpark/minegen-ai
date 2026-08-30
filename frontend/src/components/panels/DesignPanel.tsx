@@ -3,6 +3,13 @@ import { useEffect, useState } from 'react'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { api, ApiError } from '@/api/client'
 import { PanelSection } from '@/components/layout/PanelSection'
+import {
+  afterLevelsRegen,
+  afterNetworkRegen,
+  afterStopesRegen,
+  afterTimelineRegen,
+  afterUpstreamRegen,
+} from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { fmtMeters } from '@/utils/format'
@@ -32,15 +39,11 @@ export function DesignPanel() {
       const t = await api.generateTargets(scene.scenarioId)
       // rule 64: regenerated targets invalidate the decline AND its smoothing
       setScene({
-        ...scene,
+        ...afterUpstreamRegen(scene),
         accessTargets: t,
         decline: null,
         smoothedDecline: null,
         tunnelMesh: null,
-        levels: null,
-        network: null,
-        stopes: null,
-        timeline: null,
       })
       setLayerVisible('accessTargets', true)
     },
@@ -69,14 +72,10 @@ export function DesignPanel() {
     if (rec?.status === 'SUCCEEDED' && rec.result && scene && scene.decline !== rec.result) {
       // a new decline invalidates the previous smoothed artifact (rule 64)
       setScene({
-        ...scene,
+        ...afterUpstreamRegen(scene),
         decline: rec.result as DeclinePayload,
         smoothedDecline: null,
         tunnelMesh: null,
-        levels: null,
-        network: null,
-        stopes: null,
-        timeline: null,
       })
       setLayerVisible('rawSearchPath', true)
     }
@@ -110,12 +109,8 @@ export function DesignPanel() {
     ) {
       // rule 74: a new smoothed artifact invalidates tunnel + levels + network
       setScene({
-        ...scene,
+        ...afterUpstreamRegen(scene),
         smoothedDecline: rec.result as SmoothedDeclinePayload,
-        levels: null,
-        network: null,
-        stopes: null,
-        timeline: null,
         tunnelMesh: null,
       })
       setLayerVisible('smoothedDecline', true)
@@ -159,7 +154,7 @@ export function DesignPanel() {
     onSuccess: (payload: LevelsPayload) => {
       if (!scene) return
       // rules 74/79: levels regeneration invalidates network + stopes (tunnel kept)
-      setScene({ ...scene, levels: payload, network: null, stopes: null, timeline: null })
+      setScene(afterLevelsRegen(scene, payload))
       setLayerVisible('levels', true)
       setLayerVisible('crosscuts', true)
     },
@@ -175,7 +170,7 @@ export function DesignPanel() {
     onSuccess: (payload: StopesPayload) => {
       // rules 79/86: stope regeneration leaves tunnel/network/levels
       // untouched but invalidates the timeline
-      if (scene) setScene({ ...scene, stopes: payload, timeline: null })
+      if (scene) setScene(afterStopesRegen(scene, payload))
       setLayerVisible('stopes', true)
     },
   })
@@ -190,7 +185,7 @@ export function DesignPanel() {
     },
     onSuccess: (payload: TimelinePayload) => {
       // rule 86: timeline regeneration touches nothing upstream
-      if (scene) setScene({ ...scene, timeline: payload })
+      if (scene) setScene(afterTimelineRegen(scene, payload))
     },
   })
 
@@ -204,7 +199,7 @@ export function DesignPanel() {
     },
     onSuccess: (payload) => {
       // rule 86: a rebuilt network invalidates the timeline
-      if (scene) setScene({ ...scene, network: payload, timeline: null })
+      if (scene) setScene(afterNetworkRegen(scene, payload))
       setLayerVisible('network', true)
     },
   })
