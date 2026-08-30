@@ -4,6 +4,7 @@ import { PointerLockControls, useGLTF } from '@react-three/drei'
 import { Physics } from '@react-three/rapier'
 import { WALKTHROUGH_CONFIG } from './config'
 import { createKeyState } from './movement'
+import { WALKTHROUGH_LOCK_SURFACE_SELECTOR } from './lockSurface'
 import { resolveWalkthroughSpawn } from './spawn'
 import { extractTunnelRuntimeGeometry } from './tunnelRuntimeGeometry'
 import { TunnelColliderSet } from './TunnelColliderSet'
@@ -90,7 +91,7 @@ export function WalkthroughRuntime({
   return (
     <>
       <PointerLockControls
-        selector="#walkthrough-enter"
+        selector={WALKTHROUGH_LOCK_SURFACE_SELECTOR}
         onLock={handleLock}
         onUnlock={handleUnlock}
       />

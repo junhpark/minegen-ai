@@ -7,6 +7,7 @@ import { mineToThree } from '@/geometry/coordinateTransform'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { walkthroughReadiness } from '@/walkthrough/readiness'
+import { WALKTHROUGH_LOCK_SURFACE_ID } from '@/walkthrough/lockSurface'
 import { WalkthroughHUD } from '@/walkthrough/WalkthroughHUD'
 import { WalkthroughRuntime } from '@/walkthrough/WalkthroughRuntime'
 import { API_BASE_URL } from '@/api/client'
@@ -55,7 +56,7 @@ export function MineCanvas() {
     scene.smoothedDecline
 
   return (
-    <div className="relative h-full w-full bg-rock-950">
+    <div id={WALKTHROUGH_LOCK_SURFACE_ID} className="relative h-full w-full bg-rock-950">
       <Canvas
         camera={{
           position: mineToThree(-900, -1100, baseZ + 700),

@@ -130,7 +130,6 @@ fault is added.
     11 Communication OSP    done
     12 Generic Sensor OSP   done
     13 First-person walkthrough ← current
-    13 First-person walkthrough
     14 Walkthrough object interaction
     15 4D walkthrough integration
     16 Integrated v0.1 demo

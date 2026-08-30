@@ -66,7 +66,7 @@ export function MineScene() {
         </>
       )}
 
-      {!scene || !visible.has('terrain') ? (
+      {!walkthroughActive && (!scene || !visible.has('terrain')) ? (
         <group position={mineToThree(0, 0, baseZ)}>
           <Grid
             args={[sizeX, sizeY]}
@@ -139,7 +139,9 @@ export function MineScene() {
         <RawDeclineLayer decline={scene.decline} />
       ) : null}
 
-      <AxisTriad origin={[-sizeX / 2, -sizeY / 2, baseZ]} length={150} />
+      {walkthroughActive ? null : (
+        <AxisTriad origin={[-sizeX / 2, -sizeY / 2, baseZ]} length={150} />
+      )}
     </>
   )
 }

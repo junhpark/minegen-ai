@@ -2,13 +2,17 @@
  * Minimal walkthrough overlay (§17): entry prompt before pointer lock and a
  * compact control legend plus passive crosshair while walking. The
  * crosshair has NO interaction semantics — picking is Phase 14.
+ *
+ * The entry button is a VISUAL AFFORDANCE only: pointer lock is requested
+ * by the persistent lock surface (the MineCanvas wrapper) that the button
+ * click bubbles to — the HUD swaps DOM with lock state, so it must never
+ * own the PointerLockControls selector target (PR #10 blocker).
  */
 export function WalkthroughHUD({ locked }: { locked: boolean }) {
   if (!locked) {
     return (
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <button
-          id="walkthrough-enter"
           type="button"
           className="plate pointer-events-auto rounded-sm border border-lamp bg-rock-900/80 px-6 py-3 text-[15px] text-lamp hover:bg-lamp hover:text-rock-950"
         >
