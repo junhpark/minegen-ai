@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { PanelSection } from '@/components/layout/PanelSection'
+import { canGenerateCommunication } from '@/infrastructure/view'
 import { afterCommunicationRegen } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
@@ -65,7 +66,7 @@ export function CommunicationPanel() {
       <button
         type="button"
         onClick={() => generate.mutate()}
-        disabled={!network || network.status !== 'SUCCESS' || generate.isPending}
+        disabled={!canGenerateCommunication(network) || generate.isPending}
         className="plate mt-2 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {generate.isPending
@@ -74,7 +75,7 @@ export function CommunicationPanel() {
             ? 'Regenerate communication'
             : 'Generate communication'}
       </button>
-      {!network || network.status !== 'SUCCESS' ? (
+      {!canGenerateCommunication(network) ? (
         <div className="mt-1 text-[11px] text-mute">requires a SUCCESS MineNetwork</div>
       ) : null}
       {generate.error ? (

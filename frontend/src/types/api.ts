@@ -1,6 +1,7 @@
 // Wire types mirroring backend/src/minegen/core/models.py (camelCase).
 // Coordinates are ENU Z-up meters. Never store Three.js coordinates in these.
 
+import type { AssetType } from '@/types/enums'
 import type { MiningMethodType, OrebodyType } from './enums'
 
 export interface Point3D {
@@ -131,7 +132,7 @@ export interface ScheduleConfig {
 /** Phase 11 communication planning parameters (rules 87–92): SYNTHETIC
  * planning/demo assumptions — network-geodesic ranges, not RF parameters. */
 export interface CommunicationConfig {
-  assetType: string
+  assetType: AssetType
   candidateSpacingM: number
   demandSpacingM: number
   coverageRangeM: number

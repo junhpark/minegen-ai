@@ -1,3 +1,5 @@
+import type { AssetType } from '@/types/enums'
+
 // Scene / world payloads mirroring backend/src/minegen/export/scene_manifest.py.
 // Coordinates ENU Z-up meters. Converted only in scene/ components.
 
@@ -331,7 +333,7 @@ export interface DemandPoint {
 
 export interface CommunicationAsset {
   id: string
-  assetType: string
+  assetType: AssetType
   candidateId: string
   position: [number, number, number]
   backhaulParentAssetId: string | null
@@ -346,7 +348,7 @@ export interface DemandCoverage {
 }
 
 export interface CommunicationModelSummary {
-  assetType: string
+  assetType: AssetType
   coverageModel: string
   solver: string
   optimalityClaim: boolean

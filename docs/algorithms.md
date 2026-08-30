@@ -352,7 +352,6 @@ capped tubes overlapped at T-junctions would leave false internal walls at
 every crosscut mouth; junction openings belong to a later mesh/walkthrough
 step. Phase 08 ships the geometry contract (`levels.json`) and the topology
 contract (network) plus centerline/graph visualization only.
-## Phase 10 — 4D sequencing                (pending)
 ## Phase 11 — Communication OSP (rules 87–92)
 
 `communication.json` is a deterministic connected communication placement
@@ -380,8 +379,10 @@ the MineNetwork is ≤ coverageRangeM (+1e-6 m tolerance); backhaul uses the
 same metric against backhaulRangeM. Two points 5 m apart through rock but
 605 m apart along the tunnels have communication distance 605 m (regression
 pinned). No RSSI/dBm/frequency/antenna/Fresnel/ray-tracing is computed; the
-strategy interface allows a calibrated propagation model to replace it
-later. All config defaults are synthetic planning/demo assumptions.
+`CommunicationCoverageModel` strategy (`infrastructure/coverage.py`) owns
+the distance→coverage/backhaul conversion, so a calibrated propagation
+model can replace `NetworkDistanceThresholdModel` without touching the
+builder. All config defaults are synthetic planning/demo assumptions.
 
 **`CONNECTED_GREEDY_PATH_SET_COVER_V0_1` is deterministic and
 feasible/connected but NOT guaranteed globally optimal**

@@ -41,6 +41,24 @@ export const MINING_METHODS = [
 ] as const
 export type MiningMethodType = (typeof MINING_METHODS)[number]
 
+export const ASSET_TYPES = [
+  'WIFI_AP',
+  'MESH_ROUTER',
+  'UWB_ANCHOR',
+  'LORA_GATEWAY',
+  'REPEATER',
+  'GAS_SENSOR',
+  'TEMPERATURE_SENSOR',
+  'HUMIDITY_SENSOR',
+  'AIR_VELOCITY_SENSOR',
+  'CONVERGENCE_SENSOR',
+  'SEISMIC_SENSOR',
+  'DUST_SENSOR',
+  'CAMERA',
+  'RTLS_ANCHOR',
+] as const
+export type AssetType = (typeof ASSET_TYPES)[number]
+
 export const APP_MODES = ['DESIGN', 'INFRASTRUCTURE', '4D', 'WALKTHROUGH', 'ANALYSIS'] as const
 export type AppMode = (typeof APP_MODES)[number]
 

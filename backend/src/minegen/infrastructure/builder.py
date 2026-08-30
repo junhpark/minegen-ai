@@ -18,6 +18,10 @@ import numpy as np
 
 from minegen.core.enums import AssetType
 from minegen.core.models import Scenario
+from minegen.infrastructure.coverage import (
+    CommunicationCoverageModel,
+    NetworkDistanceThresholdModel,
+)
 from minegen.infrastructure.models import (
     COVERAGE_MODEL_ID,
     SOLVER_ID,
@@ -34,7 +38,6 @@ from minegen.infrastructure.solver import solve_connected_greedy
 
 LENGTH_SYNC_TOLERANCE = 1e-6  # m — recomputed centerline vs edge.length3d
 ENDPOINT_TOLERANCE = 1e-6  # m — centerline ends vs from/to node positions
-DISTANCE_TOLERANCE = 1e-6  # m — documented coverage/backhaul comparison slack
 
 _SUPPORTED_EDGE_TYPES = ("RAMP", "DRIFT", "CROSSCUT")
 _OWNING_ARTIFACT = {
@@ -80,9 +83,21 @@ class _EdgeGeometry:
 class CommunicationBuilder:
     """Builds ``communication.json`` from network + owning centerlines."""
 
-    def __init__(self, scenario: Scenario) -> None:
+    def __init__(
+        self,
+        scenario: Scenario,
+        coverage_model: CommunicationCoverageModel | None = None,
+    ) -> None:
         self.scenario = scenario
         self.config = scenario.infrastructure.communication
+        # replaceable strategy (rule 88): defaults to the v0.1 planning proxy
+        self.coverage_model: CommunicationCoverageModel = (
+            coverage_model
+            if coverage_model is not None
+            else NetworkDistanceThresholdModel(
+                float(self.config.coverage_range_m), float(self.config.backhaul_range_m)
+            )
+        )
 
     def build(
         self,
@@ -189,12 +204,23 @@ class CommunicationBuilder:
             owner = owners[raw_index]
             centerline = owner.get(container) if isinstance(owner, dict) else None
             raw_points = centerline.get("points") if isinstance(centerline, dict) else None
-            if not isinstance(raw_points, list) or len(raw_points) < 6:
+            # blocker-2 hardening: malformed owning geometry is a typed
+            # FAILED, never an unhandled reshape/conversion exception
+            if not isinstance(raw_points, list) or len(raw_points) < 6 or len(raw_points) % 3 != 0:
                 return _failed(
                     source_revision,
-                    f"edge {e['id']} owning centerline is missing or has < 2 points",
+                    f"edge {e['id']} owning centerline is missing, has < 2 points or "
+                    "is not a flat multiple-of-3 coordinate list",
                 )
-            pts = np.asarray(raw_points, dtype=np.float64).reshape(-1, 3)
+            try:
+                pts = np.asarray(raw_points, dtype=np.float64).reshape(-1, 3)
+            except (TypeError, ValueError):
+                return _failed(
+                    source_revision,
+                    f"edge {e['id']} owning centerline contains non-numeric values",
+                )
+            if pts.shape[0] < 2:
+                return _failed(source_revision, f"edge {e['id']} owning centerline has < 2 points")
             if not np.all(np.isfinite(pts)):
                 return _failed(
                     source_revision, f"edge {e['id']} owning centerline has non-finite points"
@@ -376,19 +402,12 @@ class CommunicationBuilder:
         cand_cand = pairwise(cand_rows, cand_rows)
 
         # -- coverage model + placement problem (§14–§17) --------------------- #
-        cov_r = float(cfg.coverage_range_m) + DISTANCE_TOLERANCE
-        bh_r = float(cfg.backhaul_range_m) + DISTANCE_TOLERANCE
+        # delegation, not reimplementation (rule 88): the strategy owns the
+        # conversion from geodesic distances to coverage/backhaul relations
         cand_ids = [r[0] for r in cand_rows]
         demand_ids = [r[0] for r in demand_rows]
-        coverage_sets = {
-            cand_ids[i]: sorted(demand_ids[j] for j in np.flatnonzero(cand_demand[i] <= cov_r))
-            for i in range(len(cand_ids))
-        }
-        backhaul_graph: dict[str, list[str]] = {cid: [] for cid in cand_ids}
-        bh_mask = cand_cand <= bh_r
-        np.fill_diagonal(bh_mask, False)
-        for i in range(len(cand_ids)):
-            backhaul_graph[cand_ids[i]] = sorted(cand_ids[j] for j in np.flatnonzero(bh_mask[i]))
+        coverage_sets = self.coverage_model.coverage_sets(cand_ids, demand_ids, cand_demand)
+        backhaul_graph = self.coverage_model.backhaul_graph(cand_ids, cand_cand)
         portal_candidate = f"COMM:CAND:NODE:{portal_id}"
         problem = PlacementProblem(
             candidates=candidates,
@@ -447,6 +466,15 @@ class CommunicationBuilder:
         # -- demand assignment (§20) ------------------------------------------ #
         sel_rows = [cand_index[cid] for cid in selected_ids]
         sel_dist = cand_demand[sel_rows]  # |selected| x |demands|
+        # eligibility is strategy-owned (blocker 1): a router can serve a
+        # demand iff the coverage model says it covers it. For
+        # NETWORK_DISTANCE_THRESHOLD_V0_1 this is exactly
+        # geodesic <= coverageRangeM + 1e-6, so behaviour is unchanged.
+        demand_index = {did: j for j, did in enumerate(demand_ids)}
+        eligible: dict[int, list[int]] = {j: [] for j in range(len(demand_ids))}
+        for i, cid in enumerate(selected_ids):  # id-ordered => deterministic
+            for did in coverage_sets.get(cid, []):
+                eligible[demand_index[did]].append(i)
         coverage_rows: list[DemandCoverage] = []
         covered_count = 0
         serving_distances: list[float] = []
@@ -454,12 +482,12 @@ class CommunicationBuilder:
             col = sel_dist[:, j]
             best_i = -1
             best_d = math.inf
-            for i in range(len(selected_ids)):  # id-ordered => deterministic ties
+            for i in eligible[j]:  # id-ordered => deterministic ties
                 d = float(col[i])
                 if d < best_d - 1e-15:
                     best_d = d
                     best_i = i
-            if best_i >= 0 and best_d <= cov_r:
+            if best_i >= 0:
                 covered_count += 1
                 serving_distances.append(best_d)
                 coverage_rows.append(
@@ -518,15 +546,13 @@ class CommunicationBuilder:
             demand_coverage=coverage_rows,
             metrics=metrics,
         )
-        gate_failure = _success_gates(payload, problem, cov_r)
+        gate_failure = _success_gates(payload, problem)
         if gate_failure is not None:
             return _failed(source_revision, gate_failure)
         return payload
 
 
-def _success_gates(
-    payload: CommunicationPayload, problem: PlacementProblem, cov_r: float
-) -> str | None:
+def _success_gates(payload: CommunicationPayload, problem: PlacementProblem) -> str | None:
     """§22 hard gates: any violation is a typed failure, never a silent pass."""
     cand_ids = [c.id for c in payload.candidates]
     demand_ids = [d.id for d in payload.demands]
@@ -568,8 +594,16 @@ def _success_gates(
             covered += 1
             if row.serving_asset_id not in selected_asset_set:
                 return f"demand {row.demand_id} is served by an unselected router"
-            if row.network_distance_m is None or row.network_distance_m > cov_r:
-                return f"demand {row.demand_id} serving distance exceeds coverage range"
+            serving = asset_by_id[row.serving_asset_id]
+            # strategy-owned serving gate: the model must say the serving
+            # router covers this demand (for the v0.1 threshold model this is
+            # exactly geodesic <= coverageRangeM + 1e-6)
+            if row.demand_id not in problem.candidate_coverage_sets.get(serving.candidate_id, []):
+                return (
+                    f"demand {row.demand_id} serving router is outside the coverage model relation"
+                )
+            if row.network_distance_m is None or not math.isfinite(row.network_distance_m):
+                return f"demand {row.demand_id} serving distance is not finite"
         elif row.serving_asset_id is not None:
             return f"uncovered demand {row.demand_id} has a serving asset"
     m = payload.metrics

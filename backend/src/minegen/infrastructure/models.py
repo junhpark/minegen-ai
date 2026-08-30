@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from minegen.core.enums import AssetType
 from minegen.core.models import ApiModel
@@ -40,6 +40,20 @@ class NetworkLocation(ApiModel):
     edge_id: str | None = None
     chainage_m: float | None = None
     position: tuple[float, float, float]
+
+    @model_validator(mode="after")
+    def _kind_semantics(self) -> NetworkLocation:
+        if self.location_kind == "NODE":
+            if self.node_id is None or self.edge_id is not None or self.chainage_m is not None:
+                raise ValueError("NODE location requires nodeId and forbids edgeId/chainageM")
+        else:  # EDGE
+            if self.node_id is not None or self.edge_id is None:
+                raise ValueError("EDGE location requires edgeId and forbids nodeId")
+            if self.chainage_m is None or self.chainage_m <= 0:
+                raise ValueError("EDGE location requires chainageM > 0")
+            # the upper bound (chainageM < edge length) stays builder-owned
+            # because it requires the owning edge's length3d
+        return self
 
 
 class CandidateSite(NetworkLocation):

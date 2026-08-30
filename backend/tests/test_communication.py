@@ -424,3 +424,81 @@ def test_communication_api_lifecycle_and_invalidation(client, design_service) ->
     assert not cpath.exists()
     r = client.get(url)
     assert r.status_code == 409 and r.json()["detail"]["code"] == "COMMUNICATION_NOT_GENERATED"
+
+
+def test_threshold_model_contract() -> None:
+    """Blocker 1a: NetworkDistanceThresholdModel implements the exact frozen
+    threshold contract (geodesic <= range + 1e-6, no self backhaul)."""
+    from minegen.infrastructure.coverage import NetworkDistanceThresholdModel
+
+    model = NetworkDistanceThresholdModel(coverage_range_m=60.0, backhaul_range_m=80.0)
+    assert model.model_id == "NETWORK_DISTANCE_THRESHOLD_V0_1"
+    cand = ["C1", "C2"]
+    dem = ["D1", "D2", "D3"]
+    dist = np.array(
+        [
+            [60.0, 60.0 + 5e-7, 60.0 + 1e-5],  # exact, inside tolerance, outside
+            [200.0, 0.0, 59.999999],
+        ]
+    )
+    cov = model.coverage_sets(cand, dem, dist)
+    assert cov == {"C1": ["D1", "D2"], "C2": ["D2", "D3"]}
+    cc = np.array([[0.0, 80.0 + 5e-7], [80.0 + 5e-7, 0.0]])
+    bh = model.backhaul_graph(cand, cc)
+    assert bh == {"C1": ["C2"], "C2": ["C1"]}  # tolerance honoured, no self-loop
+    cc2 = np.array([[0.0, 80.0 + 1e-5], [80.0 + 1e-5, 0.0]])
+    assert model.backhaul_graph(cand, cc2) == {"C1": [], "C2": []}
+
+
+def test_builder_consumes_coverage_model_abstraction(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Blocker 1b: the builder delegates coverage/backhaul evaluation to the
+    injected strategy instead of reimplementing thresholds — a stub model
+    that covers everything from the portal yields a single selected router,
+    which the default threshold semantics (4 routers) could never produce."""
+
+    class _PortalCoversAllStub:
+        model_id = "STUB_MODEL"
+
+        def coverage_sets(self, candidate_ids, demand_ids, candidate_demand_distance):  # type: ignore[no-untyped-def]
+            return {
+                cid: (sorted(demand_ids) if cid == "COMM:CAND:NODE:PORTAL" else [])
+                for cid in candidate_ids
+            }
+
+        def backhaul_graph(self, candidate_ids, candidate_candidate_distance):  # type: ignore[no-untyped-def]
+            return {cid: [] for cid in candidate_ids}
+
+    sc = _scenario(
+        tmp_path,
+        candidateSpacingM=40.0,
+        demandSpacingM=20.0,
+        coverageRangeM=60.0,
+        backhaulRangeM=80.0,
+    )
+    network, smoothed, levels = _straight_fixture()
+    p = CommunicationBuilder(sc, coverage_model=_PortalCoversAllStub()).build(
+        network, smoothed, levels, "rev"
+    )
+    assert p.status == "SUCCESS", p.failure_reason
+    assert [a.candidate_id for a in p.selected_assets] == ["COMM:CAND:NODE:PORTAL"]
+    assert p.metrics is not None and p.metrics.coverage_fraction == 1.0
+    # and without injection the default strategy still yields the pinned 4
+    q = CommunicationBuilder(sc).build(network, smoothed, levels, "rev")
+    assert q.metrics is not None and q.metrics.selected_asset_count == 4
+
+
+def test_malformed_centerline_is_typed_failed(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Blocker 2: malformed owning centerlines return typed FAILED payloads,
+    never reshape/conversion exceptions."""
+    sc = _scenario(tmp_path)
+    network, _smoothed, levels = _straight_fixture()
+    flat7 = {"segments": [{"effectiveCenterline": {"points": [0.0] * 7}}]}
+    p = _build(sc, network, flat7, levels)
+    assert p.status == "FAILED"
+    assert "multiple-of-3" in (p.failure_reason or "")
+    pts = _line_points([0, 0, 0], [240, 0, 0])
+    pts[10] = "oops"
+    non_numeric = {"segments": [{"effectiveCenterline": {"points": pts}}]}
+    p = _build(sc, network, non_numeric, levels)
+    assert p.status == "FAILED"
+    assert "non-numeric" in (p.failure_reason or "")

@@ -158,3 +158,12 @@ describe('frontend invalidation mirror (rules 74/79/86/92)', () => {
     expect(next.communication).toBe(communication)
   })
 })
+
+describe('panel enable contract (§27)', () => {
+  it('pins the network gate: null/FAILED disabled, SUCCESS enabled', async () => {
+    const { canGenerateCommunication } = await import('@/infrastructure/view')
+    expect(canGenerateCommunication(null)).toBe(false)
+    expect(canGenerateCommunication({ status: 'FAILED' })).toBe(false)
+    expect(canGenerateCommunication({ status: 'SUCCESS' })).toBe(true)
+  })
+})

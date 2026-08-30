@@ -9,6 +9,12 @@ import type { CommunicationPayload } from '@/types/scene'
  * and an XYZ sphere would misrepresent the contract).
  */
 
+/** §27 enable contract: communication generation requires a SUCCESS
+ * MineNetwork. Pure so the panel gate is directly testable. */
+export function canGenerateCommunication(network: { status: string } | null): boolean {
+  return network?.status === 'SUCCESS'
+}
+
 /** Communication layers render only in INFRASTRUCTURE mode with a SUCCESS
  * payload; DESIGN and 4D rendering stay untouched. */
 export function communicationLayersActive(
