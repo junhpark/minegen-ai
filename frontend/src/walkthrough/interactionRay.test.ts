@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { WALKTHROUGH_INTERACTION_CONFIG } from './interactionConfig'
-import { computeFocus, createInspectTrigger, raySphereDistance } from './interactionRay'
+import {
+  clearTransientInput,
+  computeFocus,
+  createInspectTrigger,
+  raySphereDistance,
+} from './interactionRay'
 
 const CFG = WALKTHROUGH_INTERACTION_CONFIG
 const ORIGIN: [number, number, number] = [0, 0, 0]
@@ -60,5 +65,27 @@ describe('center-ray targeting (rule 107, §30)', () => {
     expect(trig.press()).toBe(true) // next physical press fires again
     trig.clear() // unlock/blur/unmount path
     expect(trig.press()).toBe(true)
+  })
+})
+
+describe('inspect trigger unlock lifecycle (PR #11 blocker 1)', () => {
+  it('press -> held -> unlock/reset lifecycle -> next press fires exactly once', () => {
+    const keys = {
+      cleared: 0,
+      clear() {
+        this.cleared += 1
+      },
+    }
+    const trig = createInspectTrigger()
+    expect(trig.press()).toBe(true) // physical press fires
+    expect(trig.press()).toBe(false) // still held (no keyup ever arrives)
+    // pointer-lock release / runtime unmount / blur all funnel through the
+    // ONE production reset used by WalkthroughRuntime.handleUnlock
+    clearTransientInput(keys, trig)
+    expect(keys.cleared).toBe(1) // movement keys cleared in the same call
+    const fires = [trig.press(), trig.press(), trig.press()]
+    expect(fires).toEqual([true, false, false]) // exactly once after unlock
+    trig.release()
+    expect(trig.press()).toBe(true) // normal edge behaviour restored
   })
 })

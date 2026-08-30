@@ -4,6 +4,7 @@ import { PointerLockControls, useGLTF } from '@react-three/drei'
 import { Physics } from '@react-three/rapier'
 import { WALKTHROUGH_CONFIG } from './config'
 import { createKeyState } from './movement'
+import { clearTransientInput, createInspectTrigger } from './interactionRay'
 import { WALKTHROUGH_LOCK_SURFACE_SELECTOR } from './lockSurface'
 import { resolveWalkthroughSpawn } from './spawn'
 import { extractTunnelRuntimeGeometry } from './tunnelRuntimeGeometry'
@@ -41,6 +42,8 @@ export function WalkthroughRuntime({
   const gltf = useGLTF(meshUrl)
   const camera = useThree((s) => s.camera)
   const keyState = useMemo(() => createKeyState(), [])
+  // owned here so EVERY lifecycle exit can reach it (PR #11 blocker 1)
+  const inspectTrigger = useMemo(() => createInspectTrigger(), [])
   const lockedRef = useRef(false)
   const resetSignal = useRef(0)
   const focusedRef = useRef<string | null>(null)
@@ -88,16 +91,16 @@ export function WalkthroughRuntime({
   }, [onLockChange])
   const handleUnlock = useCallback(() => {
     lockedRef.current = false
-    keyState.clear()
+    clearTransientInput(keyState, inspectTrigger)
     onLockChange(false)
-  }, [keyState, onLockChange])
+  }, [inspectTrigger, keyState, onLockChange])
   useEffect(
     () => () => {
       lockedRef.current = false
-      keyState.clear()
+      clearTransientInput(keyState, inspectTrigger)
       if (document.pointerLockElement) document.exitPointerLock()
     },
-    [keyState],
+    [inspectTrigger, keyState],
   )
   const reset = useCallback(() => {
     resetSignal.current += 1
@@ -126,6 +129,7 @@ export function WalkthroughRuntime({
       <WalkthroughControls
         keyState={keyState}
         lockedRef={lockedRef}
+        inspectTrigger={inspectTrigger}
         onReset={reset}
         onInspect={inspect}
       />

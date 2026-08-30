@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { createInspectTrigger } from './interactionRay'
+import { clearTransientInput, type InspectTrigger } from './interactionRay'
 import type { KeyState } from './movement'
 
 /**
@@ -14,21 +14,20 @@ import type { KeyState } from './movement'
 export function WalkthroughControls({
   keyState,
   lockedRef,
+  inspectTrigger,
   onReset,
   onInspect,
 }: {
   keyState: KeyState
   lockedRef: { current: boolean }
+  inspectTrigger: InspectTrigger
   onReset: () => void
   onInspect: () => void
 }) {
   useEffect(() => {
-    const inspect = createInspectTrigger()
+    const inspect = inspectTrigger
     const down = (e: KeyboardEvent) => {
-      if (!lockedRef.current) {
-        inspect.clear()
-        return
-      }
+      if (!lockedRef.current) return
       if (e.code === 'KeyR') {
         onReset()
         return
@@ -46,10 +45,7 @@ export function WalkthroughControls({
       }
       keyState.handleKey(e.code, false)
     }
-    const blur = () => {
-      keyState.clear()
-      inspect.clear()
-    }
+    const blur = () => clearTransientInput(keyState, inspect)
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
     window.addEventListener('blur', blur)
@@ -57,9 +53,8 @@ export function WalkthroughControls({
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', blur)
-      keyState.clear()
-      inspect.clear()
+      clearTransientInput(keyState, inspect)
     }
-  }, [keyState, lockedRef, onInspect, onReset])
+  }, [inspectTrigger, keyState, lockedRef, onInspect, onReset])
   return null
 }

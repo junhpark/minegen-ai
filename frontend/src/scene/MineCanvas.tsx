@@ -7,7 +7,7 @@ import { mineToThree } from '@/geometry/coordinateTransform'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { walkthroughReadiness } from '@/walkthrough/readiness'
-import { WALKTHROUGH_LOCK_SURFACE_ID } from '@/walkthrough/lockSurface'
+import { MineViewportShell } from './MineViewportShell'
 import { resolveSelectedObject } from '@/walkthrough/selectionResolver'
 import { WalkthroughInspector } from '@/walkthrough/WalkthroughInspector'
 import { WalkthroughHUD } from '@/walkthrough/WalkthroughHUD'
@@ -71,50 +71,56 @@ export function MineCanvas() {
     scene.smoothedDecline
 
   return (
-    <div id={WALKTHROUGH_LOCK_SURFACE_ID} className="relative h-full w-full bg-rock-950">
-      <Canvas
-        camera={{
-          position: mineToThree(-900, -1100, baseZ + 700),
-          fov: 45,
-          near: 1,
-          far: 20000,
-        }}
-        dpr={[1, 2]}
-        gl={{ antialias: true }}
-      >
-        <color attach="background" args={['#0f1316']} />
-        <MineScene />
-        {walkable ? (
-          <WalkthroughRuntime
-            meshUrl={`${API_BASE_URL}${scene.tunnelMesh!.meshUrl}`}
-            scene={scene}
-            onLockChange={setLocked}
-            onFocusChange={setFocusedKind}
-            onGeometryError={leaveWalkthrough}
-          />
-        ) : cameraMode === 'orbit' ? (
-          <OrbitControls
-            makeDefault
-            target={target}
-            enableDamping
-            dampingFactor={0.08}
-            onChange={(e) => {
-              const t = e?.target.target
-              if (t) setTarget([t.x, t.y, t.z])
-            }}
-          />
-        ) : null}
-      </Canvas>
-      {cameraMode === 'walkthrough' ? (
+    <MineViewportShell
+      overlayContent={
+        cameraMode === 'walkthrough' &&
+        resolvedSelection &&
+        resolvedSelection.kind !== 'ACCESS_CANDIDATE' ? (
+          <WalkthroughInspector selection={resolvedSelection} onClear={() => select(null)} />
+        ) : null
+      }
+      lockSurfaceContent={
         <>
-          <WalkthroughHUD locked={locked} focusedKind={focusedKind} />
-          {resolvedSelection && resolvedSelection.kind !== 'ACCESS_CANDIDATE' ? (
-            <WalkthroughInspector selection={resolvedSelection} onClear={() => select(null)} />
-          ) : null}
+          <Canvas
+            camera={{
+              position: mineToThree(-900, -1100, baseZ + 700),
+              fov: 45,
+              near: 1,
+              far: 20000,
+            }}
+            dpr={[1, 2]}
+            gl={{ antialias: true }}
+          >
+            <color attach="background" args={['#0f1316']} />
+            <MineScene />
+            {walkable ? (
+              <WalkthroughRuntime
+                meshUrl={`${API_BASE_URL}${scene.tunnelMesh!.meshUrl}`}
+                scene={scene}
+                onLockChange={setLocked}
+                onFocusChange={setFocusedKind}
+                onGeometryError={leaveWalkthrough}
+              />
+            ) : cameraMode === 'orbit' ? (
+              <OrbitControls
+                makeDefault
+                target={target}
+                enableDamping
+                dampingFactor={0.08}
+                onChange={(e) => {
+                  const t = e?.target.target
+                  if (t) setTarget([t.x, t.y, t.z])
+                }}
+              />
+            ) : null}
+          </Canvas>
+          {cameraMode === 'walkthrough' ? (
+            <WalkthroughHUD locked={locked} focusedKind={focusedKind} />
+          ) : (
+            <CoordinateReadout threeTarget={target} />
+          )}
         </>
-      ) : (
-        <CoordinateReadout threeTarget={target} />
-      )}
-    </div>
+      }
+    />
   )
 }

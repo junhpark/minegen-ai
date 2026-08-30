@@ -91,3 +91,17 @@ export function createInspectTrigger(): InspectTrigger {
     },
   }
 }
+
+/**
+ * Single transient-input reset used by EVERY lifecycle exit — pointer-lock
+ * release, window blur, runtime unmount, mode switch (PR #11 blocker 1).
+ * Clearing movement keys and the inspect trigger through one function
+ * keeps the exit paths impossible to desynchronize.
+ */
+export function clearTransientInput(
+  keyState: { clear: () => void },
+  inspectTrigger: InspectTrigger,
+): void {
+  keyState.clear()
+  inspectTrigger.clear()
+}
