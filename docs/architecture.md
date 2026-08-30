@@ -125,8 +125,8 @@ fault is added.
     06 Tunnel mesh (gravity-aligned sweep)   done
     07 MineNetwork   done
     08 Levels & crosscuts   done
-    09 Stopes & mining method   ← current & mining method
-    10 4D mining sequence
+    09 Stopes & mining method   done
+    10 4D mining sequence   ← current
     11 Communication OSP
     12 Generic sensor OSP
     13 First-person walkthrough
@@ -160,19 +160,24 @@ go under `geology`, not at the scenario root.
   `tunnel_mesh.glb` (excavation mesh, SUCCESS only), `levels.json` (Phase 08
   typed LevelsPayload — the validated centerline artifact owning DRIFT and
   CROSSCUT geometry, rule 71), `stopes.json` (Phase 09 typed StopesPayload —
-  planned stope prisms in the analytic orebody frame, rule 75) and `network.json` (Phase 07/08 typed
+  planned stope prisms in the analytic orebody frame, rule 75), `network.json` (Phase 07/08 typed
   NetworkPayload — deterministic serialization of the typed contract, never
-  a raw NetworkX dump). Invalidation chain (rules 64/67/68/74):
+  a raw NetworkX dump) and `timeline.json` (Phase 10 typed TimelinePayload —
+  deterministic precedence-only planning baseline owning time/task/state
+  only, never geometry, rules 81–86). Invalidation chain (rules
+  64/67/68/74/86):
 
       smoothed ──┬── tunnel_mesh
-                 └── levels ──┬── network
-                              └── stopes
+                 └── levels ──┬── network ─┐
+                              └── stopes  ─┴── timeline
 
   Tunnel mesh and the levels branch are SIBLINGS of the smoothed centerline:
   a new smoothed (or upstream) artifact deletes tunnel + levels + network +
   stopes; regenerating levels deletes network AND stopes (both rebuilt, never
   patched) and never touches the tunnel; regenerating the network, tunnel or
-  stopes touches nothing else. Regenerating any stage deletes every
+  stopes touches nothing else downstream except the timeline (rebuilding
+  network or stopes deletes `timeline.json`); regenerating the timeline
+  touches nothing upstream. Regenerating any stage deletes every
   downstream artifact (rules 64/67/68/74/79).
 - Long-running work (rule 60): `services/job_service.py` — in-memory
   registry + 2-worker thread pool; one job per scenario at a time. Algorithms

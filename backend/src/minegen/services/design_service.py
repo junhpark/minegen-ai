@@ -33,6 +33,8 @@ from minegen.mining.methods.base import strategy_for, unsupported_method_payload
 from minegen.mining.models import StopesPayload
 from minegen.network.builder import MineNetworkBuilder
 from minegen.network.models import NetworkPayload
+from minegen.scheduling.builder import MineTimelineBuilder
+from minegen.scheduling.models import TimelinePayload
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
 from minegen.world.synthetic_world import SyntheticWorld
@@ -40,6 +42,10 @@ from minegen.world.synthetic_world import SyntheticWorld
 
 class TargetsNotGeneratedError(LookupError):
     pass
+
+
+class TimelineNotGeneratedError(LookupError):
+    """timeline.json does not exist for the scenario."""
 
 
 class StopesNotGeneratedError(LookupError):
@@ -166,6 +172,7 @@ class DesignService:
             self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
             self._delete_levels_artifact(scenario_id)  # rule 74 chain
             self._delete_stopes_artifact(scenario_id)  # rule 79 chain
+            self._delete_timeline_artifact(scenario_id)  # rule 86 chain
             self._delete_network_artifact(scenario_id)  # rule 68 chain
         return payload
 
@@ -237,6 +244,7 @@ class DesignService:
             self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
             self._delete_levels_artifact(scenario_id)  # rule 74 chain
             self._delete_stopes_artifact(scenario_id)  # rule 79 chain
+            self._delete_timeline_artifact(scenario_id)  # rule 86 chain
             self._delete_network_artifact(scenario_id)  # rule 68 chain
         return payload
 
@@ -302,6 +310,7 @@ class DesignService:
             self._delete_tunnel_artifacts(scenario_id)  # rule 67: mesh is stale
             self._delete_levels_artifact(scenario_id)  # rule 74: levels are stale
             self._delete_stopes_artifact(scenario_id)  # rule 79: stopes are stale
+            self._delete_timeline_artifact(scenario_id)  # rule 86: timeline is stale
             self._delete_network_artifact(scenario_id)  # rule 68: network is stale
         return payload
 
@@ -363,6 +372,7 @@ class DesignService:
             path.write_text(serialized, encoding="utf-8")
             self._delete_network_artifact(scenario_id)  # rule 74: rebuild, never patch
             self._delete_stopes_artifact(scenario_id)  # rule 79 chain
+            self._delete_timeline_artifact(scenario_id)  # rule 86 chain
         return payload
 
     def levels(self, scenario_id: str) -> LevelsPayload:
@@ -425,6 +435,7 @@ class DesignService:
             path = self.stopes_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(serialized, encoding="utf-8")
+            self._delete_timeline_artifact(scenario_id)  # rule 86: rebuild, never patch
         return payload
 
     def stopes(self, scenario_id: str) -> StopesPayload:
@@ -433,6 +444,66 @@ class DesignService:
         if not path.is_file():
             raise StopesNotGeneratedError(scenario_id)
         return StopesPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+
+    # -- timeline (Phase 10, rules 81–86) ------------------------------------- #
+
+    def timeline_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / "timeline.json"
+
+    def _delete_timeline_artifact(self, scenario_id: str) -> None:
+        path = self.timeline_path(scenario_id)
+        if path.exists():
+            path.unlink()
+
+    def _timeline_input_paths(self, scenario_id: str) -> list[Path]:
+        # rule 86: network + stopes + the owning centerline artifacts
+        return [
+            Path(self.store.scenario_path(scenario_id)),
+            Path(self.network_path(scenario_id)),
+            Path(self.stopes_path(scenario_id)),
+            Path(self.smoothed_path(scenario_id)),
+            Path(self.levels_path(scenario_id)),
+        ]
+
+    def timeline_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._timeline_input_paths(scenario_id))
+
+    def generate_timeline(self, scenario_id: str) -> TimelinePayload:
+        """Synchronous deterministic precedence-only baseline (rules 81–86):
+        the task graph is small, so no async job (rule 60). Regenerating the
+        timeline touches NOTHING upstream."""
+        fingerprint = self.timeline_fingerprint(scenario_id)
+        network_payload = self.network(scenario_id)  # NetworkNotFoundError if absent
+        stopes_payload = self.stopes(scenario_id)  # 409 if absent
+        smoothed_payload = self.smoothed(scenario_id)
+        levels_payload = self.levels(scenario_id)
+        scenario = self.store.get(scenario_id)
+        source_revision = hashlib.sha256(
+            json.dumps(fingerprint.entries, sort_keys=True).encode()
+        ).hexdigest()[:16]
+        builder = MineTimelineBuilder(scenario)
+        payload = builder.build(
+            network_payload.model_dump(mode="json", by_alias=True),
+            stopes_payload.model_dump(mode="json", by_alias=True),
+            smoothed_payload,
+            levels_payload.model_dump(mode="json", by_alias=True),
+            source_revision,
+        )
+        serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
+        with self.store.lock(scenario_id):
+            if self.timeline_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            path = self.timeline_path(scenario_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(serialized, encoding="utf-8")
+        return payload
+
+    def timeline(self, scenario_id: str) -> TimelinePayload:
+        self.store.get(scenario_id)
+        path = self.timeline_path(scenario_id)
+        if not path.is_file():
+            raise TimelineNotGeneratedError(scenario_id)
+        return TimelinePayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
 
     # -- mine network (Phase 07, rules 13, 68–70) ---------------------------- #
 
@@ -484,6 +555,7 @@ class DesignService:
             path = self.network_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(serialized, encoding="utf-8")
+            self._delete_timeline_artifact(scenario_id)  # rule 86: rebuild, never patch
         return result.payload
 
     def network(self, scenario_id: str) -> NetworkPayload:

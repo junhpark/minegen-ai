@@ -1,9 +1,9 @@
-import { TimelinePlaceholder } from '@/components/timeline/TimelinePlaceholder'
+import { TimelineControl } from '@/components/timeline/TimelineControl'
 
 export function BottomBar() {
   return (
     <footer className="h-24 shrink-0 border-t border-rock-700 bg-rock-800">
-      <TimelinePlaceholder />
+      <TimelineControl />
     </footer>
   )
 }

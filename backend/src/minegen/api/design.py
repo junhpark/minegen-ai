@@ -11,14 +11,17 @@ from minegen.api.deps import get_design_service, get_job_service
 from minegen.core.models import ApiModel, ErrorDetail
 from minegen.levels.models import LevelsPayload
 from minegen.mining.models import StopesPayload
+from minegen.scheduling.models import TimelinePayload
 from minegen.services.design_service import (
     DeclineNotGeneratedError,
     DesignService,
     LevelsNotGeneratedError,
+    NetworkNotFoundError,
     SmoothedNotGeneratedError,
     StaleInputsError,
     StopesNotGeneratedError,
     TargetsNotGeneratedError,
+    TimelineNotGeneratedError,
     TunnelNotGeneratedError,
 )
 from minegen.services.job_service import JobAlreadyRunningError, JobService
@@ -87,6 +90,18 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             "STOPES_NOT_GENERATED",
             f"scenario '{scenario_id}' has no planned stopes; POST …/design/stopes first",
         )
+    if isinstance(exc, NetworkNotFoundError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "NETWORK_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no MineNetwork; POST …/network/generate first",
+        )
+    if isinstance(exc, TimelineNotGeneratedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "TIMELINE_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no timeline; POST …/design/timeline first",
+        )
     if isinstance(exc, StaleInputsError):
         return _error(
             status.HTTP_409_CONFLICT,
@@ -132,6 +147,27 @@ def generate_stopes(scenario_id: str, svc: Service) -> StopesPayload:
 def get_stopes(scenario_id: str, svc: Service) -> StopesPayload:
     try:
         return svc.stopes(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.post("/timeline")
+def generate_timeline(scenario_id: str, svc: Service) -> TimelinePayload:
+    """Phase 10 (rules 81–86): synchronous deterministic timeline baseline."""
+    try:
+        return svc.generate_timeline(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.get("/timeline")
+def get_timeline(scenario_id: str, svc: Service) -> TimelinePayload:
+    try:
+        return svc.timeline(scenario_id)
     except HTTPException:
         raise
     except Exception as exc:
