@@ -592,3 +592,47 @@ Frontend: `cd frontend && npm run typecheck && npm run lint && npm test && npm r
 
 All four backend commands and all four frontend commands must pass before a
 phase is considered complete.
+
+81. **MineTimeline temporal ownership**: `derived/timeline.json` owns time,
+    tasks and state ONLY — never geometry. Geometry remains owned by
+    `decline_smoothed.json` (RAMP), `levels.json` (DRIFT/CROSSCUT) and
+    `stopes.json` (stope prisms); the timeline references them by stable
+    IDs/geometryRef and overlays temporal state on the immutable Phase 09
+    geometry.
+
+82. **Deterministic precedence-only task DAG**: the schedule is an
+    earliest-start baseline (`startDay = max(dependency endDay)`,
+    `endDay = startDay + durationDays`) over a validated DAG with stable
+    task-ID tie-breaking — no hidden resource constraints, no optimization,
+    no hidden rate constants (all rates come from typed
+    `scenario.schedule`). Cycles fail explicitly. The result is a synthetic
+    planning baseline, never a production forecast.
+
+83. **Continuous development chainage**: the backend resolves every
+    development's geometryRef against its OWNING centerline and persists
+    normalized cumulative chainage fractions (first 0, last 1, monotonic,
+    total length matching `edge.length3d` within 1e-6 m). A DEVELOPING
+    excavation is only ever rendered partially (rule 31); the timeline
+    never copies geometry coordinates.
+
+84. **Stope state-machine contract**:
+    PLANNED → DEVELOPING → ACTIVE → MINED → VOID → BACKFILLED → CLOSED with
+    binding exact-boundary semantics — `state(day)` is the latest
+    transition whose `transition.day <= day`. State changes visualization
+    only; geometry never changes between states in Phase 10.
+
+85. **Physical-access precedence**: RAMP tasks follow the topology-validated
+    portal→deeper decline chain; each level's development is rooted at its
+    LEVEL_ENTRY via deterministic duration-weighted Dijkstra on the
+    undirected physical subgraph (one accessible endpoint suffices;
+    canonical edge direction is geometry, not operational one-way travel);
+    stope preparation requires BOTH Phase 09 STOPE_ACCESS crosscuts.
+    Unreachable required development fails explicitly.
+
+86. **Timeline dependency and frontend responsibility**:
+    network + stopes + owning centerline artifacts → timeline; regenerating
+    network or stopes deletes the timeline, upstream regeneration cascades
+    through it, and timeline regeneration touches NOTHING upstream. The
+    frontend evaluates backend-generated temporal contracts (state lookup,
+    progress windows, chainage clipping between existing vertices) and
+    performs visualization assembly only.

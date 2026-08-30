@@ -15,6 +15,9 @@ import { TunnelMeshLayer } from './TunnelMeshLayer'
 import { LevelDevelopmentLayer } from './LevelDevelopmentLayer'
 import { NetworkLayer } from './NetworkLayer'
 import { StopeLayer } from './StopeLayer'
+import { TimelineDevelopmentLayer } from './TimelineDevelopmentLayer'
+import { TimelineStopeLayer } from './TimelineStopeLayer'
+import { staticExcavationVisibleIn4D } from '@/timeline/evaluate'
 import { RockQualitySliceLayer } from './RockQualitySliceLayer'
 import { TerrainLayer } from './TerrainLayer'
 
@@ -28,6 +31,9 @@ export function MineScene() {
   const scenario = useScenarioStore((s) => s.scenario)
   const scene = useScenarioStore((s) => s.scene)
   const visible = useViewerStore((s) => s.visibleLayers)
+  const mode = useViewerStore((st) => st.mode)
+  const timelineActive = mode === '4D' && scene?.timeline?.status === 'SUCCESS'
+  const showStatic = staticExcavationVisibleIn4D(timelineActive)
   const slice = useSliceStore((s) => s.slice)
 
   const sizeX = scenario?.world.sizeX ?? 1200
@@ -66,14 +72,15 @@ export function MineScene() {
       {scene?.accessTargets && visible.has('accessTargets') ? (
         <AccessTargetsLayer targets={scene.accessTargets} />
       ) : null}
-      {scene?.tunnelMesh?.status === 'SUCCESS' &&
+      {showStatic &&
+      scene?.tunnelMesh?.status === 'SUCCESS' &&
       scene.tunnelMesh.meshUrl &&
       visible.has('tunnelMesh') ? (
         <Suspense fallback={null}>
           <TunnelMeshLayer url={`${API_BASE_URL}${scene.tunnelMesh.meshUrl}`} />
         </Suspense>
       ) : null}
-      {scene?.levels && (visible.has('levels') || visible.has('crosscuts')) ? (
+      {showStatic && scene?.levels && (visible.has('levels') || visible.has('crosscuts')) ? (
         <LevelDevelopmentLayer
           levels={scene.levels}
           showDrifts={visible.has('levels')}
@@ -81,8 +88,20 @@ export function MineScene() {
         />
       ) : null}
       {scene?.network && visible.has('network') ? <NetworkLayer network={scene.network} /> : null}
-      {scene?.stopes && visible.has('stopes') ? <StopeLayer stopes={scene.stopes} /> : null}
-      {scene?.smoothedDecline && visible.has('smoothedDecline') ? (
+      {timelineActive && scene?.timeline && scene.smoothedDecline && scene.levels ? (
+        <TimelineDevelopmentLayer
+          timeline={scene.timeline}
+          smoothed={scene.smoothedDecline}
+          levels={scene.levels}
+        />
+      ) : null}
+      {timelineActive && scene?.timeline && scene.stopes ? (
+        <TimelineStopeLayer timeline={scene.timeline} stopes={scene.stopes} />
+      ) : null}
+      {showStatic && scene?.stopes && visible.has('stopes') ? (
+        <StopeLayer stopes={scene.stopes} />
+      ) : null}
+      {showStatic && scene?.smoothedDecline && visible.has('smoothedDecline') ? (
         <SmoothedDeclineLayer smoothed={scene.smoothedDecline} />
       ) : null}
       {scene?.decline && visible.has('rawSearchPath') ? (

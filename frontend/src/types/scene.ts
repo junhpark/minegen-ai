@@ -307,6 +307,80 @@ export interface NetworkNode {
   stationU?: number | null
 }
 
+export type TaskTypeId =
+  | 'DEVELOP_RAMP'
+  | 'DEVELOP_LEVEL'
+  | 'DEVELOP_CROSSCUT'
+  | 'DEVELOP_RAISE'
+  | 'STOPE_PREPARATION'
+  | 'STOPING'
+  | 'MUCKING'
+  | 'BACKFILL'
+  | 'CURE_BACKFILL'
+
+export type ObjectStateId =
+  'NOT_BUILT' | 'PLANNED' | 'DEVELOPING' | 'ACTIVE' | 'MINED' | 'VOID' | 'BACKFILLED' | 'CLOSED'
+
+export interface StateTransition {
+  day: number
+  state: ObjectStateId
+}
+
+export interface TimelineTask {
+  id: string
+  taskType: TaskTypeId
+  targetKind: 'DEVELOPMENT' | 'STOPE'
+  targetId: string
+  durationDays: number
+  startDay: number
+  endDay: number
+  dependencies: string[]
+  basis: { quantity: number; quantityUnit: string; rate: number; rateUnit: string }
+}
+
+export interface DevelopmentTimeline {
+  edgeId: string
+  edgeType: string
+  geometryRef: { artifact: string; segmentIndex: number }
+  taskId: string
+  initialState: ObjectStateId
+  transitions: StateTransition[]
+  progressStartDay: number
+  progressEndDay: number
+  pointChainageFractions: number[]
+}
+
+export interface StopeTimeline {
+  stopeId: string
+  initialState: ObjectStateId
+  transitions: StateTransition[]
+}
+
+export interface TimelineMetrics {
+  taskCount: number
+  developmentTaskCount: number
+  stopeTaskCount: number
+  developmentObjectCount: number
+  stopeObjectCount: number
+  totalDevelopmentLength3d: number
+  totalScheduledTonnes: number
+  rampCompletionDay: number
+  firstStopingDay: number | null
+  endDay: number
+}
+
+export interface TimelinePayload {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  sourceRevision: string
+  startDay: number
+  endDay: number
+  tasks: TimelineTask[]
+  developments: DevelopmentTimeline[]
+  stopes: StopeTimeline[]
+  metrics: TimelineMetrics | null
+}
+
 export interface StopeReport {
   upperAnchorError: number
   lowerAnchorError: number
@@ -579,4 +653,5 @@ export interface WorldScene {
   levels: LevelsPayload | null
   network: NetworkPayload | null
   stopes: StopesPayload | null
+  timeline: TimelinePayload | null
 }

@@ -11,6 +11,7 @@ import type {
   LevelsPayload,
   SmoothedDeclinePayload,
   StopesPayload,
+  TimelinePayload,
   TunnelMeshReport,
 } from '@/types/scene'
 
@@ -39,6 +40,7 @@ export function DesignPanel() {
         levels: null,
         network: null,
         stopes: null,
+        timeline: null,
       })
       setLayerVisible('accessTargets', true)
     },
@@ -74,6 +76,7 @@ export function DesignPanel() {
         levels: null,
         network: null,
         stopes: null,
+        timeline: null,
       })
       setLayerVisible('rawSearchPath', true)
     }
@@ -112,6 +115,7 @@ export function DesignPanel() {
         levels: null,
         network: null,
         stopes: null,
+        timeline: null,
         tunnelMesh: null,
       })
       setLayerVisible('smoothedDecline', true)
@@ -155,7 +159,7 @@ export function DesignPanel() {
     onSuccess: (payload: LevelsPayload) => {
       if (!scene) return
       // rules 74/79: levels regeneration invalidates network + stopes (tunnel kept)
-      setScene({ ...scene, levels: payload, network: null, stopes: null })
+      setScene({ ...scene, levels: payload, network: null, stopes: null, timeline: null })
       setLayerVisible('levels', true)
       setLayerVisible('crosscuts', true)
     },
@@ -169,23 +173,38 @@ export function DesignPanel() {
       return api.generateStopes(scene.scenarioId)
     },
     onSuccess: (payload: StopesPayload) => {
-      // rule 79: stope regeneration leaves tunnel/network/levels untouched
-      if (scene) setScene({ ...scene, stopes: payload })
+      // rules 79/86: stope regeneration leaves tunnel/network/levels
+      // untouched but invalidates the timeline
+      if (scene) setScene({ ...scene, stopes: payload, timeline: null })
       setLayerVisible('stopes', true)
+    },
+  })
+
+  // Phase 10 timeline: deterministic precedence-only baseline (rules 81–86).
+  const timeline = scene?.timeline ?? null
+  const network = scene?.network ?? null
+  const generateTimeline = useMutation({
+    mutationFn: async () => {
+      if (!scene) throw new Error('generate the network and stopes first')
+      return api.generateTimeline(scene.scenarioId)
+    },
+    onSuccess: (payload: TimelinePayload) => {
+      // rule 86: timeline regeneration touches nothing upstream
+      if (scene) setScene({ ...scene, timeline: payload })
     },
   })
 
   // Phase 07/08 network: the scene manifest is the single source of truth —
   // the backend deletes network.json on upstream invalidation, the manifest
-  // reload restores it, and the setScene calls above mirror rule 74 exactly.
-  const network = scene?.network ?? null
+  // reload restores it, and the setScene calls mirror rules 74/79/86.
   const generateNetwork = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('smooth the decline first')
       return api.generateNetwork(scene.scenarioId)
     },
     onSuccess: (payload) => {
-      if (scene) setScene({ ...scene, network: payload })
+      // rule 86: a rebuilt network invalidates the timeline
+      if (scene) setScene({ ...scene, network: payload, timeline: null })
       setLayerVisible('network', true)
     },
   })
@@ -197,7 +216,8 @@ export function DesignPanel() {
     generateTunnel.error ??
     generateLevels.error ??
     generateNetwork.error ??
-    generateStopes.error
+    generateStopes.error ??
+    generateTimeline.error
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
 
@@ -597,6 +617,59 @@ export function DesignPanel() {
           <div className="mt-1 text-mute">
             planned longhole prisms anchored to Phase 08 access pairs (rules 75–80); planning
             proxies only — not reserves
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => generateTimeline.mutate()}
+        disabled={
+          !network ||
+          network.status === 'FAILED' ||
+          !stopes ||
+          stopes.status === 'FAILED' ||
+          generateTimeline.isPending ||
+          generateStopes.isPending ||
+          generateNetwork.isPending
+        }
+        className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {generateTimeline.isPending
+          ? 'Scheduling…'
+          : timeline
+            ? 'Regenerate timeline'
+            : 'Generate timeline (Phase 10)'}
+      </button>
+      {timeline ? (
+        <div className="readout mt-2 text-[11px]">
+          <div className="flex justify-between text-chalk-dim">
+            <span className={timeline.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+              {timeline.status}
+            </span>
+            {timeline.status === 'SUCCESS' && timeline.metrics ? (
+              <span>
+                {timeline.metrics.taskCount} tasks · {timeline.metrics.developmentTaskCount} dev ·{' '}
+                {timeline.metrics.stopeTaskCount} stope
+              </span>
+            ) : null}
+          </div>
+          {timeline.status === 'SUCCESS' && timeline.metrics ? (
+            <div className="mt-1 flex justify-between text-mute">
+              <span>end day {timeline.metrics.endDay.toFixed(0)}</span>
+              <span>
+                first stoping{' '}
+                {timeline.metrics.firstStopingDay !== null
+                  ? `day ${timeline.metrics.firstStopingDay.toFixed(0)}`
+                  : '—'}
+              </span>
+            </div>
+          ) : (
+            <div className="mt-1 text-danger">{timeline.failureReason}</div>
+          )}
+          <div className="mt-1 text-mute">
+            deterministic precedence-only planning timeline — not a production forecast or optimized
+            schedule (rules 81–86)
           </div>
         </div>
       ) : null}

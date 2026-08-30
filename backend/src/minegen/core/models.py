@@ -364,6 +364,22 @@ class MiningConfig(ApiModel):
 # --------------------------------------------------------------------------- #
 
 
+class ScheduleConfig(ApiModel):
+    """Phase 10 temporal planning parameters (rule 82). Transparent
+    configurable SYNTHETIC baseline defaults for a research/demo timeline —
+    NOT calibrated productivity claims. The timeline is expressed in
+    relative continuous days from startDay 0; no calendars/shifts."""
+
+    ramp_advance_m_per_day: PositiveFloat = 4.0
+    drift_advance_m_per_day: PositiveFloat = 5.0
+    crosscut_advance_m_per_day: PositiveFloat = 4.0
+    stope_preparation_days: PositiveFloat = 5.0
+    stoping_tonnes_per_day: PositiveFloat = 1000.0
+    mucking_tonnes_per_day: PositiveFloat = 1500.0
+    backfill_m3_per_day: PositiveFloat = Field(default=500.0, alias="backfillM3PerDay")
+    backfill_cure_days: PositiveFloat = 7.0
+
+
 class ScenarioCreate(ApiModel):
     """Payload for ``POST /scenarios``. Every field has a default so an empty
     body produces a valid baseline scenario."""
@@ -393,6 +409,7 @@ class ScenarioCreate(ApiModel):
     design: DesignConfig = Field(default_factory=DesignConfig)
     tunnel_profile: TunnelProfile = Field(default_factory=TunnelProfile)
     mining: MiningConfig = Field(default_factory=MiningConfig)
+    schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
 
 
 class Scenario(ScenarioCreate):

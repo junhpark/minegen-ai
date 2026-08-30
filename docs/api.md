@@ -74,6 +74,14 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      methods yield explicit FAILED payloads)
     GET  /api/v1/scenarios/{id}/design/stopes        Phase 09: persisted typed StopesPayload
                                                      (409 STOPES_NOT_GENERATED after invalidation)
+    POST /api/v1/scenarios/{id}/design/timeline      Phase 10: synchronous deterministic
+                                                     precedence-only MineTimeline baseline
+                                                     (typed TimelinePayload; 409 NETWORK_NOT_GENERATED /
+                                                     STOPES_NOT_GENERATED without prerequisites;
+                                                     FAILED prerequisites yield typed FAILED payloads;
+                                                     regeneration touches nothing upstream, rule 86)
+    GET  /api/v1/scenarios/{id}/design/timeline      Phase 10: persisted typed TimelinePayload
+                                                     (409 TIMELINE_NOT_GENERATED after invalidation)
     POST /api/v1/scenarios/{id}/network/generate     Phase 07/08: synchronous MineNetwork rebuild
                                                      (typed NetworkPayload; 409 SMOOTHED_NOT_GENERATED /
                                                      LEVELS_NOT_GENERATED without prerequisites)

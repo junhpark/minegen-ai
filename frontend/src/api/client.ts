@@ -14,6 +14,7 @@ import type {
   SlicePayload,
   SmoothedDeclinePayload,
   StopesPayload,
+  TimelinePayload,
   TunnelMeshReport,
   WorldScene,
   WorldStats,
@@ -110,6 +111,10 @@ export const api = {
   generateStopes: (id: string) =>
     request<StopesPayload>(`/scenarios/${id}/design/stopes`, { method: 'POST' }),
   getStopes: (id: string) => request<StopesPayload>(`/scenarios/${id}/design/stopes`),
+  /** Synchronous Phase 10 timeline baseline (rules 81–86). */
+  generateTimeline: (id: string) =>
+    request<TimelinePayload>(`/scenarios/${id}/design/timeline`, { method: 'POST' }),
+  getTimeline: (id: string) => request<TimelinePayload>(`/scenarios/${id}/design/timeline`),
   /** Synchronous Phase 07 network generation (reserved /network namespace). */
   generateNetwork: (id: string) =>
     request<NetworkPayload>(`/scenarios/${id}/network/generate`, { method: 'POST' }),

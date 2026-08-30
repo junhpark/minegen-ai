@@ -355,3 +355,35 @@ contract (network) plus centerline/graph visualization only.
 ## Phase 10 — 4D sequencing                (pending)
 ## Phase 11 — router OSP (greedy, CP-SAT)  (pending)
 ## Phase 12 — generic sensor OSP           (pending)
+
+## Phase 10 — MineTimeline (rules 81–86)
+
+`timeline.json` lifts the immutable geometry chain onto a relative
+continuous day axis (startDay 0, no calendars). A typed `ScheduleConfig`
+supplies every rate — transparent synthetic baseline defaults (ramp 4 /
+drift 5 / crosscut 4 m/day, prep 5 d, stoping 1000 t/day, mucking
+1500 t/day, backfill 500 m³/day, cure 7 d), never hidden constants and
+never calibrated productivity claims.
+
+Task graph: exactly one development task per network edge
+(`TASK:DEVELOP:{edge.id}`; RAISE/SHAFT fail `UNSUPPORTED_DEVELOPMENT_TYPE`)
+and exactly five tasks per stope (PREP → STOPING → MUCKING → BACKFILL →
+CURE). RAMP tasks chain sequentially along the topology-validated
+portal→deeper decline; each level's developments are rooted at LEVEL_ENTRY
+via deterministic duration-weighted Dijkstra on the undirected physical
+subgraph, and stope preparation depends on BOTH access crosscuts (rule 85).
+The precedence-only earliest-start solve uses deterministic Kahn ordering
+with stable task-ID tie-breaking; cycles fail explicitly (rule 82).
+
+Every development carries backend-computed normalized chainage fractions
+aligned 1:1 with its owning centerline points, hard-validated against
+`edge.length3d` within 1e-6 m (rule 83), plus exact-boundary state
+transitions (rule 84). The frontend only evaluates these contracts: partial
+chainage clipping with one interpolated cut point, state-driven stope
+materials, and 4D-mode suppression of static excavation layers (rule 31).
+
+Default acceptance (accepted Phase 09 topology): 454 development tasks
+(13 RAMP + 220 DRIFT + 221 CROSSCUT), 1020 stope tasks (204 × 5), 1474
+total; ramp completion day ≈ 959.1, first stoping day ≈ 392.8, baseline
+end day ≈ 1106.3 — the duration of the synthetic precedence-only baseline,
+not a production forecast.
