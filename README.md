@@ -26,8 +26,9 @@ platform. Research prototype / proof of concept.
 | 10    | 4D MineTimeline                                              | done  |
 | 11    | Communication OSP                                            | done  |
 | 12    | Generic Sensor OSP                                           | done  |
-| 13    | First-person walkthrough                                     | current |
-| 14–16 | See `docs/architecture.md`                                   | planned |
+| 13    | First-person walkthrough                                     | done  |
+| 14    | Walkthrough interaction/inspection                           | current |
+| 15–16 | See `docs/architecture.md`                                   | planned |
 
 ## Layout
 

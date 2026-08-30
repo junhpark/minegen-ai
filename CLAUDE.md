@@ -736,3 +736,35 @@ phase is considered complete.
     addressable excavation-segment units so a future Phase 15 can activate
     or deactivate individual colliders without rebuilding the complete
     physics world. Phase 13 keeps all supported decline segments active.
+
+105. **Walkthrough interaction boundary**:
+    Walkthrough interaction is ephemeral frontend inspection state over
+    backend-authored objects. It never changes engineering artifacts,
+    scenario data or device state.
+
+106. **Authoritative interactable assets**:
+    Phase 14 interactables are only backend-authored MESH_ROUTER and
+    GAS_SENSOR selected assets resolved through their authoritative
+    candidate/network references. Frontend may not invent devices or
+    placements.
+
+107. **Center-ray line-of-sight**:
+    Interaction uses the first-person camera center ray, bounded runtime
+    interaction distance and authoritative tunnel occlusion. Through-rock
+    or distance-only interaction is forbidden.
+
+108. **Static planned-asset semantics**:
+    Phase 14 infrastructure shown in walkthrough is a static planned
+    layout. Installation timing, power, telemetry, operational state and
+    physical sensing/RF performance are not modeled.
+
+109. **Selection identity**:
+    selectedObjectId remains the canonical global object selection
+    identity. Focus is transient. Instance indices are render
+    implementation details and must never become persisted object
+    identity.
+
+110. **Phase 14 / Phase 15 separation**:
+    Phase 14 interaction is time-independent. MineTimeline/currentDay must
+    not control walkthrough asset visibility or interaction until
+    Phase 15.

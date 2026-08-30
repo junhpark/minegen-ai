@@ -2,6 +2,12 @@ import { PanelSection } from '@/components/layout/PanelSection'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { fmtMeters } from '@/utils/format'
+import {
+  INSTALLATION_TIMING_NOTE,
+  PLANNED_LAYOUT_LABEL,
+  resolveSelectedObject,
+  SENSOR_PROXY_DISCLAIMER,
+} from '@/walkthrough/selectionResolver'
 
 /**
  * Inspector. Values come from scene payloads / API responses; nothing is
@@ -19,6 +25,7 @@ export function InspectorPanel() {
       ? (scene.accessTargets.levels.flatMap((l) => l.candidates).find((c) => c.id === selected) ??
         null)
       : null
+  const resolvedAsset = candidate ? null : resolveSelectedObject(scene, selected)
 
   return (
     <>
@@ -56,6 +63,43 @@ export function InspectorPanel() {
                 <dd className="text-danger">{candidate.rejectionReasons.join(', ')}</dd>
               </>
             ) : null}
+          </dl>
+        ) : resolvedAsset && resolvedAsset.kind !== 'ACCESS_CANDIDATE' ? (
+          <dl className="readout grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
+            <dt className="text-mute">Asset</dt>
+            <dd className="text-lamp">
+              {resolvedAsset.asset.id} · {resolvedAsset.asset.assetType}
+            </dd>
+            <dt className="text-mute">Position</dt>
+            <dd>
+              E {resolvedAsset.asset.position[0].toFixed(1)} N{' '}
+              {resolvedAsset.asset.position[1].toFixed(1)} Z{' '}
+              {resolvedAsset.asset.position[2].toFixed(1)}
+            </dd>
+            <dt className="text-mute">Candidate</dt>
+            <dd>{resolvedAsset.asset.candidateId}</dd>
+            {resolvedAsset.kind === 'MESH_ROUTER' ? (
+              <>
+                <dt className="text-mute">Hop count</dt>
+                <dd>{resolvedAsset.asset.hopCount}</dd>
+                <dt className="text-mute">Backhaul</dt>
+                <dd>{resolvedAsset.asset.backhaulParentAssetId ?? 'gateway'}</dd>
+                <dt className="text-mute">Source</dt>
+                <dd>Communication OSP</dd>
+              </>
+            ) : (
+              <>
+                <dt className="text-mute">Source</dt>
+                <dd>Sensor OSP</dd>
+              </>
+            )}
+            <dt className="text-mute">Layout</dt>
+            <dd>{PLANNED_LAYOUT_LABEL}</dd>
+            <dt className="text-mute">Note</dt>
+            <dd className="text-mute">
+              {INSTALLATION_TIMING_NOTE}
+              {resolvedAsset.kind === 'GAS_SENSOR' ? ` ${SENSOR_PROXY_DISCLAIMER}` : ''}
+            </dd>
           </dl>
         ) : selected ? (
           <p className="readout text-[11px] text-chalk">{selected}</p>

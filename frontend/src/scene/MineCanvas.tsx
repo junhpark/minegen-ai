@@ -8,6 +8,8 @@ import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { walkthroughReadiness } from '@/walkthrough/readiness'
 import { WALKTHROUGH_LOCK_SURFACE_ID } from '@/walkthrough/lockSurface'
+import { resolveSelectedObject } from '@/walkthrough/selectionResolver'
+import { WalkthroughInspector } from '@/walkthrough/WalkthroughInspector'
 import { WalkthroughHUD } from '@/walkthrough/WalkthroughHUD'
 import { WalkthroughRuntime } from '@/walkthrough/WalkthroughRuntime'
 import { API_BASE_URL } from '@/api/client'
@@ -29,6 +31,9 @@ export function MineCanvas() {
   const baseZ = scenario?.terrain.baseElevation ?? 300
   const [target, setTarget] = useState<[number, number, number]>(mineToThree(0, 0, baseZ))
   const [locked, setLocked] = useState(false)
+  const [focusedKind, setFocusedKind] = useState<'MESH_ROUTER' | 'GAS_SENSOR' | null>(null)
+  const selectedObjectId = useViewerStore((s) => s.selectedObjectId)
+  const select = useViewerStore((s) => s.select)
 
   // re-aim at the orebody when a world arrives
   useEffect(() => {
@@ -45,8 +50,18 @@ export function MineCanvas() {
     }
   }, [mode, readiness, setMode])
   useEffect(() => {
-    if (cameraMode !== 'walkthrough') setLocked(false)
+    if (cameraMode !== 'walkthrough') {
+      setLocked(false)
+      setFocusedKind(null)
+    }
   }, [cameraMode])
+  // §28 stale-selection cleanup (frontend only): if artifact regeneration
+  // or a scenario change removes the selected object, clear the canonical
+  // selection so no card can show data from a vanished asset
+  const resolvedSelection = resolveSelectedObject(scene, selectedObjectId)
+  useEffect(() => {
+    if (selectedObjectId && resolvedSelection === null) select(null)
+  }, [selectedObjectId, resolvedSelection, select])
   const leaveWalkthrough = useCallback(() => setMode('DESIGN'), [setMode])
 
   const walkable =
@@ -72,8 +87,9 @@ export function MineCanvas() {
         {walkable ? (
           <WalkthroughRuntime
             meshUrl={`${API_BASE_URL}${scene.tunnelMesh!.meshUrl}`}
-            smoothed={scene.smoothedDecline!}
+            scene={scene}
             onLockChange={setLocked}
+            onFocusChange={setFocusedKind}
             onGeometryError={leaveWalkthrough}
           />
         ) : cameraMode === 'orbit' ? (
@@ -90,7 +106,12 @@ export function MineCanvas() {
         ) : null}
       </Canvas>
       {cameraMode === 'walkthrough' ? (
-        <WalkthroughHUD locked={locked} />
+        <>
+          <WalkthroughHUD locked={locked} focusedKind={focusedKind} />
+          {resolvedSelection && resolvedSelection.kind !== 'ACCESS_CANDIDATE' ? (
+            <WalkthroughInspector selection={resolvedSelection} onClear={() => select(null)} />
+          ) : null}
+        </>
       ) : (
         <CoordinateReadout threeTarget={target} />
       )}

@@ -16,8 +16,8 @@ describe('pointer-lock surface lifecycle contract', () => {
   })
 
   it('the HUD never carries the lock-surface id in either lock state', () => {
-    const unlocked = renderToStaticMarkup(<WalkthroughHUD locked={false} />)
-    const locked = renderToStaticMarkup(<WalkthroughHUD locked={true} />)
+    const unlocked = renderToStaticMarkup(<WalkthroughHUD locked={false} focusedKind={null} />)
+    const locked = renderToStaticMarkup(<WalkthroughHUD locked={true} focusedKind={null} />)
     expect(unlocked).toContain('Click to enter walkthrough')
     expect(unlocked).not.toContain(WALKTHROUGH_LOCK_SURFACE_ID)
     expect(locked).not.toContain(WALKTHROUGH_LOCK_SURFACE_ID)
@@ -27,7 +27,7 @@ describe('pointer-lock surface lifecycle contract', () => {
   })
 
   it('the entry button lets its click bubble (no stopPropagation handler)', () => {
-    const unlocked = renderToStaticMarkup(<WalkthroughHUD locked={false} />)
+    const unlocked = renderToStaticMarkup(<WalkthroughHUD locked={false} focusedKind={null} />)
     // static markup carries no click handler: the button is pure affordance
     expect(unlocked).toContain('<button type="button"')
   })
