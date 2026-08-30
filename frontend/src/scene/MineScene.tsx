@@ -5,6 +5,7 @@ import { mineToThree } from '@/geometry/coordinateTransform'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useSliceStore } from '@/stores/sliceStore'
 import { useViewerStore } from '@/stores/viewerStore'
+import { deriveVisibleLayers } from '@/walkthrough/readiness'
 import { AccessTargetsLayer } from './AccessTargetsLayer'
 import { FaultLayer } from './FaultLayer'
 import { GradeBlocksLayer } from './GradeBlocksLayer'
@@ -35,8 +36,11 @@ import { TerrainLayer } from './TerrainLayer'
 export function MineScene() {
   const scenario = useScenarioStore((s) => s.scenario)
   const scene = useScenarioStore((s) => s.scene)
-  const visible = useViewerStore((s) => s.visibleLayers)
+  const storedVisible = useViewerStore((s) => s.visibleLayers)
   const mode = useViewerStore((st) => st.mode)
+  // §15: walkthrough derives an immersive view; stored layers are untouched
+  const visible = deriveVisibleLayers(mode, storedVisible)
+  const walkthroughActive = mode === 'WALKTHROUGH'
   const timelineActive = mode === '4D' && scene?.timeline?.status === 'SUCCESS'
   // rules 88/91: INFRASTRUCTURE mode only; routers are never shown as
   // time-valid installed assets in 4D (installation timing is not modeled)
@@ -54,11 +58,15 @@ export function MineScene() {
 
   return (
     <>
-      <ambientLight intensity={0.4} />
-      <directionalLight position={mineToThree(-400, -600, baseZ + 900)} intensity={1.1} />
-      <directionalLight position={mineToThree(500, 300, baseZ - 800)} intensity={0.25} />
+      <ambientLight intensity={walkthroughActive ? 0.12 : 0.4} />
+      {walkthroughActive ? null : (
+        <>
+          <directionalLight position={mineToThree(-400, -600, baseZ + 900)} intensity={1.1} />
+          <directionalLight position={mineToThree(500, 300, baseZ - 800)} intensity={0.25} />
+        </>
+      )}
 
-      {!scene || !visible.has('terrain') ? (
+      {!walkthroughActive && (!scene || !visible.has('terrain')) ? (
         <group position={mineToThree(0, 0, baseZ)}>
           <Grid
             args={[sizeX, sizeY]}
@@ -131,7 +139,9 @@ export function MineScene() {
         <RawDeclineLayer decline={scene.decline} />
       ) : null}
 
-      <AxisTriad origin={[-sizeX / 2, -sizeY / 2, baseZ]} length={150} />
+      {walkthroughActive ? null : (
+        <AxisTriad origin={[-sizeX / 2, -sizeY / 2, baseZ]} length={150} />
+      )}
     </>
   )
 }

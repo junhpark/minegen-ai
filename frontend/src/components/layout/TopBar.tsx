@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
+import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
+import { READINESS_MESSAGES, walkthroughReadiness } from '@/walkthrough/readiness'
 import { APP_MODES, type AppMode } from '@/types/enums'
 
 const MODE_LABELS: Record<AppMode, string> = {
@@ -15,6 +17,9 @@ export function TopBar() {
   const mode = useViewerStore((s) => s.mode)
   const setMode = useViewerStore((s) => s.setMode)
   const health = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 15000 })
+  const scene = useScenarioStore((s) => s.scene)
+  const readiness = walkthroughReadiness(scene)
+  const walkTooltip = readiness === 'READY' ? undefined : READINESS_MESSAGES[readiness]
 
   return (
     <header className="flex h-11 items-center border-b border-rock-700 bg-rock-800 px-4">
@@ -26,12 +31,15 @@ export function TopBar() {
       <nav className="ml-8 flex gap-1" aria-label="application mode">
         {APP_MODES.map((m) => {
           const active = m === mode
+          const walkDisabled = m === 'WALKTHROUGH' && readiness !== 'READY'
           return (
             <button
               key={m}
               type="button"
               onClick={() => setMode(m)}
               aria-pressed={active}
+              disabled={walkDisabled}
+              title={m === 'WALKTHROUGH' ? walkTooltip : undefined}
               className={[
                 'plate rounded-sm px-3 py-1 text-[13px] transition-colors',
                 active

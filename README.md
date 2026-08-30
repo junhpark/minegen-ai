@@ -25,8 +25,9 @@ platform. Research prototype / proof of concept.
 | 09    | Stopes / mining method                                       | done  |
 | 10    | 4D MineTimeline                                              | done  |
 | 11    | Communication OSP                                            | done  |
-| 12    | Generic Sensor OSP                                           | current |
-| 13–16 | See `docs/architecture.md`                                   | planned |
+| 12    | Generic Sensor OSP                                           | done  |
+| 13    | First-person walkthrough                                     | current |
+| 14–16 | See `docs/architecture.md`                                   | planned |
 
 ## Layout
 
