@@ -138,6 +138,10 @@ class WorldService:
             if communication.is_file()
             else None
         )
+        sensors = derived / "sensors.json"
+        scene["sensors"] = (
+            json.loads(sensors.read_text(encoding="utf-8")) if sensors.is_file() else None
+        )
         return scene
 
     def slice(

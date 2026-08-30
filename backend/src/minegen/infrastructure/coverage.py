@@ -49,6 +49,49 @@ class CommunicationCoverageModel(Protocol):
         ...
 
 
+class SensorCoverageModel(Protocol):
+    """Phase 12 strategy contract consumed by ``SensorBuilder`` (rule 95):
+    owns the conversion from network-geodesic candidate->demand distances to
+    monitoring coverage sets. No backhaul concept exists for sensors."""
+
+    model_id: str
+
+    def coverage_sets(
+        self,
+        candidate_ids: list[str],
+        demand_ids: list[str],
+        candidate_demand_distance: np.ndarray,
+    ) -> dict[str, list[str]]:
+        """candidate id -> sorted demand ids it covers."""
+        ...
+
+
+class NetworkDistanceMonitoringThresholdModel:
+    """``NETWORK_DISTANCE_MONITORING_THRESHOLD_V0_1``: a sensor candidate
+    covers a monitoring demand iff geodesic <= monitoringRangeM + 1e-6.
+    A monitoring-LAYOUT spacing proxy — never gas transport, sensor
+    response, detection probability or a physical sensing radius."""
+
+    model_id = "NETWORK_DISTANCE_MONITORING_THRESHOLD_V0_1"
+
+    def __init__(self, monitoring_range_m: float) -> None:
+        self.monitoring_range_m = float(monitoring_range_m)
+
+    def coverage_sets(
+        self,
+        candidate_ids: list[str],
+        demand_ids: list[str],
+        candidate_demand_distance: np.ndarray,
+    ) -> dict[str, list[str]]:
+        threshold = self.monitoring_range_m + DISTANCE_TOLERANCE
+        return {
+            candidate_ids[i]: sorted(
+                demand_ids[j] for j in np.flatnonzero(candidate_demand_distance[i] <= threshold)
+            )
+            for i in range(len(candidate_ids))
+        }
+
+
 class NetworkDistanceThresholdModel:
     """``NETWORK_DISTANCE_THRESHOLD_V0_1``: a candidate covers a demand iff
     geodesic <= coverageRangeM + 1e-6; two candidates form a backhaul

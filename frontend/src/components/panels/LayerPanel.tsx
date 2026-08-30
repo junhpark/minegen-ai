@@ -51,6 +51,7 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
       { id: 'routers', label: 'Routers', phase: 11 },
       { id: 'coverage', label: 'Communication coverage', phase: 11 },
       { id: 'sensors', label: 'Sensors', phase: 12 },
+      { id: 'sensorCoverage', label: 'Monitoring coverage', phase: 12 },
     ],
   },
 ]

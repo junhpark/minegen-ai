@@ -383,6 +383,53 @@ export interface CommunicationPayload {
   metrics: CommunicationMetrics | null
 }
 
+export interface SensorAsset {
+  id: string
+  assetType: AssetType
+  candidateId: string
+  position: [number, number, number]
+}
+
+export interface SensorDemandCoverage {
+  demandId: string
+  covered: boolean
+  servingSensorId: string | null
+  networkDistanceM: number | null
+}
+
+export interface SensorModelSummary {
+  assetType: AssetType
+  coverageModel: string
+  solver: string
+  optimalityClaim: boolean
+  monitoringRangeM: number
+  requiredCoverageFraction: number
+}
+
+export interface SensorMetrics {
+  candidateCount: number
+  demandCount: number
+  selectedSensorCount: number
+  coveredDemandCount: number
+  uncoveredDemandCount: number
+  coverageFraction: number
+  meanMonitoringDistanceM: number | null
+  maxMonitoringDistanceM: number | null
+  totalNetworkLength3d: number
+}
+
+export interface SensorPayload {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  sourceRevision: string
+  model: SensorModelSummary | null
+  candidates: CandidateSite[]
+  demands: DemandPoint[]
+  selectedSensors: SensorAsset[]
+  demandCoverage: SensorDemandCoverage[]
+  metrics: SensorMetrics | null
+}
+
 export type TaskTypeId =
   | 'DEVELOP_RAMP'
   | 'DEVELOP_LEVEL'
@@ -731,4 +778,5 @@ export interface WorldScene {
   stopes: StopesPayload | null
   timeline: TimelinePayload | null
   communication: CommunicationPayload | null
+  sensors: SensorPayload | null
 }

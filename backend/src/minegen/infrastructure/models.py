@@ -66,20 +66,25 @@ class DemandPoint(NetworkLocation):
     weight: float = 1.0  # Phase 11 uses UNIFORM demand weights only
 
 
-class PlacementProblem(ApiModel):
-    """Generic connected-placement problem (reusable for Phase 12).
+class CoveragePlacementProblem(ApiModel):
+    """Generic coverage-placement problem (§8, shared by Phases 11/12).
 
     ``candidate_coverage_sets`` maps candidate id -> sorted demand ids it
-    covers; ``candidate_backhaul_graph`` maps candidate id -> sorted
-    neighbouring candidate ids within backhaul range. Both are LOGICAL
-    planning relations, never MineNetwork mutations.
-    """
+    covers. A LOGICAL planning relation, never a MineNetwork mutation.
+    Phase 12 SensorBuilder consumes this directly (no connectivity)."""
 
     candidates: list[CandidateSite]
     demands: list[DemandPoint]
     candidate_coverage_sets: dict[str, list[str]]
-    candidate_backhaul_graph: dict[str, list[str]]
     required_coverage_fraction: float
+
+
+class PlacementProblem(CoveragePlacementProblem):
+    """Phase 11 connected-placement extension: adds the candidate backhaul
+    graph and the mandatory PORTAL root set on top of the generic coverage
+    problem. ``solve_connected_greedy`` consumes this."""
+
+    candidate_backhaul_graph: dict[str, list[str]]
     mandatory_candidate_ids: list[str]
 
 
@@ -141,3 +146,62 @@ class CommunicationPayload(ApiModel):
     selected_assets: list[CommunicationAsset]
     demand_coverage: list[DemandCoverage]
     metrics: CommunicationMetrics | None
+
+
+MONITORING_MODEL_ID = "NETWORK_DISTANCE_MONITORING_THRESHOLD_V0_1"
+SENSOR_SOLVER_ID = "GREEDY_SET_COVER_V0_1"
+
+
+class SensorAsset(ApiModel):
+    """A selected sensor (§19). Deliberately NO backhaul parent, hop count
+    or installation day — those concepts do not exist for Phase 12 sensors
+    (rule 97)."""
+
+    id: str
+    asset_type: AssetType
+    candidate_id: str
+    position: tuple[float, float, float]
+
+
+class SensorDemandCoverage(ApiModel):
+    demand_id: str
+    covered: bool
+    serving_sensor_id: str | None
+    network_distance_m: float | None
+
+
+class SensorModelSummary(ApiModel):
+    asset_type: AssetType
+    coverage_model: str = MONITORING_MODEL_ID
+    solver: str = SENSOR_SOLVER_ID
+    # deterministic greedy baseline — never a global-optimality claim
+    optimality_claim: bool = False
+    monitoring_range_m: float
+    required_coverage_fraction: float
+
+
+class SensorMetrics(ApiModel):
+    candidate_count: int
+    demand_count: int
+    selected_sensor_count: int  # greedy baseline sensor count
+    covered_demand_count: int
+    uncovered_demand_count: int
+    coverage_fraction: float
+    mean_monitoring_distance_m: float | None
+    max_monitoring_distance_m: float | None
+    total_network_length3d: float = Field(alias="totalNetworkLength3d")
+
+
+class SensorPayload(ApiModel):
+    """rule 94: owns sensor-placement planning state only — never mine
+    geometry, MineNetwork, communication or time."""
+
+    status: Literal["SUCCESS", "FAILED"]
+    failure_reason: str | None
+    source_revision: str
+    model: SensorModelSummary | None
+    candidates: list[CandidateSite]
+    demands: list[DemandPoint]
+    selected_sensors: list[SensorAsset]
+    demand_coverage: list[SensorDemandCoverage]
+    metrics: SensorMetrics | None

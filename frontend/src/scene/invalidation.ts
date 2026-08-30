@@ -1,5 +1,6 @@
 import type {
   CommunicationPayload,
+  SensorPayload,
   LevelsPayload,
   NetworkPayload,
   WorldScene,
@@ -26,6 +27,7 @@ export function afterUpstreamRegen(scene: WorldScene): WorldScene {
     stopes: null,
     timeline: null,
     communication: null,
+    sensors: null,
   }
 }
 
@@ -38,13 +40,14 @@ export function afterLevelsRegen(scene: WorldScene, payload: LevelsPayload): Wor
     stopes: null,
     timeline: null,
     communication: null,
+    sensors: null,
   }
 }
 
 /** Network rebuilt (rules 86/92): timeline and communication are stale;
  * stopes are preserved. */
 export function afterNetworkRegen(scene: WorldScene, payload: NetworkPayload): WorldScene {
-  return { ...scene, network: payload, timeline: null, communication: null }
+  return { ...scene, network: payload, timeline: null, communication: null, sensors: null }
 }
 
 /** Stopes rebuilt (rules 79/86/92): timeline is stale, communication and
@@ -58,10 +61,17 @@ export function afterTimelineRegen(scene: WorldScene, payload: TimelinePayload):
   return { ...scene, timeline: payload }
 }
 
-/** Communication rebuilt (rule 92): touches nothing else. */
+/** Communication rebuilt (rule 92): touches nothing else — sensors,
+ * timeline and everything upstream are preserved. */
 export function afterCommunicationRegen(
   scene: WorldScene,
   payload: CommunicationPayload,
 ): WorldScene {
   return { ...scene, communication: payload }
+}
+
+/** Sensors rebuilt (rule 98): touches nothing else — communication,
+ * timeline and everything upstream are preserved. */
+export function afterSensorsRegen(scene: WorldScene, payload: SensorPayload): WorldScene {
+  return { ...scene, sensors: payload }
 }

@@ -1,5 +1,5 @@
 import type { AppMode } from '@/types/enums'
-import type { CommunicationPayload } from '@/types/scene'
+import type { CommunicationPayload, SensorPayload } from '@/types/scene'
 
 /**
  * Phase 11 view assembly (rules 88/91/92): the frontend only maps
@@ -51,6 +51,48 @@ export function demandRenderData(communication: CommunicationPayload): {
   const covered: [number, number, number][] = []
   const uncovered: [number, number, number][] = []
   for (const row of communication.demandCoverage) {
+    const p = positionById.get(row.demandId)
+    if (!p) continue
+    ;(row.covered ? covered : uncovered).push(p)
+  }
+  return { covered, uncovered }
+}
+
+/** §30 enable contract: sensor generation requires a SUCCESS MineNetwork
+ * (never communication — siblings, rule 97). Pure for direct testability. */
+export function canGenerateSensors(network: { status: string } | null): boolean {
+  return network?.status === 'SUCCESS'
+}
+
+/** Sensor layers render only in INFRASTRUCTURE mode with a SUCCESS payload;
+ * DESIGN and 4D rendering stay untouched (rule 98). */
+export function sensorLayersActive(mode: AppMode, sensors: SensorPayload | null): boolean {
+  return mode === 'INFRASTRUCTURE' && sensors?.status === 'SUCCESS'
+}
+
+/** Rule 97: sensor installation timing is not modeled, so 4D mode never
+ * presents Phase 12 sensors as time-valid installed assets. */
+export function sensorsVisibleIn4D(): false {
+  return false
+}
+
+/** Backend sensor positions, passed through untransformed (ENU Z-up). */
+export function sensorMarkers(
+  sensors: SensorPayload,
+): { id: string; position: [number, number, number] }[] {
+  return sensors.selectedSensors.map((a) => ({ id: a.id, position: a.position }))
+}
+
+/** Split monitoring demand points into covered/uncovered using ONLY the
+ * backend demandCoverage assignments (no frontend distance calculation). */
+export function sensorDemandRenderData(sensors: SensorPayload): {
+  covered: [number, number, number][]
+  uncovered: [number, number, number][]
+} {
+  const positionById = new Map(sensors.demands.map((d) => [d.id, d.position]))
+  const covered: [number, number, number][] = []
+  const uncovered: [number, number, number][] = []
+  for (const row of sensors.demandCoverage) {
     const p = positionById.get(row.demandId)
     if (!p) continue
     ;(row.covered ? covered : uncovered).push(p)

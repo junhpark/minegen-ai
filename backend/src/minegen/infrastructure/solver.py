@@ -14,7 +14,11 @@ from __future__ import annotations
 
 from collections import deque
 
-from minegen.infrastructure.models import PlacementProblem, PlacementSolution
+from minegen.infrastructure.models import (
+    CoveragePlacementProblem,
+    PlacementProblem,
+    PlacementSolution,
+)
 
 INFEASIBLE_REASON = "INFEASIBLE_COMMUNICATION_COVERAGE"
 
@@ -100,6 +104,61 @@ def solve_connected_greedy(problem: PlacementProblem) -> PlacementSolution:
         for pid in best_path:
             selected.add(pid)
             covered_mask |= cover_mask[pid]
+
+    return PlacementSolution(
+        status="SUCCESS",
+        failure_reason=None,
+        selected_candidate_ids=sorted(selected),
+        covered_demand_ids=sorted(did for did in demand_ids if covered_mask & demand_bit[did]),
+    )
+
+
+SENSOR_INFEASIBLE_REASON = "INFEASIBLE_SENSOR_COVERAGE"
+
+
+def solve_greedy_set_cover(problem: CoveragePlacementProblem) -> PlacementSolution:
+    """``GREEDY_SET_COVER_V0_1`` (rule 96): deterministic greedy set cover
+    with unit sensor cost, no connectivity requirement and no
+    global-optimality claim. Starting from the EMPTY set, repeatedly select
+    the candidate with the highest uncovered-demand gain, ties broken by
+    lexicographically smallest candidate id. No RNG."""
+    demand_ids = [d.id for d in problem.demands]
+    demand_bit = {did: 1 << i for i, did in enumerate(demand_ids)}
+    all_candidates = sorted(c.id for c in problem.candidates)
+    cover_mask = {
+        cid: sum(demand_bit[did] for did in problem.candidate_coverage_sets.get(cid, []))
+        for cid in all_candidates
+    }
+    selected: set[str] = set()
+    covered_mask = 0
+    total = len(demand_ids)
+    target = problem.required_coverage_fraction
+
+    def fraction() -> float:
+        return (covered_mask.bit_count() / total) if total else 1.0
+
+    while fraction() < target - 1e-12:
+        uncovered = ~covered_mask
+        best_cid: str | None = None
+        best_gain = 0
+        for cid in all_candidates:  # id-ordered => deterministic tie-break
+            if cid in selected:
+                continue
+            gain = (cover_mask[cid] & uncovered).bit_count()
+            if gain > best_gain:
+                best_gain = gain
+                best_cid = cid
+        if best_cid is None:
+            return PlacementSolution(
+                status="FAILED",
+                failure_reason=SENSOR_INFEASIBLE_REASON,
+                selected_candidate_ids=sorted(selected),
+                covered_demand_ids=sorted(
+                    did for did in demand_ids if covered_mask & demand_bit[did]
+                ),
+            )
+        selected.add(best_cid)
+        covered_mask |= cover_mask[best_cid]
 
     return PlacementSolution(
         status="SUCCESS",

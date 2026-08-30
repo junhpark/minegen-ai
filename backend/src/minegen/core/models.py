@@ -390,10 +390,37 @@ class CommunicationConfig(ApiModel):
         return self
 
 
+class SensorConfig(ApiModel):
+    """Phase 12 sensor placement parameters (rules 93–98). All defaults are
+    explicitly SYNTHETIC planning/demo assumptions. ``monitoring_range_m``
+    is the maximum allowed MineNetwork PATH distance between a monitoring
+    demand and a selected sensor under the layout proxy (rule 95) — it is
+    NOT a manufacturer's detection range, gas transport radius or
+    probability-of-detection model."""
+
+    asset_type: AssetType = AssetType.GAS_SENSOR
+    candidate_spacing_m: PositiveFloat = 40.0
+    demand_spacing_m: PositiveFloat = 20.0
+    monitoring_range_m: PositiveFloat = 60.0
+    required_coverage_fraction: float = Field(default=1.0, gt=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _candidate_lattice_feasible(self) -> SensorConfig:
+        # simple feasibility guarantee for the deterministic candidate
+        # lattice on continuously represented tunnel edges
+        if self.candidate_spacing_m > 2.0 * self.monitoring_range_m:
+            raise ValueError(
+                "candidateSpacingM must be <= 2 * monitoringRangeM so the "
+                "candidate lattice can cover continuously developed edges"
+            )
+        return self
+
+
 class InfrastructureConfig(ApiModel):
     """Phase 11+ infrastructure planning configuration."""
 
     communication: CommunicationConfig = Field(default_factory=CommunicationConfig)
+    sensors: SensorConfig = Field(default_factory=SensorConfig)
 
 
 class ScheduleConfig(ApiModel):

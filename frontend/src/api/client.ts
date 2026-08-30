@@ -10,6 +10,7 @@ import type {
   JobSubmission,
   LevelsPayload,
   NetworkPayload,
+  SensorPayload,
   SliceAxis,
   SliceField,
   SlicePayload,
@@ -112,6 +113,10 @@ export const api = {
   generateStopes: (id: string) =>
     request<StopesPayload>(`/scenarios/${id}/design/stopes`, { method: 'POST' }),
   getStopes: (id: string) => request<StopesPayload>(`/scenarios/${id}/design/stopes`),
+  /** Synchronous Phase 12 sensor baseline (rules 93–98). */
+  generateSensors: (id: string) =>
+    request<SensorPayload>(`/scenarios/${id}/infrastructure/sensors`, { method: 'POST' }),
+  getSensors: (id: string) => request<SensorPayload>(`/scenarios/${id}/infrastructure/sensors`),
   /** Synchronous Phase 11 communication baseline (rules 87–92). */
   generateCommunication: (id: string) =>
     request<CommunicationPayload>(`/scenarios/${id}/infrastructure/communication`, {
