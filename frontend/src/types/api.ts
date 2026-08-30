@@ -115,6 +115,19 @@ export interface MiningConfig {
   minimumPillar: number
 }
 
+/** Phase 10 temporal planning parameters (rules 81–86): transparent
+ * synthetic baseline rates/durations — not calibrated productivity claims. */
+export interface ScheduleConfig {
+  rampAdvanceMPerDay: number
+  driftAdvanceMPerDay: number
+  crosscutAdvanceMPerDay: number
+  stopePreparationDays: number
+  stopingTonnesPerDay: number
+  muckingTonnesPerDay: number
+  backfillM3PerDay: number
+  backfillCureDays: number
+}
+
 export interface ScenarioCreate {
   name: string
   seed: number
@@ -128,6 +141,7 @@ export interface ScenarioCreate {
   design: DesignConfig
   tunnelProfile: TunnelProfile
   mining: MiningConfig
+  schedule: ScheduleConfig
 }
 
 export interface Scenario extends ScenarioCreate {

@@ -106,6 +106,42 @@ def solve_earliest_start(tasks: dict[str, TimelineTask]) -> str | None:
     return None
 
 
+_OWNING_ARTIFACTS = ("decline_smoothed.json", "levels.json")
+
+
+def _resolve_centerline(
+    ref: Any,
+    smoothed_payload: dict[str, Any],
+    levels_payload: dict[str, Any],
+) -> tuple[list[float] | None, str | None]:
+    """Safely resolve a GeometryRef to its owning centerline points
+    (blocker 2): malformed references return a reason, never raise
+    KeyError / IndexError / TypeError."""
+    if not isinstance(ref, dict):
+        return None, "geometryRef is not an object"
+    artifact = ref.get("artifact")
+    if artifact not in _OWNING_ARTIFACTS:
+        return None, f"unknown owning artifact {artifact!r}"
+    raw_index = ref.get("segmentIndex")
+    if not isinstance(raw_index, int) or isinstance(raw_index, bool) or raw_index < 0:
+        return None, f"segmentIndex {raw_index!r} is not a non-negative integer"
+    if artifact == "decline_smoothed.json":
+        owners = smoothed_payload.get("segments")
+        container = "effectiveCenterline"
+    else:
+        owners = levels_payload.get("developments")
+        container = "centerline"
+    if not isinstance(owners, list) or raw_index >= len(owners):
+        count = len(owners) if isinstance(owners, list) else 0
+        return None, (f"segmentIndex {raw_index} is out of range for {artifact} ({count} entries)")
+    owner = owners[raw_index]
+    centerline = owner.get(container) if isinstance(owner, dict) else None
+    points = centerline.get("points") if isinstance(centerline, dict) else None
+    if not isinstance(points, list) or len(points) < 6:
+        return None, f"referenced centerline in {artifact}[{raw_index}] is missing or < 2 points"
+    return points, None
+
+
 def _chainage(points: list[float]) -> tuple[list[float], float]:
     pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
     seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
@@ -149,11 +185,43 @@ class MineTimelineBuilder:
                 "is not consumable — partial geometry is never scheduled",
             )
 
-        nodes = {n["id"]: n for n in network_payload["nodes"]}
+        # -- identity / reference integrity gate (blocker 2) ----------------- #
+        # Uniqueness is VALIDATED explicitly, never established by silent
+        # dict-assignment overwrite.
+        node_list = network_payload["nodes"]
+        node_ids = [n["id"] for n in node_list]
+        if len(set(node_ids)) != len(node_ids):
+            dup = sorted({i for i in node_ids if node_ids.count(i) > 1})[:3]
+            return _failed(source_revision, f"duplicate network node ids: {dup}")
         edges = network_payload["edges"]
+        edge_ids = [e["id"] for e in edges]
+        if len(set(edge_ids)) != len(edge_ids):
+            dup = sorted({i for i in edge_ids if edge_ids.count(i) > 1})[:3]
+            return _failed(source_revision, f"duplicate network edge ids: {dup}")
+        stope_id_list = [s["id"] for s in stopes_payload["stopes"]]
+        if len(set(stope_id_list)) != len(stope_id_list):
+            dup = sorted({i for i in stope_id_list if stope_id_list.count(i) > 1})[:3]
+            return _failed(source_revision, f"duplicate stope ids: {dup}")
+        nodes = {n["id"]: n for n in node_list}
+        for e in edges:
+            for endpoint in (e["fromNode"], e["toNode"]):
+                if endpoint not in nodes:
+                    return _failed(
+                        source_revision,
+                        f"edge {e['id']} references missing node {endpoint}",
+                    )
 
         # -- development tasks: exactly one per physical edge (rule 82) ------ #
         tasks: dict[str, TimelineTask] = {}
+
+        def add_task(task: TimelineTask) -> str | None:
+            """Checked insertion (blocker 2): a duplicate generated task ID is
+            an explicit failure, never a silent overwrite."""
+            if task.id in tasks:
+                return f"duplicate generated task id {task.id}"
+            tasks[task.id] = task
+            return None
+
         dev_task_by_edge: dict[str, str] = {}
         rate_by_type = {
             "RAMP": (sch.ramp_advance_m_per_day, "m/day"),
@@ -177,19 +245,26 @@ class MineTimelineBuilder:
                     source_revision, f"non-positive development duration for edge {e['id']}"
                 )
             task_id = f"TASK:DEVELOP:{e['id']}"
-            tasks[task_id] = TimelineTask(
-                id=task_id,
-                task_type=_DEV_TASK_TYPE[etype],
-                target_kind="DEVELOPMENT",
-                target_id=e["id"],
-                duration_days=duration,
-                start_day=0.0,
-                end_day=0.0,
-                dependencies=[],
-                basis=TaskBasis(
-                    quantity=length, quantity_unit="m", rate=float(rate), rate_unit=rate_unit
-                ),
+            add_failure = add_task(
+                TimelineTask(
+                    id=task_id,
+                    task_type=_DEV_TASK_TYPE[etype],
+                    target_kind="DEVELOPMENT",
+                    target_id=e["id"],
+                    duration_days=duration,
+                    start_day=0.0,
+                    end_day=0.0,
+                    dependencies=[],
+                    basis=TaskBasis(
+                        quantity=length,
+                        quantity_unit="m",
+                        rate=float(rate),
+                        rate_unit=rate_unit,
+                    ),
+                )
             )
+            if add_failure is not None:
+                return _failed(source_revision, add_failure)
             dev_task_by_edge[e["id"]] = task_id
 
         # -- RAMP precedence: topology-validated portal→deeper chain (§6) ---- #
@@ -303,14 +378,52 @@ class MineTimelineBuilder:
         stopes = stopes_payload["stopes"]
         stope_task_ids: dict[str, dict[str, str]] = {}
         for s in stopes:
+            # -- semantic anchor correspondence (blocker 1): existence is not
+            # enough — the referenced STOPE_ACCESS must be THIS stope's
+            # station on THIS stope's levels, not any real anchor elsewhere.
+            if s["upperAccessNodeId"] == s["lowerAccessNodeId"]:
+                return _failed(
+                    source_revision,
+                    f"stope {s['id']} upper and lower access anchors must differ, "
+                    f"both are {s['upperAccessNodeId']}",
+                )
             deps_access: list[str] = []
-            for anchor_key in ("upperAccessNodeId", "lowerAccessNodeId"):
-                anchor = s[anchor_key]
-                if anchor not in nodes:
+            anchor_specs = (
+                ("upper", s["upperAccessNodeId"], s["upperLevelId"]),
+                ("lower", s["lowerAccessNodeId"], s["lowerLevelId"]),
+            )
+            for side, anchor, expected_level in anchor_specs:
+                node = nodes.get(anchor)
+                if node is None:
                     return _failed(
                         source_revision,
                         f"stope {s['id']} references access anchor {anchor} that does "
                         "not exist in the network",
+                    )
+                if node.get("type") != "STOPE_ACCESS":
+                    return _failed(
+                        source_revision,
+                        f"{side} anchor {anchor} of stope {s['id']} is type "
+                        f"{node.get('type')!r}, not STOPE_ACCESS",
+                    )
+                if node.get("levelId") != expected_level:
+                    return _failed(
+                        source_revision,
+                        f"{side} anchor {anchor} of stope {s['id']} lies on level "
+                        f"{node.get('levelId')!r}, expected {expected_level!r}",
+                    )
+                if node.get("stationIndex") != s["stationIndex"]:
+                    return _failed(
+                        source_revision,
+                        f"{side} anchor {anchor} of stope {s['id']} has stationIndex "
+                        f"{node.get('stationIndex')!r}, expected {s['stationIndex']!r}",
+                    )
+                station_u = node.get("stationU")
+                if station_u is None or abs(float(station_u) - float(s["stationU"])) > 1e-6:
+                    return _failed(
+                        source_revision,
+                        f"{side} anchor {anchor} of stope {s['id']} has stationU "
+                        f"{station_u!r}, expected {float(s['stationU'])!r} within 1e-6",
                     )
                 cc = cc_task_by_access.get(anchor, [])
                 if len(cc) != 1:
@@ -320,6 +433,12 @@ class MineTimelineBuilder:
                         f"exactly one CROSSCUT development, found {len(cc)}",
                     )
                 deps_access.append(cc[0])
+            if deps_access[0] == deps_access[1]:
+                return _failed(
+                    source_revision,
+                    f"stope {s['id']} upper and lower access crosscut tasks must be "
+                    f"distinct, both resolved to {deps_access[0]}",
+                )
             tonnes = float(s["tonnes"])
             volume = float(s["geometricVolumeM3"])
             sid = s["id"]
@@ -389,17 +508,21 @@ class MineTimelineBuilder:
             for tid, ttype, duration, basis, deps in chain_spec:
                 if not (duration > 0.0 and math.isfinite(duration)):
                     return _failed(source_revision, f"non-positive duration for {tid}")
-                tasks[tid] = TimelineTask(
-                    id=tid,
-                    task_type=ttype,
-                    target_kind="STOPE",
-                    target_id=sid,
-                    duration_days=duration,
-                    start_day=0.0,
-                    end_day=0.0,
-                    dependencies=list(deps),
-                    basis=basis,
+                add_failure = add_task(
+                    TimelineTask(
+                        id=tid,
+                        task_type=ttype,
+                        target_kind="STOPE",
+                        target_id=sid,
+                        duration_days=duration,
+                        start_day=0.0,
+                        end_day=0.0,
+                        dependencies=list(deps),
+                        basis=basis,
+                    )
                 )
+                if add_failure is not None:
+                    return _failed(source_revision, add_failure)
                 ids[ttype.value] = tid
             stope_task_ids[sid] = ids
 
@@ -413,15 +536,11 @@ class MineTimelineBuilder:
         total_dev_len = 0.0
         for e in edges:
             ref = e["geometryRef"]
-            artifact = ref["artifact"]
-            idx = int(ref["segmentIndex"])
-            if artifact == "decline_smoothed.json":
-                points = smoothed_payload["segments"][idx]["effectiveCenterline"]["points"]
-            elif artifact == "levels.json":
-                points = levels_payload["developments"][idx]["centerline"]["points"]
-            else:
+            points, resolve_failure = _resolve_centerline(ref, smoothed_payload, levels_payload)
+            if points is None:
                 return _failed(
-                    source_revision, f"edge {e['id']} references unknown artifact {artifact}"
+                    source_revision,
+                    f"edge {e['id']} geometryRef does not resolve: {resolve_failure}",
                 )
             fractions, total = _chainage(points)
             if (
@@ -445,7 +564,9 @@ class MineTimelineBuilder:
                 DevelopmentTimeline(
                     edge_id=e["id"],
                     edge_type=str(e["type"]),
-                    geometry_ref=GeometryRef(artifact=artifact, segment_index=idx),
+                    geometry_ref=GeometryRef(
+                        artifact=str(ref["artifact"]), segment_index=int(ref["segmentIndex"])
+                    ),
                     task_id=task.id,
                     transitions=[
                         StateTransition(day=task.start_day, state=ObjectState.DEVELOPING),
@@ -483,6 +604,30 @@ class MineTimelineBuilder:
         task_list = [tasks[tid] for tid in sorted(tasks)]
         dev_tasks = [t for t in task_list if t.target_kind == "DEVELOPMENT"]
         stope_tasks = [t for t in task_list if t.target_kind == "STOPE"]
+        # -- aggregate identity verification before SUCCESS (blocker 2) ------ #
+        dev_targets = [d.edge_id for d in developments]
+        stope_targets = [st.stope_id for st in stope_timelines]
+        if (
+            len(dev_tasks) != len(edges)
+            or len(developments) != len(edges)
+            or len(stope_tasks) != 5 * len(stopes)
+            or len(stope_timelines) != len(stopes)
+        ):
+            return _failed(
+                source_revision,
+                "aggregate task/object counts do not match the input artifacts: "
+                f"devTasks={len(dev_tasks)} devObjects={len(developments)} "
+                f"edges={len(edges)} stopeTasks={len(stope_tasks)} "
+                f"stopeObjects={len(stope_timelines)} stopes={len(stopes)}",
+            )
+        if len(set(dev_targets)) != len(dev_targets) or set(dev_targets) != set(edge_ids):
+            return _failed(
+                source_revision, "development timeline targets are not unique or unresolved"
+            )
+        if len(set(stope_targets)) != len(stope_targets) or set(stope_targets) != set(
+            stope_id_list
+        ):
+            return _failed(source_revision, "stope timeline targets are not unique or unresolved")
         end_day = max((t.end_day for t in task_list), default=0.0)
         stoping_starts = [t.start_day for t in stope_tasks if t.task_type is TaskType.STOPING]
         metrics = TimelineMetrics(

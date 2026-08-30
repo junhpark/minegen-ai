@@ -350,3 +350,76 @@ def test_timeline_api_lifecycle_and_invalidation(client, design_service) -> None
     assert paths["tunnel"].read_bytes() == before["tunnel"]
     r = client.get(f"/api/v1/scenarios/{sid}/design/timeline")
     assert r.status_code == 409 and r.json()["detail"]["code"] == "TIMELINE_NOT_GENERATED"
+
+
+def test_semantic_anchor_correspondence_fails(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """PR #7 blocker 1: a REAL but wrong STOPE_ACCESS anchor must fail —
+    existence alone is not correspondence."""
+    sc, smoothed, levels_d, network_d, stopes_d = _small(tmp_path)
+    s0 = stopes_d["stopes"][0]
+    # 1) another EXISTING valid anchor at a different station
+    wrong_station = json.loads(json.dumps(stopes_d))
+    other = f"STOPE_ACCESS:{s0['upperLevelId']}:S{s0['stationIndex'] + 1:+03d}"
+    assert any(n["id"] == other for n in network_d["nodes"])
+    wrong_station["stopes"][0]["upperAccessNodeId"] = other
+    p = _build(sc, smoothed, levels_d, network_d, wrong_station)
+    assert p.status == "FAILED" and "stationIndex" in (p.failure_reason or "")
+    # 2) upper == lower
+    same = json.loads(json.dumps(stopes_d))
+    same["stopes"][0]["lowerAccessNodeId"] = same["stopes"][0]["upperAccessNodeId"]
+    p = _build(sc, smoothed, levels_d, network_d, same)
+    assert p.status == "FAILED" and "must differ" in (p.failure_reason or "")
+    # 3) corrupt the referenced network anchor's levelId, ID kept valid
+    bad_level = json.loads(json.dumps(network_d))
+    target = next(n for n in bad_level["nodes"] if n["id"] == s0["upperAccessNodeId"])
+    target["levelId"] = s0["lowerLevelId"]
+    p = _build(sc, smoothed, levels_d, bad_level, stopes_d)
+    # the corruption also breaks level grouping, so either the structural
+    # reachability gate (rule 85) or the semantic anchor gate fires — both
+    # are explicit typed failures, never a scheduled stope
+    assert p.status == "FAILED" and p.failure_reason is not None and p.tasks == []
+    # 3b) corrupt stationIndex the same way
+    bad_station = json.loads(json.dumps(network_d))
+    target = next(n for n in bad_station["nodes"] if n["id"] == s0["upperAccessNodeId"])
+    target["stationIndex"] = int(target["stationIndex"]) + 1
+    p = _build(sc, smoothed, levels_d, bad_station, stopes_d)
+    assert p.status == "FAILED" and "stationIndex" in (p.failure_reason or "")
+    # 3c) corrupt stationU beyond 1e-6 — structurally invisible, so this must
+    # be caught by the semantic anchor gate itself
+    bad_u = json.loads(json.dumps(network_d))
+    target = next(n for n in bad_u["nodes"] if n["id"] == s0["upperAccessNodeId"])
+    target["stationU"] = float(target["stationU"]) + 1e-3
+    p = _build(sc, smoothed, levels_d, bad_u, stopes_d)
+    assert p.status == "FAILED" and "stationU" in (p.failure_reason or "")
+
+
+def test_identity_reference_integrity_gates(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """PR #7 blocker 2: explicit identity gates — duplicates and dangling
+    references FAIL typed, never silently overwrite or raise."""
+    sc, smoothed, levels_d, network_d, stopes_d = _small(tmp_path)
+    # 1) duplicate DRIFT/CROSSCUT edge ID
+    dup_edge = json.loads(json.dumps(network_d))
+    drift = next(e for e in dup_edge["edges"] if e["type"] == "DRIFT")
+    dup_edge["edges"].append(json.loads(json.dumps(drift)))
+    p = _build(sc, smoothed, levels_d, dup_edge, stopes_d)
+    assert p.status == "FAILED" and "duplicate network edge ids" in (p.failure_reason or "")
+    # 2) duplicate stope ID
+    dup_stope = json.loads(json.dumps(stopes_d))
+    dup_stope["stopes"].append(json.loads(json.dumps(dup_stope["stopes"][0])))
+    p = _build(sc, smoothed, levels_d, network_d, dup_stope)
+    assert p.status == "FAILED" and "duplicate stope ids" in (p.failure_reason or "")
+    # 3) edge referencing a missing node
+    ghost = json.loads(json.dumps(network_d))
+    ghost["edges"][0]["fromNode"] = "GHOST:NODE"
+    p = _build(sc, smoothed, levels_d, ghost, stopes_d)
+    assert p.status == "FAILED" and "missing node" in (p.failure_reason or "")
+    # 4) geometryRef segmentIndex out of range => typed FAILED, no exception
+    oob = json.loads(json.dumps(network_d))
+    oob["edges"][0]["geometryRef"]["segmentIndex"] = 9999
+    p = _build(sc, smoothed, levels_d, oob, stopes_d)
+    assert p.status == "FAILED" and "out of range" in (p.failure_reason or "")
+    # 5) duplicate node ID
+    dup_node = json.loads(json.dumps(network_d))
+    dup_node["nodes"].append(json.loads(json.dumps(dup_node["nodes"][0])))
+    p = _build(sc, smoothed, levels_d, dup_node, stopes_d)
+    assert p.status == "FAILED" and "duplicate network node ids" in (p.failure_reason or "")

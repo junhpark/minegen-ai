@@ -147,7 +147,9 @@ fault is added.
      ├─ portal
      ├─ ramp
      ├─ tunnelProfile
-     └─ mining
+     ├─ mining
+     └─ schedule       Phase 10 temporal planning rates/durations
+                       (synthetic baseline defaults, rule 82)
 
 Future geology members (water, lithology, alteration, joint sets, stress)
 go under `geology`, not at the scenario root.
