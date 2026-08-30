@@ -128,8 +128,8 @@ fault is added.
     09 Stopes & mining method   done
     10 4D mining sequence   done
     11 Communication OSP    done
-    12 Generic Sensor OSP   ← current
-    13 First-person walkthrough
+    12 Generic Sensor OSP   done
+    13 First-person walkthrough ← current
     13 First-person walkthrough
     14 Walkthrough object interaction
     15 4D walkthrough integration
@@ -211,3 +211,32 @@ Production reserve estimation, regulatory certification, full geostatistics,
 FEM/DEM, CFD ventilation, full-wave RF, dispatch optimization, NPV
 optimization, multi-user, photorealism. APIs are shaped so these can be
 attached later (`simulation/interfaces.py`).
+
+## Phase 13 — first-person walkthrough runtime (rules 99–104)
+
+WALKTHROUGH mode is an ephemeral frontend runtime over existing
+backend-authored geometry — nothing about it is persisted and no backend
+artifact, endpoint or invalidation relationship was added. The runtime
+mounts only in walkthrough camera mode (OrbitControls and the pointer-lock
+controller never coexist), uses one upright collision-constrained Rapier
+capsule under gravity (walking from camera YAW only; pitch never flies; no
+jump/fly/noclip), and spawns deterministically from the effective decline
+portal end (rule 102 — no world-origin fallback).
+
+**Collision boundary (rule 100)**: collider triangles come exclusively from
+the Phase 06 `tunnel_mesh.glb` primitives — the proven GLTFLoader
+representation is one Mesh child per primitive in writer order (segments,
+PORTAL_CAP, TERMINAL_CAP) with primitive extras on `geometry.userData` —
+transformed only by the canonical mine→Three rotation. Each decline segment
+becomes an independently addressable fixed trimesh collider
+(`WALK:COLLIDER:SEGMENT:{segmentId}`, plus separately identifiable cap
+colliders), so a future Phase 15 can toggle individual segment colliders by
+ID without rebuilding the physics world (rule 104). Phase 13 keeps every
+segment and both caps active.
+
+**Decline-only scope (rule 103)**: the walkable excavation is the Phase 06
+decline ONLY. DRIFT/CROSSCUT developments own centerlines, not volumetric
+meshes, and the frontend never inflates them into fake tunnels; timeline,
+communication and sensor semantics are untouched. Walkthrough visibility is
+DERIVED (tunnel mesh + passive terrain), never a mutation of the user's
+stored layers.

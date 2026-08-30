@@ -701,3 +701,38 @@ phase is considered complete.
     regeneration invalidates sensors; stopes, timeline and communication
     regeneration do not. Frontend only assembles backend sensor
     placement/coverage results and performs no sensor engineering.
+
+99. **Walkthrough runtime boundary**:
+    Phase 13 walkthrough is ephemeral frontend runtime state over existing
+    backend-authored mine geometry. Camera/player/physics state is never an
+    engineering source of truth and is never persisted.
+
+100. **Walkthrough collision ownership**:
+    Collision geometry is derived only from the validated Phase 06
+    tunnel_mesh.glb triangles with the canonical mineToThree transform.
+    Frontend must never reconstruct tunnel engineering geometry for
+    collision.
+
+101. **Walkthrough player contract**:
+    First-person locomotion uses an upright collision-constrained Rapier
+    capsule under gravity. No fly, noclip, normal-movement teleport or
+    jump. Mouse pitch affects view only; walking remains
+    gravity-horizontal.
+
+102. **Walkthrough spawn contract**:
+    Initial player pose is deterministically derived from the
+    authoritative effective decline at the portal end, slightly inside the
+    tunnel and above its floor. Arbitrary world-origin fallback is
+    forbidden.
+
+103. **Static walkthrough scope**:
+    Phase 13 traverses the static final-layout Phase 06 decline only. It
+    does not infer volumetric DRIFT/CROSSCUT geometry and does not apply
+    MineTimeline state, infrastructure installation time or 4D excavation
+    visibility. Those are later-phase responsibilities.
+
+104. **Temporal collider readiness**:
+    Physical tunnel colliders are represented as stable independently
+    addressable excavation-segment units so a future Phase 15 can activate
+    or deactivate individual colliders without rebuilding the complete
+    physics world. Phase 13 keeps all supported decline segments active.
