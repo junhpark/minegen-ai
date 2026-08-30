@@ -36,7 +36,7 @@ from minegen.infrastructure.network_domain import (
     InfrastructureNetworkDomain,
     UnsupportedEdgeTypeError,
 )
-from minegen.infrastructure.solver import solve_connected_greedy
+from minegen.infrastructure.solver import solve_connected_greedy, validate_coverage_relations
 
 
 def _failed(source_revision: str, reason: str) -> CommunicationPayload:
@@ -122,6 +122,9 @@ class CommunicationBuilder:
         demand_ids = [r[0] for r in demand_rows]
         coverage_sets = self.coverage_model.coverage_sets(cand_ids, demand_ids, cand_demand)
         backhaul_graph = self.coverage_model.backhaul_graph(cand_ids, cand_cand)
+        relation_failure = validate_coverage_relations(coverage_sets, cand_ids, demand_ids)
+        if relation_failure is not None:
+            return _failed(source_revision, relation_failure)
         portal_candidate = f"COMM:CAND:NODE:{domain.portal_id}"
         problem = PlacementProblem(
             candidates=candidates,

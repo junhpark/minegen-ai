@@ -701,26 +701,3 @@ phase is considered complete.
     regeneration invalidates sensors; stopes, timeline and communication
     regeneration do not. Frontend only assembles backend sensor
     placement/coverage results and performs no sensor engineering.
-
-99. **Engine-neutral source-of-truth**:
-    MineGen-AI engineering artifacts remain engine-neutral and persist only
-    canonical ENU Z-up meter coordinates, stable backend object identities
-    and typed semantic data. Three.js, Unity and Unreal
-    coordinate/rendering representations exist only at client adapter
-    boundaries and never become engineering sources of truth.
-
-100. **External-engine adapter separation**:
-    Unity/Unreal integration must consume canonical backend artifacts
-    through explicit adapters. Engine runtime objects, prefabs, Actors,
-    materials, coordinate conventions and visualization assets must never
-    leak into engineering-domain payloads. JSON owns
-    semantic/graph/time/infrastructure contracts; generic renderable mesh
-    formats such as GLB may carry geometry where appropriate.
-
-## Documentation policy (binding)
-
-Whenever a phase changes project status, a major user-visible capability, a
-top-level artifact, a public API family, a supported visualization mode or
-an interoperability target, README.md must be reviewed and updated in the
-same PR. "No README change required" is acceptable only if explicitly
-stated in the phase completion report with a reason.

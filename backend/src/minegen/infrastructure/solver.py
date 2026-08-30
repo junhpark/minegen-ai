@@ -23,12 +23,44 @@ from minegen.infrastructure.models import (
 INFEASIBLE_REASON = "INFEASIBLE_COMMUNICATION_COVERAGE"
 
 
+def _or_mask(demand_ids: list[str], demand_bit: dict[str, int]) -> int:
+    """Bitwise-OR flag mask: idempotent under duplicates — arithmetic sum
+    would carry bits and corrupt the coverage mask."""
+    mask = 0
+    for did in demand_ids:
+        mask |= demand_bit[did]
+    return mask
+
+
+def validate_coverage_relations(
+    coverage_sets: dict[str, list[str]],
+    candidate_ids: list[str],
+    demand_ids: list[str],
+) -> str | None:
+    """Pre-solver relation gate shared by both builders: coverage-model
+    output must reference only known candidates/demands with unique demand
+    ids per set. Returns the typed failure reason, or None if valid."""
+    known_candidates = set(candidate_ids)
+    known_demands = set(demand_ids)
+    for cid in sorted(coverage_sets):  # deterministic reporting order
+        if cid not in known_candidates:
+            return f"coverage model references unknown candidate {cid}"
+        dids = coverage_sets[cid]
+        if len(set(dids)) != len(dids):
+            dup = sorted({d for d in dids if dids.count(d) > 1})[:3]
+            return f"coverage model repeats demand ids {dup} for candidate {cid}"
+        for did in dids:
+            if did not in known_demands:
+                return f"coverage model references unknown demand {did}"
+    return None
+
+
 def solve_connected_greedy(problem: PlacementProblem) -> PlacementSolution:
     demand_ids = [d.id for d in problem.demands]
     demand_bit = {did: 1 << i for i, did in enumerate(demand_ids)}
     all_candidates = sorted(c.id for c in problem.candidates)
     cover_mask = {
-        cid: sum(demand_bit[did] for did in problem.candidate_coverage_sets.get(cid, []))
+        cid: _or_mask(problem.candidate_coverage_sets.get(cid, []), demand_bit)
         for cid in all_candidates
     }
     neighbours = {
@@ -126,7 +158,7 @@ def solve_greedy_set_cover(problem: CoveragePlacementProblem) -> PlacementSoluti
     demand_bit = {did: 1 << i for i, did in enumerate(demand_ids)}
     all_candidates = sorted(c.id for c in problem.candidates)
     cover_mask = {
-        cid: sum(demand_bit[did] for did in problem.candidate_coverage_sets.get(cid, []))
+        cid: _or_mask(problem.candidate_coverage_sets.get(cid, []), demand_bit)
         for cid in all_candidates
     }
     selected: set[str] = set()

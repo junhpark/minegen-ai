@@ -135,3 +135,32 @@ def test_folded_network_distance_never_euclidean() -> None:
     euclid = float(np.linalg.norm(np.array([0.0, 0.0, 0.0]) - np.array([0.0, 5.0, 0.0])))
     assert euclid == pytest.approx(5.0)
     assert d > 100 * euclid
+
+
+def test_structural_gates_never_raw_exceptions() -> None:
+    """PR #9 blocker 2: malformed shapes are DomainValidationError before
+    any keyed access — never KeyError/TypeError/ValueError."""
+    network, smoothed, levels = _straight_fixture()
+
+    def mutated(fn):  # type: ignore[no-untyped-def]
+        n = json.loads(json.dumps(network))
+        fn(n)
+        return n
+
+    cases = [
+        (lambda n: n["nodes"][0].pop("id"), "missing a valid id"),
+        (lambda n: n["nodes"][0].pop("position"), "3-coordinate list"),
+        (lambda n: n["nodes"][0].__setitem__("position", [0.0, "x", 0.0]), "non-numeric"),
+        (lambda n: n["nodes"][0].__setitem__("position", [0.0, 0.0]), "3-coordinate list"),
+        (lambda n: n["nodes"].__setitem__(0, "not-a-node"), "not an object"),
+        (lambda n: n["edges"][0].pop("id"), "missing a valid id"),
+        (lambda n: n["edges"].__setitem__(0, 42), "not an object"),
+        (lambda n: n.__setitem__("nodes", None), "nodes is not a list"),
+        (lambda n: n["edges"][0].__setitem__("fromNode", ""), "non-empty string"),
+        (lambda n: n["edges"][0].__setitem__("length3d", "long"), "non-positive length3d"),
+        (lambda n: n["edges"][0].__setitem__("geometryRef", None), "not an object"),
+        (lambda n: n["nodes"][0].__setitem__("position", [0.0, float("inf"), 0.0]), "non-finite"),
+    ]
+    for fn, expected in cases:
+        with pytest.raises(DomainValidationError, match=expected):
+            _build(mutated(fn), smoothed, levels)

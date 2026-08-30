@@ -116,8 +116,7 @@ class InfrastructureNetworkDomain:
                 "planning requires a physically connected, synchronized MineNetwork"
             )
 
-        node_list = network_payload.get("nodes") or []
-        edge_list = network_payload.get("edges") or []
+        node_list, edge_list = cls._validate_structure(network_payload)
         node_ids = [n["id"] for n in node_list]
         if len(set(node_ids)) != len(node_ids):
             dup = sorted({i for i in node_ids if node_ids.count(i) > 1})[:3]
@@ -138,9 +137,6 @@ class InfrastructureNetworkDomain:
                     raise DomainValidationError(
                         f"edge {e['id']} references missing node {endpoint}"
                     )
-            length = e.get("length3d")
-            if not isinstance(length, (int, float)) or not math.isfinite(length) or length <= 0:
-                raise DomainValidationError(f"edge {e['id']} has non-positive length3d {length!r}")
 
         geometries: dict[str, EdgeGeometry] = {}
         for e in edge_list:
@@ -162,6 +158,60 @@ class InfrastructureNetworkDomain:
             node_index=node_index,
             node_dist=node_dist,
         )
+
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _validate_structure(
+        network_payload: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Structural gate BEFORE any keyed access (typed-FAILED contract):
+        malformed shapes become DomainValidationError, never
+        KeyError/TypeError/ValueError."""
+
+        def _non_empty_str(v: Any) -> bool:
+            return isinstance(v, str) and len(v) > 0
+
+        node_list = network_payload.get("nodes")
+        if not isinstance(node_list, list):
+            raise DomainValidationError("network nodes is not a list")
+        for i, n in enumerate(node_list):
+            if not isinstance(n, dict):
+                raise DomainValidationError(f"network node #{i} is not an object")
+            if not _non_empty_str(n.get("id")):
+                raise DomainValidationError(f"network node #{i} is missing a valid id")
+            pos = n.get("position")
+            if not isinstance(pos, (list, tuple)) or len(pos) != 3:
+                raise DomainValidationError(f"node {n['id']} position is not a 3-coordinate list")
+            for v in pos:
+                if not isinstance(v, (int, float)) or isinstance(v, bool) or not math.isfinite(v):
+                    raise DomainValidationError(
+                        f"node {n['id']} position has a non-finite or non-numeric coordinate"
+                    )
+        edge_list = network_payload.get("edges")
+        if not isinstance(edge_list, list):
+            raise DomainValidationError("network edges is not a list")
+        for i, e in enumerate(edge_list):
+            if not isinstance(e, dict):
+                raise DomainValidationError(f"network edge #{i} is not an object")
+            if not _non_empty_str(e.get("id")):
+                raise DomainValidationError(f"network edge #{i} is missing a valid id")
+            for field in ("fromNode", "toNode", "type"):
+                if not _non_empty_str(e.get(field)):
+                    raise DomainValidationError(
+                        f"edge {e['id']} field {field} is not a non-empty string"
+                    )
+            length = e.get("length3d")
+            if (
+                not isinstance(length, (int, float))
+                or isinstance(length, bool)
+                or not math.isfinite(length)
+                or length <= 0
+            ):
+                raise DomainValidationError(f"edge {e['id']} has non-positive length3d {length!r}")
+            ref = e.get("geometryRef")
+            if not isinstance(ref, dict):
+                raise DomainValidationError(f"edge {e['id']} geometryRef is not an object")
+        return node_list, edge_list
 
     # ------------------------------------------------------------------ #
     @staticmethod

@@ -1,130 +1,39 @@
 # MineGen-AI v0.1
 
-MineGen-AI is a research prototype for **generative underground mine
-design**: from a synthetic geology it deterministically derives access
-targets, a constrained decline, tunnel geometry, level development, stopes,
-a 4D mining sequence and infrastructure placement baselines — all viewable
-in a browser-based 3D client.
+Web-based AI generative underground mine design and virtual mine research
+platform. Research prototype / proof of concept.
 
-    Synthetic geology / orebody
-             ↓
-    Access targets
-             ↓
-    Hybrid-A* decline
-             ↓
-    Smoothing + tunnel
-             ↓
-    Levels + crosscuts
-             ↓
-    MineNetwork
-             ↓
-    Stopes
-             ↓
-       ┌─────┼───────────────┐
-       │     │               │
-   Timeline Communication   Sensors
-       │     │               │
-       └─────┴───────────────┘
-             ↓
-      Web 3D / future
-      Unity / Unreal clients
-
-Unity/Unreal are **future integration targets**, not implemented features —
-see `docs/engine-integration.md`.
+> Read `CLAUDE.md` (binding development rules) and `docs/architecture.md`
+> before contributing. The canonical coordinate system is **X East, Y North,
+> Z Up, meters**; see `docs/coordinate-system.md`.
 
 ## Status
 
-| Phase | Scope | State |
-| --- | --- | --- |
-| 01 | scaffold / coordinate contracts | done |
-| 01.1 | hygiene / finite values / schema corrections | done |
-| 02 | synthetic geology/world | done |
-| 02.1 | world semantics / invalidation corrections | done |
-| 03 | access target generation | done |
-| 04 | chained Hybrid-A* decline | done |
-| 04.5 | async jobs + CI | done |
-| 05 | smoothing + revalidation | done |
-| 06 | tunnel mesh | done |
-| 07 | MineNetwork | done |
-| 08 | level development | done |
-| 09 | stopes / mining method | done |
-| 10 | 4D MineTimeline | done |
-| 11 | Communication OSP | done |
-| 12 | Generic Sensor OSP | current |
-| 13 | First-person walkthrough | planned |
-| 14 | Interaction | planned |
-| 15 | 4D walkthrough | planned |
-| 16 | Integrated demonstration | planned |
+| Phase | Scope                                                        | State |
+| ----- | ------------------------------------------------------------ | ----- |
+| 01    | Repository scaffold, health API, schemas, coordinate utils   | done  |
+| 01.1  | Hygiene: finite floats, depth semantics, geology schema, fault half-widths | done  |
+| 02.1  | Derived-state invalidation, in-situ ore semantics, rock-only stats, grade continuity | done  |
+| 02    | Synthetic world: terrain, orebody, block model, rock quality, faults | done  |
+| 03    | Design cost evaluator & level-aware footwall access targets  | done  |
+| 04    | Chained Hybrid-A* decline generator (raw centerline)         | done  |
+| 04.5  | Async job infrastructure, WebSocket progress, GitHub CI      | done  |
+| 05    | Ramp smoothing + revalidation                                | done  |
+| 06    | Tunnel mesh                                                  | done  |
+| 07    | MineNetwork                                                  | done  |
+| 08    | Level development                                            | done  |
+| 09    | Stopes / mining method                                       | done  |
+| 10    | 4D MineTimeline                                              | done  |
+| 11    | Communication OSP                                            | done  |
+| 12    | Generic Sensor OSP                                           | current |
+| 13–16 | See `docs/architecture.md`                                   | planned |
 
-## Core principles
+## Layout
 
-- **Research prototype / proof of concept** — no claim of replacing
-  commercial mine-planning software, RF surveys or certified designs.
-- **Backend engineering authority**: all geometry, graph, time and
-  placement calculations live in the Python backend; the frontend performs
-  visualization assembly only.
-- **Deterministic generation** wherever the phase contract specifies it —
-  same inputs, byte-identical derived artifacts (modulo `sourceRevision`).
-- **Canonical coordinates**: ENU Z-up metres in every persisted artifact.
-- **Stable derived-artifact dependency model**: regenerating upstream data
-  deletes dependent artifacts (see `docs/architecture.md`).
-- **Explicit planning proxies**: communication and sensor coverage use
-  network-geodesic distance thresholds — deliberately not calibrated RF
-  prediction, gas dispersion or detection modelling.
-
-## Current features
-
-**Mine generation** — synthetic terrain/geology/orebody, access-target
-generation, constrained chained Hybrid-A* decline, smoothing/revalidation,
-excavated tunnel geometry, levels/crosscuts, planned longhole stopes.
-
-**Mine intelligence** — typed MineNetwork, deterministic 4D mining
-sequence (`timeline.json`), connected communication placement baseline
-(`communication.json`), sensor monitoring placement baseline
-(`sensors.json`).
-
-**Visualization** — browser-based Three.js / React Three Fiber viewer with
-DESIGN, INFRASTRUCTURE and 4D modes; walkthrough integration is future
-work.
-
-**Interoperability** — typed JSON semantic artifacts, GLB mesh where
-applicable, engine-neutral contracts for future Unity/Unreal adapters.
-
-## Architecture
-
-    ┌────────────────────────────────────────┐
-    │        Python / FastAPI Backend        │
-    │ geometry · graph · time · OSP          │
-    └───────────────────┬────────────────────┘
-                        │
-             typed JSON │ GLB
-                        │
-    ┌───────────────────▼────────────────────┐
-    │      React / Three.js Web Client       │
-    └────────────────────────────────────────┘
-                        │
-                  future adapters
-                 ┌──────┴───────┐
-               Unity          Unreal
-
-## Artifact pipeline
-
-Major persisted derived artifacts per scenario:
-
-    scenario.json          configuration (geology, design, schedule, infrastructure)
-    decline.json           raw Hybrid-A* decline
-    decline_smoothed.json  smoothed centerline (owns RAMP geometry)
-    tunnel mesh (GLB)      excavated tube geometry
-    levels.json            level/crosscut development (owns DRIFT/CROSSCUT geometry)
-    network.json           typed MineNetwork graph
-    stopes.json            planned longhole stopes
-    timeline.json          deterministic 4D mining sequence
-    communication.json     connected MESH_ROUTER placement baseline
-    sensors.json           GAS_SENSOR monitoring placement baseline
-
-Regenerating any upstream artifact invalidates its dependents (timeline,
-communication and sensors are siblings below the network). The full
-dependency specification lives in `docs/architecture.md`.
+    backend/    Python 3.12 · FastAPI · Pydantic · NumPy        (src/minegen)
+    frontend/   React 19 · TypeScript (strict) · Vite · R3F · Zustand · Tailwind
+    docs/       architecture, coordinate system, API, algorithms
+    data/       on-disk scenario storage (git-ignored)
 
 ## Run locally
 
@@ -145,16 +54,6 @@ Set `VITE_API_BASE_URL` if the backend is not on `localhost:8000`.
 
 Or both with Docker: `docker compose up`.
 
-## Quick verification
-
-Full quality gates (identical to CI):
-
-    cd backend  && pytest && ruff check . && ruff format --check . && mypy src
-    cd frontend && npm run typecheck && npm run lint && npm test && npm run build
-
-Historical per-phase manual smoke walkthroughs were moved to
-`docs/smoke-tests.md`.
-
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs the full backend gate (ruff check, ruff
@@ -162,33 +61,108 @@ format --check, mypy strict, pytest) and frontend gate (typecheck, eslint,
 prettier --check, vitest, build) on every push to `main` and every pull
 request.
 
+## Quality gates
+
+Every phase must pass all of these before it is considered complete:
+
+    cd backend  && pytest && ruff check . && ruff format --check . && mypy src
+    cd frontend && npm run typecheck && npm run lint && npm test && npm run build
+
+## Phase 06 smoke test
+
+1. With a smoothed decline persisted, click **Generate tunnel mesh
+   (Phase 06)**. A MESH job runs the gravity-aligned sweep of the effective
+   centerline (rules 65–67).
+2. The **Tunnel mesh** layer shows the excavated tube (arched horseshoe
+   profile, plumb walls, welded segment junctions, removable portal/terminal
+   caps).
+3. The design panel reports nominal excavation volume, mesh/nominal volume
+   difference (QA gate ≤ 1 %), wall surface area, ring/triangle counts and
+   the watertight/manifold/closed verdicts — all backend-computed.
+4. Regenerating the smoothed decline (or anything upstream) deletes
+   `tunnel_mesh.json`/`tunnel_mesh.glb`; the mesh URL is revision-busted with
+   `?v=<sha16>` of the GLB SHA-256.
+5. The full 13-level DEFAULT scenario meshes end-to-end: the former
+   L11–L12 orebody-buffer conflict was resolved upstream by the
+   direction-aware Phase 04 envelope feasibility contract with
+   launchability and bounded chain backtracking (see docs/algorithms.md,
+   Phase 04/06). Expect `chainBacktracks: 3` in the decline payload and
+   0 envelope violations in the tunnel report.
+
+## Phase 05 smoke test
+
+1. With a decline generated, click **Smooth decline (Phase 05)**. A SMOOTH
+   job runs (progress per segment); on success the mint **Smoothed /
+   effective decline** layer appears: one solid centerline per segment
+   (red + label = RAW_FALLBACK, never hidden).
+2. The Design panel shows `N segments · N smoothed · 0 fallback`, the
+   effective length, total field-cost delta and minimum plan radius, plus a
+   per-segment list (repairs, Δcost %, min R).
+3. The raw search path stays available as its own layer for comparison.
+4. Regenerating the decline, targets or world deletes the smoothed artifact
+   (rule 64); the panel and layer clear accordingly.
+
+## Phase 04 smoke test
+
+1. With access targets generated, click **Generate decline (Hybrid-A*)**.
+   A job is submitted; the panel shows a progress bar with level / candidate
+   counters and expanded states (polled every 0.5 s from `GET /jobs/{id}`;
+   `/ws/jobs/{id}` streams the same records). Clicking again while it runs is
+   refused with `JOB_ALREADY_RUNNING`.
+2. An amber/chalk polyline (alternating per level) runs from the portal cone
+   through every level's selected candidate; faint red lines are the other
+   successful candidates. Labels show `Lnn Cxx <length> m`.
+3. The Design panel lists per level the selected candidate and a ●/○/×
+   summary (selected / other success / failed) plus totals.
+4. Regenerating access targets or the world discards the decline.
+
+## Phase 03 smoke test
+
+1. With a generated world, click **Generate access targets** (Design panel).
+2. Amber spheres (valid) / smaller red spheres (rejected) appear on the
+   footwall side, one row per level joined by a line and labelled
+   `Lnn  <elevation> m`; a chalk cone marks the portal.
+3. Click a sphere: the Inspector shows its level, along-strike coordinate,
+   footwall offset, rock quality, fault penalty, cost/m and next-level
+   heuristic, plus rejection reasons if any.
+4. Regenerate the world: targets disappear (derived state invalidated).
+
+## Phase 02 smoke test
+
+1. Start backend and frontend, click **New synthetic mine** (leave "one fault" on).
+2. Click **Generate world** (≈ 0.5 s). Terrain, the teal orebody slab, amber
+   grade blocks, a red fault polygon and a horizontal rock-quality slice
+   through the orebody center appear; the orbit target jumps to the orebody.
+3. In **Field slice** switch field (rock quality / grade / fault influence /
+   fault zone / ore fraction), axis and index. The legend shows the slice range.
+4. Create a second scenario with seed 43 and generate: terrain and the
+   rock-quality pattern change, the orebody and fault do not.
+5. Inspector → World shows block counts, sampled tonnes vs analytic orebody
+   tonnes, rock-quality mean, fault core/damage block counts and memory.
+
+## Phase 01 smoke test
+
+1. Start backend and frontend.
+2. The top bar shows `backend 0.1.0 · ENU_Z_UP` with an amber dot.
+3. Click **New synthetic mine**. A scenario is written to
+   `data/scenarios/<id>/scenario.json` and its parameters appear in the left
+   panel and the inspector.
+4. Orbit the viewer: the E / N / UP triad at the world corner and the
+   readout at the bottom-right show mine coordinates (Z up), not Three.js
+   coordinates.
+
 ## API
 
-API families (authoritative endpoint reference: `docs/api.md`):
+See `docs/api.md` for the authoritative endpoint reference. Phase 12 adds
+the sensor placement baseline alongside Phase 11 communication:
 
-    /api/v1/health
-    /api/v1/scenarios
-    /api/v1/scenarios/{id}/world
-    /api/v1/scenarios/{id}/design/...
-    /api/v1/scenarios/{id}/network...
-    /api/v1/scenarios/{id}/infrastructure/communication
-    /api/v1/scenarios/{id}/infrastructure/sensors
-    /api/v1/jobs
+    POST/GET /api/v1/scenarios/{id}/infrastructure/communication
+    POST/GET /api/v1/scenarios/{id}/infrastructure/sensors
 
-## Documentation map
+Phase 01 exposes:
 
-    CLAUDE.md                    binding implementation rules
-    docs/architecture.md         system architecture / phase dependency
-    docs/coordinate-system.md    coordinate conventions
-    docs/algorithms.md           numerical methods
-    docs/api.md                  REST contracts
-    docs/engine-integration.md   future Unity / Unreal interoperability
-    docs/smoke-tests.md          historical phase smoke walkthroughs
-
-## Documentation policy
-
-Whenever a phase changes project status, a major user-visible capability,
-a top-level artifact, a public API family, a supported visualization mode
-or an interoperability target, README.md must be reviewed and updated in
-the same PR. "No README change required" is acceptable only if explicitly
-stated in the phase completion report with a reason.
+    GET  /api/v1/health
+    POST /api/v1/scenarios
+    GET  /api/v1/scenarios
+    GET  /api/v1/scenarios/{id}
+    PUT  /api/v1/scenarios/{id}

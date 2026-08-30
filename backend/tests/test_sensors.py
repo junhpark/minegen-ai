@@ -322,3 +322,87 @@ def test_sensor_api_lifecycle_and_sibling_invalidation(client, design_service) -
     assert not spath.exists()
     r = client.get(url)
     assert r.status_code == 409 and r.json()["detail"]["code"] == "SENSORS_NOT_GENERATED"
+
+
+def test_malformed_structure_maps_typed_in_both_builders(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """PR #9 blocker 2: node-missing-position becomes a typed FAILED payload
+    through BOTH consumers of the shared domain — no raw exception."""
+    from minegen.infrastructure.builder import CommunicationBuilder
+
+    network, smoothed, levels = _straight_fixture()
+    bad = json.loads(json.dumps(network))
+    del bad["nodes"][0]["position"]
+    sc = _scenario(tmp_path)
+    p = _build(sc, bad, smoothed, levels)
+    assert p.status == "FAILED" and "3-coordinate list" in (p.failure_reason or "")
+    c = CommunicationBuilder(sc).build(bad, smoothed, levels, "rev")
+    assert c.status == "FAILED" and "3-coordinate list" in (c.failure_reason or "")
+
+    no_id = json.loads(json.dumps(network))
+    del no_id["nodes"][0]["id"]
+    assert _build(sc, no_id, smoothed, levels).status == "FAILED"
+    assert CommunicationBuilder(sc).build(no_id, smoothed, levels, "rev").status == "FAILED"
+
+
+def test_coverage_relation_gate_before_solver(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """PR #9 blocker 3: ghost demand / unknown candidate / duplicate demand
+    from an injected strategy become typed FAILED before the solver — never
+    a demand_bit KeyError or a corrupted bitmask."""
+
+    class _Ghost:
+        model_id = "STUB_GHOST"
+
+        def coverage_sets(self, candidate_ids, demand_ids, candidate_demand_distance):  # type: ignore[no-untyped-def]
+            return {candidate_ids[0]: ["GHOST_DEMAND"]}
+
+    class _UnknownCandidate:
+        model_id = "STUB_UNKNOWN_CAND"
+
+        def coverage_sets(self, candidate_ids, demand_ids, candidate_demand_distance):  # type: ignore[no-untyped-def]
+            return {"NOT_A_CANDIDATE": sorted(demand_ids)}
+
+    class _DuplicateDemand:
+        model_id = "STUB_DUP"
+
+        def coverage_sets(self, candidate_ids, demand_ids, candidate_demand_distance):  # type: ignore[no-untyped-def]
+            return {candidate_ids[0]: [demand_ids[0], demand_ids[0]]}
+
+    sc = _scenario(tmp_path)
+    network, smoothed, levels = _straight_fixture()
+    p = _build(sc, network, smoothed, levels, model=_Ghost())
+    assert p.status == "FAILED"
+    assert "unknown demand GHOST_DEMAND" in (p.failure_reason or "")
+    p = _build(sc, network, smoothed, levels, model=_UnknownCandidate())
+    assert p.status == "FAILED"
+    assert "unknown candidate NOT_A_CANDIDATE" in (p.failure_reason or "")
+    p = _build(sc, network, smoothed, levels, model=_DuplicateDemand())
+    assert p.status == "FAILED"
+    assert "repeats demand ids" in (p.failure_reason or "")
+
+
+def test_missing_owning_geometry_409s(client, design_service) -> None:  # type: ignore[no-untyped-def]
+    """PR #9 regression cleanup: focused SMOOTHED/LEVELS_NOT_GENERATED
+    coverage without extra Hybrid-A* reruns (artifact files removed after
+    the chain is built once)."""
+    from minegen.services.design_service import DesignService  # noqa: F401
+    from tests.test_network_api import _levels, _network
+    from tests.test_smoothing_api import _decline, _prepare
+    from tests.test_tunnel_api import _smooth
+
+    sid = _prepare(client)
+    _decline(client, sid)
+    _smooth(client, sid)
+    _levels(client, sid)
+    _network(client, sid)
+    url = f"/api/v1/scenarios/{sid}/infrastructure/sensors"
+    assert client.post(url).status_code == 200
+    # levels artifact removed -> LEVELS_NOT_GENERATED (network/smoothed intact)
+    design_service.levels_path(sid).unlink()
+    r = client.post(url)
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "LEVELS_NOT_GENERATED"
+    # smoothed artifact removed -> SMOOTHED_NOT_GENERATED (checked first)
+    design_service.smoothed_path(sid).unlink()
+    r = client.post(url)
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "SMOOTHED_NOT_GENERATED"

@@ -35,7 +35,7 @@ from minegen.infrastructure.network_domain import (
     InfrastructureNetworkDomain,
     UnsupportedEdgeTypeError,
 )
-from minegen.infrastructure.solver import solve_greedy_set_cover
+from minegen.infrastructure.solver import solve_greedy_set_cover, validate_coverage_relations
 
 
 def _failed(source_revision: str, reason: str) -> SensorPayload:
@@ -112,6 +112,13 @@ class SensorBuilder:
         cand_ids = [r[0] for r in cand_rows]
         demand_ids = [r[0] for r in demand_rows]
         coverage_sets = self.coverage_model.coverage_sets(cand_ids, demand_ids, cand_demand)
+        # pre-solver relation gate: a strategy emitting ghost/duplicate ids
+        # becomes typed FAILED, never a solver KeyError (PR #9 blocker 3)
+        relation_failure = validate_coverage_relations(coverage_sets, cand_ids, demand_ids)
+        if relation_failure is not None:
+            return _failed(source_revision, relation_failure)
+        # deterministic relation ordering regardless of strategy output order
+        coverage_sets = {cid: sorted(dids) for cid, dids in coverage_sets.items()}
         problem = CoveragePlacementProblem(
             candidates=candidates,
             demands=demands,
@@ -264,6 +271,11 @@ def _success_gates(payload: SensorPayload, problem: CoveragePlacementProblem) ->
                 return f"demand {row.demand_id} serving distance is not finite"
         elif row.serving_sensor_id is not None:
             return f"uncovered demand {row.demand_id} has a serving sensor"
+    coverage_row_ids = [row.demand_id for row in payload.demand_coverage]
+    if len(set(coverage_row_ids)) != len(coverage_row_ids):
+        return "demandCoverage repeats a demand id"
+    if set(coverage_row_ids) != demand_set or len(coverage_row_ids) != len(demand_ids):
+        return "demandCoverage demand ids do not exactly match the demand array"
     m = payload.metrics
     if m is None:
         return "metrics missing on SUCCESS payload"
@@ -282,4 +294,20 @@ def _success_gates(payload: SensorPayload, problem: CoveragePlacementProblem) ->
         or len(payload.demand_coverage) != len(demand_ids)
     ):
         return "metrics do not exactly agree with the serialized arrays"
+    # monitoring statistics must equal the assignment-derived values
+    serving_values = [
+        row.network_distance_m
+        for row in payload.demand_coverage
+        if row.covered and row.network_distance_m is not None
+    ]
+    if m.coverage_fraction != fraction:
+        return "coverageFraction does not equal the assignment-derived fraction"
+    if not serving_values:
+        if m.mean_monitoring_distance_m is not None or m.max_monitoring_distance_m is not None:
+            return "monitoring statistics must be null when no demand is covered"
+    else:
+        if m.mean_monitoring_distance_m != float(np.mean(serving_values)):
+            return "meanMonitoringDistanceM does not equal the assignment-derived mean"
+        if m.max_monitoring_distance_m != float(np.max(serving_values)):
+            return "maxMonitoringDistanceM does not equal the assignment-derived max"
     return None
