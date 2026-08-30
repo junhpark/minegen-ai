@@ -636,3 +636,33 @@ phase is considered complete.
     frontend evaluates backend-generated temporal contracts (state lookup,
     progress windows, chainage clipping between existing vertices) and
     performs visualization assembly only.
+
+87. **Communication artifact ownership**:
+    communication.json owns placement/coverage planning state only; mine
+    geometry and topology remain owned by centerline artifacts and
+    MineNetwork.
+
+88. **Network-geodesic communication contract**:
+    Phase 11 coverage and backhaul use physical shortest path through
+    MineNetwork, never Euclidean through-rock distance; the v0.1 model is
+    an explicit planning proxy, not calibrated RF prediction.
+
+89. **Deterministic infrastructure sampling**:
+    communication candidate and demand locations are generated from backend
+    owning centerlines using stable node/edge-chainage references; frontend
+    never creates placement candidates.
+
+90. **Connected placement contract**:
+    every selected MESH_ROUTER is connected through the selected backhaul
+    graph to the unique PORTAL root. Phase 11 uses a deterministic
+    connected-greedy baseline and makes no global-optimality claim.
+
+91. **Static infrastructure scope**:
+    Phase 11 represents final-layout communication planning only. Router
+    installation timing and 4D activation are not modeled.
+
+92. **Communication dependency/frontend responsibility**:
+    scenario + network + owning centerlines → communication;
+    network/upstream regeneration invalidates communication, while
+    stopes/timeline do not. Frontend only assembles backend placement and
+    coverage results and performs no communication engineering.

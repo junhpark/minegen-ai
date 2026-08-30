@@ -17,6 +17,9 @@ import { NetworkLayer } from './NetworkLayer'
 import { StopeLayer } from './StopeLayer'
 import { TimelineDevelopmentLayer } from './TimelineDevelopmentLayer'
 import { TimelineStopeLayer } from './TimelineStopeLayer'
+import { CommunicationRouterLayer } from './CommunicationRouterLayer'
+import { CommunicationCoverageLayer } from './CommunicationCoverageLayer'
+import { communicationLayersActive } from '@/infrastructure/view'
 import { staticExcavationVisibleIn4D } from '@/timeline/evaluate'
 import { RockQualitySliceLayer } from './RockQualitySliceLayer'
 import { TerrainLayer } from './TerrainLayer'
@@ -33,6 +36,9 @@ export function MineScene() {
   const visible = useViewerStore((s) => s.visibleLayers)
   const mode = useViewerStore((st) => st.mode)
   const timelineActive = mode === '4D' && scene?.timeline?.status === 'SUCCESS'
+  // rules 88/91: INFRASTRUCTURE mode only; routers are never shown as
+  // time-valid installed assets in 4D (installation timing is not modeled)
+  const communicationActive = communicationLayersActive(mode, scene?.communication ?? null)
   const showStatic = staticExcavationVisibleIn4D(timelineActive)
   const slice = useSliceStore((s) => s.slice)
 
@@ -88,6 +94,12 @@ export function MineScene() {
         />
       ) : null}
       {scene?.network && visible.has('network') ? <NetworkLayer network={scene.network} /> : null}
+      {communicationActive && scene?.communication && visible.has('routers') ? (
+        <CommunicationRouterLayer communication={scene.communication} />
+      ) : null}
+      {communicationActive && scene?.communication && visible.has('coverage') ? (
+        <CommunicationCoverageLayer communication={scene.communication} />
+      ) : null}
       {timelineActive && scene?.timeline && scene.smoothedDecline && scene.levels ? (
         <TimelineDevelopmentLayer
           timeline={scene.timeline}

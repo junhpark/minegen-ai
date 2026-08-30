@@ -88,12 +88,22 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  /api/v1/scenarios/{id}/network              Phase 07: persisted typed NetworkPayload
                                                      (404 NETWORK_NOT_GENERATED after upstream
                                                      invalidation)
+    POST /api/v1/scenarios/{id}/infrastructure/communication
+                                                     Phase 11: synchronous deterministic connected
+                                                     communication placement baseline (typed
+                                                     CommunicationPayload; MESH_ROUTER only;
+                                                     network-geodesic proxy, not RF prediction;
+                                                     409 NETWORK_NOT_GENERATED / SMOOTHED_NOT_GENERATED /
+                                                     LEVELS_NOT_GENERATED without prerequisites;
+                                                     regeneration touches nothing upstream, rule 92)
+    GET  /api/v1/scenarios/{id}/infrastructure/communication
+                                                     Phase 11: persisted typed CommunicationPayload
+                                                     (409 COMMUNICATION_NOT_GENERATED after
+                                                     network/upstream invalidation)
 
 ## Planned
     GET  /api/v1/scenarios/{id}/design                  Phase 04+
-    POST /api/v1/scenarios/{id}/sequence/generate       Phase 10
-    GET  /api/v1/scenarios/{id}/timeline                Phase 10
-    POST /api/v1/scenarios/{id}/infrastructure/optimize Phase 11
+    POST /api/v1/scenarios/{id}/infrastructure/sensors  Phase 12
 
 ## Conventions
 

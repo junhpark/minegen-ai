@@ -18,7 +18,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
-from minegen.core.enums import MiningMethodType, OrebodyType
+from minegen.core.enums import AssetType, MiningMethodType, OrebodyType
 
 
 class ApiModel(BaseModel):
@@ -364,6 +364,38 @@ class MiningConfig(ApiModel):
 # --------------------------------------------------------------------------- #
 
 
+class CommunicationConfig(ApiModel):
+    """Phase 11 communication planning parameters (rules 87–92). All
+    defaults are explicitly SYNTHETIC planning/demo assumptions — not
+    measured RF parameters, vendor specifications, or regulatory
+    thresholds. Coverage/backhaul ranges are NETWORK-GEODESIC tunnel
+    distances (rule 88), never Euclidean through-rock distances."""
+
+    asset_type: AssetType = AssetType.MESH_ROUTER
+    candidate_spacing_m: PositiveFloat = 40.0
+    demand_spacing_m: PositiveFloat = 20.0
+    coverage_range_m: PositiveFloat = 100.0
+    backhaul_range_m: PositiveFloat = 120.0
+    required_coverage_fraction: float = Field(default=1.0, gt=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _candidate_lattice_can_chain(self) -> CommunicationConfig:
+        # guarantees the deterministic candidate lattice can, in principle,
+        # maintain a backhaul chain along every continuously developed edge
+        if self.candidate_spacing_m > self.backhaul_range_m:
+            raise ValueError(
+                "candidateSpacingM must be <= backhaulRangeM so the candidate "
+                "lattice can maintain a backhaul chain along every edge"
+            )
+        return self
+
+
+class InfrastructureConfig(ApiModel):
+    """Phase 11+ infrastructure planning configuration."""
+
+    communication: CommunicationConfig = Field(default_factory=CommunicationConfig)
+
+
 class ScheduleConfig(ApiModel):
     """Phase 10 temporal planning parameters (rule 82). Transparent
     configurable SYNTHETIC baseline defaults for a research/demo timeline —
@@ -410,6 +442,7 @@ class ScenarioCreate(ApiModel):
     tunnel_profile: TunnelProfile = Field(default_factory=TunnelProfile)
     mining: MiningConfig = Field(default_factory=MiningConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
+    infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)
 
 
 class Scenario(ScenarioCreate):

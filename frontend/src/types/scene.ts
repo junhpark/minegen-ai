@@ -1,3 +1,5 @@
+import type { AssetType } from '@/types/enums'
+
 // Scene / world payloads mirroring backend/src/minegen/export/scene_manifest.py.
 // Coordinates ENU Z-up meters. Converted only in scene/ components.
 
@@ -305,6 +307,80 @@ export interface NetworkNode {
   elevation?: number | null
   stationIndex?: number | null
   stationU?: number | null
+}
+
+export type CommunicationLocationKind = 'NODE' | 'EDGE'
+
+export interface CandidateSite {
+  id: string
+  locationKind: CommunicationLocationKind
+  nodeId: string | null
+  edgeId: string | null
+  chainageM: number | null
+  position: [number, number, number]
+  eligible: boolean
+}
+
+export interface DemandPoint {
+  id: string
+  locationKind: CommunicationLocationKind
+  nodeId: string | null
+  edgeId: string | null
+  chainageM: number | null
+  position: [number, number, number]
+  weight: number
+}
+
+export interface CommunicationAsset {
+  id: string
+  assetType: AssetType
+  candidateId: string
+  position: [number, number, number]
+  backhaulParentAssetId: string | null
+  hopCount: number
+}
+
+export interface DemandCoverage {
+  demandId: string
+  covered: boolean
+  servingAssetId: string | null
+  networkDistanceM: number | null
+}
+
+export interface CommunicationModelSummary {
+  assetType: AssetType
+  coverageModel: string
+  solver: string
+  optimalityClaim: boolean
+  coverageRangeM: number
+  backhaulRangeM: number
+  requiredCoverageFraction: number
+}
+
+export interface CommunicationMetrics {
+  candidateCount: number
+  demandCount: number
+  selectedAssetCount: number
+  coveredDemandCount: number
+  uncoveredDemandCount: number
+  coverageFraction: number
+  meanServingDistanceM: number | null
+  maxServingDistanceM: number | null
+  backhaulLinkCount: number
+  maxBackhaulHopCount: number
+  totalNetworkLength3d: number
+}
+
+export interface CommunicationPayload {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  sourceRevision: string
+  model: CommunicationModelSummary | null
+  candidates: CandidateSite[]
+  demands: DemandPoint[]
+  selectedAssets: CommunicationAsset[]
+  demandCoverage: DemandCoverage[]
+  metrics: CommunicationMetrics | null
 }
 
 export type TaskTypeId =
@@ -654,4 +730,5 @@ export interface WorldScene {
   network: NetworkPayload | null
   stopes: StopesPayload | null
   timeline: TimelinePayload | null
+  communication: CommunicationPayload | null
 }
