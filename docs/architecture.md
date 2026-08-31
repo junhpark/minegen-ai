@@ -129,7 +129,8 @@ fault is added.
     10 4D mining sequence   done
     11 Communication OSP    done
     12 Generic Sensor OSP   done
-    13 First-person walkthrough ← current
+    13 First-person walkthrough done
+    14 Walkthrough interaction ← current
     14 Walkthrough object interaction
     15 4D walkthrough integration
     16 Integrated v0.1 demo
@@ -239,3 +240,33 @@ meshes, and the frontend never inflates them into fake tunnels; timeline,
 communication and sensor semantics are untouched. Walkthrough visibility is
 DERIVED (tunnel mesh + passive terrain), never a mutation of the user's
 stored layers.
+
+## Phase 14 — walkthrough interaction / inspection (rules 105–110)
+
+Interaction is INSPECTION ONLY and entirely ephemeral frontend state: no
+backend artifact, endpoint, invalidation relationship or dependency was
+added, and no object state is ever mutated. The supported interactable
+kinds are exactly the backend-authored **MESH_ROUTER** and **GAS_SENSOR**
+selected assets, resolved through their authoritative candidate →
+MineNetwork references and filtered to the walkable decline domain by
+topology (EDGE candidate → owning edge type RAMP; NODE candidate →
+incident to at least one RAMP edge) — never Euclidean proximity, and never
+by inventing access into non-volumetric DRIFT/CROSSCUT developments.
+
+Targeting is the first-person camera **center ray** (rule 107): a bounded
+runtime interaction distance (10 m) plus authoritative tunnel occlusion
+raycast against the exact Phase 06 GLB triangles (the same collider-unit
+triangle set Phase 13 physics uses, double-sided, detached from the
+scene). An asset focuses only when its ray distance is within range AND
+strictly closer than the wall; through-rock interaction is impossible. E
+is edge-triggered inspect while pointer-locked; `selectedObjectId` remains
+the single canonical selection identity (rule 109) and stale selections
+are cleared frontend-side when regeneration removes the asset.
+
+**Static planned-layout semantics (rule 108)**: walkthrough infrastructure
+is a planned static layout — installation timing, power, telemetry,
+alarms, RF performance and physical sensing are not modeled, and the gas
+sensor keeps the Phase 12 network-distance monitoring-proxy disclaimer.
+Phase 15 boundary (rule 110): no currentDay/timeline logic exists in the
+interaction path; future temporal filtering can wrap the interactable list
+without touching the resolver.
