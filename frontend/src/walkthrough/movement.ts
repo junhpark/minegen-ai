@@ -12,6 +12,17 @@ export interface MovementKeys {
   right: boolean
 }
 
+export interface ActionKeys {
+  /** Shift: PERSON run / VEHICLE-DRONE boost */
+  boost: boolean
+  /** Space: DRONE ascend */
+  up: boolean
+  /** KeyC: DRONE descend */
+  down: boolean
+}
+
+export const NO_ACTIONS: ActionKeys = { boost: false, up: false, down: false }
+
 export interface LookKeys {
   yawLeft: boolean
   yawRight: boolean
@@ -108,6 +119,7 @@ export function applyLook(
 export interface KeyState {
   keys: MovementKeys
   look: LookKeys
+  actions: ActionKeys
   handleKey: (code: string, down: boolean) => boolean
   clear: () => void
 }
@@ -115,9 +127,11 @@ export interface KeyState {
 export function createKeyState(): KeyState {
   const keys: MovementKeys = { ...NO_KEYS }
   const look: LookKeys = { ...NO_LOOK }
+  const actions: ActionKeys = { ...NO_ACTIONS }
   return {
     keys,
     look,
+    actions,
     handleKey(code: string, down: boolean): boolean {
       switch (code) {
         case 'KeyW':
@@ -144,6 +158,16 @@ export function createKeyState(): KeyState {
         case 'KeyK':
           look.pitchDown = down
           return true
+        case 'ShiftLeft':
+        case 'ShiftRight':
+          actions.boost = down
+          return true
+        case 'Space':
+          actions.up = down
+          return true
+        case 'KeyC':
+          actions.down = down
+          return true
         default:
           return false
       }
@@ -151,6 +175,7 @@ export function createKeyState(): KeyState {
     clear() {
       Object.assign(keys, NO_KEYS)
       Object.assign(look, NO_LOOK)
+      Object.assign(actions, NO_ACTIONS)
     },
   }
 }

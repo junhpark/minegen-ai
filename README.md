@@ -28,8 +28,9 @@ platform. Research prototype / proof of concept.
 | 12    | Generic Sensor OSP                                           | done  |
 | 13    | First-person walkthrough                                     | done  |
 | 14    | Walkthrough interaction/inspection                           | done  |
-| 15    | 4D walkthrough (timeline snapshot)                           | current |
-| 16    | See `docs/architecture.md`                                   | planned |
+| 15    | 4D walkthrough (timeline snapshot)                           | done  |
+| 16    | Navigation modes / minimap / visual polish                   | current |
+
 
 ## Layout
 

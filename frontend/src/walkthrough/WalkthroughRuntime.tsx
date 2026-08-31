@@ -6,6 +6,9 @@ import { WALKTHROUGH_CONFIG } from './config'
 import { createKeyState } from './movement'
 import { clearTransientInput, createInspectTrigger } from './interactionRay'
 import { resolveColliderPolicy, type WalkthroughContext } from './colliderPolicy'
+import { navigationBody } from './navigation'
+import { useViewerStore as useViewerStoreNav } from '@/stores/viewerStore'
+import type { WalkthroughTelemetry } from './telemetry'
 import { resolveTemporalWalkthroughPlan } from './temporalPlan'
 import { FrontierBarrier } from './FrontierBarrier'
 import { resolveWalkthroughSpawn } from './spawn'
@@ -35,6 +38,7 @@ export function WalkthroughRuntime({
   snapshotDay,
   ramp,
   perfRef,
+  telemetry,
   onFocusChange,
   onGeometryError,
 }: {
@@ -44,6 +48,7 @@ export function WalkthroughRuntime({
   snapshotDay: number | null
   ramp: { tunnelWidth: number; tunnelHeight: number } | null
   perfRef: { current: HTMLDivElement | null }
+  telemetry: WalkthroughTelemetry
   onFocusChange: (kind: 'MESH_ROUTER' | 'GAS_SENSOR' | null) => void
   onGeometryError: () => void
 }) {
@@ -90,10 +95,16 @@ export function WalkthroughRuntime({
       return null
     }
   }, [gltf])
-  const spawn = useMemo(
-    () => resolveWalkthroughSpawn(planSmoothed, WALKTHROUGH_CONFIG),
-    [planSmoothed],
-  )
+  const navigationMode = useViewerStoreNav((s) => s.navigationMode)
+  // mode-specific deterministic spawn (§30): floor reference stays
+  // authoritative; only the body dimensions differ per mode
+  const spawn = useMemo(() => {
+    const nav = navigationBody(navigationMode)
+    return resolveWalkthroughSpawn(planSmoothed, {
+      ...WALKTHROUGH_CONFIG,
+      bodyHeightM: nav.bodyHeightM,
+    })
+  }, [planSmoothed, navigationMode])
   // rule 112: the temporal plan is resolved ONCE per snapshot and the
   // physical topology stays immutable for the session
   const plan = useMemo(
@@ -156,6 +167,16 @@ export function WalkthroughRuntime({
   const reset = useCallback(() => {
     resetSignal.current += 1
   }, [])
+  const setNavigationMode = useViewerStoreNav((s) => s.setNavigationMode)
+  const switchMode = useCallback(
+    (m: Parameters<typeof setNavigationMode>[0]) => {
+      // §4: mode switching clears transient keys; the player remount
+      // (key=mode) resets to the deterministic mode-specific spawn (§29)
+      keyState.clear()
+      setNavigationMode(m)
+    },
+    [keyState, setNavigationMode],
+  )
   const inspect = useCallback(() => {
     // E latches the currently focused asset into the canonical global
     // selection (rule 109); no focus -> no-op
@@ -178,6 +199,7 @@ export function WalkthroughRuntime({
         allowInspect={!temporal}
         onReset={reset}
         onInspect={inspect}
+        onNavigationMode={switchMode}
       />
       <WalkthroughDiagnostics targetRef={perfRef} />
       <WalkthroughAssetLayer assets={interactables} focusedId={focusedId} selectedId={selectedId} />
@@ -203,10 +225,13 @@ export function WalkthroughRuntime({
           />
         ) : null}
         <WalkthroughPlayer
+          key={navigationMode}
+          mode={navigationMode}
           config={WALKTHROUGH_CONFIG}
           spawn={spawn}
           keyState={keyState}
           resetSignal={resetSignal}
+          telemetry={telemetry}
         />
       </Physics>
     </>

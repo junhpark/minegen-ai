@@ -131,7 +131,8 @@ fault is added.
     12 Generic Sensor OSP   done
     13 First-person walkthrough done
     14 Walkthrough interaction done
-    15 4D walkthrough ← current
+    15 4D walkthrough done
+    16 Navigation / visual polish ← current
     14 Walkthrough object interaction
     15 4D walkthrough integration
     16 Integrated v0.1 demo
@@ -333,3 +334,42 @@ camera-following headlamp (no narrow hotspot, no shadows), and the
 walkthrough canvas renders at DPR 1 while other modes keep [1, 2]. Tunnel
 collision fidelity is deliberately unchanged. A DEV-only ~2 Hz overlay
 reports FPS / triangles / draw calls for manual browser measurement.
+
+## Phase 16 — navigation modes, minimap, visual polish (frontend-only)
+
+**Navigation modes** are ephemeral runtime inspection proxies — never
+pedestrian biomechanics, vehicle dynamics or UAV flight control, never
+persisted. PERSON (walk 2.0, Shift-run 5.8 m/s, gravity), VEHICLE (8/12
+m/s along a heading steered by A/D at a bounded 60°/s — no strafing, no
+instant flips; elevated 2.2 m inspection eye; gravity) and DRONE (7/13
+m/s horizontal from camera yaw, Space/C vertical 5 m/s, gravityScale 0)
+all collide with the exact Phase 06 tunnel trimesh plus the temporal
+frontier — no mode is noclip, and the DRONE deliberately cannot leave the
+excavated volume. Keys 1/2/3 (or HUD buttons) switch modes; switching
+clears transient input and remounts the body at the deterministic
+mode-specific spawn — the documented safe baseline for mode switching
+(never a mid-geometry collider morph, never a world-origin fallback).
+Camera look stays keyboard IJKL in every mode; movement remains yaw-only.
+
+**Minimap + telemetry**: a pure SVG overlay (no second Three canvas, zero
+GPU draw calls) shows the authoritative effective centerline north-up in
+FOLLOW mode (150 m radius), portal/deep-end markers and a compass-bearing
+heading arrow; in TIMELINE_SNAPSHOT it receives ONLY the ACTIVE prefix so
+future segments cannot even appear. The player writes cheap telemetry
+(position/heading/speed/mode) into a shared ref each physics frame; DOM
+consumers sample it at 8 Hz and mutate SVG/text attributes directly — no
+per-frame React state, no Zustand traffic. The readout shows mine E/N/RL
+plus approximate chainage (nearest-centerline scan at the same 8 Hz),
+explicitly navigation information, not survey data.
+
+**Rock/joint texture**: the Phase 06 GLB owns stable UVs (u = perimeter
+fraction — floor empirically spans u ∈ [0.72, 1.0] — and v = chainage in
+metres), so one 512² seamless CanvasTexture is generated per scenario
+seed (mulberry32; low-frequency mottling + 2–3 irregular dark joint-trace
+families + a subtle darker floor band) and shared by the SAME two tunnel
+materials in both the static and temporal layers: deterministic per
+scenario, zero image assets, zero additional draw calls. VISUAL ONLY —
+not mapped discontinuities, DFN, RMR or any geological claim.
+
+DEV perf overlay moved bottom-right; the bounded sampler now lives in
+perfSampler.ts (component files export only components).

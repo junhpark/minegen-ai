@@ -1,6 +1,6 @@
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MineScene } from './MineScene'
 import { CoordinateReadout } from './CoordinateReadout'
 import { mineToThree } from '@/geometry/coordinateTransform'
@@ -15,6 +15,9 @@ import { WalkthroughHUD } from '@/walkthrough/WalkthroughHUD'
 import { WalkthroughRuntime } from '@/walkthrough/WalkthroughRuntime'
 import { API_BASE_URL } from '@/api/client'
 import { WALKTHROUGH_DPR } from '@/walkthrough/config'
+import { MinimapOverlay } from '@/walkthrough/MinimapOverlay'
+import { createTelemetry } from '@/walkthrough/telemetry'
+import { temporalActiveSegmentIds } from '@/walkthrough/temporalPlan'
 
 /**
  * R3F canvas host. Camera positions are specified in mine coordinates and
@@ -33,6 +36,9 @@ export function MineCanvas() {
   const baseZ = scenario?.terrain.baseElevation ?? 300
   const [target, setTarget] = useState<[number, number, number]>(mineToThree(0, 0, baseZ))
   const perfRef = useRef<HTMLDivElement | null>(null)
+  const telemetry = useMemo(() => createTelemetry(), [])
+  const navigationMode = useViewerStore((s) => s.navigationMode)
+  const setNavigationMode = useViewerStore((s) => s.setNavigationMode)
   const walkthroughContext = useViewerStore((s) => s.walkthroughContext)
   const walkthroughSnapshotDay = useViewerStore((s) => s.walkthroughSnapshotDay)
   const walkthroughReturnMode = useViewerStore((s) => s.walkthroughReturnMode)
@@ -118,6 +124,7 @@ export function MineCanvas() {
                 snapshotDay={walkthroughSnapshotDay}
                 ramp={scenario?.ramp ?? null}
                 perfRef={perfRef}
+                telemetry={telemetry}
                 onFocusChange={setFocusedKind}
                 onGeometryError={leaveWalkthrough}
               />
@@ -135,11 +142,30 @@ export function MineCanvas() {
             ) : null}
           </Canvas>
           {cameraMode === 'walkthrough' ? (
-            <WalkthroughHUD
-              focusedKind={temporal ? null : focusedKind}
-              snapshotDay={temporal ? walkthroughSnapshotDay : null}
-              perfRef={perfRef}
-            />
+            <>
+              <WalkthroughHUD
+                focusedKind={temporal ? null : focusedKind}
+                snapshotDay={temporal ? walkthroughSnapshotDay : null}
+                navigationMode={navigationMode}
+                onNavigationMode={setNavigationMode}
+                perfRef={perfRef}
+              />
+              {scene?.smoothedDecline ? (
+                <MinimapOverlay
+                  smoothed={scene.smoothedDecline}
+                  activeSegmentIds={
+                    temporal && walkthroughSnapshotDay !== null
+                      ? temporalActiveSegmentIds(
+                          scene.timeline,
+                          scene.smoothedDecline,
+                          walkthroughSnapshotDay,
+                        )
+                      : null
+                  }
+                  telemetry={telemetry}
+                />
+              ) : null}
+            </>
           ) : (
             <CoordinateReadout threeTarget={target} />
           )}

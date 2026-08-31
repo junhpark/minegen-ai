@@ -60,9 +60,14 @@ describe('walkthrough movement math (rule 101)', () => {
     expect(ks.handleKey('KeyQ', true)).toBe(false) // unrelated key ignored
     expect(ks.keys).toEqual({ forward: true, backward: false, left: false, right: true })
     expect(ks.look).toEqual({ yawLeft: true, yawRight: false, pitchUp: true, pitchDown: false })
+    expect(ks.handleKey('ShiftLeft', true)).toBe(true)
+    expect(ks.handleKey('Space', true)).toBe(true)
+    expect(ks.handleKey('KeyC', true)).toBe(true)
+    expect(ks.actions).toEqual({ boost: true, up: true, down: true })
     ks.clear() // blur / unmount / mode switch / scenario invalidation
     expect(ks.keys).toEqual(NO_KEYS)
     expect(ks.look).toEqual(NO_LOOK)
+    expect(ks.actions).toEqual({ boost: false, up: false, down: false })
   })
 })
 
