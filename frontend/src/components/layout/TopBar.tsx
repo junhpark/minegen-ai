@@ -2,7 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
-import { READINESS_MESSAGES, walkthroughReadiness } from '@/walkthrough/readiness'
+import {
+  temporalReadinessMessage,
+  temporalWalkthroughReadiness,
+  walkthroughReadiness,
+} from '@/walkthrough/readiness'
+import { useTimelineStore } from '@/stores/timelineStore'
 import { APP_MODES, type AppMode } from '@/types/enums'
 
 const MODE_LABELS: Record<AppMode, string> = {
@@ -18,8 +23,15 @@ export function TopBar() {
   const setMode = useViewerStore((s) => s.setMode)
   const health = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 15000 })
   const scene = useScenarioStore((s) => s.scene)
-  const readiness = walkthroughReadiness(scene)
-  const walkTooltip = readiness === 'READY' ? undefined : READINESS_MESSAGES[readiness]
+  const scenario = useScenarioStore((s) => s.scenario)
+  const currentDay = useTimelineStore((s) => s.currentDay)
+  // §12: Walk from 4D evaluates TEMPORAL readiness at the current day;
+  // every other mode keeps the static Phase 13 gate
+  const readiness =
+    mode === '4D'
+      ? temporalWalkthroughReadiness(scene, currentDay, scenario?.ramp ?? null)
+      : walkthroughReadiness(scene)
+  const walkTooltip = temporalReadinessMessage(readiness)
 
   return (
     <header className="flex h-11 items-center border-b border-rock-700 bg-rock-800 px-4">

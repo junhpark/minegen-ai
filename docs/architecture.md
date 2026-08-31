@@ -130,7 +130,8 @@ fault is added.
     11 Communication OSP    done
     12 Generic Sensor OSP   done
     13 First-person walkthrough done
-    14 Walkthrough interaction ← current
+    14 Walkthrough interaction done
+    15 4D walkthrough ← current
     14 Walkthrough object interaction
     15 4D walkthrough integration
     16 Integrated v0.1 demo
@@ -270,3 +271,65 @@ sensor keeps the Phase 12 network-distance monitoring-proxy disclaimer.
 Phase 15 boundary (rule 110): no currentDay/timeline logic exists in the
 interaction path; future temporal filtering can wrap the interactable list
 without touching the resolver.
+
+## Phase 15 — 4D walkthrough integration (rules 111–118)
+
+Walkthrough now has two explicit runtime contexts. **STATIC_FINAL**
+(entering Walk from DESIGN/INFRASTRUCTURE) is exactly the merged Phase
+13/14 behaviour: complete decline, both caps, planned router/sensor
+interaction. **TIMELINE_SNAPSHOT** (entering Walk from 4D) captures the
+Phase 10 `currentDay` ONCE at entry — the workflow is 4D → choose day →
+Walk, and the snapshot day, collider set and physical topology stay
+immutable for the whole session (rule 112): no playback, no slider, no
+hidden time loop inside walkthrough; time changes only by returning to 4D.
+
+**ACTIVE-only volumetric baseline (rule 114)**: the normal 4D orbit view
+keeps showing continuous DEVELOPING centerline progress, but first-person
+volumetric traversal is deliberately conservative — a decline segment is
+walkable exactly from its ACTIVE transition (`stateAt` exact-boundary at
+`progressEndDay`) and never before. Partially excavated tunnel volume is
+never fabricated; a future phase would need backend-authored temporally
+splittable mesh geometry to do better. Availability is resolved ONLY
+through each RAMP `DevelopmentTimeline.geometryRef` →
+`decline_smoothed.json` segmentIndex with exact runtime identity
+validation (`runtime.segmentId == smoothed.levelId`, counts equal, each
+index exactly once, ACTIVE indices a portal-prefix); any inconsistency
+fails closed (rule 117). Visually, the temporal layer clones the same
+cached Phase 06 GLB once and toggles per-primitive visibility from the
+proven `geometry.userData` metadata (the static TunnelMeshLayer now reads
+the same shared helper); physically, only ACTIVE segment colliders mount,
+the portal cap stays active and the terminal cap activates only at full
+completion.
+
+**Runtime frontier barrier (rule 115)**: a partial ACTIVE prefix is closed
+by one ephemeral cuboid (`WALK:TEMPORAL:FRONTIER:{lastActiveSegmentId}`)
+at the exact last-active Phase 05 boundary point, oriented by the
+persisted boundary tangent in a gravity-aligned frame and sized from the
+Scenario ramp cross-section plus a small margin. It is access-control
+geometry — not excavation geometry, never persisted, and rule 100 is
+unamended.
+
+**No infrastructure timing inference (rule 116)**: installation timing is
+not modeled, so TIMELINE_SNAPSHOT suppresses all planned MESH_ROUTER /
+GAS_SENSOR markers, focus, E-inspect and inspector cards; excavation
+completion never implies installation. Phase 16 integration boundary: any
+future installed-state semantics require backend-authored installation
+timing artifacts first.
+
+### Phase 15 browser-acceptance hotfix — keyboard-only walkthrough
+
+Real-browser acceptance of the initial Phase 13–15 runtime failed on
+readability and control, so the walkthrough is now KEYBOARD-ONLY: WASD
+walks, J/L yaw and I/K pitch (frame-rate-independent, 90/70 deg/s, pitch
+clamped ±80°, no roll), R resets and E inspects (STATIC_FINAL only); the
+mouse never rotates the camera and pointer lock was removed entirely —
+there is no entry click. Movement remains yaw-only under Rapier gravity
+(rule 101 unchanged in substance; the pitch-affects-view-only clause now
+applies to keyboard pitch). Walkthrough visibility renders ONLY the tunnel
+environment (terrain suppressed in both contexts; other modes untouched),
+the spawn chainage moved to 6.0 m for a readable first view, the lighting
+rig became a modest ambient/hemisphere fill plus a broad soft
+camera-following headlamp (no narrow hotspot, no shadows), and the
+walkthrough canvas renders at DPR 1 while other modes keep [1, 2]. Tunnel
+collision fidelity is deliberately unchanged. A DEV-only ~2 Hz overlay
+reports FPS / triangles / draw calls for manual browser measurement.

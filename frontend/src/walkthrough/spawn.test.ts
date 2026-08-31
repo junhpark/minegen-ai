@@ -13,7 +13,7 @@ function smoothed(points: number[]): SmoothedDeclinePayload {
   } as unknown as SmoothedDeclinePayload
 }
 
-// straight decline heading +Y (north), 12 % down, 40 m
+// straight decline heading +Y (north), 12 % down, 40 m (spawn chainage 6.0 m fits)
 const LINE: number[] = []
 for (let i = 0; i <= 20; i++) LINE.push(10, 2 * i, 100 - 0.24 * i)
 
@@ -59,7 +59,7 @@ describe('deterministic walkthrough spawn (rule 102)', () => {
       resolveWalkthroughSpawn(smoothed([0, 0, 0, Number.NaN, 0, 0]), WALKTHROUGH_CONFIG),
     ).toBeNull()
     // tunnel shorter than the spawn chainage
-    expect(resolveWalkthroughSpawn(smoothed([0, 0, 0, 1, 0, 0]), WALKTHROUGH_CONFIG)).toBeNull()
+    expect(resolveWalkthroughSpawn(smoothed([0, 0, 0, 4, 0, 0]), WALKTHROUGH_CONFIG)).toBeNull()
     // vertical shaft-like tangent cannot define yaw
     expect(
       resolveWalkthroughSpawn(smoothed([0, 0, 0, 0, 0, -10, 0, 0, -20]), WALKTHROUGH_CONFIG),

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { WorldScene } from '@/types/scene'
-import { deriveVisibleLayers, walkthroughReadiness } from './readiness'
+import {
+  deriveVisibleLayers,
+  temporalWalkthroughReadiness,
+  walkthroughReadiness,
+} from './readiness'
 import { useViewerStore } from '@/stores/viewerStore'
 
 const POINTS: number[] = []
@@ -55,14 +59,15 @@ describe('walkthrough derived visibility (§15)', () => {
     'sensorCoverage',
   ])
 
-  it('keeps the physical tunnel and passive terrain only in walkthrough', () => {
+  it('keeps ONLY the tunnel in walkthrough — terrain is suppressed (hotfix §7)', () => {
     const derived = deriveVisibleLayers('WALKTHROUGH', stored)
-    expect([...derived].sort()).toEqual(['terrain', 'tunnelMesh'])
+    expect([...derived]).toEqual(['tunnelMesh'])
   })
 
   it('suppresses engineering, 4D, communication and sensor overlays', () => {
     const derived = deriveVisibleLayers('WALKTHROUGH', stored)
     for (const layer of [
+      'terrain',
       'orebody',
       'faults',
       'accessTargets',
@@ -100,5 +105,46 @@ describe('viewer camera-mode contract (§14)', () => {
     expect(useViewerStore.getState().cameraMode).toBe('orbit')
     // mode churn never mutates the user's stored visible layers
     expect(useViewerStore.getState().visibleLayers).toBe(before)
+  })
+})
+
+describe('temporal scenario/ramp prerequisite (PR #12 blocker 3)', () => {
+  const temporalScene = {
+    ...READY_SCENE,
+    timeline: {
+      status: 'SUCCESS',
+      sourceRevision: 'rev',
+      developments: [
+        {
+          edgeId: 'E:RAMP0',
+          edgeType: 'RAMP',
+          geometryRef: { artifact: 'decline_smoothed.json', segmentIndex: 0 },
+          initialState: 'NOT_BUILT',
+          transitions: [{ day: 10, state: 'ACTIVE' }],
+        },
+      ],
+    },
+  } as unknown as WorldScene
+
+  it('fails closed without Scenario-authored ramp dimensions', () => {
+    expect(temporalWalkthroughReadiness(temporalScene, 50, null)).toBe('SCENARIO_RAMP_UNAVAILABLE')
+    expect(temporalWalkthroughReadiness(temporalScene, 50, undefined)).toBe(
+      'SCENARIO_RAMP_UNAVAILABLE',
+    )
+    expect(
+      temporalWalkthroughReadiness(temporalScene, 50, { tunnelWidth: Number.NaN, tunnelHeight: 5 }),
+    ).toBe('SCENARIO_RAMP_UNAVAILABLE')
+    expect(
+      temporalWalkthroughReadiness(temporalScene, 50, { tunnelWidth: 5, tunnelHeight: 0 }),
+    ).toBe('SCENARIO_RAMP_UNAVAILABLE')
+  })
+
+  it('is READY with authored dimensions and an ACTIVE first segment', () => {
+    expect(
+      temporalWalkthroughReadiness(temporalScene, 50, { tunnelWidth: 5, tunnelHeight: 5.5 }),
+    ).toBe('READY')
+    expect(
+      temporalWalkthroughReadiness(temporalScene, 5, { tunnelWidth: 5, tunnelHeight: 5.5 }),
+    ).toBe('NO_COMPLETED_SEGMENT')
   })
 })

@@ -768,3 +768,48 @@ phase is considered complete.
     Phase 14 interaction is time-independent. MineTimeline/currentDay must
     not control walkthrough asset visibility or interaction until
     Phase 15.
+
+111. **Walkthrough temporal context**:
+    Walkthrough has explicit STATIC_FINAL and TIMELINE_SNAPSHOT runtime
+    contexts. Entering Walk from 4D captures a MineTimeline day; other
+    entry paths preserve static final-layout walkthrough semantics.
+
+112. **Snapshot immutability**:
+    A temporal walkthrough captures currentDay at entry. The snapshot day,
+    segment collider set and temporal physical topology remain immutable
+    for the lifetime of that walkthrough session. Time is changed only by
+    returning to 4D and re-entering.
+
+113. **Timeline-authoritative RAMP mapping**:
+    Temporal decline availability is resolved only through each RAMP
+    DevelopmentTimeline.geometryRef to decline_smoothed.json segmentIndex,
+    with exact runtime segment identity validation. Positional or lexical
+    inference is forbidden.
+
+114. **Conservative volumetric walkability**:
+    Normal 4D visualization may show continuous DEVELOPING centerline
+    progress, but first-person volumetric traversal exposes only ACTIVE,
+    fully completed Phase 05/06 decline segments. Frontend must not invent
+    partially excavated tunnel volume.
+
+115. **Temporal frontier boundary**:
+    A partial ACTIVE decline prefix is closed by one ephemeral runtime
+    traversal barrier at the exact authoritative active-segment endpoint.
+    This barrier is access-control geometry, not engineering excavation
+    geometry, and is never persisted or exported.
+
+116. **Temporal infrastructure non-inference**:
+    Communication and sensor installation timing is not modeled; therefore
+    planned MESH_ROUTER/GAS_SENSOR assets are suppressed in
+    TIMELINE_SNAPSHOT walkthrough. Excavation completion must never be
+    used to infer installation, power or operational state.
+
+117. **Fail-closed temporal walkthrough**:
+    Missing, malformed, incomplete or identity-inconsistent timeline-to-
+    decline mappings make temporal walkthrough unavailable. The frontend
+    never guesses a temporal segment association.
+
+118. **Static walkthrough regression**:
+    Phase 15 temporal integration must not change Phase 13/14 STATIC_FINAL
+    collision, spawn, pointer-lock, locomotion or planned-asset inspection
+    semantics.

@@ -2,7 +2,9 @@ import { useMemo } from 'react'
 import { RigidBody, TrimeshCollider } from '@react-three/rapier'
 import {
   buildColliderUnits,
+  PORTAL_CAP_COLLIDER_ID,
   segmentColliderId,
+  TERMINAL_CAP_COLLIDER_ID,
   type TunnelRuntimeGeometry,
 } from './tunnelRuntimeGeometry'
 
@@ -19,15 +21,23 @@ import {
 export function TunnelColliderSet({
   geometry,
   activeSegmentIds,
+  includePortalCap = true,
+  includeTerminalCap = true,
 }: {
   geometry: TunnelRuntimeGeometry
   activeSegmentIds: readonly string[]
+  includePortalCap?: boolean
+  includeTerminalCap?: boolean
 }) {
   const units = useMemo(() => buildColliderUnits(geometry), [geometry])
   const active = useMemo(() => {
     const wanted = new Set(activeSegmentIds.map(segmentColliderId))
-    return units.filter((u) => u.segmentId === null || wanted.has(u.id))
-  }, [units, activeSegmentIds])
+    return units.filter((u) => {
+      if (u.id === PORTAL_CAP_COLLIDER_ID) return includePortalCap
+      if (u.id === TERMINAL_CAP_COLLIDER_ID) return includeTerminalCap
+      return wanted.has(u.id)
+    })
+  }, [units, activeSegmentIds, includePortalCap, includeTerminalCap])
   return (
     <>
       {active.map((u) => (
