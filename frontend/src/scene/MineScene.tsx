@@ -6,6 +6,8 @@ import { useScenarioStore } from '@/stores/scenarioStore'
 import { useSliceStore } from '@/stores/sliceStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { deriveVisibleLayers } from '@/walkthrough/readiness'
+import { temporalActiveSegmentIds } from '@/walkthrough/temporalPlan'
+import { TemporalTunnelLayer } from '@/walkthrough/TemporalTunnelLayer'
 import { AccessTargetsLayer } from './AccessTargetsLayer'
 import { FaultLayer } from './FaultLayer'
 import { GradeBlocksLayer } from './GradeBlocksLayer'
@@ -41,6 +43,14 @@ export function MineScene() {
   // §15: walkthrough derives an immersive view; stored layers are untouched
   const visible = deriveVisibleLayers(mode, storedVisible)
   const walkthroughActive = mode === 'WALKTHROUGH'
+  const walkthroughContext = useViewerStore((st) => st.walkthroughContext)
+  const walkthroughSnapshotDay = useViewerStore((st) => st.walkthroughSnapshotDay)
+  // §13: TIMELINE_SNAPSHOT never renders the full static tunnel GLB
+  const temporalWalk = walkthroughActive && walkthroughContext === 'TIMELINE_SNAPSHOT'
+  const temporalIds =
+    temporalWalk && walkthroughSnapshotDay !== null
+      ? temporalActiveSegmentIds(scene?.timeline, scene?.smoothedDecline, walkthroughSnapshotDay)
+      : null
   const timelineActive = mode === '4D' && scene?.timeline?.status === 'SUCCESS'
   // rules 88/91: INFRASTRUCTURE mode only; routers are never shown as
   // time-valid installed assets in 4D (installation timing is not modeled)
@@ -91,13 +101,26 @@ export function MineScene() {
       {scene?.accessTargets && visible.has('accessTargets') ? (
         <AccessTargetsLayer targets={scene.accessTargets} />
       ) : null}
-      {showStatic &&
-      scene?.tunnelMesh?.status === 'SUCCESS' &&
+      {scene?.tunnelMesh?.status === 'SUCCESS' &&
       scene.tunnelMesh.meshUrl &&
       visible.has('tunnelMesh') ? (
-        <Suspense fallback={null}>
-          <TunnelMeshLayer url={`${API_BASE_URL}${scene.tunnelMesh.meshUrl}`} />
-        </Suspense>
+        temporalWalk ? (
+          temporalIds !== null ? (
+            <Suspense fallback={null}>
+              <TemporalTunnelLayer
+                url={`${API_BASE_URL}${scene.tunnelMesh.meshUrl}`}
+                activeSegmentIds={temporalIds}
+                allSegmentsActive={
+                  temporalIds.length === (scene.smoothedDecline?.segments.length ?? -1)
+                }
+              />
+            </Suspense>
+          ) : null
+        ) : showStatic ? (
+          <Suspense fallback={null}>
+            <TunnelMeshLayer url={`${API_BASE_URL}${scene.tunnelMesh.meshUrl}`} />
+          </Suspense>
+        ) : null
       ) : null}
       {showStatic && scene?.levels && (visible.has('levels') || visible.has('crosscuts')) ? (
         <LevelDevelopmentLayer

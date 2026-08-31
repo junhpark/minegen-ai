@@ -5,6 +5,9 @@ import { Physics } from '@react-three/rapier'
 import { WALKTHROUGH_CONFIG } from './config'
 import { createKeyState } from './movement'
 import { clearTransientInput, createInspectTrigger } from './interactionRay'
+import { resolveColliderPolicy, type WalkthroughContext } from './colliderPolicy'
+import { resolveTemporalWalkthroughPlan } from './temporalPlan'
+import { FrontierBarrier } from './FrontierBarrier'
 import { WALKTHROUGH_LOCK_SURFACE_SELECTOR } from './lockSurface'
 import { resolveWalkthroughSpawn } from './spawn'
 import { extractTunnelRuntimeGeometry } from './tunnelRuntimeGeometry'
@@ -28,17 +31,24 @@ import { WalkthroughInteraction } from './WalkthroughInteraction'
 export function WalkthroughRuntime({
   meshUrl,
   scene,
+  context,
+  snapshotDay,
+  ramp,
   onLockChange,
   onFocusChange,
   onGeometryError,
 }: {
   meshUrl: string
   scene: WorldScene
+  context: WalkthroughContext
+  snapshotDay: number | null
+  ramp: { tunnelWidth: number; tunnelHeight: number }
   onLockChange: (locked: boolean) => void
   onFocusChange: (kind: 'MESH_ROUTER' | 'GAS_SENSOR' | null) => void
   onGeometryError: () => void
 }) {
   const smoothed = scene.smoothedDecline!
+  const temporal = context === 'TIMELINE_SNAPSHOT'
   const gltf = useGLTF(meshUrl)
   const camera = useThree((s) => s.camera)
   const keyState = useMemo(() => createKeyState(), [])
@@ -51,8 +61,13 @@ export function WalkthroughRuntime({
   const [focusedId, setFocusedId] = useState<string | null>(null)
   const select = useViewerStore((s) => s.select)
   // rule 106: interactables come only from backend-authored placements,
-  // filtered to the walkable decline domain by authoritative topology
-  const interactables = useMemo(() => resolveWalkthroughAssets(scene).assets, [scene])
+  // filtered to the walkable decline domain by authoritative topology.
+  // rule 116: TIMELINE_SNAPSHOT suppresses ALL planned infrastructure —
+  // installation timing is not modeled, so nothing may be shown/inspected
+  const interactables = useMemo(
+    () => (temporal ? [] : resolveWalkthroughAssets(scene).assets),
+    [scene, temporal],
+  )
   const focusById = useMemo(() => new Map(interactables.map((a) => [a.id, a])), [interactables])
   const selectedId = useViewerStore((s) => s.selectedObjectId)
 
@@ -64,10 +79,30 @@ export function WalkthroughRuntime({
     }
   }, [gltf])
   const spawn = useMemo(() => resolveWalkthroughSpawn(smoothed, WALKTHROUGH_CONFIG), [smoothed])
-  const activeSegmentIds = useMemo(
-    () => (runtime ? runtime.segments.map((s) => s.segmentId) : []),
-    [runtime],
+  // rule 112: the temporal plan is resolved ONCE per snapshot and the
+  // physical topology stays immutable for the session
+  const plan = useMemo(
+    () =>
+      temporal && runtime && snapshotDay !== null
+        ? resolveTemporalWalkthroughPlan(scene.timeline, smoothed, runtime, snapshotDay)
+        : null,
+    [temporal, runtime, scene.timeline, smoothed, snapshotDay],
   )
+  const policy = useMemo(
+    () =>
+      runtime
+        ? resolveColliderPolicy(
+            context,
+            runtime.segments.map((s) => s.segmentId),
+            plan,
+          )
+        : null,
+    [runtime, context, plan],
+  )
+  const frontierSegment = useMemo(() => {
+    if (!plan || plan.status !== 'VALID' || plan.lastActiveSegmentIndex === null) return null
+    return smoothed.segments[plan.lastActiveSegmentIndex] ?? null
+  }, [plan, smoothed])
 
   // near plane suited for standing 0.3 m from a wall; restored on unmount
   useEffect(() => {
@@ -80,10 +115,13 @@ export function WalkthroughRuntime({
     }
   }, [camera])
 
-  // defensive: unreachable geometry -> leave walkthrough cleanly (§13)
+  // defensive: unreachable geometry OR an invalid/fail-closed temporal
+  // mapping -> leave walkthrough cleanly (§13, rule 117)
+  const temporalInvalid =
+    temporal && (snapshotDay === null || (plan !== null && plan.status !== 'VALID'))
   useEffect(() => {
-    if (runtime === null || spawn === null) onGeometryError()
-  }, [runtime, spawn, onGeometryError])
+    if (runtime === null || spawn === null || temporalInvalid) onGeometryError()
+  }, [runtime, spawn, temporalInvalid, onGeometryError])
 
   const handleLock = useCallback(() => {
     lockedRef.current = true
@@ -118,7 +156,7 @@ export function WalkthroughRuntime({
     [focusById, onFocusChange],
   )
 
-  if (!runtime || !spawn) return null
+  if (!runtime || !spawn || !policy || temporalInvalid) return null
   return (
     <>
       <PointerLockControls
@@ -143,7 +181,19 @@ export function WalkthroughRuntime({
       />
       <WalkthroughHeadlamp config={WALKTHROUGH_CONFIG} />
       <Physics gravity={[0, -WALKTHROUGH_CONFIG.gravityMps2, 0]}>
-        <TunnelColliderSet geometry={runtime} activeSegmentIds={activeSegmentIds} />
+        <TunnelColliderSet
+          geometry={runtime}
+          activeSegmentIds={policy.segmentIds}
+          includePortalCap={policy.includePortalCap}
+          includeTerminalCap={policy.includeTerminalCap}
+        />
+        {policy.frontierSegmentId && frontierSegment ? (
+          <FrontierBarrier
+            segment={frontierSegment}
+            lastActiveSegmentId={policy.frontierSegmentId}
+            ramp={ramp}
+          />
+        ) : null}
         <WalkthroughPlayer
           config={WALKTHROUGH_CONFIG}
           spawn={spawn}

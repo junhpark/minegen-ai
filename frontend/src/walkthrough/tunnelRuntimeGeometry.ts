@@ -194,3 +194,26 @@ export function buildColliderUnits(geometry: TunnelRuntimeGeometry): ColliderUni
   }
   return units
 }
+
+export interface TunnelPrimitiveMetadata {
+  role: 'SEGMENT' | 'PORTAL_CAP' | 'TERMINAL_CAP' | null
+  segmentId: string | null
+}
+
+/**
+ * Shared reader for the PROVEN GLTFLoader representation: primitive extras
+ * live on `mesh.geometry.userData`, never on `mesh.userData` (empirically
+ * pinned in Phase 13). Used by BOTH the static TunnelMeshLayer and the
+ * temporal walkthrough visual layer so the metadata contract cannot drift.
+ */
+export function readTunnelPrimitiveMetadata(mesh: {
+  geometry: { userData: unknown }
+}): TunnelPrimitiveMetadata {
+  const extras = mesh.geometry.userData as { role?: unknown; segmentId?: unknown }
+  const role = extras.role
+  const segmentId = typeof extras.segmentId === 'string' ? extras.segmentId : null
+  if (role === 'SEGMENT' || role === 'PORTAL_CAP' || role === 'TERMINAL_CAP') {
+    return { role, segmentId }
+  }
+  return { role: null, segmentId }
+}

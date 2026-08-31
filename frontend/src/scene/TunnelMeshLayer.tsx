@@ -1,6 +1,7 @@
 import { useGLTF } from '@react-three/drei'
 import { useMemo } from 'react'
 import { DoubleSide, Mesh, MeshStandardMaterial } from 'three'
+import { readTunnelPrimitiveMetadata } from '@/walkthrough/tunnelRuntimeGeometry'
 
 const TUNNEL_MATERIAL = new MeshStandardMaterial({
   color: '#8a7a63',
@@ -29,7 +30,9 @@ export function TunnelMeshLayer({ url }: { url: string }) {
     const scene = gltf.scene
     scene.traverse((o) => {
       if (o instanceof Mesh) {
-        const role = (o.userData as { role?: string }).role
+        // primitive extras live on geometry.userData (proven representation;
+        // the old mesh.userData read never matched — hardened in Phase 15)
+        const { role } = readTunnelPrimitiveMetadata(o as Mesh)
         o.material = role?.endsWith('_CAP') ? CAP_MATERIAL : TUNNEL_MATERIAL
       }
     })

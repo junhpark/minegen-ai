@@ -27,8 +27,9 @@ platform. Research prototype / proof of concept.
 | 11    | Communication OSP                                            | done  |
 | 12    | Generic Sensor OSP                                           | done  |
 | 13    | First-person walkthrough                                     | done  |
-| 14    | Walkthrough interaction/inspection                           | current |
-| 15–16 | See `docs/architecture.md`                                   | planned |
+| 14    | Walkthrough interaction/inspection                           | done  |
+| 15    | 4D walkthrough (timeline snapshot)                           | current |
+| 16    | See `docs/architecture.md`                                   | planned |
 
 ## Layout
 

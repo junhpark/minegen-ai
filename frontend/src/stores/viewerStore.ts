@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import type { AppMode, LayerId } from '@/types/enums'
+import { useTimelineStore } from './timelineStore'
 
 export type CameraMode = 'orbit' | 'walkthrough'
+export type WalkthroughContext = 'STATIC_FINAL' | 'TIMELINE_SNAPSHOT'
 
 export interface ViewerState {
   mode: AppMode
@@ -9,6 +11,11 @@ export interface ViewerState {
   selectedObjectId: string | null
   visibleLayers: Set<LayerId>
   walkthroughEnabled: boolean
+  /** ephemeral walkthrough runtime context (rules 111-112); never persisted */
+  walkthroughContext: WalkthroughContext | null
+  /** MineTimeline day captured at 4D entry; immutable for the session */
+  walkthroughSnapshotDay: number | null
+  walkthroughReturnMode: AppMode
 
   setMode: (mode: AppMode) => void
   setCameraMode: (cameraMode: CameraMode) => void
@@ -38,14 +45,34 @@ const DEFAULT_VISIBLE: LayerId[] = [
 export const useViewerStore = create<ViewerState>()((set, get) => ({
   mode: 'DESIGN',
   cameraMode: 'orbit',
+  walkthroughContext: null,
+  walkthroughSnapshotDay: null,
+  walkthroughReturnMode: 'DESIGN',
   selectedObjectId: null,
   visibleLayers: new Set(DEFAULT_VISIBLE),
   walkthroughEnabled: false,
 
   setMode: (mode) =>
-    set({
-      mode,
-      cameraMode: mode === 'WALKTHROUGH' ? 'walkthrough' : 'orbit',
+    set((s) => {
+      if (mode === 'WALKTHROUGH') {
+        // rule 111: entering Walk from 4D captures the timeline day ONCE;
+        // every other entry path is the static final-layout walkthrough
+        const temporal = s.mode === '4D'
+        return {
+          mode,
+          cameraMode: 'walkthrough' as CameraMode,
+          walkthroughContext: temporal ? 'TIMELINE_SNAPSHOT' : 'STATIC_FINAL',
+          walkthroughSnapshotDay: temporal ? useTimelineStore.getState().currentDay : null,
+          walkthroughReturnMode: (temporal ? '4D' : 'DESIGN') as AppMode,
+        }
+      }
+      // leaving WALKTHROUGH clears the temporal snapshot state (rule 112)
+      return {
+        mode,
+        cameraMode: 'orbit' as CameraMode,
+        walkthroughContext: null,
+        walkthroughSnapshotDay: null,
+      }
     }),
   setCameraMode: (cameraMode) => set({ cameraMode }),
   select: (selectedObjectId) => set({ selectedObjectId }),

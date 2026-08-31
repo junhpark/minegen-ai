@@ -11,10 +11,14 @@
 export function WalkthroughHUD({
   locked,
   focusedKind,
+  snapshotDay = null,
 }: {
   locked: boolean
   focusedKind: 'MESH_ROUTER' | 'GAS_SENSOR' | null
+  /** captured MineTimeline day for TIMELINE_SNAPSHOT, null when static */
+  snapshotDay?: number | null
 }) {
+  const temporal = snapshotDay !== null
   if (!locked) {
     return (
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -40,12 +44,20 @@ export function WalkthroughHUD({
           <div className="text-chalk-dim">E Inspect</div>
         </div>
       ) : null}
+      {temporal ? (
+        <div className="readout absolute right-3 top-3 rounded-sm bg-rock-900/80 px-3 py-2 text-right text-[11px] leading-relaxed">
+          <div className="text-lamp">Day {snapshotDay.toFixed(1)}</div>
+          <div className="text-chalk-dim">Timeline snapshot</div>
+          <div className="text-chalk-dim">Completed decline only</div>
+          <div className="mt-1 text-mute">Return to 4D to change time</div>
+        </div>
+      ) : null}
       <div className="readout absolute bottom-3 left-3 rounded-sm bg-rock-900/70 px-3 py-2 text-[11px] leading-relaxed text-chalk-dim">
         <div>WASD&ensp;Move</div>
         <div>Mouse&ensp;Look</div>
         <div>ESC&ensp;Release mouse</div>
         <div>R&ensp;Reset</div>
-        <div>E&ensp;Inspect</div>
+        {temporal ? null : <div>E&ensp;Inspect</div>}
       </div>
     </div>
   )

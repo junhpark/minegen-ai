@@ -6,7 +6,7 @@ import { CoordinateReadout } from './CoordinateReadout'
 import { mineToThree } from '@/geometry/coordinateTransform'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
-import { walkthroughReadiness } from '@/walkthrough/readiness'
+import { temporalWalkthroughReadiness, walkthroughReadiness } from '@/walkthrough/readiness'
 import { MineViewportShell } from './MineViewportShell'
 import { resolveSelectedObject } from '@/walkthrough/selectionResolver'
 import { WalkthroughInspector } from '@/walkthrough/WalkthroughInspector'
@@ -31,6 +31,9 @@ export function MineCanvas() {
   const baseZ = scenario?.terrain.baseElevation ?? 300
   const [target, setTarget] = useState<[number, number, number]>(mineToThree(0, 0, baseZ))
   const [locked, setLocked] = useState(false)
+  const walkthroughContext = useViewerStore((s) => s.walkthroughContext)
+  const walkthroughSnapshotDay = useViewerStore((s) => s.walkthroughSnapshotDay)
+  const walkthroughReturnMode = useViewerStore((s) => s.walkthroughReturnMode)
   const [focusedKind, setFocusedKind] = useState<'MESH_ROUTER' | 'GAS_SENSOR' | null>(null)
   const selectedObjectId = useViewerStore((s) => s.selectedObjectId)
   const select = useViewerStore((s) => s.select)
@@ -40,15 +43,20 @@ export function MineCanvas() {
     if (scene) setTarget(mineToThree(...scene.orebody.center))
   }, [scene])
 
-  // defensive gate (§13): if walkthrough prerequisites disappear while the
-  // mode is active, release cleanly back to DESIGN/orbit — no crash
-  const readiness = walkthroughReadiness(scene)
+  // defensive gate (§13/§25): if walkthrough prerequisites disappear while
+  // the mode is active, release cleanly back to the entry mode — no crash.
+  // TIMELINE_SNAPSHOT additionally requires a valid temporal mapping.
+  const temporal = walkthroughContext === 'TIMELINE_SNAPSHOT'
+  const readiness =
+    temporal && walkthroughSnapshotDay !== null
+      ? temporalWalkthroughReadiness(scene, walkthroughSnapshotDay)
+      : walkthroughReadiness(scene)
   useEffect(() => {
     if (mode === 'WALKTHROUGH' && readiness !== 'READY') {
       if (document.pointerLockElement) document.exitPointerLock()
-      setMode('DESIGN')
+      setMode(temporal ? walkthroughReturnMode : 'DESIGN')
     }
-  }, [mode, readiness, setMode])
+  }, [mode, readiness, setMode, temporal, walkthroughReturnMode])
   useEffect(() => {
     if (cameraMode !== 'walkthrough') {
       setLocked(false)
@@ -62,7 +70,10 @@ export function MineCanvas() {
   useEffect(() => {
     if (selectedObjectId && resolvedSelection === null) select(null)
   }, [selectedObjectId, resolvedSelection, select])
-  const leaveWalkthrough = useCallback(() => setMode('DESIGN'), [setMode])
+  const leaveWalkthrough = useCallback(
+    () => setMode(temporal ? walkthroughReturnMode : 'DESIGN'),
+    [setMode, temporal, walkthroughReturnMode],
+  )
 
   const walkable =
     cameraMode === 'walkthrough' &&
@@ -74,6 +85,7 @@ export function MineCanvas() {
     <MineViewportShell
       overlayContent={
         cameraMode === 'walkthrough' &&
+        walkthroughContext !== 'TIMELINE_SNAPSHOT' &&
         resolvedSelection &&
         resolvedSelection.kind !== 'ACCESS_CANDIDATE' ? (
           <WalkthroughInspector selection={resolvedSelection} onClear={() => select(null)} />
@@ -97,6 +109,9 @@ export function MineCanvas() {
               <WalkthroughRuntime
                 meshUrl={`${API_BASE_URL}${scene.tunnelMesh!.meshUrl}`}
                 scene={scene}
+                context={temporal ? 'TIMELINE_SNAPSHOT' : 'STATIC_FINAL'}
+                snapshotDay={walkthroughSnapshotDay}
+                ramp={scenario?.ramp ?? { tunnelWidth: 5, tunnelHeight: 5.5 }}
                 onLockChange={setLocked}
                 onFocusChange={setFocusedKind}
                 onGeometryError={leaveWalkthrough}
@@ -115,7 +130,11 @@ export function MineCanvas() {
             ) : null}
           </Canvas>
           {cameraMode === 'walkthrough' ? (
-            <WalkthroughHUD locked={locked} focusedKind={focusedKind} />
+            <WalkthroughHUD
+              locked={locked}
+              focusedKind={temporal ? null : focusedKind}
+              snapshotDay={temporal ? walkthroughSnapshotDay : null}
+            />
           ) : (
             <CoordinateReadout threeTarget={target} />
           )}
