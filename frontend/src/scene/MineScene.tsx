@@ -68,7 +68,8 @@ export function MineScene() {
 
   return (
     <>
-      <ambientLight intensity={walkthroughActive ? 0.12 : 0.4} />
+      <ambientLight intensity={walkthroughActive ? 0.32 : 0.4} />
+      {walkthroughActive ? <hemisphereLight args={['#8f99a3', '#3a332b', 0.4]} /> : null}
       {walkthroughActive ? null : (
         <>
           <directionalLight position={mineToThree(-400, -600, baseZ + 900)} intensity={1.1} />

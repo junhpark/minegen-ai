@@ -1,14 +1,9 @@
 /**
- * Pointer-lock surface contract (PR #10 blocker).
- *
- * Drei PointerLockControls resolves its `selector` and attaches the click
- * listener ONCE in its mount effect. The lock target must therefore be a
- * DOM element that stays mounted for the ENTIRE walkthrough mode — never a
- * node the HUD swaps in and out with lock state, or re-entry after Esc
- * would click a recreated element that no longer carries the listener.
- *
- * The persistent MineCanvas wrapper carries this id; the HUD entry button
- * is a pure visual affordance whose click BUBBLES to the wrapper.
+ * Camera-surface DOM ownership id (originally the PR #10 pointer-lock
+ * selector). Pointer lock was removed in the Phase 15 browser-acceptance
+ * hotfix — the walkthrough is keyboard-only — but the persistent id keeps
+ * documenting the MineViewportShell ownership split: canvas + HUD live on
+ * the camera surface, while ordinary interactive UI (the inspector) stays
+ * a sibling OUTSIDE it (Phase 14 §15/PR #11 blocker 2 contract).
  */
 export const WALKTHROUGH_LOCK_SURFACE_ID = 'walkthrough-lock-surface'
-export const WALKTHROUGH_LOCK_SURFACE_SELECTOR = `#${WALKTHROUGH_LOCK_SURFACE_ID}`

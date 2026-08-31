@@ -59,14 +59,15 @@ describe('walkthrough derived visibility (§15)', () => {
     'sensorCoverage',
   ])
 
-  it('keeps the physical tunnel and passive terrain only in walkthrough', () => {
+  it('keeps ONLY the tunnel in walkthrough — terrain is suppressed (hotfix §7)', () => {
     const derived = deriveVisibleLayers('WALKTHROUGH', stored)
-    expect([...derived].sort()).toEqual(['terrain', 'tunnelMesh'])
+    expect([...derived]).toEqual(['tunnelMesh'])
   })
 
   it('suppresses engineering, 4D, communication and sensor overlays', () => {
     const derived = deriveVisibleLayers('WALKTHROUGH', stored)
     for (const layer of [
+      'terrain',
       'orebody',
       'faults',
       'accessTargets',

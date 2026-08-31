@@ -13,6 +13,12 @@ export interface WalkthroughConfig {
   gravityMps2: number
   /** deterministic spawn chainage from the portal end, m */
   spawnChainageM: number
+  /** keyboard yaw speed, deg/s (J/L) */
+  yawSpeedDegPerSec: number
+  /** keyboard pitch speed, deg/s (I/K) */
+  pitchSpeedDegPerSec: number
+  /** pitch clamp magnitude, deg */
+  maxPitchDeg: number
   /** small clearance between capsule bottom and floor at spawn, m */
   spawnFloorClearanceM: number
   /** eye height above the floor, m (camera offset from body center is derived) */
@@ -26,7 +32,10 @@ export const WALKTHROUGH_CONFIG: WalkthroughConfig = {
   bodyRadiusM: 0.3,
   walkSpeedMps: 2.0,
   gravityMps2: 9.81,
-  spawnChainageM: 2.5,
+  spawnChainageM: 6.0,
+  yawSpeedDegPerSec: 90,
+  pitchSpeedDegPerSec: 70,
+  maxPitchDeg: 80,
   spawnFloorClearanceM: 0.05,
   eyeHeightM: 1.6,
   headlampRangeM: 60,
@@ -41,3 +50,8 @@ export function capsuleHalfHeight(config: WalkthroughConfig): number {
 export function eyeOffsetFromBodyCenter(config: WalkthroughConfig): number {
   return config.eyeHeightM - config.bodyHeightM / 2
 }
+
+/** WALKTHROUGH renders at DPR 1 (browser-acceptance hotfix §12): high-DPI
+ * displays otherwise rasterize ~4× the pixels of the orbit view. Other
+ * modes keep the existing [1, 2] range. */
+export const WALKTHROUGH_DPR = 1

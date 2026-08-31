@@ -39,8 +39,11 @@ export const READINESS_MESSAGES: Record<Exclude<WalkthroughReadiness, 'READY'>, 
   INVALID_SPAWN_GEOMETRY: 'Smoothed decline geometry cannot host a walkthrough spawn',
 }
 
-/** Layers that stay visible inside the immersive walkthrough view. */
-const WALKTHROUGH_ALLOWED = new Set(['terrain', 'tunnelMesh'])
+/** Layers that stay visible inside the immersive walkthrough view.
+ * Browser-acceptance hotfix §7: terrain rendered huge occluding surfaces
+ * in first person, so ONLY the tunnel environment survives — in BOTH
+ * STATIC_FINAL and TIMELINE_SNAPSHOT. Other modes are untouched. */
+const WALKTHROUGH_ALLOWED = new Set(['tunnelMesh'])
 
 /**
  * Derived walkthrough visibility (§15): engineering/debug overlays are

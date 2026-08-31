@@ -315,3 +315,21 @@ GAS_SENSOR markers, focus, E-inspect and inspector cards; excavation
 completion never implies installation. Phase 16 integration boundary: any
 future installed-state semantics require backend-authored installation
 timing artifacts first.
+
+### Phase 15 browser-acceptance hotfix — keyboard-only walkthrough
+
+Real-browser acceptance of the initial Phase 13–15 runtime failed on
+readability and control, so the walkthrough is now KEYBOARD-ONLY: WASD
+walks, J/L yaw and I/K pitch (frame-rate-independent, 90/70 deg/s, pitch
+clamped ±80°, no roll), R resets and E inspects (STATIC_FINAL only); the
+mouse never rotates the camera and pointer lock was removed entirely —
+there is no entry click. Movement remains yaw-only under Rapier gravity
+(rule 101 unchanged in substance; the pitch-affects-view-only clause now
+applies to keyboard pitch). Walkthrough visibility renders ONLY the tunnel
+environment (terrain suppressed in both contexts; other modes untouched),
+the spawn chainage moved to 6.0 m for a readable first view, the lighting
+rig became a modest ambient/hemisphere fill plus a broad soft
+camera-following headlamp (no narrow hotspot, no shadows), and the
+walkthrough canvas renders at DPR 1 while other modes keep [1, 2]. Tunnel
+collision fidelity is deliberately unchanged. A DEV-only ~2 Hz overlay
+reports FPS / triangles / draw calls for manual browser measurement.

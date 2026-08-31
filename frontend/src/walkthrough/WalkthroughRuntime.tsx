@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'
-import { PointerLockControls, useGLTF } from '@react-three/drei'
+import { useGLTF } from '@react-three/drei'
 import { Physics } from '@react-three/rapier'
 import { WALKTHROUGH_CONFIG } from './config'
 import { createKeyState } from './movement'
@@ -8,7 +8,6 @@ import { clearTransientInput, createInspectTrigger } from './interactionRay'
 import { resolveColliderPolicy, type WalkthroughContext } from './colliderPolicy'
 import { resolveTemporalWalkthroughPlan } from './temporalPlan'
 import { FrontierBarrier } from './FrontierBarrier'
-import { WALKTHROUGH_LOCK_SURFACE_SELECTOR } from './lockSurface'
 import { resolveWalkthroughSpawn } from './spawn'
 import { extractTunnelRuntimeGeometry } from './tunnelRuntimeGeometry'
 import { TunnelColliderSet } from './TunnelColliderSet'
@@ -20,6 +19,7 @@ import { useViewerStore } from '@/stores/viewerStore'
 import { resolveWalkthroughAssets } from './interactableAssets'
 import { WalkthroughAssetLayer } from './WalkthroughAssetLayer'
 import { WalkthroughInteraction } from './WalkthroughInteraction'
+import { WalkthroughDiagnostics } from './WalkthroughDiagnostics'
 
 /**
  * First-person runtime owner (rules 99–104). Mounted by MineCanvas ONLY in
@@ -34,7 +34,7 @@ export function WalkthroughRuntime({
   context,
   snapshotDay,
   ramp,
-  onLockChange,
+  perfRef,
   onFocusChange,
   onGeometryError,
 }: {
@@ -43,7 +43,7 @@ export function WalkthroughRuntime({
   context: WalkthroughContext
   snapshotDay: number | null
   ramp: { tunnelWidth: number; tunnelHeight: number } | null
-  onLockChange: (locked: boolean) => void
+  perfRef: { current: HTMLDivElement | null }
   onFocusChange: (kind: 'MESH_ROUTER' | 'GAS_SENSOR' | null) => void
   onGeometryError: () => void
 }) {
@@ -67,7 +67,6 @@ export function WalkthroughRuntime({
   const keyState = useMemo(() => createKeyState(), [])
   // owned here so EVERY lifecycle exit can reach it (PR #11 blocker 1)
   const inspectTrigger = useMemo(() => createInspectTrigger(), [])
-  const lockedRef = useRef(false)
   const resetSignal = useRef(0)
   const focusedRef = useRef<string | null>(null)
   // mirror of focusedRef for rendering; updated ONLY when the id changes
@@ -148,20 +147,9 @@ export function WalkthroughRuntime({
     if (runtime === null || spawn === null || temporalInvalid) onGeometryError()
   }, [runtime, spawn, temporalInvalid, onGeometryError])
 
-  const handleLock = useCallback(() => {
-    lockedRef.current = true
-    onLockChange(true)
-  }, [onLockChange])
-  const handleUnlock = useCallback(() => {
-    lockedRef.current = false
-    clearTransientInput(keyState, inspectTrigger)
-    onLockChange(false)
-  }, [inspectTrigger, keyState, onLockChange])
   useEffect(
     () => () => {
-      lockedRef.current = false
       clearTransientInput(keyState, inspectTrigger)
-      if (document.pointerLockElement) document.exitPointerLock()
     },
     [inspectTrigger, keyState],
   )
@@ -184,23 +172,18 @@ export function WalkthroughRuntime({
   if (!runtime || !spawn || !policy || temporalInvalid) return null
   return (
     <>
-      <PointerLockControls
-        selector={WALKTHROUGH_LOCK_SURFACE_SELECTOR}
-        onLock={handleLock}
-        onUnlock={handleUnlock}
-      />
       <WalkthroughControls
         keyState={keyState}
-        lockedRef={lockedRef}
         inspectTrigger={inspectTrigger}
+        allowInspect={!temporal}
         onReset={reset}
         onInspect={inspect}
       />
+      <WalkthroughDiagnostics targetRef={perfRef} />
       <WalkthroughAssetLayer assets={interactables} focusedId={focusedId} selectedId={selectedId} />
       <WalkthroughInteraction
         geometry={runtime}
         assets={interactables}
-        lockedRef={lockedRef}
         focusedRef={focusedRef}
         onFocusChange={handleFocusChange}
       />
@@ -223,7 +206,6 @@ export function WalkthroughRuntime({
           config={WALKTHROUGH_CONFIG}
           spawn={spawn}
           keyState={keyState}
-          lockedRef={lockedRef}
           resetSignal={resetSignal}
         />
       </Physics>

@@ -1,51 +1,59 @@
 import { useEffect } from 'react'
-import { clearTransientInput, type InspectTrigger } from './interactionRay'
-import type { KeyState } from './movement'
+import { clearTransientInput, createInspectTrigger, type InspectTrigger } from './interactionRay'
+import { isEditableTarget, type KeyState } from './movement'
 
 /**
- * Pointer-lock-gated keyboard lifecycle (§10): WASD state is tracked only
- * while pointer lock is active; every exit path — lock release, window
- * blur, unmount, mode switch — clears pressed keys so movement can never
- * stick. R is edge-triggered and fires the deterministic reset; E is
- * edge-triggered inspect (one physical press → one action, auto-repeat
- * never re-fires). Esc keeps its normal browser pointer-lock behaviour and
- * never switches app mode.
+ * Keyboard-only walkthrough input lifecycle (hotfix §2/§5): WASD walks,
+ * J/L/I/K look, R resets, E inspects (STATIC_FINAL only). No pointer lock
+ * and no mouse involvement — listeners are active for the whole runtime
+ * mount. R and E are edge-triggered (one physical press → one action;
+ * auto-repeat never re-fires). Shortcuts are ignored while an
+ * input/textarea/select/contenteditable is focused. Window blur, unmount,
+ * mode switch and scenario invalidation clear every transient key state.
  */
 export function WalkthroughControls({
   keyState,
-  lockedRef,
   inspectTrigger,
+  allowInspect,
   onReset,
   onInspect,
 }: {
   keyState: KeyState
-  lockedRef: { current: boolean }
   inspectTrigger: InspectTrigger
+  allowInspect: boolean
   onReset: () => void
   onInspect: () => void
 }) {
   useEffect(() => {
     const inspect = inspectTrigger
+    const reset = createInspectTrigger() // same edge-trigger mechanism for R
     const down = (e: KeyboardEvent) => {
-      if (!lockedRef.current) return
+      if (isEditableTarget(e.target)) return
       if (e.code === 'KeyR') {
-        onReset()
+        if (!e.repeat && reset.press()) onReset()
         return
       }
       if (e.code === 'KeyE') {
-        if (!e.repeat && inspect.press()) onInspect()
+        if (allowInspect && !e.repeat && inspect.press()) onInspect()
         return
       }
       if (keyState.handleKey(e.code, true)) e.preventDefault()
     }
     const up = (e: KeyboardEvent) => {
+      if (e.code === 'KeyR') {
+        reset.release()
+        return
+      }
       if (e.code === 'KeyE') {
         inspect.release()
         return
       }
       keyState.handleKey(e.code, false)
     }
-    const blur = () => clearTransientInput(keyState, inspect)
+    const blur = () => {
+      clearTransientInput(keyState, inspect)
+      reset.clear()
+    }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
     window.addEventListener('blur', blur)
@@ -54,7 +62,8 @@ export function WalkthroughControls({
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', blur)
       clearTransientInput(keyState, inspect)
+      reset.clear()
     }
-  }, [inspectTrigger, keyState, lockedRef, onInspect, onReset])
+  }, [allowInspect, inspectTrigger, keyState, onInspect, onReset])
   return null
 }

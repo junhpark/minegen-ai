@@ -1,6 +1,6 @@
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MineScene } from './MineScene'
 import { CoordinateReadout } from './CoordinateReadout'
 import { mineToThree } from '@/geometry/coordinateTransform'
@@ -14,6 +14,7 @@ import { WalkthroughInspector } from '@/walkthrough/WalkthroughInspector'
 import { WalkthroughHUD } from '@/walkthrough/WalkthroughHUD'
 import { WalkthroughRuntime } from '@/walkthrough/WalkthroughRuntime'
 import { API_BASE_URL } from '@/api/client'
+import { WALKTHROUGH_DPR } from '@/walkthrough/config'
 
 /**
  * R3F canvas host. Camera positions are specified in mine coordinates and
@@ -31,7 +32,7 @@ export function MineCanvas() {
   const setMode = useViewerStore((s) => s.setMode)
   const baseZ = scenario?.terrain.baseElevation ?? 300
   const [target, setTarget] = useState<[number, number, number]>(mineToThree(0, 0, baseZ))
-  const [locked, setLocked] = useState(false)
+  const perfRef = useRef<HTMLDivElement | null>(null)
   const walkthroughContext = useViewerStore((s) => s.walkthroughContext)
   const walkthroughSnapshotDay = useViewerStore((s) => s.walkthroughSnapshotDay)
   const walkthroughReturnMode = useViewerStore((s) => s.walkthroughReturnMode)
@@ -61,15 +62,11 @@ export function MineCanvas() {
     temporalSessionIdentity(scene) !== walkthroughSnapshotIdentity
   useEffect(() => {
     if (mode === 'WALKTHROUGH' && (readiness !== 'READY' || sessionStale)) {
-      if (document.pointerLockElement) document.exitPointerLock()
       setMode(temporal ? walkthroughReturnMode : 'DESIGN')
     }
   }, [mode, readiness, sessionStale, setMode, temporal, walkthroughReturnMode])
   useEffect(() => {
-    if (cameraMode !== 'walkthrough') {
-      setLocked(false)
-      setFocusedKind(null)
-    }
+    if (cameraMode !== 'walkthrough') setFocusedKind(null)
   }, [cameraMode])
   // §28 stale-selection cleanup (frontend only): if artifact regeneration
   // or a scenario change removes the selected object, clear the canonical
@@ -108,7 +105,7 @@ export function MineCanvas() {
               near: 1,
               far: 20000,
             }}
-            dpr={[1, 2]}
+            dpr={cameraMode === 'walkthrough' ? WALKTHROUGH_DPR : [1, 2]}
             gl={{ antialias: true }}
           >
             <color attach="background" args={['#0f1316']} />
@@ -120,7 +117,7 @@ export function MineCanvas() {
                 context={temporal ? 'TIMELINE_SNAPSHOT' : 'STATIC_FINAL'}
                 snapshotDay={walkthroughSnapshotDay}
                 ramp={scenario?.ramp ?? null}
-                onLockChange={setLocked}
+                perfRef={perfRef}
                 onFocusChange={setFocusedKind}
                 onGeometryError={leaveWalkthrough}
               />
@@ -139,9 +136,9 @@ export function MineCanvas() {
           </Canvas>
           {cameraMode === 'walkthrough' ? (
             <WalkthroughHUD
-              locked={locked}
               focusedKind={temporal ? null : focusedKind}
               snapshotDay={temporal ? walkthroughSnapshotDay : null}
+              perfRef={perfRef}
             />
           ) : (
             <CoordinateReadout threeTarget={target} />

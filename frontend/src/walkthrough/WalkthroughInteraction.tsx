@@ -19,8 +19,8 @@ import { buildColliderUnits } from './tunnelRuntimeGeometry'
 const DIR = new Vector3()
 
 /**
- * Center-crosshair targeting (rule 107). Every frame while pointer lock is
- * active: cast the exact camera-forward ray, take the authoritative tunnel
+ * Center-crosshair targeting (rule 107). Every frame: cast the exact
+ * camera-forward ray, take the authoritative tunnel
  * occlusion distance from the SAME Phase 06 GLB triangles (a detached
  * double-sided raycast mesh built once from the proven runtime geometry —
  * §8 option A, no reconstruction), then run the pure focus math with the
@@ -30,13 +30,11 @@ const DIR = new Vector3()
 export function WalkthroughInteraction({
   geometry,
   assets,
-  lockedRef,
   focusedRef,
   onFocusChange,
 }: {
   geometry: TunnelRuntimeGeometry
   assets: readonly WalkthroughInteractableAsset[]
-  lockedRef: { current: boolean }
   focusedRef: { current: string | null }
   onFocusChange: (id: string | null) => void
 }) {
@@ -72,7 +70,7 @@ export function WalkthroughInteraction({
 
   useFrame(() => {
     let next: string | null = null
-    if (lockedRef.current && assets.length > 0) {
+    if (assets.length > 0) {
       camera.getWorldDirection(DIR)
       raycaster.set(camera.position, DIR)
       const wallHit = raycaster.intersectObject(occluder, true)[0]

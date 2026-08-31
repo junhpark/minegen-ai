@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { createKeyState, desiredHorizontalVelocity, NO_KEYS, yawForForward } from './movement'
+import {
+  applyLook,
+  createKeyState,
+  desiredHorizontalVelocity,
+  isEditableTarget,
+  NO_KEYS,
+  NO_LOOK,
+  yawForForward,
+} from './movement'
+import { WALKTHROUGH_CONFIG } from './config'
 
 const K = (over: Partial<typeof NO_KEYS>) => ({ ...NO_KEYS, ...over })
 
@@ -42,13 +51,70 @@ describe('walkthrough movement math (rule 101)', () => {
     expect(yawForForward(-1, 0)).toBeCloseTo(Math.PI / 2, 12)
   })
 
-  it('key state tracks WASD only and clears on lifecycle exits', () => {
+  it('key state tracks WASD + IJKL and clears BOTH on lifecycle exits', () => {
     const ks = createKeyState()
     expect(ks.handleKey('KeyW', true)).toBe(true)
     expect(ks.handleKey('KeyD', true)).toBe(true)
+    expect(ks.handleKey('KeyJ', true)).toBe(true)
+    expect(ks.handleKey('KeyI', true)).toBe(true)
     expect(ks.handleKey('KeyQ', true)).toBe(false) // unrelated key ignored
     expect(ks.keys).toEqual({ forward: true, backward: false, left: false, right: true })
-    ks.clear() // blur / unlock / unmount / mode switch path
+    expect(ks.look).toEqual({ yawLeft: true, yawRight: false, pitchUp: true, pitchDown: false })
+    ks.clear() // blur / unmount / mode switch / scenario invalidation
     expect(ks.keys).toEqual(NO_KEYS)
+    expect(ks.look).toEqual(NO_LOOK)
+  })
+})
+
+describe('keyboard look (hotfix §3/§17)', () => {
+  const CFG = WALKTHROUGH_CONFIG
+  const L = (over: Partial<typeof NO_LOOK>) => ({ ...NO_LOOK, ...over })
+
+  it('J turns left (+yaw), L turns right, I pitches up, K pitches down, dt-scaled', () => {
+    const s0 = { yaw: 0, pitch: 0 }
+    const j = applyLook(s0, L({ yawLeft: true }), 0.5, CFG)
+    expect(j.yaw).toBeCloseTo(((CFG.yawSpeedDegPerSec * Math.PI) / 180) * 0.5, 12)
+    const l = applyLook(s0, L({ yawRight: true }), 0.5, CFG)
+    expect(l.yaw).toBeCloseTo(-j.yaw, 12)
+    const i = applyLook(s0, L({ pitchUp: true }), 0.25, CFG)
+    expect(i.pitch).toBeCloseTo(((CFG.pitchSpeedDegPerSec * Math.PI) / 180) * 0.25, 12)
+    const k = applyLook(s0, L({ pitchDown: true }), 0.25, CFG)
+    expect(k.pitch).toBeCloseTo(-i.pitch, 12)
+    expect(j.pitch).toBe(0) // no roll, no cross-axis
+  })
+
+  it('is frame-rate independent: many small steps == one big step', () => {
+    let a = { yaw: 0.3, pitch: -0.1 }
+    for (let n = 0; n < 60; n++) a = applyLook(a, L({ yawLeft: true, pitchUp: true }), 1 / 60, CFG)
+    const b = applyLook({ yaw: 0.3, pitch: -0.1 }, L({ yawLeft: true, pitchUp: true }), 1, CFG)
+    expect(a.yaw).toBeCloseTo(b.yaw, 9)
+    expect(a.pitch).toBeCloseTo(b.pitch, 9)
+  })
+
+  it('clamps pitch at ±80° and never rolls', () => {
+    const up = applyLook({ yaw: 0, pitch: 0 }, L({ pitchUp: true }), 100, CFG)
+    expect(up.pitch).toBeCloseTo((80 * Math.PI) / 180, 12)
+    const down = applyLook({ yaw: 0, pitch: 0 }, L({ pitchDown: true }), 100, CFG)
+    expect(down.pitch).toBeCloseTo((-80 * Math.PI) / 180, 12)
+  })
+
+  it('pitch never reaches translation: velocity is a pure function of yaw', () => {
+    const flat = desiredHorizontalVelocity({ ...NO_KEYS, forward: true }, 1.1, 2)
+    // looking at the roof or floor cannot change the walk vector — pitch is
+    // not even an input to the movement function
+    expect(desiredHorizontalVelocity({ ...NO_KEYS, forward: true }, 1.1, 2)).toEqual(flat)
+    expect(flat[0] * flat[0] + flat[1] * flat[1]).toBeCloseTo(4, 9)
+  })
+})
+
+describe('editable-target shortcut exclusion (hotfix §5/§18)', () => {
+  it('ignores INPUT/TEXTAREA/SELECT/contenteditable, accepts canvas/body', () => {
+    expect(isEditableTarget({ tagName: 'INPUT' })).toBe(true)
+    expect(isEditableTarget({ tagName: 'TEXTAREA' })).toBe(true)
+    expect(isEditableTarget({ tagName: 'SELECT' })).toBe(true)
+    expect(isEditableTarget({ tagName: 'DIV', isContentEditable: true })).toBe(true)
+    expect(isEditableTarget({ tagName: 'CANVAS' })).toBe(false)
+    expect(isEditableTarget({ tagName: 'BODY', isContentEditable: false })).toBe(false)
+    expect(isEditableTarget(null)).toBe(false)
   })
 })

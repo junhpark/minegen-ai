@@ -1,36 +1,23 @@
 /**
- * Minimal walkthrough overlay (§17): entry prompt before pointer lock and a
- * compact control legend plus passive crosshair while walking. The
- * crosshair has NO interaction semantics — picking is Phase 14.
- *
- * The entry button is a VISUAL AFFORDANCE only: pointer lock is requested
- * by the persistent lock surface (the MineCanvas wrapper) that the button
- * click bubbles to — the HUD swaps DOM with lock state, so it must never
- * own the PointerLockControls selector target (PR #10 blocker).
+ * Minimal walkthrough overlay (§6): passive crosshair, keyboard control
+ * legend and the Phase 15 temporal snapshot label. The walkthrough is
+ * keyboard-only — no pointer lock, no entry click, no mouse look — so the
+ * HUD renders identically for the whole session. The crosshair still has
+ * no interaction semantics of its own; E inspects the focused asset in
+ * STATIC_FINAL only.
  */
 export function WalkthroughHUD({
-  locked,
   focusedKind,
   snapshotDay = null,
+  perfRef,
 }: {
-  locked: boolean
   focusedKind: 'MESH_ROUTER' | 'GAS_SENSOR' | null
   /** captured MineTimeline day for TIMELINE_SNAPSHOT, null when static */
   snapshotDay?: number | null
+  /** DEV-only performance readout target (unused in production) */
+  perfRef?: { current: HTMLDivElement | null }
 }) {
   const temporal = snapshotDay !== null
-  if (!locked) {
-    return (
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <button
-          type="button"
-          className="plate pointer-events-auto rounded-sm border border-lamp bg-rock-900/80 px-6 py-3 text-[15px] text-lamp hover:bg-lamp hover:text-rock-950"
-        >
-          Click to enter walkthrough
-        </button>
-      </div>
-    )
-  }
   const cross = focusedKind ? 'bg-lamp' : 'bg-chalk/50'
   return (
     <div className="pointer-events-none absolute inset-0">
@@ -52,10 +39,15 @@ export function WalkthroughHUD({
           <div className="mt-1 text-mute">Return to 4D to change time</div>
         </div>
       ) : null}
+      {import.meta.env.DEV ? (
+        <div
+          ref={perfRef}
+          className="readout absolute left-3 top-3 whitespace-pre rounded-sm bg-rock-900/70 px-2 py-1 text-[10px] text-chalk-dim"
+        />
+      ) : null}
       <div className="readout absolute bottom-3 left-3 rounded-sm bg-rock-900/70 px-3 py-2 text-[11px] leading-relaxed text-chalk-dim">
         <div>WASD&ensp;Move</div>
-        <div>Mouse&ensp;Look</div>
-        <div>ESC&ensp;Release mouse</div>
+        <div>IJKL&ensp;Look</div>
         <div>R&ensp;Reset</div>
         {temporal ? null : <div>E&ensp;Inspect</div>}
       </div>
