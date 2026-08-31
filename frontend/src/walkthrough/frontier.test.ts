@@ -1,3 +1,4 @@
+import { Matrix4, Quaternion, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 import type { SmoothedSegmentPayload } from '@/types/scene'
 import {
@@ -65,6 +66,31 @@ describe('temporal frontier pose (rule 115, §30)', () => {
     p.quaternion.forEach((v) => expect(Number.isFinite(v)).toBe(true))
     expect(p.colliderId).toBe('WALK:TEMPORAL:FRONTIER:SEG:B')
     expect(frontierColliderId('SEG:B')).toBe(p.colliderId)
+  })
+
+  it('is a proper RIGHT-HANDED rotation whose local Z is the gate normal (PR #12 blocker 1)', () => {
+    // east-heading horizontal, north-heading horizontal, graded oblique
+    const tangents: [number, number, number][] = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0.6, 0.75, -0.12],
+    ]
+    for (const end of tangents) {
+      const p = resolveFrontierPose(segment([0, 0, 0, 5, 5, -1], end), 'SEG:B', RAMP)!
+      const q = new Quaternion(...p.quaternion)
+      expect(Math.hypot(q.x, q.y, q.z, q.w)).toBeCloseTo(1, 9) // unit quaternion
+      const m = new Matrix4().makeRotationFromQuaternion(q)
+      expect(m.determinant()).toBeCloseTo(1, 9) // proper rotation, no reflection
+      // rotated local +Z must align with the mine->Three forward (gate normal)
+      const localZ = new Vector3(0, 0, 1).applyQuaternion(q)
+      const f = p.forwardMine
+      const fT = new Vector3(f[0], f[2], -f[1]) // mineToThree
+      expect(Math.abs(localZ.dot(fT))).toBeCloseTo(1, 9)
+      // and rotated local +Y must align with gravity-aligned up
+      const localY = new Vector3(0, 1, 0).applyQuaternion(q)
+      const u = p.upMine
+      expect(Math.abs(localY.dot(new Vector3(u[0], u[2], -u[1])))).toBeCloseTo(1, 9)
+    }
   })
 
   it('is deterministic and rejects degenerate input instead of guessing', () => {

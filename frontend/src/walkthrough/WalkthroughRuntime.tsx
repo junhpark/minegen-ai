@@ -42,13 +42,26 @@ export function WalkthroughRuntime({
   scene: WorldScene
   context: WalkthroughContext
   snapshotDay: number | null
-  ramp: { tunnelWidth: number; tunnelHeight: number }
+  ramp: { tunnelWidth: number; tunnelHeight: number } | null
   onLockChange: (locked: boolean) => void
   onFocusChange: (kind: 'MESH_ROUTER' | 'GAS_SENSOR' | null) => void
   onGeometryError: () => void
 }) {
   const smoothed = scene.smoothedDecline!
   const temporal = context === 'TIMELINE_SNAPSHOT'
+  // rule 112 (PR #12 blocker 2): the temporal plan consumes the artifacts
+  // captured at MOUNT, never live scene updates — a replaced artifact can
+  // only trigger the MineCanvas identity gate (clean exit to 4D), never a
+  // re-snapshot of the running physics topology
+  const frozenRef = useRef<{
+    timeline: WorldScene['timeline']
+    smoothed: NonNullable<WorldScene['smoothedDecline']>
+  } | null>(null)
+  if (temporal && frozenRef.current === null) {
+    frozenRef.current = { timeline: scene.timeline, smoothed }
+  }
+  const planTimeline = temporal ? frozenRef.current!.timeline : scene.timeline
+  const planSmoothed = temporal ? frozenRef.current!.smoothed : smoothed
   const gltf = useGLTF(meshUrl)
   const camera = useThree((s) => s.camera)
   const keyState = useMemo(() => createKeyState(), [])
@@ -78,15 +91,18 @@ export function WalkthroughRuntime({
       return null
     }
   }, [gltf])
-  const spawn = useMemo(() => resolveWalkthroughSpawn(smoothed, WALKTHROUGH_CONFIG), [smoothed])
+  const spawn = useMemo(
+    () => resolveWalkthroughSpawn(planSmoothed, WALKTHROUGH_CONFIG),
+    [planSmoothed],
+  )
   // rule 112: the temporal plan is resolved ONCE per snapshot and the
   // physical topology stays immutable for the session
   const plan = useMemo(
     () =>
       temporal && runtime && snapshotDay !== null
-        ? resolveTemporalWalkthroughPlan(scene.timeline, smoothed, runtime, snapshotDay)
+        ? resolveTemporalWalkthroughPlan(planTimeline, planSmoothed, runtime, snapshotDay)
         : null,
-    [temporal, runtime, scene.timeline, smoothed, snapshotDay],
+    [temporal, runtime, planTimeline, planSmoothed, snapshotDay],
   )
   const policy = useMemo(
     () =>
@@ -101,8 +117,8 @@ export function WalkthroughRuntime({
   )
   const frontierSegment = useMemo(() => {
     if (!plan || plan.status !== 'VALID' || plan.lastActiveSegmentIndex === null) return null
-    return smoothed.segments[plan.lastActiveSegmentIndex] ?? null
-  }, [plan, smoothed])
+    return planSmoothed.segments[plan.lastActiveSegmentIndex] ?? null
+  }, [plan, planSmoothed])
 
   // near plane suited for standing 0.3 m from a wall; restored on unmount
   useEffect(() => {
@@ -117,8 +133,17 @@ export function WalkthroughRuntime({
 
   // defensive: unreachable geometry OR an invalid/fail-closed temporal
   // mapping -> leave walkthrough cleanly (§13, rule 117)
+  // PR #12 blocker 3: a temporal frontier must use Scenario-authored ramp
+  // dimensions — guessed defaults are forbidden, so an unusable ramp fails
+  // the whole temporal session closed
+  const rampUsable =
+    ramp !== null &&
+    Number.isFinite(ramp.tunnelWidth) &&
+    ramp.tunnelWidth > 0 &&
+    Number.isFinite(ramp.tunnelHeight) &&
+    ramp.tunnelHeight > 0
   const temporalInvalid =
-    temporal && (snapshotDay === null || (plan !== null && plan.status !== 'VALID'))
+    temporal && (snapshotDay === null || !rampUsable || (plan !== null && plan.status !== 'VALID'))
   useEffect(() => {
     if (runtime === null || spawn === null || temporalInvalid) onGeometryError()
   }, [runtime, spawn, temporalInvalid, onGeometryError])
@@ -191,7 +216,7 @@ export function WalkthroughRuntime({
           <FrontierBarrier
             segment={frontierSegment}
             lastActiveSegmentId={policy.frontierSegmentId}
-            ramp={ramp}
+            ramp={ramp!}
           />
         ) : null}
         <WalkthroughPlayer

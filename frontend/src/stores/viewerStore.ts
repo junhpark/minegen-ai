@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { AppMode, LayerId } from '@/types/enums'
 import { useTimelineStore } from './timelineStore'
+import { useScenarioStore } from './scenarioStore'
+import { temporalSessionIdentity } from '@/walkthrough/temporalPlan'
 
 export type CameraMode = 'orbit' | 'walkthrough'
 export type WalkthroughContext = 'STATIC_FINAL' | 'TIMELINE_SNAPSHOT'
@@ -15,6 +17,9 @@ export interface ViewerState {
   walkthroughContext: WalkthroughContext | null
   /** MineTimeline day captured at 4D entry; immutable for the session */
   walkthroughSnapshotDay: number | null
+  /** artifact identity captured at 4D entry (rule 112); a mismatch with
+   * the live scene means the session must exit, never re-snapshot */
+  walkthroughSnapshotIdentity: string | null
   walkthroughReturnMode: AppMode
 
   setMode: (mode: AppMode) => void
@@ -47,6 +52,7 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   cameraMode: 'orbit',
   walkthroughContext: null,
   walkthroughSnapshotDay: null,
+  walkthroughSnapshotIdentity: null,
   walkthroughReturnMode: 'DESIGN',
   selectedObjectId: null,
   visibleLayers: new Set(DEFAULT_VISIBLE),
@@ -63,6 +69,9 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
           cameraMode: 'walkthrough' as CameraMode,
           walkthroughContext: temporal ? 'TIMELINE_SNAPSHOT' : 'STATIC_FINAL',
           walkthroughSnapshotDay: temporal ? useTimelineStore.getState().currentDay : null,
+          walkthroughSnapshotIdentity: temporal
+            ? temporalSessionIdentity(useScenarioStore.getState().scene)
+            : null,
           walkthroughReturnMode: (temporal ? '4D' : 'DESIGN') as AppMode,
         }
       }
@@ -72,6 +81,7 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
         cameraMode: 'orbit' as CameraMode,
         walkthroughContext: null,
         walkthroughSnapshotDay: null,
+        walkthroughSnapshotIdentity: null,
       }
     }),
   setCameraMode: (cameraMode) => set({ cameraMode }),

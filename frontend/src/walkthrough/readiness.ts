@@ -58,6 +58,7 @@ export type TemporalReadiness =
   | 'TIMELINE_NOT_AVAILABLE'
   | 'TEMPORAL_MAPPING_INVALID'
   | 'NO_COMPLETED_SEGMENT'
+  | 'SCENARIO_RAMP_UNAVAILABLE'
 
 /**
  * TIMELINE_SNAPSHOT readiness (§11): static Phase 13 readiness first, then
@@ -68,9 +69,21 @@ export type TemporalReadiness =
 export function temporalWalkthroughReadiness(
   scene: WorldScene | null | undefined,
   snapshotDay: number,
+  ramp: { tunnelWidth: number; tunnelHeight: number } | null | undefined,
 ): TemporalReadiness {
   const base = walkthroughReadiness(scene)
   if (base !== 'READY') return base
+  // PR #12 blocker 3: the temporal frontier needs Scenario-authored ramp
+  // dimensions — guessed defaults are forbidden, so fail closed here
+  if (
+    !ramp ||
+    !Number.isFinite(ramp.tunnelWidth) ||
+    ramp.tunnelWidth <= 0 ||
+    !Number.isFinite(ramp.tunnelHeight) ||
+    ramp.tunnelHeight <= 0
+  ) {
+    return 'SCENARIO_RAMP_UNAVAILABLE'
+  }
   if (!scene?.timeline || scene.timeline.status !== 'SUCCESS') return 'TIMELINE_NOT_AVAILABLE'
   const mapped = resolveActiveRampIndices(scene.timeline, scene.smoothedDecline, snapshotDay)
   if (typeof mapped === 'string') return 'TEMPORAL_MAPPING_INVALID'
@@ -83,6 +96,7 @@ export const TEMPORAL_READINESS_MESSAGES: Record<
   string
 > = {
   TIMELINE_NOT_AVAILABLE: 'Generate a successful timeline first',
+  SCENARIO_RAMP_UNAVAILABLE: 'Scenario ramp dimensions are unavailable',
   TEMPORAL_MAPPING_INVALID: 'Timeline does not map onto the decline segments',
   NO_COMPLETED_SEGMENT: 'No completed decline segment is available at this day.',
 }

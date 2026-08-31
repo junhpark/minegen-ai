@@ -8,9 +8,10 @@
  * Pose comes ONLY from the authoritative last-active Phase 05 effective
  * segment boundary: position = final effective centerline point (the FLOOR
  * centerline), orientation = the persisted boundaryTangents.end. A
- * gravity-aligned mine frame (forward, up = gravity component ⊥ forward,
- * right = forward × up... right-handed) is converted through the canonical
- * mine→Three rotation. The rectangular gate covers the Scenario-authored
+ * RIGHT-HANDED gravity-aligned mine frame — lateral = up × forward, up =
+ * gravity component ⊥ forward, forward — is converted through the
+ * canonical mine→Three rotation (a pure rotation, so handedness and the
+ * +1 determinant are preserved and the quaternion is well-defined). The rectangular gate covers the Scenario-authored
  * ramp cross-section with a small conservative margin — it is intentionally
  * NOT the D-profile and must never be reported as excavation geometry.
  */
@@ -61,10 +62,13 @@ export function resolveFrontierPose(
   const dz = forward[2]
   const up = norm([-dz * forward[0], -dz * forward[1], 1 - dz * forward[2]])
   if (!up) return null // vertical tangent cannot host a gate
-  const right: [number, number, number] = [
-    forward[1] * up[2] - forward[2] * up[1],
-    forward[2] * up[0] - forward[0] * up[2],
-    forward[0] * up[1] - forward[1] * up[0],
+  // lateral = up × forward => (lateral, up, forward) is RIGHT-handed
+  // (det +1); the previous forward × up ordering produced a reflection
+  // (det −1) that Quaternion.setFromRotationMatrix cannot represent
+  const lateral: [number, number, number] = [
+    up[1] * forward[2] - up[2] * forward[1],
+    up[2] * forward[0] - up[0] * forward[2],
+    up[0] * forward[1] - up[1] * forward[0],
   ]
   const halfH = ramp.tunnelHeight / 2
   const centerMine: [number, number, number] = [
@@ -72,7 +76,7 @@ export function resolveFrontierPose(
     floor[1] + up[1] * halfH,
     floor[2] + up[2] * halfH,
   ]
-  const rT = new Vector3(...mineToThree(...right))
+  const rT = new Vector3(...mineToThree(...lateral))
   const uT = new Vector3(...mineToThree(...up))
   const fT = new Vector3(...mineToThree(...forward))
   const q = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(rT, uT, fT))

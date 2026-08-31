@@ -9,6 +9,7 @@ import { useViewerStore } from '@/stores/viewerStore'
 import { temporalWalkthroughReadiness, walkthroughReadiness } from '@/walkthrough/readiness'
 import { MineViewportShell } from './MineViewportShell'
 import { resolveSelectedObject } from '@/walkthrough/selectionResolver'
+import { temporalSessionIdentity } from '@/walkthrough/temporalPlan'
 import { WalkthroughInspector } from '@/walkthrough/WalkthroughInspector'
 import { WalkthroughHUD } from '@/walkthrough/WalkthroughHUD'
 import { WalkthroughRuntime } from '@/walkthrough/WalkthroughRuntime'
@@ -34,6 +35,7 @@ export function MineCanvas() {
   const walkthroughContext = useViewerStore((s) => s.walkthroughContext)
   const walkthroughSnapshotDay = useViewerStore((s) => s.walkthroughSnapshotDay)
   const walkthroughReturnMode = useViewerStore((s) => s.walkthroughReturnMode)
+  const walkthroughSnapshotIdentity = useViewerStore((s) => s.walkthroughSnapshotIdentity)
   const [focusedKind, setFocusedKind] = useState<'MESH_ROUTER' | 'GAS_SENSOR' | null>(null)
   const selectedObjectId = useViewerStore((s) => s.selectedObjectId)
   const select = useViewerStore((s) => s.select)
@@ -49,14 +51,20 @@ export function MineCanvas() {
   const temporal = walkthroughContext === 'TIMELINE_SNAPSHOT'
   const readiness =
     temporal && walkthroughSnapshotDay !== null
-      ? temporalWalkthroughReadiness(scene, walkthroughSnapshotDay)
+      ? temporalWalkthroughReadiness(scene, walkthroughSnapshotDay, scenario?.ramp ?? null)
       : walkthroughReadiness(scene)
+  // rule 112: a temporal session never re-snapshots — if the captured
+  // artifact identity no longer matches the live scene, exit to 4D
+  const sessionStale =
+    temporal &&
+    walkthroughSnapshotIdentity !== null &&
+    temporalSessionIdentity(scene) !== walkthroughSnapshotIdentity
   useEffect(() => {
-    if (mode === 'WALKTHROUGH' && readiness !== 'READY') {
+    if (mode === 'WALKTHROUGH' && (readiness !== 'READY' || sessionStale)) {
       if (document.pointerLockElement) document.exitPointerLock()
       setMode(temporal ? walkthroughReturnMode : 'DESIGN')
     }
-  }, [mode, readiness, setMode, temporal, walkthroughReturnMode])
+  }, [mode, readiness, sessionStale, setMode, temporal, walkthroughReturnMode])
   useEffect(() => {
     if (cameraMode !== 'walkthrough') {
       setLocked(false)
@@ -111,7 +119,7 @@ export function MineCanvas() {
                 scene={scene}
                 context={temporal ? 'TIMELINE_SNAPSHOT' : 'STATIC_FINAL'}
                 snapshotDay={walkthroughSnapshotDay}
-                ramp={scenario?.ramp ?? { tunnelWidth: 5, tunnelHeight: 5.5 }}
+                ramp={scenario?.ramp ?? null}
                 onLockChange={setLocked}
                 onFocusChange={setFocusedKind}
                 onGeometryError={leaveWalkthrough}

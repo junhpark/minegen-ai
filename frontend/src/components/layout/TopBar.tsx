@@ -23,11 +23,14 @@ export function TopBar() {
   const setMode = useViewerStore((s) => s.setMode)
   const health = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 15000 })
   const scene = useScenarioStore((s) => s.scene)
+  const scenario = useScenarioStore((s) => s.scenario)
   const currentDay = useTimelineStore((s) => s.currentDay)
   // §12: Walk from 4D evaluates TEMPORAL readiness at the current day;
   // every other mode keeps the static Phase 13 gate
   const readiness =
-    mode === '4D' ? temporalWalkthroughReadiness(scene, currentDay) : walkthroughReadiness(scene)
+    mode === '4D'
+      ? temporalWalkthroughReadiness(scene, currentDay, scenario?.ramp ?? null)
+      : walkthroughReadiness(scene)
   const walkTooltip = temporalReadinessMessage(readiness)
 
   return (

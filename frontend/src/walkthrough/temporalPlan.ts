@@ -13,7 +13,7 @@
  * the frontend never guesses a temporal segment association.
  */
 import { stateAt } from '@/timeline/evaluate'
-import type { SmoothedDeclinePayload, TimelinePayload } from '@/types/scene'
+import type { SmoothedDeclinePayload, TimelinePayload, WorldScene } from '@/types/scene'
 import type { TunnelRuntimeGeometry } from './tunnelRuntimeGeometry'
 
 export const SMOOTHED_ARTIFACT = 'decline_smoothed.json'
@@ -148,4 +148,25 @@ export function resolveTemporalWalkthroughPlan(
     lastActiveSegmentIndex,
     frontier,
   }
+}
+
+/**
+ * Content identity of the artifacts a temporal session depends on
+ * (rule 112, PR #12 blocker 2). Built from stable authored values —
+ * timeline.sourceRevision, the tunnel mesh URL and the smoothed segment
+ * identity list — so a no-op scene refetch keeps the same identity while
+ * any real regeneration changes it. Null when a required artifact is
+ * missing.
+ */
+export function temporalSessionIdentity(scene: WorldScene | null | undefined): string | null {
+  const timeline = scene?.timeline
+  const smoothed = scene?.smoothedDecline
+  const tunnel = scene?.tunnelMesh
+  if (!timeline || timeline.status !== 'SUCCESS') return null
+  if (!smoothed || !smoothed.segments || smoothed.segments.length === 0) return null
+  if (!tunnel || tunnel.status !== 'SUCCESS' || !tunnel.meshUrl) return null
+  const segKey = smoothed.segments
+    .map((s) => `${s.levelId}:${s.effectiveCenterline?.pointCount ?? 0}`)
+    .join(',')
+  return `${timeline.sourceRevision}|${tunnel.meshUrl}|${segKey}`
 }
