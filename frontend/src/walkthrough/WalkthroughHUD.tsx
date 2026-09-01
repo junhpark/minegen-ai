@@ -1,4 +1,5 @@
 import { NAVIGATION_MODES, type WalkthroughNavigationMode } from './navigation'
+import type { TeleportTarget } from './teleport'
 
 /**
  * Compact walkthrough overlay (Phase 16 §31–34): center crosshair, a
@@ -36,12 +37,17 @@ export function WalkthroughHUD({
   snapshotDay = null,
   navigationMode,
   onNavigationMode,
+  teleportTargets = [],
+  onTeleport,
   perfRef,
 }: {
   focusedKind: 'MESH_ROUTER' | 'GAS_SENSOR' | null
   snapshotDay?: number | null
   navigationMode: WalkthroughNavigationMode
   onNavigationMode: (mode: WalkthroughNavigationMode) => void
+  /** decline stations for the level-teleport select (hotfix 2) */
+  teleportTargets?: readonly TeleportTarget[]
+  onTeleport?: (chainageM: number) => void
   perfRef?: { current: HTMLDivElement | null }
 }) {
   const temporal = snapshotDay !== null
@@ -58,7 +64,28 @@ export function WalkthroughHUD({
           <div className="text-chalk-dim">E Inspect</div>
         </div>
       ) : null}
-      <div className="pointer-events-auto absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1">
+      <div className="pointer-events-auto absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1">
+        {teleportTargets.length > 0 && onTeleport ? (
+          <select
+            aria-label="Teleport to level"
+            className="plate rounded-sm bg-rock-900/80 px-1.5 py-0.5 text-[11px] text-chalk-dim"
+            value=""
+            onChange={(e) => {
+              const t = teleportTargets.find((x) => x.id === e.target.value)
+              if (t) onTeleport(t.chainageM)
+              e.target.value = ''
+            }}
+          >
+            <option value="" disabled>
+              Go to…
+            </option>
+            {teleportTargets.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label} · CH {t.chainageM.toFixed(0)} m
+              </option>
+            ))}
+          </select>
+        ) : null}
         {NAVIGATION_MODES.map((m, i) => (
           <button
             key={m}

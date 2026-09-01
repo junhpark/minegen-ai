@@ -7,7 +7,8 @@ import {
   droneVelocity,
   navigationBody,
   personSpeed,
-  vehicleStep,
+  vehicleDriveVelocity,
+  vehicleSteerDelta,
   VEHICLE_CONFIG,
   type WalkthroughNavigationMode,
 } from './navigation'
@@ -37,6 +38,7 @@ export function WalkthroughPlayer({
   spawn,
   keyState,
   resetSignal,
+  teleportRef,
   telemetry,
 }: {
   mode: WalkthroughNavigationMode
@@ -44,19 +46,20 @@ export function WalkthroughPlayer({
   spawn: WalkthroughSpawn
   keyState: KeyState
   resetSignal: { current: number }
+  /** when set, the next reset lands at this pose instead of the entry
+   * spawn (level teleport); consumed once */
+  teleportRef: { current: WalkthroughSpawn | null }
   telemetry: WalkthroughTelemetry
 }) {
   const body = useRef<RapierRigidBody>(null)
   const camera = useThree((s) => s.camera)
   const appliedReset = useRef(-1)
   const look = useRef<LookState>({ yaw: spawn.yaw, pitch: 0 })
-  const heading = useRef(spawn.yaw)
   const nav = navigationBody(mode)
   const eyeOffset = nav.eyeHeightM - nav.bodyHeightM / 2
 
   useEffect(() => {
     look.current = { yaw: spawn.yaw, pitch: 0 }
-    heading.current = spawn.yaw
     camera.rotation.order = 'YXZ'
     camera.rotation.set(0, spawn.yaw, 0)
   }, [camera, spawn])
@@ -66,26 +69,35 @@ export function WalkthroughPlayer({
     if (!rb) return
     if (resetSignal.current !== appliedReset.current) {
       appliedReset.current = resetSignal.current
+      // R -> entry spawn; level teleport -> the requested station pose
+      const target = teleportRef.current ?? spawn
+      teleportRef.current = null
       rb.setTranslation(
         {
-          x: spawn.bodyPositionThree[0],
-          y: spawn.bodyPositionThree[1],
-          z: spawn.bodyPositionThree[2],
+          x: target.bodyPositionThree[0],
+          y: target.bodyPositionThree[1],
+          z: target.bodyPositionThree[2],
         },
         true,
       )
       rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
       rb.setAngvel({ x: 0, y: 0, z: 0 }, true)
       keyState.clear()
-      look.current = { yaw: spawn.yaw, pitch: 0 }
-      heading.current = spawn.yaw
+      look.current = { yaw: target.yaw, pitch: 0 }
     }
     look.current = applyLook(look.current, keyState.look, delta, config)
+    if (mode === 'VEHICLE') {
+      // A/D steer the CAMERA yaw — the vehicle drives where you look
+      look.current = {
+        yaw: look.current.yaw + vehicleSteerDelta(keyState.keys, delta, VEHICLE_CONFIG),
+        pitch: look.current.pitch,
+      }
+    }
     camera.rotation.order = 'YXZ'
     camera.rotation.set(look.current.pitch, look.current.yaw, 0)
 
     const lv = rb.linvel()
-    let headingForMap = look.current.yaw
+    const headingForMap = look.current.yaw
     if (mode === 'PERSON') {
       const [vx, vz] = desiredHorizontalVelocity(
         keyState.keys,
@@ -94,20 +106,22 @@ export function WalkthroughPlayer({
       )
       rb.setLinvel({ x: vx, y: lv.y, z: vz }, true)
     } else if (mode === 'VEHICLE') {
-      const step = vehicleStep(
-        { headingYaw: heading.current },
-        { ...keyState.keys, boost: keyState.actions.boost },
-        delta,
+      const [vx, vz] = vehicleDriveVelocity(
+        {
+          forward: keyState.keys.forward,
+          backward: keyState.keys.backward,
+          boost: keyState.actions.boost,
+        },
+        look.current.yaw,
         VEHICLE_CONFIG,
       )
-      heading.current = step.headingYaw
-      headingForMap = step.headingYaw
-      rb.setLinvel({ x: step.vx, y: lv.y, z: step.vz }, true)
+      rb.setLinvel({ x: vx, y: lv.y, z: vz }, true)
     } else {
       const [vx, vy, vz] = droneVelocity(
         { ...keyState.keys, boost: keyState.actions.boost },
         { up: keyState.actions.up, down: keyState.actions.down },
         look.current.yaw,
+        look.current.pitch,
       )
       rb.setLinvel({ x: vx, y: vy, z: vz }, true)
     }

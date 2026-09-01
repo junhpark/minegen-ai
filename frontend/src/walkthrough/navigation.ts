@@ -43,8 +43,8 @@ export const PERSON_CONFIG: PersonConfig = {
   bodyRadiusM: 0.3,
   eyeHeightM: 1.6,
   gravityScale: 1,
-  walkSpeedMps: 2.0,
-  runSpeedMps: 5.8,
+  walkSpeedMps: 4.0,
+  runSpeedMps: 7.0,
 }
 
 export const VEHICLE_CONFIG: VehicleConfig = {
@@ -79,56 +79,74 @@ export function personSpeed(boost: boolean, config: PersonConfig = PERSON_CONFIG
   return boost ? config.runSpeedMps : config.walkSpeedMps
 }
 
-export interface VehicleState {
-  /** movement heading (Three yaw convention), decoupled from camera look */
-  headingYaw: number
-}
-
 /**
- * Vehicle navigation step (§6): W/S drive along a heading that A/D steer
- * at a bounded dt-scaled rate — smoother than strafing, no instantaneous
- * direction flips, no vertical user motion (gravity keeps the body on the
- * road). Reverse uses the same bounded speed.
+ * Vehicle drive velocity (hotfix 2): the vehicle drives WHERE THE CAMERA
+ * LOOKS — one mental model, no hidden heading state. W/S drive
+ * forward/reverse along the camera yaw at a bounded speed (Shift boost);
+ * A/D contribute additional yaw steering (see vehicleSteerDelta) so both
+ * A/D and J/L turn the same camera. No strafing, no vertical user motion.
  */
-export function vehicleStep(
-  state: VehicleState,
-  keys: MovementKeys & { boost: boolean },
-  dtSeconds: number,
+export function vehicleDriveVelocity(
+  keys: { forward: boolean; backward: boolean; boost: boolean },
+  yaw: number,
   config: VehicleConfig = VEHICLE_CONFIG,
-): { headingYaw: number; vx: number; vz: number } {
-  const rate = (config.steeringRateDegPerSec * Math.PI) / 180
-  let heading = state.headingYaw
-  if (keys.left) heading += rate * dtSeconds
-  if (keys.right) heading -= rate * dtSeconds
+): [number, number] {
   const drive = (keys.forward ? 1 : 0) - (keys.backward ? 1 : 0)
   const speed = (keys.boost ? config.boostSpeedMps : config.speedMps) * drive
-  return { headingYaw: heading, vx: -Math.sin(heading) * speed, vz: -Math.cos(heading) * speed }
+  return [-Math.sin(yaw) * speed, -Math.cos(yaw) * speed]
 }
 
 /**
- * Drone velocity (§8–9): WASD horizontal from camera YAW only (diagonals
- * normalized), Space/C vertical at a fixed rate, Shift boosts the
- * horizontal magnitude. Gravity is off; the exact tunnel trimesh and the
- * temporal frontier remain the collision boundary — never noclip.
+ * Bounded A/D steering as a camera-yaw delta (dt-scaled, 60 deg/s):
+ * applied ON TOP of the shared IJKL look, so the drive direction is
+ * always exactly the view direction.
+ */
+export function vehicleSteerDelta(
+  keys: { left: boolean; right: boolean },
+  dtSeconds: number,
+  config: VehicleConfig = VEHICLE_CONFIG,
+): number {
+  const rate = (config.steeringRateDegPerSec * Math.PI) / 180
+  let d = 0
+  if (keys.left) d += rate * dtSeconds
+  if (keys.right) d -= rate * dtSeconds
+  return d
+}
+
+/**
+ * Drone velocity (hotfix 2): FULL 3D camera-direction flight. W/S move
+ * along the exact camera view direction (yaw + pitch) so following a
+ * declining tunnel is just "look along it and press W" — the previous
+ * horizontal-only model forced constant manual descent. A/D strafe
+ * horizontally, Space/C add direct vertical on top, Shift boosts the
+ * whole flight vector. Gravity stays off; the tunnel trimesh + temporal
+ * frontier remain the collision boundary — never noclip.
  */
 export function droneVelocity(
   keys: MovementKeys & { boost: boolean },
   vertical: { up: boolean; down: boolean },
   yaw: number,
+  pitch: number,
   config: DroneConfig = DRONE_CONFIG,
 ): [number, number, number] {
-  const fx = -Math.sin(yaw)
-  const fz = -Math.cos(yaw)
+  const cp = Math.cos(pitch)
+  const sp = Math.sin(pitch)
+  const fx = -Math.sin(yaw) * cp
+  const fy = sp
+  const fz = -Math.cos(yaw) * cp
   const rx = Math.cos(yaw)
   const rz = -Math.sin(yaw)
   let dx = 0
+  let dy = 0
   let dz = 0
   if (keys.forward) {
     dx += fx
+    dy += fy
     dz += fz
   }
   if (keys.backward) {
     dx -= fx
+    dy -= fy
     dz -= fz
   }
   if (keys.right) {
@@ -139,12 +157,17 @@ export function droneVelocity(
     dx -= rx
     dz -= rz
   }
-  const len = Math.hypot(dx, dz)
+  const len = Math.hypot(dx, dy, dz)
   const speed = keys.boost ? config.boostSpeedMps : config.horizontalSpeedMps
-  const vx = len > 1e-9 ? (dx / len) * speed : 0
-  const vz = len > 1e-9 ? (dz / len) * speed : 0
-  const vy =
-    (vertical.up ? config.verticalSpeedMps : 0) - (vertical.down ? config.verticalSpeedMps : 0)
+  let vx = 0
+  let vy = 0
+  let vz = 0
+  if (len > 1e-9) {
+    vx = (dx / len) * speed
+    vy = (dy / len) * speed
+    vz = (dz / len) * speed
+  }
+  vy += (vertical.up ? config.verticalSpeedMps : 0) - (vertical.down ? config.verticalSpeedMps : 0)
   return [vx, vy, vz]
 }
 

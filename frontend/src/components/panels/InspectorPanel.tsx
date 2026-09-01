@@ -45,7 +45,7 @@ export function InspectorPanel() {
             <dd>{candidate.uCoord.toFixed(1)} m</dd>
             <dt className="text-mute">Footwall offset</dt>
             <dd>{candidate.footwallOffset.toFixed(1)} m</dd>
-            <dt className="text-mute">Rock quality</dt>
+            <dt className="text-mute">Rock quality (RMR-like)</dt>
             <dd>{candidate.rockQuality?.toFixed(1) ?? '—'}</dd>
             <dt className="text-mute">Fault penalty</dt>
             <dd>{candidate.faultPenalty?.toFixed(2) ?? '—'}</dd>
@@ -137,7 +137,7 @@ export function InspectorPanel() {
             </dd>
             <dt className="text-mute">Mean grade</dt>
             <dd>{bm.meanOreGrade.toFixed(2)}</dd>
-            <dt className="text-mute">Rock quality</dt>
+            <dt className="text-mute">Rock quality (RMR-like)</dt>
             <dd>{bm.rockQualityMean.toFixed(1)} mean</dd>
             <dt className="text-mute">Fault blocks</dt>
             <dd>

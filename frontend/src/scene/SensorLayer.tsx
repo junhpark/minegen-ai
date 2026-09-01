@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useViewerStore } from '@/stores/viewerStore'
 import * as THREE from 'three'
 import { mineToThree } from '@/geometry/coordinateTransform'
 import { sensorMarkers } from '@/infrastructure/view'
@@ -15,6 +16,7 @@ const SENSOR_COLOR = new THREE.Color('#e0a94e')
 export function SensorLayer({ sensors }: { sensors: SensorPayload }) {
   const markers = useMemo(() => sensorMarkers(sensors), [sensors])
   const meshRef = useRef<THREE.InstancedMesh>(null)
+  const select = useViewerStore((s) => s.select)
 
   useLayoutEffect(() => {
     const mesh = meshRef.current
@@ -36,6 +38,15 @@ export function SensorLayer({ sensors }: { sensors: SensorPayload }) {
       ref={meshRef}
       args={[undefined, undefined, markers.length]}
       frustumCulled={false}
+      onClick={(e) => {
+        // hotfix 2 (item 12): orbit-mode click selection — the transient
+        // instanceId only LOOKS UP the authoritative backend asset id
+        // (rule 109: indices never become identity)
+        e.stopPropagation()
+        const i = e.instanceId
+        const marker = i != null ? markers[i] : undefined
+        if (marker) select(marker.id)
+      }}
     >
       <tetrahedronGeometry args={[2.0, 0]} />
       <meshStandardMaterial roughness={0.5} metalness={0.15} />

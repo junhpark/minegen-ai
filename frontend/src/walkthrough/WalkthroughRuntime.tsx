@@ -11,7 +11,7 @@ import { useViewerStore as useViewerStoreNav } from '@/stores/viewerStore'
 import type { WalkthroughTelemetry } from './telemetry'
 import { resolveTemporalWalkthroughPlan } from './temporalPlan'
 import { FrontierBarrier } from './FrontierBarrier'
-import { resolveWalkthroughSpawn } from './spawn'
+import { resolveSpawnAtChainage, resolveWalkthroughSpawn, type WalkthroughSpawn } from './spawn'
 import { extractTunnelRuntimeGeometry } from './tunnelRuntimeGeometry'
 import { TunnelColliderSet } from './TunnelColliderSet'
 import { WalkthroughControls } from './WalkthroughControls'
@@ -39,6 +39,7 @@ export function WalkthroughRuntime({
   ramp,
   perfRef,
   telemetry,
+  registerTeleport,
   onFocusChange,
   onGeometryError,
 }: {
@@ -49,6 +50,8 @@ export function WalkthroughRuntime({
   ramp: { tunnelWidth: number; tunnelHeight: number } | null
   perfRef: { current: HTMLDivElement | null }
   telemetry: WalkthroughTelemetry
+  /** MineCanvas registers the HUD-facing teleport executor here */
+  registerTeleport: (fn: ((chainageM: number) => void) | null) => void
   onFocusChange: (kind: 'MESH_ROUTER' | 'GAS_SENSOR' | null) => void
   onGeometryError: () => void
 }) {
@@ -79,6 +82,7 @@ export function WalkthroughRuntime({
   // owned here so EVERY lifecycle exit can reach it (PR #11 blocker 1)
   const inspectTrigger = useMemo(() => createInspectTrigger(), [])
   const resetSignal = useRef(0)
+  const teleportRef = useRef<WalkthroughSpawn | null>(null)
   const focusedRef = useRef<string | null>(null)
   // mirror of focusedRef for rendering; updated ONLY when the id changes
   const [focusedId, setFocusedId] = useState<string | null>(null)
@@ -172,6 +176,26 @@ export function WalkthroughRuntime({
   const reset = useCallback(() => {
     resetSignal.current += 1
   }, [])
+  // level teleport (hotfix 2): same deterministic spawn rules at a chosen
+  // decline chainage; invalid chainages are ignored, never guessed
+  const navBodyHeight = navigationBody(navigationMode).bodyHeightM
+  useEffect(() => {
+    registerTeleport((chainageM: number) => {
+      const pose = resolveSpawnAtChainage(
+        planSmoothed,
+        {
+          ...WALKTHROUGH_CONFIG,
+          bodyHeightM: navBodyHeight,
+        },
+        chainageM,
+      )
+      if (pose) {
+        teleportRef.current = pose
+        resetSignal.current += 1
+      }
+    })
+    return () => registerTeleport(null)
+  }, [registerTeleport, planSmoothed, navBodyHeight])
   // both keyboard and HUD funnel through the store; the mode-scoped
   // KeyState above owns the transient-input lifecycle (§29 spawn remount
   // via key={navigationMode} is unchanged)
@@ -230,6 +254,7 @@ export function WalkthroughRuntime({
           spawn={spawn}
           keyState={keyState}
           resetSignal={resetSignal}
+          teleportRef={teleportRef}
           telemetry={telemetry}
         />
       </Physics>

@@ -373,3 +373,32 @@ not mapped discontinuities, DFN, RMR or any geological claim.
 
 DEV perf overlay moved bottom-right; the bounded sampler now lives in
 perfSampler.ts (component files export only components).
+
+### Phase 16 hotfix 2 — acceptance polish (Park-directed)
+
+Browser acceptance follow-ups fixed directly on the Phase 16 branch:
+timeline development/stope layers no longer frustum-cull (their
+day-rebuilt geometries could vanish at some camera angles); grade blocks
+are suppressed in 4D only (the stope sequence is the 4D story — DESIGN
+keeps the layer and the stored user toggle is untouched); the four
+infrastructure layers (routers, communication coverage, sensors,
+monitoring coverage) are default-visible, which only manifests inside
+INFRASTRUCTURE mode; router/sensor markers are click-selectable in orbit
+(the transient instanceId only looks up the authoritative backend id);
+rock-quality labels now state the backend contract — a synthetic
+RMR-like 0-100 index, not measured RMR. Navigation: PERSON is an
+inspection pace (4.0 walk / 7.0 run m/s); VEHICLE drives WHERE THE
+CAMERA LOOKS (A/D steer the camera yaw at a bounded 60 deg/s on top of
+IJKL — no hidden heading state); DRONE flies along the full camera
+direction (pitch flies), which makes ramp following natural. A level
+teleport select ("Go to…") jumps to the portal or any on-decline
+LEVEL_ENTRY station via the SAME deterministic spawn rules at the
+station chainage — in temporal snapshots the station list derives from
+the ACTIVE-prefix centerline, so beyond-frontier entries are never
+offered. The minimap gained a longitudinal CH-RL profile strip fed by
+the same ACTIVE-prefix chainage points.
+
+Deferred to Phase 17+: orebody/fault randomization, irregular orebody +
+regularized ramp patterns, third-person/truck view, true 3D minimap,
+drone tunnel-relative altitude, access-target concept revisit, Analysis
+mode (reserved since Phase 01).

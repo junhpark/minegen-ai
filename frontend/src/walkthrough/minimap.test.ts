@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { SmoothedDeclinePayload } from '@/types/scene'
-import { approximateChainage, bearingDegFromYaw, buildMinimapModel, mineXYToMap } from './minimap'
+import {
+  approximateChainage,
+  bearingDegFromYaw,
+  buildMinimapModel,
+  buildProfileModel,
+  mineXYToMap,
+} from './minimap'
 
 function smoothed(): SmoothedDeclinePayload {
   const seg = (levelId: string, pts: number[]) => ({
@@ -58,5 +64,31 @@ describe('minimap model + projection (§39)', () => {
     const expected = Math.hypot(0, 50, 5) + Math.hypot(40, 0, 5) + Math.hypot(0, 40, 5)
     expect(total.chainageM).toBeCloseTo(expected, 6)
     expect(approximateChainage([0, 0, 0], [])).toBeNull()
+  })
+})
+
+describe('longitudinal profile model (hotfix 2, item 8)', () => {
+  it('maps chainage to elevation over the emitted centerline', () => {
+    const m = buildMinimapModel(smoothed(), null)
+    const p = buildProfileModel(m.chainagePoints)!
+    expect(p).not.toBeNull()
+    expect(p.points[0]).toEqual([0, 0])
+    expect(p.zMax).toBe(0)
+    expect(p.zMin).toBe(-15)
+    const expectedTotal = Math.hypot(0, 50, 5) + Math.hypot(40, 0, 5) + Math.hypot(0, 40, 5)
+    expect(p.totalM).toBeCloseTo(expectedTotal, 6)
+    expect(p.points[p.points.length - 1]![1]).toBe(-15)
+  })
+
+  it('temporal profile derives from the ACTIVE prefix only', () => {
+    const m = buildMinimapModel(smoothed(), ['SEG:A'])
+    const p = buildProfileModel(m.chainagePoints)!
+    expect(p.totalM).toBeCloseTo(Math.hypot(0, 50, 5), 6)
+    expect(p.zMin).toBe(-5) // future depth never appears
+  })
+
+  it('fails closed on degenerate input', () => {
+    expect(buildProfileModel([])).toBeNull()
+    expect(buildProfileModel([1, 2, 3])).toBeNull()
   })
 })

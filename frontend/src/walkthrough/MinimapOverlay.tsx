@@ -4,6 +4,7 @@ import {
   approximateChainage,
   bearingDegFromYaw,
   buildMinimapModel,
+  buildProfileModel,
   MINIMAP_RADIUS_M,
   mineXYToMap,
 } from './minimap'
@@ -11,6 +12,8 @@ import type { WalkthroughTelemetry } from './telemetry'
 
 const SIZE = 176 // px
 const SCALE = SIZE / (MINIMAP_RADIUS_M * 2) // px per metre
+const PROFILE_H = 56 // px, longitudinal strip below the plan map
+const PROFILE_PAD = 6
 
 /**
  * North-up FOLLOW minimap (§12–19): a pure SVG overlay — no second Three
@@ -35,8 +38,21 @@ export function MinimapOverlay({
     () => buildMinimapModel(smoothed, activeSegmentIds),
     [smoothed, activeSegmentIds],
   )
+  const profile = useMemo(() => buildProfileModel(model.chainagePoints), [model])
+  const profilePath = useMemo(() => {
+    if (!profile || profile.totalM < 1e-6) return ''
+    const zSpan = Math.max(profile.zMax - profile.zMin, 1e-6)
+    return profile.points
+      .map(([ch, z], i) => {
+        const x = PROFILE_PAD + (ch / profile.totalM) * (SIZE - 2 * PROFILE_PAD)
+        const y = PROFILE_PAD + ((profile.zMax - z) / zSpan) * (PROFILE_H - 2 * PROFILE_PAD)
+        return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`
+      })
+      .join(' ')
+  }, [profile])
   const world = useRef<SVGGElement | null>(null)
   const arrow = useRef<SVGGElement | null>(null)
+  const profileDot = useRef<SVGCircleElement | null>(null)
   const readout = useRef<HTMLDivElement | null>(null)
   const modeLine = useRef<HTMLDivElement | null>(null)
 
@@ -63,12 +79,22 @@ export function MinimapOverlay({
           `E ${e >= 0 ? '+' : ''}${e.toFixed(0)} m  N ${n >= 0 ? '+' : ''}${n.toFixed(0)} m\n` +
           `RL ${rl.toFixed(0)} m${ch ? `  CH ${ch.chainageM.toFixed(0)} m` : ''}`
       }
+      if (profileDot.current && profile && profile.totalM > 1e-6) {
+        const ch = approximateChainage([e, n, rl], model.chainagePoints)
+        if (ch) {
+          const zSpan = Math.max(profile.zMax - profile.zMin, 1e-6)
+          const x = PROFILE_PAD + (ch.chainageM / profile.totalM) * (SIZE - 2 * PROFILE_PAD)
+          const y = PROFILE_PAD + ((profile.zMax - rl) / zSpan) * (PROFILE_H - 2 * PROFILE_PAD)
+          profileDot.current.setAttribute('cx', x.toFixed(1))
+          profileDot.current.setAttribute('cy', Math.max(2, Math.min(PROFILE_H - 2, y)).toFixed(1))
+        }
+      }
       if (modeLine.current) {
         modeLine.current.textContent = `${telemetry.mode}\nSpeed ${telemetry.speed.toFixed(1)} m/s`
       }
     }, 125)
     return () => window.clearInterval(id)
-  }, [telemetry, model])
+  }, [telemetry, model, profile])
 
   return (
     <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-1">
@@ -123,6 +149,21 @@ export function MinimapOverlay({
         </text>
         <line x1={SIZE - 8} y1={18} x2={SIZE - 8} y2={8} stroke="#8a95a1" strokeWidth={1} />
       </svg>
+      {profilePath ? (
+        <svg
+          width={SIZE}
+          height={PROFILE_H}
+          className="rounded-sm border border-rock-700 bg-rock-950/85"
+          role="img"
+          aria-label="Decline profile"
+        >
+          <path d={profilePath} fill="none" stroke="#c9a35a" strokeWidth={1.4} />
+          <circle ref={profileDot} r={3} cx={PROFILE_PAD} cy={PROFILE_PAD} fill="#ffd894" />
+          <text x={4} y={PROFILE_H - 4} fill="#8a95a1" fontSize={9} className="readout">
+            CH-RL
+          </text>
+        </svg>
+      ) : null}
       <div
         ref={modeLine}
         className="readout whitespace-pre rounded-sm bg-rock-900/80 px-2 py-1 text-[11px] text-lamp"

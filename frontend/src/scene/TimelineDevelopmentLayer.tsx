@@ -1,4 +1,17 @@
 import { useMemo } from 'react'
+import { extend, type ThreeElement } from '@react-three/fiber'
+import { Line } from 'three'
+
+// React's JSX resolves <line> to the SVG element, which rejects Three
+// props like frustumCulled — register an explicit Three Line element
+// (R3F v9 pattern) so the timeline polylines are properly typed.
+extend({ TimelineLine: Line })
+
+declare module '@react-three/fiber' {
+  interface ThreeElements {
+    timelineLine: ThreeElement<typeof Line>
+  }
+}
 import { positionsToThree } from '@/geometry/coordinateTransform'
 import { useTimelineStore } from '@/stores/timelineStore'
 import { clipPolylineByFractions, developmentProgress, stateAt } from '@/timeline/evaluate'
@@ -60,12 +73,12 @@ export function TimelineDevelopmentLayer({
   return (
     <group>
       {lines.map((l) => (
-        <line key={l.key}>
+        <timelineLine key={l.key} frustumCulled={false}>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[l.positions, 3]} />
           </bufferGeometry>
           <lineBasicMaterial color={l.color} transparent opacity={0.95} />
-        </line>
+        </timelineLine>
       ))}
     </group>
   )

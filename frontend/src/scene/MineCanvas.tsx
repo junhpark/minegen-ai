@@ -17,6 +17,8 @@ import { API_BASE_URL } from '@/api/client'
 import { WALKTHROUGH_DPR } from '@/walkthrough/config'
 import { MinimapOverlay } from '@/walkthrough/MinimapOverlay'
 import { createTelemetry } from '@/walkthrough/telemetry'
+import { buildMinimapModel } from '@/walkthrough/minimap'
+import { resolveTeleportTargets } from '@/walkthrough/teleport'
 import { temporalActiveSegmentIds } from '@/walkthrough/temporalPlan'
 
 /**
@@ -37,6 +39,10 @@ export function MineCanvas() {
   const [target, setTarget] = useState<[number, number, number]>(mineToThree(0, 0, baseZ))
   const perfRef = useRef<HTMLDivElement | null>(null)
   const telemetry = useMemo(() => createTelemetry(), [])
+  const teleportFn = useRef<((chainageM: number) => void) | null>(null)
+  const registerTeleport = useCallback((fn: ((chainageM: number) => void) | null) => {
+    teleportFn.current = fn
+  }, [])
   const navigationMode = useViewerStore((s) => s.navigationMode)
   const setNavigationMode = useViewerStore((s) => s.setNavigationMode)
   const walkthroughContext = useViewerStore((s) => s.walkthroughContext)
@@ -86,6 +92,17 @@ export function MineCanvas() {
     [setMode, temporal, walkthroughReturnMode],
   )
 
+  const walkActiveIds =
+    temporal && walkthroughSnapshotDay !== null && scene?.smoothedDecline
+      ? temporalActiveSegmentIds(scene.timeline, scene.smoothedDecline, walkthroughSnapshotDay)
+      : null
+  // level teleport targets over the currently walkable centerline
+  const teleportTargets = useMemo(() => {
+    if (!scene?.smoothedDecline) return []
+    const model = buildMinimapModel(scene.smoothedDecline, walkActiveIds)
+    return resolveTeleportTargets(scene, model.chainagePoints)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene, temporal, walkthroughSnapshotDay])
   const walkable =
     cameraMode === 'walkthrough' &&
     readiness === 'READY' &&
@@ -125,6 +142,7 @@ export function MineCanvas() {
                 ramp={scenario?.ramp ?? null}
                 perfRef={perfRef}
                 telemetry={telemetry}
+                registerTeleport={registerTeleport}
                 onFocusChange={setFocusedKind}
                 onGeometryError={leaveWalkthrough}
               />
@@ -148,20 +166,14 @@ export function MineCanvas() {
                 snapshotDay={temporal ? walkthroughSnapshotDay : null}
                 navigationMode={navigationMode}
                 onNavigationMode={setNavigationMode}
+                teleportTargets={teleportTargets}
+                onTeleport={(ch) => teleportFn.current?.(ch)}
                 perfRef={perfRef}
               />
               {scene?.smoothedDecline ? (
                 <MinimapOverlay
                   smoothed={scene.smoothedDecline}
-                  activeSegmentIds={
-                    temporal && walkthroughSnapshotDay !== null
-                      ? temporalActiveSegmentIds(
-                          scene.timeline,
-                          scene.smoothedDecline,
-                          walkthroughSnapshotDay,
-                        )
-                      : null
-                  }
+                  activeSegmentIds={walkActiveIds}
                   telemetry={telemetry}
                 />
               ) : null}

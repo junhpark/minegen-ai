@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SmoothedDeclinePayload } from '@/types/scene'
 import { WALKTHROUGH_CONFIG } from './config'
-import { resolveWalkthroughSpawn } from './spawn'
+import { resolveSpawnAtChainage, resolveWalkthroughSpawn } from './spawn'
 
 function smoothed(points: number[]): SmoothedDeclinePayload {
   return {
@@ -64,5 +64,36 @@ describe('deterministic walkthrough spawn (rule 102)', () => {
     expect(
       resolveWalkthroughSpawn(smoothed([0, 0, 0, 0, 0, -10, 0, 0, -20]), WALKTHROUGH_CONFIG),
     ).toBeNull()
+  })
+})
+
+describe('resolveSpawnAtChainage (hotfix 2 — level teleport pose)', () => {
+  const multi = {
+    segments: [
+      { levelId: 'A', effectiveCenterline: { points: [0, 0, 0, 0, 30, -3], pointCount: 2 } },
+      { levelId: 'B', effectiveCenterline: { points: [0, 30, -3, 0, 60, -6], pointCount: 2 } },
+    ],
+  } as never
+
+  it('walks across segment boundaries (shared point deduplicated)', () => {
+    const pose = resolveSpawnAtChainage(multi, WALKTHROUGH_CONFIG, 45)!
+    expect(pose).not.toBeNull()
+    // 45 m along a straight north line of ~60.3 m total: y ≈ 44.8
+    expect(pose.floorPositionMine[1]).toBeGreaterThan(43)
+    expect(pose.floorPositionMine[1]).toBeLessThan(46)
+    expect(pose.floorPositionMine[2]).toBeLessThan(-4) // on the second segment grade
+  })
+
+  it('entry spawn is exactly the chainage form at spawnChainageM', () => {
+    const a = resolveWalkthroughSpawn(multi, WALKTHROUGH_CONFIG)!
+    const b = resolveSpawnAtChainage(multi, WALKTHROUGH_CONFIG, WALKTHROUGH_CONFIG.spawnChainageM)!
+    expect(a.floorPositionMine).toEqual(b.floorPositionMine)
+    expect(a.yaw).toBe(b.yaw)
+  })
+
+  it('fails closed on out-of-range or invalid chainage', () => {
+    expect(resolveSpawnAtChainage(multi, WALKTHROUGH_CONFIG, 10_000)).toBeNull()
+    expect(resolveSpawnAtChainage(multi, WALKTHROUGH_CONFIG, -1)).toBeNull()
+    expect(resolveSpawnAtChainage(multi, WALKTHROUGH_CONFIG, Number.NaN)).toBeNull()
   })
 })

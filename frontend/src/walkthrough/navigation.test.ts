@@ -9,7 +9,8 @@ import {
   PERSON_CONFIG,
   personSpeed,
   VEHICLE_CONFIG,
-  vehicleStep,
+  vehicleDriveVelocity,
+  vehicleSteerDelta,
 } from './navigation'
 
 const K = (over: Partial<typeof NO_KEYS & { boost: boolean }>) => ({
@@ -33,8 +34,8 @@ describe('navigation mode configuration (§35)', () => {
   })
 
   it('pins speeds and gravity per mode', () => {
-    expect(PERSON_CONFIG.walkSpeedMps).toBe(2.0)
-    expect(PERSON_CONFIG.runSpeedMps).toBeCloseTo(5.8)
+    expect(PERSON_CONFIG.walkSpeedMps).toBe(4.0) // inspection pace (hotfix 2)
+    expect(PERSON_CONFIG.runSpeedMps).toBeCloseTo(7.0)
     expect(PERSON_CONFIG.gravityScale).toBe(1)
     expect(VEHICLE_CONFIG.speedMps).toBe(8.0)
     expect(VEHICLE_CONFIG.boostSpeedMps).toBe(12.0)
@@ -50,64 +51,66 @@ describe('navigation mode configuration (§35)', () => {
 
 describe('PERSON (§36)', () => {
   it('walks by default and runs while Shift is held — horizontal magnitude only', () => {
-    expect(personSpeed(false)).toBe(2.0)
-    expect(personSpeed(true)).toBeCloseTo(5.8)
+    expect(personSpeed(false)).toBe(4.0)
+    expect(personSpeed(true)).toBeCloseTo(7.0)
   })
 })
 
-describe('VEHICLE (§37)', () => {
-  it('drives along a heading with a bounded dt-scaled steering rate', () => {
-    const rate = (VEHICLE_CONFIG.steeringRateDegPerSec * Math.PI) / 180
-    const s1 = vehicleStep({ headingYaw: 0 }, K({ left: true }), 0.5, VEHICLE_CONFIG)
-    expect(s1.headingYaw).toBeCloseTo(rate * 0.5, 12) // A steers left (+yaw)
-    const s2 = vehicleStep({ headingYaw: 0 }, K({ right: true }), 0.5, VEHICLE_CONFIG)
-    expect(s2.headingYaw).toBeCloseTo(-rate * 0.5, 12)
-    // no instantaneous 180°: one 60 fps frame turns at most rate/60
-    const frame = vehicleStep({ headingYaw: 0 }, K({ left: true }), 1 / 60, VEHICLE_CONFIG)
-    expect(Math.abs(frame.headingYaw)).toBeLessThan(0.02)
-  })
-
-  it('bounds speed, supports reverse and boost, never moves vertically', () => {
-    const fwd = vehicleStep({ headingYaw: 0 }, K({ forward: true }), 0.1, VEHICLE_CONFIG)
-    expect(Math.hypot(fwd.vx, fwd.vz)).toBeCloseTo(8.0, 9)
-    expect(fwd.vz).toBeCloseTo(-8.0, 9) // heading 0 drives down -Z
-    const rev = vehicleStep({ headingYaw: 0 }, K({ backward: true }), 0.1, VEHICLE_CONFIG)
-    expect(rev.vz).toBeCloseTo(8.0, 9)
-    const boost = vehicleStep(
-      { headingYaw: 0 },
-      K({ forward: true, boost: true }),
-      0.1,
-      VEHICLE_CONFIG,
+describe('VEHICLE (camera-yaw drive, hotfix 2)', () => {
+  it('drives exactly along the camera yaw: forward 8, boost 12, reverse mirrored', () => {
+    const fwd = vehicleDriveVelocity({ forward: true, backward: false, boost: false }, 0)
+    expect(Math.hypot(fwd[0], fwd[1])).toBeCloseTo(8.0, 9)
+    expect(fwd[1]).toBeCloseTo(-8.0, 9) // yaw 0 drives down -Z
+    const boost = vehicleDriveVelocity({ forward: true, backward: false, boost: true }, 0)
+    expect(Math.hypot(boost[0], boost[1])).toBeCloseTo(12.0, 9)
+    const rev = vehicleDriveVelocity({ forward: false, backward: true, boost: false }, 0)
+    expect(rev[1]).toBeCloseTo(8.0, 9)
+    const yawed = vehicleDriveVelocity(
+      { forward: true, backward: false, boost: false },
+      Math.PI / 2,
     )
-    expect(Math.hypot(boost.vx, boost.vz)).toBeCloseTo(12.0, 9)
-    const idle = vehicleStep({ headingYaw: 1.2 }, K({}), 0.1, VEHICLE_CONFIG)
-    expect(Math.hypot(idle.vx, idle.vz)).toBe(0) // no drive input, no motion
-    // the step has NO vertical output at all — gravity owns vy
-    expect('vy' in fwd).toBe(false)
+    expect(yawed[0]).toBeCloseTo(-8.0, 9) // looking west drives west
+    expect(yawed[1]).toBeCloseTo(0, 9)
+  })
+
+  it('W+S is neutral and the drive has NO vertical output', () => {
+    const both = vehicleDriveVelocity({ forward: true, backward: true, boost: true }, 1.2)
+    expect(Math.hypot(both[0], both[1])).toBe(0)
+    expect(both).toHaveLength(2) // [vx, vz] only — gravity owns vy
+  })
+
+  it('A/D steer the camera yaw at a bounded dt-scaled 60 deg/s', () => {
+    const rate = (VEHICLE_CONFIG.steeringRateDegPerSec * Math.PI) / 180
+    expect(vehicleSteerDelta({ left: true, right: false }, 0.5)).toBeCloseTo(rate * 0.5, 12)
+    expect(vehicleSteerDelta({ left: false, right: true }, 0.5)).toBeCloseTo(-rate * 0.5, 12)
+    expect(vehicleSteerDelta({ left: true, right: true }, 0.5)).toBe(0)
+    // one 60 fps frame turns at most 1 degree — no instant flips
+    expect(Math.abs(vehicleSteerDelta({ left: true, right: false }, 1 / 60))).toBeLessThan(0.02)
   })
 })
 
-describe('DRONE (§38)', () => {
-  it('produces yaw-based XYZ velocity with vertical keys and no gravity', () => {
-    const v = droneVelocity(K({ forward: true }), { up: false, down: false }, 0)
-    expect(v[0]).toBeCloseTo(0, 12)
-    expect(v[1]).toBe(0)
-    expect(v[2]).toBeCloseTo(-DRONE_CONFIG.horizontalSpeedMps, 12)
-    const up = droneVelocity(K({}), { up: true, down: false }, 0)
-    expect(up[1]).toBe(DRONE_CONFIG.verticalSpeedMps)
-    const down = droneVelocity(K({}), { up: false, down: true }, 0)
-    expect(down[1]).toBe(-DRONE_CONFIG.verticalSpeedMps)
+describe('DRONE (3D camera-direction flight, hotfix 2)', () => {
+  it('W follows the full camera direction — pitch flies the drone', () => {
+    const level = droneVelocity(K({ forward: true }), { up: false, down: false }, 0, 0)
+    expect(level[0]).toBeCloseTo(0, 12)
+    expect(level[1]).toBeCloseTo(0, 12)
+    expect(level[2]).toBeCloseTo(-DRONE_CONFIG.horizontalSpeedMps, 12)
+    // pitched 45 deg down: W descends along the view ray (ramp following)
+    const down = droneVelocity(K({ forward: true }), { up: false, down: false }, 0, -Math.PI / 4)
+    expect(down[1]).toBeCloseTo(-DRONE_CONFIG.horizontalSpeedMps * Math.SQRT1_2, 9)
+    expect(down[2]).toBeCloseTo(-DRONE_CONFIG.horizontalSpeedMps * Math.SQRT1_2, 9)
+    expect(Math.hypot(...down)).toBeCloseTo(DRONE_CONFIG.horizontalSpeedMps, 9)
     expect(DRONE_CONFIG.gravityScale).toBe(0)
   })
 
-  it('normalizes diagonals and bounds boost', () => {
-    const diag = droneVelocity(K({ forward: true, right: true }), { up: false, down: false }, 0)
-    expect(Math.hypot(diag[0], diag[2])).toBeCloseTo(DRONE_CONFIG.horizontalSpeedMps, 9)
-    const boost = droneVelocity(K({ forward: true, boost: true }), { up: false, down: false }, 0)
-    expect(Math.hypot(boost[0], boost[2])).toBeCloseTo(DRONE_CONFIG.boostSpeedMps, 9)
-    // camera pitch is not an input: only yaw shapes the horizontal vector
-    const yawed = droneVelocity(K({ forward: true }), { up: false, down: false }, Math.PI / 2)
-    expect(yawed[0]).toBeCloseTo(-DRONE_CONFIG.horizontalSpeedMps, 9)
-    expect(yawed[2]).toBeCloseTo(0, 9)
+  it('normalizes the flight vector, bounds boost, and adds Space/C on top', () => {
+    const diag = droneVelocity(K({ forward: true, right: true }), { up: false, down: false }, 0, 0)
+    expect(Math.hypot(...diag)).toBeCloseTo(DRONE_CONFIG.horizontalSpeedMps, 9)
+    const boost = droneVelocity(K({ forward: true, boost: true }), { up: false, down: false }, 0, 0)
+    expect(Math.hypot(...boost)).toBeCloseTo(DRONE_CONFIG.boostSpeedMps, 9)
+    const up = droneVelocity(K({}), { up: true, down: false }, 0, 0.7)
+    expect(up).toEqual([0, DRONE_CONFIG.verticalSpeedMps, 0])
+    const both = droneVelocity(K({}), { up: true, down: true }, 0, 0)
+    expect(both[1]).toBe(0)
   })
 })

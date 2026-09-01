@@ -8,6 +8,10 @@ import { describe, expect, it } from 'vitest'
 import { WalkthroughHUD } from './WalkthroughHUD'
 
 const BASE = { navigationMode: 'PERSON' as const, onNavigationMode: () => {} }
+const TARGETS = [
+  { id: 'PORTAL', label: 'Portal', chainageM: 0 },
+  { id: 'N:L1', label: 'Level L1', chainageM: 52 },
+]
 
 describe('walkthrough HUD (keyboard-only)', () => {
   it('shows the keyboard legend and no pointer-lock remnants', () => {
@@ -33,5 +37,27 @@ describe('walkthrough HUD (keyboard-only)', () => {
     const html = renderToStaticMarkup(<WalkthroughHUD {...BASE} focusedKind="MESH_ROUTER" />)
     expect(html).toContain('MESH_ROUTER')
     expect(html).toContain('E Inspect')
+  })
+})
+
+describe('level teleport select (hotfix 2)', () => {
+  it('renders Go to… with the offered stations', () => {
+    const html = renderToStaticMarkup(
+      <WalkthroughHUD
+        {...BASE}
+        focusedKind={null}
+        teleportTargets={TARGETS}
+        onTeleport={() => {}}
+      />,
+    )
+    expect(html).toContain('Go to')
+    expect(html).toContain('Portal')
+    expect(html).toContain('Level L1')
+    expect(html).toContain('CH 52 m')
+  })
+
+  it('renders no select without targets', () => {
+    const html = renderToStaticMarkup(<WalkthroughHUD {...BASE} focusedKind={null} />)
+    expect(html).not.toContain('Go to')
   })
 })

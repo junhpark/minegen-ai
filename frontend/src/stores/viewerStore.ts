@@ -49,6 +49,12 @@ const DEFAULT_VISIBLE: LayerId[] = [
   'crosscuts',
   'network',
   'stopes',
+  // Phase 16 hotfix 2 (item 6): infrastructure families default ON — they
+  // only render inside INFRASTRUCTURE mode, so other modes stay clean
+  'routers',
+  'coverage',
+  'sensors',
+  'sensorCoverage',
 ]
 
 export const useViewerStore = create<ViewerState>()((set, get) => ({

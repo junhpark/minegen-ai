@@ -123,3 +123,40 @@ export function approximateChainage(
 
 /** FOLLOW-mode visible radius, metres (§17). */
 export const MINIMAP_RADIUS_M = 150
+
+export interface ProfileModel {
+  /** [chainageM, elevationZ] pairs along the emitted centerline */
+  points: [number, number][]
+  totalM: number
+  zMin: number
+  zMax: number
+}
+
+/**
+ * Longitudinal profile of the emitted centerline (hotfix 2, item 8): the
+ * plan view alone cannot convey WHERE along/deep the player is, so a
+ * chainage-vs-elevation strip accompanies it. Derived from the same
+ * chainagePoints as the plan map — in temporal contexts that means the
+ * ACTIVE prefix only, so the profile can never show future decline.
+ */
+export function buildProfileModel(chainagePoints: readonly number[]): ProfileModel | null {
+  const n = Math.floor(chainagePoints.length / 3)
+  if (n < 2) return null
+  const points: [number, number][] = []
+  let acc = 0
+  let zMin = Infinity
+  let zMax = -Infinity
+  for (let i = 0; i < n; i++) {
+    const z = chainagePoints[i * 3 + 2]!
+    if (i > 0) {
+      const dx = chainagePoints[i * 3]! - chainagePoints[(i - 1) * 3]!
+      const dy = chainagePoints[i * 3 + 1]! - chainagePoints[(i - 1) * 3 + 1]!
+      const dz = z - chainagePoints[(i - 1) * 3 + 2]!
+      acc += Math.hypot(dx, dy, dz)
+    }
+    points.push([acc, z])
+    if (z < zMin) zMin = z
+    if (z > zMax) zMax = z
+  }
+  return { points, totalM: acc, zMin, zMax }
+}
