@@ -191,3 +191,29 @@ export function isEditableTarget(target: unknown): boolean {
   const tag = t.tagName
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
 }
+
+/**
+ * Mode-scoped KeyState ownership (PR #13 blocker 2): a navigation-mode
+ * change ALWAYS yields a fresh, empty KeyState — regardless of whether
+ * the transition came from the 1/2/3 keys, a HUD button, or any future
+ * caller of setNavigationMode. The superseded state is cleared as well
+ * (belt and braces for any consumer still holding it for one frame), so
+ * no movement/look/boost/up/down key can ever be inherited across modes.
+ */
+export interface ModeScopedKeyStates<M extends string = string> {
+  forMode: (mode: M) => KeyState
+}
+
+export function createModeScopedKeyStates<M extends string = string>(): ModeScopedKeyStates<M> {
+  let currentMode: M | null = null
+  let current: KeyState | null = null
+  return {
+    forMode(mode: M): KeyState {
+      if (current !== null && currentMode === mode) return current
+      current?.clear()
+      currentMode = mode
+      current = createKeyState()
+      return current
+    },
+  }
+}

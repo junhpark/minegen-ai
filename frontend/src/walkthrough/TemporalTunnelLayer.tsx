@@ -1,22 +1,9 @@
 import { useGLTF } from '@react-three/drei'
 import { useMemo } from 'react'
-import { DoubleSide, Mesh, MeshStandardMaterial } from 'three'
+import { Mesh } from 'three'
+import { applyRockTexture, CAP_MATERIAL, TUNNEL_MATERIAL } from './tunnelMaterials'
+import { useRockTexture } from './useRockTexture'
 import { readTunnelPrimitiveMetadata } from './tunnelRuntimeGeometry'
-
-const TUNNEL_MATERIAL = new MeshStandardMaterial({
-  color: '#8a7a63',
-  roughness: 0.95,
-  metalness: 0.0,
-  side: DoubleSide,
-})
-const CAP_MATERIAL = new MeshStandardMaterial({
-  color: '#5c5348',
-  roughness: 1.0,
-  metalness: 0.0,
-  side: DoubleSide,
-  transparent: true,
-  opacity: 0.55,
-})
 
 /**
  * Temporal visual tunnel (rule 114, §13): the SAME cached Phase 06 GLB,
@@ -36,6 +23,11 @@ export function TemporalTunnelLayer({
   allSegmentsActive: boolean
 }) {
   const gltf = useGLTF(url)
+  const rock = useRockTexture()
+  // PR #13 blocker 1: the temporal layer applies the SAME deterministic
+  // rock texture through the single shared material path — visibility
+  // semantics below are untouched
+  useMemo(() => applyRockTexture(rock), [rock])
   const object = useMemo(() => {
     const clone = gltf.scene.clone(true)
     const active = new Set(activeSegmentIds)

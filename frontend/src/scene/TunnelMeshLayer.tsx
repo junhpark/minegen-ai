@@ -1,23 +1,9 @@
 import { useGLTF } from '@react-three/drei'
 import { useMemo } from 'react'
-import { DoubleSide, Mesh, MeshStandardMaterial } from 'three'
+import { Mesh } from 'three'
+import { applyRockTexture, CAP_MATERIAL, TUNNEL_MATERIAL } from '@/walkthrough/tunnelMaterials'
 import { readTunnelPrimitiveMetadata } from '@/walkthrough/tunnelRuntimeGeometry'
 import { useRockTexture } from '@/walkthrough/useRockTexture'
-
-const TUNNEL_MATERIAL = new MeshStandardMaterial({
-  color: '#c9c2b6',
-  roughness: 0.95,
-  metalness: 0.0,
-  side: DoubleSide, // visible from inside the void too (rule 66 note)
-})
-const CAP_MATERIAL = new MeshStandardMaterial({
-  color: '#8f877a',
-  roughness: 1.0,
-  metalness: 0.0,
-  side: DoubleSide,
-  transparent: true,
-  opacity: 0.55,
-})
 
 /**
  * Phase 06 excavation mesh. The GLB is in mine coordinates (ENU, Z-up); the
@@ -28,16 +14,7 @@ const CAP_MATERIAL = new MeshStandardMaterial({
 export function TunnelMeshLayer({ url }: { url: string }) {
   const gltf = useGLTF(url)
   const rock = useRockTexture()
-  useMemo(() => {
-    // §20–26: ONE deterministic rock/joint texture shared by the existing
-    // two materials — no per-segment materials, no extra draw calls
-    for (const m of [TUNNEL_MATERIAL, CAP_MATERIAL]) {
-      if (m.map !== rock) {
-        m.map = rock
-        m.needsUpdate = true
-      }
-    }
-  }, [rock])
+  useMemo(() => applyRockTexture(rock), [rock])
   const object = useMemo(() => {
     const scene = gltf.scene
     scene.traverse((o) => {

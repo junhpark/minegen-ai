@@ -3,7 +3,7 @@ import { useThree } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import { Physics } from '@react-three/rapier'
 import { WALKTHROUGH_CONFIG } from './config'
-import { createKeyState } from './movement'
+import { createModeScopedKeyStates } from './movement'
 import { clearTransientInput, createInspectTrigger } from './interactionRay'
 import { resolveColliderPolicy, type WalkthroughContext } from './colliderPolicy'
 import { navigationBody } from './navigation'
@@ -69,7 +69,13 @@ export function WalkthroughRuntime({
   const planSmoothed = temporal ? frozenRef.current!.smoothed : smoothed
   const gltf = useGLTF(meshUrl)
   const camera = useThree((s) => s.camera)
-  const keyState = useMemo(() => createKeyState(), [])
+  const navigationMode = useViewerStoreNav((s) => s.navigationMode)
+  // PR #13 blocker 2: KeyState is MODE-SCOPED — recreated for every
+  // navigationMode value, so both the 1/2/3 keyboard path and the HUD
+  // buttons (which mutate the store directly) start the new mode with an
+  // empty movement/look/action state through the same mechanism
+  const keyStates = useMemo(() => createModeScopedKeyStates(), [])
+  const keyState = useMemo(() => keyStates.forMode(navigationMode), [keyStates, navigationMode])
   // owned here so EVERY lifecycle exit can reach it (PR #11 blocker 1)
   const inspectTrigger = useMemo(() => createInspectTrigger(), [])
   const resetSignal = useRef(0)
@@ -95,7 +101,6 @@ export function WalkthroughRuntime({
       return null
     }
   }, [gltf])
-  const navigationMode = useViewerStoreNav((s) => s.navigationMode)
   // mode-specific deterministic spawn (§30): floor reference stays
   // authoritative; only the body dimensions differ per mode
   const spawn = useMemo(() => {
@@ -167,16 +172,10 @@ export function WalkthroughRuntime({
   const reset = useCallback(() => {
     resetSignal.current += 1
   }, [])
+  // both keyboard and HUD funnel through the store; the mode-scoped
+  // KeyState above owns the transient-input lifecycle (§29 spawn remount
+  // via key={navigationMode} is unchanged)
   const setNavigationMode = useViewerStoreNav((s) => s.setNavigationMode)
-  const switchMode = useCallback(
-    (m: Parameters<typeof setNavigationMode>[0]) => {
-      // §4: mode switching clears transient keys; the player remount
-      // (key=mode) resets to the deterministic mode-specific spawn (§29)
-      keyState.clear()
-      setNavigationMode(m)
-    },
-    [keyState, setNavigationMode],
-  )
   const inspect = useCallback(() => {
     // E latches the currently focused asset into the canonical global
     // selection (rule 109); no focus -> no-op
@@ -199,7 +198,7 @@ export function WalkthroughRuntime({
         allowInspect={!temporal}
         onReset={reset}
         onInspect={inspect}
-        onNavigationMode={switchMode}
+        onNavigationMode={setNavigationMode}
       />
       <WalkthroughDiagnostics targetRef={perfRef} />
       <WalkthroughAssetLayer assets={interactables} focusedId={focusedId} selectedId={selectedId} />
