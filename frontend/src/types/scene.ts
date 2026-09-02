@@ -4,7 +4,7 @@ import type { AssetType } from '@/types/enums'
 // Coordinates ENU Z-up meters. Converted only in scene/ components.
 
 export type SliceAxis = 'x' | 'y' | 'z'
-export type SliceField = 'rockQuality' | 'grade' | 'faultInfluence' | 'faultZone' | 'oreFraction'
+export type SliceField = 'rockQuality' | 'grade' | 'faultInfluence' | 'faultZone'
 
 export interface SliceAxisSpec {
   axis: SliceAxis
@@ -24,6 +24,11 @@ export interface SlicePayload {
   cols: SliceAxisSpec
   /** row-major rows × cols */
   values: number[]
+  /** row-major display mask, 1 = shown, 0 = hidden (backend-derived) */
+  mask: number[]
+  /** how the mask was derived, e.g. BELOW_TERRAIN or OREBODY_MEMBERSHIP_BELOW_TERRAIN */
+  maskSemantics: string
+  /** display range over the SHOWN cells */
   min: number
   max: number
 }
@@ -47,8 +52,8 @@ export interface OrebodyPayload {
   v: [number, number, number]
   w: [number, number, number]
   halfExtents: [number, number, number]
+  /** geometric solid volume — never a resource or reserve figure */
   volumeM3: number
-  tonnes: number
   bboxMin: [number, number, number]
   bboxMax: [number, number, number]
   positions: number[]
@@ -68,16 +73,10 @@ export interface FaultPayload {
   vertexCount: number
 }
 
-export interface OreBlocksPayload {
-  count: number
-  spacing: [number, number, number]
-  centers: number[]
-  grade: number[]
-  gradeMin: number
-  gradeMax: number
-}
-
-export interface BlockGridPayload {
+/** Numerical field lattice description (Phase 18, rule 127): origin /
+ * spacing / shape so slices can be addressed. Cells are sampling support,
+ * never blocks. */
+export interface FieldGridPayload {
   origin: [number, number, number]
   spacing: [number, number, number]
   shape: [number, number, number]
@@ -88,20 +87,21 @@ export interface ArrayStat {
   bytes: number
 }
 
-export interface BlockModelStats {
-  shape: [number, number, number]
-  nBlocks: number
-  spacing: [number, number, number]
-  origin: [number, number, number]
-  nOreBlocks: number
-  nAirBlocks: number
-  nRockBlocks: number
-  oreVolumeM3: number
-  oreTonnes: number
-  meanOreGrade: number
-  rockQualityMean: number
-  faultCoreBlocks: number
-  faultDamageBlocks: number
+export interface FieldStatistics {
+  min: number
+  max: number
+  mean: number
+  std: number
+}
+
+/** Neutral field diagnostics (rule 131): no block counts, no ore tonnes. */
+export interface FieldSetStats {
+  grid: FieldGridPayload
+  cellCount: number
+  terrainSupportedFraction: number
+  rockQuality: FieldStatistics
+  rockQualitySemantics: string
+  boundaryPolicy: string | null
   arrays: Record<string, ArrayStat>
   totalBytes: number
   totalMB: number
@@ -111,7 +111,7 @@ export interface WorldStats {
   terrain: { nx: number; ny: number; spacing: number; zMin: number; zMax: number }
   orebody: Omit<OrebodyPayload, 'positions' | 'indices'>
   faults: number
-  blockModel: BlockModelStats
+  fields: FieldSetStats
 }
 
 export interface AccessCandidatePayload {
@@ -765,8 +765,7 @@ export interface WorldScene {
   terrain: TerrainPayload
   orebody: OrebodyPayload
   faults: FaultPayload[]
-  oreBlocks: OreBlocksPayload
-  blockGrid: BlockGridPayload
+  fieldGrid: FieldGridPayload
   rockQuality: { min: number; max: number; defaultSlice: SlicePayload }
   stats: WorldStats
   accessTargets: AccessTargetsPayload | null

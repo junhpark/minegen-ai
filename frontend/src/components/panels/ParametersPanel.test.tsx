@@ -19,7 +19,7 @@ const SCENARIO = {
   terrain: { baseElevation: 300 },
   orebody: { orebodyType: 'TABULAR', strikeDeg: 45, dipDeg: 70, thickness: 12 },
   geology: { rockQuality: { mean: 62, std: 12 }, faults: [{}, {}] },
-  blockModel: { dx: 10, dy: 10, dz: 10 },
+  fieldSampling: { spacingX: 10, spacingY: 10, spacingZ: 10 },
   ramp: { maxGradient: 0.14, minTurnRadius: 25 },
 } as unknown as Scenario
 
@@ -41,6 +41,13 @@ describe('Parameters readout layout', () => {
     for (const value of ['1200', '500', 'TABULAR', '45', '70', '62', '12', '25', '14']) {
       expect(html).toContain(value)
     }
+  })
+
+  it('exposes numerical field spacing, never a "Block" size (Phase 18)', () => {
+    expect(html).toContain('Field sampling')
+    expect(html).toContain('numerical spacing')
+    expect(html).not.toMatch(/>\s*Block\s*</)
+    expect(html).not.toContain('blockModel')
   })
 
   it('shows an explicit empty state with no scenario', () => {

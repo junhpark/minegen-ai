@@ -14,7 +14,7 @@ platform. Research prototype / proof of concept.
 | 01    | Repository scaffold, health API, schemas, coordinate utils   | done  |
 | 01.1  | Hygiene: finite floats, depth semantics, geology schema, fault half-widths | done  |
 | 02.1  | Derived-state invalidation, in-situ ore semantics, rock-only stats, grade continuity | done  |
-| 02    | Synthetic world: terrain, orebody, block model, rock quality, faults | done  |
+| 02    | Synthetic world: terrain, orebody, spatial fields (rock quality, grade), faults | done  |
 | 03    | Design cost evaluator & level-aware footwall access targets  | done  |
 | 04    | Chained Hybrid-A* decline generator (raw centerline)         | done  |
 | 04.5  | Async job infrastructure, WebSocket progress, GitHub CI      | done  |
@@ -134,15 +134,19 @@ Every phase must pass all of these before it is considered complete:
 ## Phase 02 smoke test
 
 1. Start backend and frontend, click **New synthetic mine** (leave "one fault" on).
-2. Click **Generate world** (≈ 0.5 s). Terrain, the teal orebody slab, amber
-   grade blocks, a red fault polygon and a horizontal rock-quality slice
-   through the orebody center appear; the orbit target jumps to the orebody.
-3. In **Field slice** switch field (rock quality / grade / fault influence /
-   fault zone / ore fraction), axis and index. The legend shows the slice range.
+2. Click **Generate world** (≈ 0.5 s). Terrain, the teal orebody slab and a
+   red fault polygon appear; the orbit target jumps to the orebody. (Phase 18
+   removed the grade-block visualization: the lattice is numerical sampling
+   support, not a block model.)
+3. Enable the **Field slice** layer (default OFF) and switch field (rock
+   quality / grade / fault influence / fault zone), axis and index. The legend
+   shows the slice range; the grade slice is masked to the analytic orebody.
 4. Create a second scenario with seed 43 and generate: terrain and the
    rock-quality pattern change, the orebody and fault do not.
-5. Inspector → World shows block counts, sampled tonnes vs analytic orebody
-   tonnes, rock-quality mean, fault core/damage block counts and memory.
+5. Inspector → World shows the geometric orebody volume, the numerical field
+   lattice (shape / spacing), the below-terrain cell fraction, rock-quality
+   field statistics, fault count and field memory — no block or tonnage
+   inventory.
 
 ## Phase 01 smoke test
 

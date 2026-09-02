@@ -15,14 +15,28 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  /api/v1/scenarios/{id}                      fetch scenario document
     PUT  /api/v1/scenarios/{id}                      replace scenario document; deletes
                                                      arrays.npz and derived/* (rule 40)
-    POST /api/v1/scenarios/{id}/world/generate       generate terrain / orebody / block model /
-                                                     geology; persists arrays.npz; returns stats
-    GET  /api/v1/scenarios/{id}/world                stats (409 WORLD_NOT_GENERATED if missing)
+    POST /api/v1/scenarios/{id}/world/generate       generate terrain / orebody / spatial fields
+                                                     (rock quality, grade, fault measurements);
+                                                     persists arrays.npz (field_artifact_version);
+                                                     returns neutral field stats
+    GET  /api/v1/scenarios/{id}/world                stats (409 WORLD_NOT_GENERATED if missing;
+                                                     409 WORLD_ARTIFACT_INCOMPATIBLE when arrays.npz
+                                                     predates the Phase-18 field artifact)
     GET  /api/v1/scenarios/{id}/world/slice          ?field=rockQuality|grade|faultInfluence|
-                                                     faultZone|oreFraction&axis=x|y|z&index=n
+                                                     faultZone&axis=x|y|z&index=n → values plus a
+                                                     display mask (BELOW_TERRAIN, or for grade
+                                                     OREBODY_MEMBERSHIP_BELOW_TERRAIN)
     GET  /api/v1/scenarios/{id}/scene                web scene manifest (terrain heightmap,
-                                                     orebody mesh, fault polygons, ore blocks,
-                                                     default rock-quality slice, stats)
+                                                     orebody mesh, fault polygons, fieldGrid
+                                                     lattice description, default rock-quality
+                                                     slice, stats)
+
+    Scenario documents are schemaVersion 2 (Phase 18): `fieldSampling
+    {spacingX, spacingY, spacingZ}` replaces the v1 `blockModel {dx, dy, dz}`.
+    A v1 document is migrated on first read (numbers carried over, derived
+    artifacts discarded); a POST body may still carry `blockModel` and is
+    migrated at the boundary. A document newer than the backend is a typed
+    422 SCENARIO_SCHEMA_UNSUPPORTED.
 
     POST /api/v1/scenarios/{id}/design/targets       levels + footwall candidates; persists
                                                      derived/targets.json; 409 if no world

@@ -294,9 +294,15 @@ export function ParametersPanel({ scenario }: { scenario: Scenario | null }) {
           </dd>
           <dt className="break-words text-mute">Faults</dt>
           <dd className="break-words">{scenario.geology.faults.length}</dd>
-          <dt className="break-words text-mute">Block</dt>
+          {/* Phase 18: numerical field spacing — never a "Block" size or a
+              mining-unit setting (rule 127) */}
+          <dt className="break-words text-mute">
+            Field sampling
+            <span className="block text-[10px] leading-tight">numerical spacing</span>
+          </dt>
           <dd className="break-words">
-            {scenario.blockModel.dx} × {scenario.blockModel.dy} × {scenario.blockModel.dz} m
+            {scenario.fieldSampling.spacingX} × {scenario.fieldSampling.spacingY} ×{' '}
+            {scenario.fieldSampling.spacingZ} m
           </dd>
           <dt className="break-words text-mute">Max grade</dt>
           <dd className="break-words">{(scenario.ramp.maxGradient * 100).toFixed(0)} %</dd>

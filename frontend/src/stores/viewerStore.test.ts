@@ -24,6 +24,11 @@ describe('viewerStore', () => {
     }
   })
 
+  it('has no grade-blocks layer at all (Phase 18, rule 127)', () => {
+    const layers = useViewerStore.getState().visibleLayers
+    expect([...layers]).not.toContain('gradeBlocks')
+  })
+
   it('diagnostic layers default OFF (Phase 17.1 §2/§3)', () => {
     const layers = useViewerStore.getState().visibleLayers
     expect(layers.has('rawSearchPath')).toBe(false) // §2 raw Hybrid-A* path

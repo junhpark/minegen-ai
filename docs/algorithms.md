@@ -12,19 +12,20 @@ Keep pseudocode here in sync with code; CLAUDE.md rules 21–27 are binding.
   tunnel sweep frame, rule 26.
 - `grade_limited_length(dz, max_gradient)`: heuristic lower bound, rule 25.
 
-## Phase 02 — synthetic world
+## Phase 02 / 18 — synthetic world
 
-All fields are NumPy arrays on the block grid (``world/voxel_grid.py``).
-Grid: x, y centered; z from ``base_elevation − depth`` to
-``base_elevation + relief`` — the top is taken from *configuration* so the
-shape is identical for every seed of a scenario (seed-to-seed comparisons are
-element-wise meaningful).
+All fields are NumPy arrays on the numerical field lattice
+(``world/field_grid.py``, ``FieldGrid``): x, y centered; z from
+``base_elevation − depth`` to ``base_elevation + relief`` — the top is taken
+from *configuration* so the shape is identical for every seed of a scenario
+(seed-to-seed comparisons are element-wise meaningful). Cells are sampling
+support only — never mining blocks or SMUs (rule 127).
 
 ### Terrain (``world/terrain.py``)
 Seeded fBm value noise: ``octaves`` lattices of ``4·2^k`` cells, cubic
 upsampled (``scipy.ndimage.zoom``), summed with amplitude ``0.5^k``, then
 normalized so ``mean = base_elevation`` and ``max − min = relief``.
-Bilinear sampling for block-center air tests.
+Bilinear sampling for the per-cell terrain-support fraction.
 
 ### Orebody (``world/orebody.py``)
 Analytic slab in the strike/dip frame (rule 28); ``contains`` is an exact
@@ -32,20 +33,26 @@ half-extent test. Source of truth: never reconstructed from voxels. Box mesh
 with outward CCW winding. ``footwall_point(u, v, offset)`` lies ``offset``
 past the footwall contact along ``+w`` (rule 29, used by Phase 03).
 
-### Block fractions (``world/block_model.py``)
-Each block is sub-sampled ``2×2×2`` (configurable). From one shared pattern:
+### Terrain boundary policy (``world/spatial_fields.py``)
+Each cell is sub-sampled ``2×2×2`` against the terrain (terrain sampled once
+at every XY sub-position): ``terrain_support`` = share of sub-samples at or
+below the surface, persisted as float32. Cells with support ``< 0.5`` are
+"unsupported": the rock-quality field carries the ``COLUMN_TOP_FILL`` policy
+(an unsupported cell takes the value of the nearest supported cell below it
+in its column; the bottom layer is always supported, rule 35), so trilinear
+interpolation just under the surface is never pulled toward an arbitrary
+above-ground value. The support fraction is also the display mask of every
+slice. Nothing classifies rock, ore or air; the analytic orebody alone
+decides mineralized membership (rule 129), and ``orebody.volume()`` is the
+only volume reported — there is no in-situ ore volume or tonnage
+(rule 131).
 
-- ``solid_fraction`` = share of sub-samples at or below the terrain surface
-  (terrain sampled once at every XY sub-position). ``< 0.5 → AIR``.
-  Not persisted.
-- ``ore_fraction`` = share of sub-samples inside the analytic orebody **and**
-  below the terrain. ``ore_flag = fraction ≥ 0.5``. Ore ⊆ solid, so an ore
-  block is never AIR. Evaluated per z-layer inside the orebody bounding box.
-
-So ``orebody.volume()`` is the geometric mineralized body (may outcrop) and
-``block_model.ore_volume()`` is in-situ ore. Buried default world: sampled
-volume within 0.2 % of the analytic solid. Outcrop regression: block in-situ
-volume within 1 % of a 400k-point Monte-Carlo reference.
+### Batch sampling (``RegularScalarField.sample``)
+``sample(points N×3) → N`` float64: trilinear on the cell-center lattice,
+coordinates clamped to the outermost centers (no extrapolation), pure NumPy
+(rule 128). Measured: ≈ 1 M points in well under a second on the default
+world (see ``backend/golden/phase18_bench_after.json``). ``sample_nearest``
+serves categorical fields (fault zone).
 
 ### Correlated random fields (``world/geology.py``)
 White noise → anisotropic Gaussian filter (σ_xy, σ_z) → standardize.
@@ -71,20 +78,21 @@ are measurements for visualization/diagnostics; Phase 03 cost evaluation
 queries the analytic ``FaultPlane`` objects directly so per-fault penalties
 are exact at arbitrary continuous points.
 
-### Memory (default 1200×1200×600 m world, 10 m blocks)
-``120 × 120 × 70 = 1,008,000`` blocks, 22.1 MB total:
-uint8 rock_type, fault_zone (1.0 MB each); bool ore_flag (1.0 MB);
-float32 ore_fraction, grade, rock_quality, fault_signed_distance,
-fault_influence (4.0 MB each). Generation ≈ 0.45 s.
+### Memory (default 1200×1200×600 m world, 10 m lattice)
+``120 × 120 × 70 = 1,008,000`` cells, ≈ 21 MB total: float32 rock_quality,
+grade, fault_signed_distance, fault_influence, terrain_support (4.0 MB
+each); uint8 fault_zone (1.0 MB). ``arrays.npz`` is stamped
+``field_artifact_version``; an NPZ without it (a Phase-17 block-model
+artifact) is refused, never reinterpreted.
 ## Phase 03 — design cost evaluator & level access targets
 
 ### DesignCostEvaluator (``design/cost_field.py``, rules 41–42)
 Continuous query ``evaluate_points(N×3)``; no dense volume.
 
-    rock_quality     trilinear (``RegularGridInterpolator``) on block centers;
-                     coordinates clamped to the center lattice (no extrapolation);
-                     AIR blocks pre-filled from the topmost rock block of their
-                     column so near-surface values are not pulled to 0
+    rock_quality     ``world.fields.rock_quality.sample(points)`` — batch
+                     trilinear on cell centers, coordinates clamped to the center
+                     lattice; near-surface values come from the field's
+                     COLUMN_TOP_FILL terrain policy (rule 128)
     rock_penalty     w_rock · (100 − rq) / 100                      (w_rock = 2)
     fault_penalty    Σ_f analytic: core_penalty_f if |d_f| ≤ core_f;
                      damage_f · (infl_f − |d_f|)/(infl_f − core_f) in the damage zone
@@ -92,7 +100,7 @@ Continuous query ``evaluate_points(N×3)``; no dense volume.
     orebody_penalty  w_ster · max(0, 1 − (sdf − buffer)/range)  (5, buffer 5, range 15)
     total            base(1) + rock + fault + orebody; +inf when invalid
 
-Hard rejections (with reasons): OUTSIDE_WORLD (block-grid extent),
+Hard rejections (with reasons): OUTSIDE_WORLD (field-lattice extent),
 ABOVE_TERRAIN, INSUFFICIENT_COVER, INSIDE_OREBODY, OREBODY_BUFFER,
 RESTRICTED_ZONE (AABB). ``DesignContext`` carries the exclusion rules so
 Phase 08 crosscuts can use a context that enters the orebody.
@@ -338,12 +346,15 @@ analytic extent, hard world/terrain/cover/zone sampling over a deterministic
 ≤5 m prism lattice (crosscut context: the ore volume itself is legal),
 finite metrics, strike pillar ≥ `minimum_pillar` between neighbours plus the
 Phase 08 end-pillar contract; vertically adjacent stopes share their
-boundary face by construction. `meanGradeProxy` samples the existing
-BlockModel ore-flagged grades on a coarse interior lattice — a deterministic
-planning proxy, never a reserve/resource claim. Measured (default): 204
+boundary face by construction. `meanGradeProxy` (Phase 18, rule 130) is a
+deterministic equal-volume midpoint quadrature (≤ 2.5 m) of the stope
+prism ∩ analytic orebody ∩ below terrain, sampling `world.fields.grade`
+and averaging — a planning proxy, never a reserve/resource claim, and no
+longer an `ore_fraction`-weighted cell mean. Measured (default): 204
 stopes = 12 intervals × 17 stations, 1.95 Mm³ / 5.47 Mt, extraction fraction
-0.775, weighted ore-fraction grade proxy ≈ 3.99 (per-stope 1.85–6.28), exact 5 m strike pillars, all anchors ≤
-1e-6 m. Stopes are production volumes — never MineNetwork edges; the two
+0.775, exact 5 m strike pillars, all anchors ≤ 1e-6 m; the weighted grade
+proxy moved from ≈ 3.99 (Phase-17 cell weighting) to the value recorded in
+`backend/golden/phase18_vs_phase17.md`. Stopes are production volumes — never MineNetwork edges; the two
 STOPE_ACCESS anchors are the link (rule 76), and Phase 10 owns temporal
 states beyond `plannedState = PLANNED` (rule 80).
 

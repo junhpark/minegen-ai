@@ -873,3 +873,55 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      HEAD, git status, diff --stat, backend gate results, frontend gate
      results, and manual browser acceptance status. Force push is
      prohibited.
+127. No block / SMU core semantics (Phase 18). The synthetic world is
+     terrain + authoritative orebody solid + a NUMERICAL field lattice
+     (`FieldGrid`) carrying `SpatialFieldSet` scalar fields. Lattice cells
+     are sampling support only — never mining blocks, SMUs, ore blocks,
+     resource blocks or reserve units — and no engineering quantity
+     (tonnes, ore/waste membership, grade inventory) is attached to a cell.
+     `scenario.fieldSampling` is numerical spacing, never a block size.
+     Active production code must not consume BlockModel / RockType /
+     ore_fraction / ore_flag / rock_type / oreBlocks / gradeBlocks
+     (`tests/test_no_block_semantics.py`, `frontend/src/semantics.test.ts`);
+     the names may appear only in the explicit v1→v2 migration and
+     legacy-artifact detection paths.
+128. Spatial-field public queries are batch-first and vectorized:
+     `RegularScalarField.sample(points: ndarray[N, 3]) -> ndarray[N]`
+     (trilinear on the center lattice, coordinates clamped, pure NumPy,
+     no Python loop per point, no per-sample Pydantic objects, no
+     mesh/triangle-distance lookups). A scalar `field(x, y, z)` is never
+     the primary interface. `DesignCostEvaluator` obtains rock quality
+     ONLY through `world.fields.rock_quality.sample`; near-surface
+     behaviour is the field's `COLUMN_TOP_FILL` terrain boundary policy
+     (cells with terrain support < 0.5 take the nearest supported value
+     below them), not an AIR classification.
+129. The analytic orebody solid is the ONLY authority for
+     mineralized-domain membership. The grade field is a synthetic
+     planning field defined everywhere on the lattice; outside the
+     orebody it has no mineral-resource meaning, and every consumer
+     applies the orebody geometry itself. A slice of the grade field is
+     shipped with an explicit backend display `mask` (orebody membership
+     ∧ below terrain); the lattice is never presented as ore blocks.
+130. The longhole planning grade proxy is
+     `stope prism ∩ orebody solid ∩ below terrain` sampled by a
+     deterministic equal-volume midpoint quadrature (spacing ≤ 2.5 m) of
+     `GradeField.sample`, averaged. It never uses ore_fraction, cell
+     weighting or stochastic integration, and it remains a PLANNING proxy —
+     not a resource, reserve or feasibility grade. Stope tonnes stay
+     `excavation volume × density`.
+131. World-level field statistics are neutral diagnostics (lattice shape /
+     spacing / memory, rock-quality field statistics over
+     terrain-supported cells, fault count). They never claim resources,
+     reserves, in-situ ore tonnage, ore-block counts or a "mean ore grade";
+     the orebody payload reports geometric volume only. Future production
+     tonnes (Phase 22) mean planned mined tonnes from excavation geometry.
+132. Golden-scenario regression is required before AND after any
+     core-representation migration. `python -m minegen.regression run`
+     records the fixed 22-case suite (HARD CONTRACT: stage outcomes and
+     integer structure; QUALITY metrics: lengths, costs, gradients,
+     radii, fault exposure, poor-rock length, tonnage, grade proxy;
+     runtime advisory only) and `compare` reports every difference; the
+     committed baseline lives under `backend/golden/`. A contract
+     regression blocks acceptance; an intentional metric change is
+     documented in the comparison, never hidden. The smoke subset runs in
+     CI (`tests/test_golden_smoke.py`).

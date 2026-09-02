@@ -22,7 +22,6 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
     rows: [
       { id: 'terrain', label: 'Terrain', phase: 2 },
       { id: 'orebody', label: 'Orebody', phase: 2 },
-      { id: 'gradeBlocks', label: 'Grade blocks', phase: 2 },
       // §3: explicit opt-in viewer layer, default OFF
       { id: 'rockQuality', label: 'Field slice', phase: 2 },
       { id: 'faults', label: 'Faults', phase: 2 },
@@ -65,7 +64,6 @@ const FIELDS: { id: SliceField; label: string }[] = [
   { id: 'grade', label: 'Grade' },
   { id: 'faultInfluence', label: 'Fault influence' },
   { id: 'faultZone', label: 'Fault zone' },
-  { id: 'oreFraction', label: 'Ore fraction' },
 ]
 const AXES: SliceAxis[] = ['x', 'y', 'z']
 
@@ -116,12 +114,12 @@ export function LayerPanel() {
   )
 }
 
-/** Field / axis / index picker for the block-field slice layer. */
+/** Field / axis / index picker for the spatial-field slice layer. */
 function SliceControls() {
   const scene = useScenarioStore((s) => s.scene)
   const { field, axis, index, slice, setField, setAxis, setIndex, setSlice } = useSliceStore()
   const scenarioId = scene?.scenarioId
-  const shape = scene?.blockGrid.shape
+  const shape = scene?.fieldGrid.shape
   const axisIdx = axis === 'x' ? 0 : axis === 'y' ? 1 : 2
   const count = shape ? shape[axisIdx] : 0
 

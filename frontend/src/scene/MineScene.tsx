@@ -10,7 +10,6 @@ import { temporalActiveSegmentIds } from '@/walkthrough/temporalPlan'
 import { TemporalTunnelLayer } from '@/walkthrough/TemporalTunnelLayer'
 import { AccessTargetsLayer } from './AccessTargetsLayer'
 import { FaultLayer } from './FaultLayer'
-import { GradeBlocksLayer } from './GradeBlocksLayer'
 import { OrebodyLayer } from './OrebodyLayer'
 import { RawDeclineLayer } from './RawDeclineLayer'
 import { SmoothedDeclineLayer } from './SmoothedDeclineLayer'
@@ -95,9 +94,6 @@ export function MineScene() {
       {scene && visible.has('terrain') ? <TerrainLayer terrain={scene.terrain} /> : null}
       {scene && visible.has('orebody') ? <OrebodyLayer orebody={scene.orebody} /> : null}
       {scene && visible.has('faults') ? <FaultLayer faults={scene.faults} /> : null}
-      {scene && mode !== '4D' && visible.has('gradeBlocks') ? (
-        <GradeBlocksLayer blocks={scene.oreBlocks} />
-      ) : null}
       {scene && activeSlice && visible.has('rockQuality') ? (
         <RockQualitySliceLayer slice={activeSlice} />
       ) : null}

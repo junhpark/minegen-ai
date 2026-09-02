@@ -7,6 +7,8 @@ const base = {
   index: 0,
   count: 1,
   values: [],
+  mask: [],
+  maskSemantics: 'BELOW_TERRAIN',
   min: 0,
   max: 1,
 }

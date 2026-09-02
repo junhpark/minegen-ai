@@ -18,21 +18,29 @@ mine.
 
 ## Phase order
 
+Active core sequence (Park, Phase 18 directive): the Hugging Face public
+demo (D0) is **deferred** and is no longer the next phase.
+
 | Phase | Purpose | Key change |
 | --- | --- | --- |
-| 17.1 | Scenario / viewer stabilisation | scenario isolation, 4D raw-path suppression, Field Slice toggle, Parameters UI |
-| D0 | Hugging Face public demo | single Docker Space, session isolation, TTL, prebuilt demo scenario |
-| 18 | Spatial Field Core | remove BlockModel/SMU semantics, batch field API, replace longhole grade proxy, golden-scenario harness |
+| 17.1 | Scenario / viewer stabilisation | scenario isolation, 4D raw-path suppression, Field Slice toggle, Parameters UI — done |
+| 18 | Spatial Field Core | remove BlockModel/SMU semantics, batch field API, replace longhole grade proxy, golden-scenario harness — done |
 | 19 | Implicit Geological Orebody | warped vein, variable thickness, pinch & swell; authoritative implicit solid → derived clearance field → derived mesh |
-| 20 | Parametric Layout Generator v2 | deterministic layout families, bounded local A*, rulebook constraints, legacy A* kept as baseline |
+| 20 | Parametric Layout Family Search | deterministic layout families, bounded local A*, rulebook constraints, legacy A* kept as baseline |
 | 21A | Longhole migration | prove the new MiningMethodPlan abstraction with already-validated geometry |
 | 21B | Cut & Fill | lift / cut / backfill 4D mining method |
 | 21C | Room & Pillar | limestone; pillar, room, bench, double bench |
 | 22 | Analysis / Economics / Compliance | production, development, cost, revenue, cashflow + rule compliance + layout comparison |
 | 23 | External Simulation Bridge | Ventsim, AnyLogic, blast, support, Unreal adapters |
 
-Phases 01–17 are described in `docs/architecture.md`; the invariants they
-established are `CLAUDE.md` rules 1–125.
+Deferred deployment item (not scheduled):
+
+| Item | Purpose | Key change |
+| --- | --- | --- |
+| D0 | Hugging Face public demo | single Docker Space, session isolation, TTL, prebuilt demo scenario |
+
+Phases 01–18 are described in `docs/architecture.md`; the invariants they
+established are `CLAUDE.md` rules 1–132.
 
 ## How this list is used
 
