@@ -857,3 +857,19 @@ phase is considered complete.
      Invalid candidates are rejected whole and retried from the same
      deterministic sub-stream — never clamped, never clipped — and
      exhaustion is a typed SCENARIO_REALIZATION_INVALID failure.
+
+## Roadmap
+
+Product name and direction, and the phases after 17.1 (D0, 18–23), live in
+`docs/roadmap.md`. "Digital Twin" is reserved for the future measured-mine
+(LiDAR / 3DGS) track and is never used for the synthetic sandbox.
+
+126. Claude Code MAY create local commits after the scoped implementation
+     and all required quality gates pass. Claude Code MUST NOT push,
+     force-push, merge, create or update pull requests, or perform any
+     other remote write without Park's explicit approval for THAT
+     SPECIFIC action — a previous approval never authorizes a later push.
+     Before requesting approval, report branch, parent SHA, new local
+     HEAD, git status, diff --stat, backend gate results, frontend gate
+     results, and manual browser acceptance status. Force push is
+     prohibited.

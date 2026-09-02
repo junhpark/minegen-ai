@@ -46,14 +46,31 @@ export const READINESS_MESSAGES: Record<Exclude<WalkthroughReadiness, 'READY'>, 
 const WALKTHROUGH_ALLOWED = new Set(['tunnelMesh'])
 
 /**
- * Derived walkthrough visibility (§15): engineering/debug overlays are
- * suppressed WITHOUT mutating the user's stored visibleLayers.
+ * Layers that a temporal view must never render (Phase 17.1 §2). The raw
+ * Hybrid-A* search path is a DESIGN-mode diagnostic: in 4D and in a
+ * TIMELINE_SNAPSHOT walkthrough it draws the un-developed search geometry
+ * on top of the decline that is actually developed at the current day, so
+ * it is suppressed regardless of the stored toggle (rule 11).
+ */
+const TEMPORAL_SUPPRESSED = new Set(['rawSearchPath'])
+
+/**
+ * Derived visibility (§15, Phase 17.1 §2): mode-dependent overlays are
+ * suppressed WITHOUT mutating the user's stored `visibleLayers`, so the
+ * DESIGN-mode preference is intact on the way back out of 4D.
  */
 export function deriveVisibleLayers<T extends string>(mode: string, visible: Set<T>): Set<T> {
-  if (mode !== 'WALKTHROUGH') return visible
-  const out = new Set<T>()
-  for (const layer of visible) if (WALKTHROUGH_ALLOWED.has(layer)) out.add(layer)
-  return out
+  if (mode === 'WALKTHROUGH') {
+    const out = new Set<T>()
+    for (const layer of visible) if (WALKTHROUGH_ALLOWED.has(layer)) out.add(layer)
+    return out
+  }
+  if (mode === '4D') {
+    const out = new Set<T>()
+    for (const layer of visible) if (!TEMPORAL_SUPPRESSED.has(layer)) out.add(layer)
+    return out
+  }
+  return visible
 }
 
 export type TemporalReadiness =

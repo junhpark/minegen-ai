@@ -24,6 +24,23 @@ describe('viewerStore', () => {
     }
   })
 
+  it('diagnostic layers default OFF (Phase 17.1 §2/§3)', () => {
+    const layers = useViewerStore.getState().visibleLayers
+    expect(layers.has('rawSearchPath')).toBe(false) // §2 raw Hybrid-A* path
+    expect(layers.has('rockQuality')).toBe(false) // §3 Field Slice
+    // the layers they could obscure stay on
+    expect(layers.has('smoothedDecline')).toBe(true)
+    expect(layers.has('tunnelMesh')).toBe(true)
+  })
+
+  it('resetScenarioScopedState drops object identity but keeps layer preferences', () => {
+    useViewerStore.getState().toggleLayer('rawSearchPath')
+    useViewerStore.setState({ selectedObjectId: 'A:stope-1' })
+    useViewerStore.getState().resetScenarioScopedState()
+    expect(useViewerStore.getState().selectedObjectId).toBeNull()
+    expect(useViewerStore.getState().visibleLayers.has('rawSearchPath')).toBe(true)
+  })
+
   it('switches camera mode when entering WALKTHROUGH', () => {
     useViewerStore.getState().setMode('WALKTHROUGH')
     expect(useViewerStore.getState().cameraMode).toBe('walkthrough')

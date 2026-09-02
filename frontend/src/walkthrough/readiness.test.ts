@@ -86,10 +86,17 @@ describe('walkthrough derived visibility (§15)', () => {
     }
   })
 
-  it('returns the stored set untouched in every other mode', () => {
+  it('returns the stored set untouched in the non-temporal modes', () => {
     expect(deriveVisibleLayers('DESIGN', stored)).toBe(stored)
     expect(deriveVisibleLayers('INFRASTRUCTURE', stored)).toBe(stored)
-    expect(deriveVisibleLayers('4D', stored)).toBe(stored)
+  })
+
+  it('4D passes everything through EXCEPT the raw search path (Phase 17.1 §2)', () => {
+    const derived = deriveVisibleLayers('4D', stored)
+    expect(derived.has('rawSearchPath')).toBe(false)
+    for (const layer of stored) {
+      if (layer !== 'rawSearchPath') expect(derived.has(layer)).toBe(true)
+    }
   })
 })
 
@@ -146,5 +153,32 @@ describe('temporal scenario/ramp prerequisite (PR #12 blocker 3)', () => {
     expect(
       temporalWalkthroughReadiness(temporalScene, 5, { tunnelWidth: 5, tunnelHeight: 5.5 }),
     ).toBe('NO_COMPLETED_SEGMENT')
+  })
+})
+
+describe('raw-search-path suppression in temporal views (Phase 17.1 §2)', () => {
+  it('suppresses rawSearchPath in 4D without mutating the stored set', () => {
+    const stored = new Set(['rawSearchPath', 'smoothedDecline', 'tunnelMesh', 'stopes'])
+    const derived = deriveVisibleLayers('4D', stored)
+    expect(derived.has('rawSearchPath')).toBe(false)
+    // every other layer survives, and the DESIGN-mode preference is intact
+    expect(derived.has('smoothedDecline')).toBe(true)
+    expect(derived.has('tunnelMesh')).toBe(true)
+    expect(derived.has('stopes')).toBe(true)
+    expect(stored.has('rawSearchPath')).toBe(true)
+  })
+
+  it('keeps the DESIGN-mode toggle usable on the way back out of 4D', () => {
+    const stored = new Set(['rawSearchPath', 'terrain'])
+    expect(deriveVisibleLayers('4D', stored).has('rawSearchPath')).toBe(false)
+    expect(deriveVisibleLayers('DESIGN', stored).has('rawSearchPath')).toBe(true)
+  })
+
+  it('a TIMELINE_SNAPSHOT walkthrough shows only the tunnel environment', () => {
+    const stored = new Set(['rawSearchPath', 'terrain', 'tunnelMesh'])
+    const derived = deriveVisibleLayers('WALKTHROUGH', stored)
+    expect(derived.has('rawSearchPath')).toBe(false)
+    expect(derived.has('terrain')).toBe(false)
+    expect(derived.has('tunnelMesh')).toBe(true)
   })
 })

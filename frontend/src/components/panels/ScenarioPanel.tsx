@@ -8,10 +8,15 @@ import {
   realizeRequest,
   realizedSummary,
 } from '@/scenario/builder'
-import { SCENARIO_PRESETS, type ScenarioCreate, type ScenarioPreset } from '@/types/api'
+import {
+  SCENARIO_PRESETS,
+  type Scenario,
+  type ScenarioCreate,
+  type ScenarioPreset,
+} from '@/types/api'
 import { PanelSection } from '@/components/layout/PanelSection'
+import { activateScenario, scenarioEpoch } from '@/stores/scenarioSession'
 import { useScenarioStore } from '@/stores/scenarioStore'
-import { useSliceStore } from '@/stores/sliceStore'
 import { fmtMeters } from '@/utils/format'
 
 /**
@@ -22,9 +27,7 @@ export function ScenarioPanel() {
   const qc = useQueryClient()
   const scenario = useScenarioStore((s) => s.scenario)
   const scene = useScenarioStore((s) => s.scene)
-  const setScenario = useScenarioStore((s) => s.setScenario)
   const setScene = useScenarioStore((s) => s.setScene)
-  const setSlice = useSliceStore((s) => s.setSlice)
   const [name, setName] = useState('Synthetic Gold Mine 001')
   const [seed, setSeed] = useState(DEFAULT_BUILDER.seed)
   const [preset, setPreset] = useState<ScenarioPreset>(DEFAULT_BUILDER.preset)
@@ -39,14 +42,15 @@ export function ScenarioPanel() {
 
   const list = useQuery({ queryKey: ['scenarios'], queryFn: api.listScenarios })
 
-  const loadScene = async (id: string) => {
+  /** `epoch` is captured before the request: a manifest that arrives after
+   * the user moved on to another scenario is dropped by the store (§1). */
+  const loadScene = async (id: string, epoch: number) => {
     try {
       const sc = await api.getScene(id)
-      setScene(sc)
-      setSlice(null)
+      setScene(sc, epoch)
     } catch (e) {
       if (e instanceof ApiError && e.code === 'WORLD_NOT_GENERATED') {
-        setScene(null)
+        setScene(null, epoch)
         return
       }
       throw e
@@ -76,8 +80,8 @@ export function ScenarioPanel() {
       return api.createScenario({ ...resolved, name })
     },
     onSuccess: (s) => {
-      setScenario(s)
-      setScene(null)
+      // one scenario-identity transition clears everything derived (§1)
+      activateScenario(s)
       void qc.invalidateQueries({ queryKey: ['scenarios'] })
     },
   })
@@ -85,8 +89,8 @@ export function ScenarioPanel() {
   const load = useMutation({
     mutationFn: async (id: string) => {
       const s = await api.getScenario(id)
-      setScenario(s)
-      await loadScene(id)
+      const epoch = activateScenario(s)
+      await loadScene(id, epoch)
       return s
     },
   })
@@ -94,8 +98,9 @@ export function ScenarioPanel() {
   const generate = useMutation({
     mutationFn: async () => {
       if (!scenario) throw new Error('no scenario selected')
+      const epoch = scenarioEpoch()
       await api.generateWorld(scenario.id)
-      await loadScene(scenario.id)
+      await loadScene(scenario.id, epoch)
     },
   })
 
@@ -242,46 +247,67 @@ export function ScenarioPanel() {
         ) : null}
       </PanelSection>
 
-      <PanelSection title="Parameters">
-        {scenario ? (
-          <dl className="readout grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-            <dt className="text-mute">World</dt>
-            <dd>
-              {scenario.world.sizeX} × {scenario.world.sizeY} m
-            </dd>
-            <dt className="text-mute">Model depth</dt>
-            <dd>
-              {fmtMeters(scenario.world.depth, 0)} below{' '}
-              {fmtMeters(scenario.terrain.baseElevation, 0)}
-            </dd>
-            <dt className="text-mute">Orebody</dt>
-            <dd>
-              {scenario.orebody.orebodyType} · strike {scenario.orebody.strikeDeg}° · dip{' '}
-              {scenario.orebody.dipDeg}°
-            </dd>
-            <dt className="text-mute">Thickness</dt>
-            <dd>{fmtMeters(scenario.orebody.thickness, 0)}</dd>
-            <dt className="text-mute">Rock quality (synthetic RMR-like, 0-100)</dt>
-            <dd>
-              {scenario.geology.rockQuality.mean} ± {scenario.geology.rockQuality.std}
-            </dd>
-            <dt className="text-mute">Faults</dt>
-            <dd>{scenario.geology.faults.length}</dd>
-            <dt className="text-mute">Block</dt>
-            <dd>
-              {scenario.blockModel.dx} × {scenario.blockModel.dy} × {scenario.blockModel.dz} m
-            </dd>
-            <dt className="text-mute">Max grade</dt>
-            <dd>{(scenario.ramp.maxGradient * 100).toFixed(0)} %</dd>
-            <dt className="text-mute">Min radius</dt>
-            <dd>{fmtMeters(scenario.ramp.minTurnRadius, 0)}</dd>
-          </dl>
-        ) : (
-          <p className="text-[11px] text-mute">
-            No scenario loaded. Create one, then generate its world.
-          </p>
-        )}
-      </PanelSection>
+      <ParametersPanel scenario={scenario} />
     </>
+  )
+}
+
+/**
+ * Scenario parameter readout (Phase 17.1 §4). Split out of `ScenarioPanel`
+ * so the two-column layout is directly testable; it is presentational only
+ * and echoes the backend document without computing anything.
+ */
+export function ParametersPanel({ scenario }: { scenario: Scenario | null }) {
+  return (
+    <PanelSection title="Parameters">
+      {scenario ? (
+        /* Phase 17.1 §4: a fixed label column. `auto` sized itself to the
+           longest label — the synthetic-RMR disclaimer — and squeezed
+           every value into the remainder. Long labels now WRAP inside
+           their own column, so all values keep one left edge. */
+        <dl className="readout grid grid-cols-[7.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1.5 text-[11px]">
+          <dt className="break-words text-mute">World</dt>
+          <dd className="break-words">
+            {scenario.world.sizeX} × {scenario.world.sizeY} m
+          </dd>
+          <dt className="break-words text-mute">Model depth</dt>
+          <dd className="break-words">
+            {fmtMeters(scenario.world.depth, 0)} below{' '}
+            {fmtMeters(scenario.terrain.baseElevation, 0)}
+          </dd>
+          <dt className="break-words text-mute">Orebody</dt>
+          <dd className="break-words">{scenario.orebody.orebodyType}</dd>
+          <dt className="break-words text-mute">Strike / dip</dt>
+          <dd className="break-words">
+            {scenario.orebody.strikeDeg}° / {scenario.orebody.dipDeg}°
+          </dd>
+          <dt className="break-words text-mute">Thickness</dt>
+          <dd className="break-words">{fmtMeters(scenario.orebody.thickness, 0)}</dd>
+          {/* the synthetic-RMR disclaimer is kept in full on its own line;
+              it is never abbreviated to a misleading "RMR" */}
+          <dt className="break-words text-mute">
+            Rock quality
+            <span className="block text-[10px] leading-tight">synthetic RMR-like, 0-100</span>
+          </dt>
+          <dd className="break-words">
+            {scenario.geology.rockQuality.mean} ± {scenario.geology.rockQuality.std}
+          </dd>
+          <dt className="break-words text-mute">Faults</dt>
+          <dd className="break-words">{scenario.geology.faults.length}</dd>
+          <dt className="break-words text-mute">Block</dt>
+          <dd className="break-words">
+            {scenario.blockModel.dx} × {scenario.blockModel.dy} × {scenario.blockModel.dz} m
+          </dd>
+          <dt className="break-words text-mute">Max grade</dt>
+          <dd className="break-words">{(scenario.ramp.maxGradient * 100).toFixed(0)} %</dd>
+          <dt className="break-words text-mute">Min radius</dt>
+          <dd className="break-words">{fmtMeters(scenario.ramp.minTurnRadius, 0)}</dd>
+        </dl>
+      ) : (
+        <p className="text-[11px] text-mute">
+          No scenario loaded. Create one, then generate its world.
+        </p>
+      )}
+    </PanelSection>
   )
 }
