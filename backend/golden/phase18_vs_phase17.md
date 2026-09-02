@@ -1,0 +1,27 @@
+# Golden comparison: phase17_baseline → phase18_after_migration
+
+- compared cases: 22
+- HARD CONTRACT regressions: 0
+- metric changes: 12 (expected 12, unexpected 0)
+- missing cases: []  new cases: []
+
+## Metric changes
+
+| case | metric | baseline | current | Δ | rel Δ | expected |
+| --- | --- | --- | --- | --- | --- | --- |
+| BASELINE-1234 | gradeProxy | 4.173161703018696 | 4.164913993600818 | -0.008247709417878113 | -0.198 % | yes |
+| BASELINE-2026 | gradeProxy | 3.908134029320228 | 3.9107031394241125 | 0.0025691101038844977 | +0.066 % | yes |
+| BASELINE-42 | gradeProxy | 3.990998288419237 | 3.9980178962049715 | 0.007019607785734294 | +0.176 % | yes |
+| BASELINE-7 | gradeProxy | 3.7723852823353843 | 3.773937177438762 | 0.0015518951033777206 | +0.041 % | yes |
+| BASELINE-99 | gradeProxy | 4.339457637092807 | 4.342256473542342 | 0.002798836449534825 | +0.064 % | yes |
+| RANDOM_TABULAR-103 | gradeProxy | 3.255928310205251 | 3.2719685724696843 | 0.016040262264433114 | +0.493 % | yes |
+| RANDOM_TABULAR-104 | gradeProxy | 5.439890242665487 | 5.4458897565520035 | 0.005999513886516539 | +0.110 % | yes |
+| RANDOM_TABULAR-107 | gradeProxy | 5.523483696720187 | 5.516229910507772 | -0.007253786212414681 | -0.131 % | yes |
+| RANDOM_TABULAR-108 | gradeProxy | 5.843528948051227 | 5.840439707295468 | -0.00308924075575856 | -0.053 % | yes |
+| RANDOM_TABULAR-109 | gradeProxy | 2.9601902199816506 | 2.957110199171113 | -0.003080020810537487 | -0.104 % | yes |
+| RANDOM_TABULAR-111 | gradeProxy | 2.7581705440146633 | 2.758429263867949 | 0.00025871985328551617 | +0.009 % | yes |
+| RANDOM_TABULAR-112 | gradeProxy | 5.091233893356697 | 5.094693332611092 | 0.003459439254394958 | +0.068 % | yes |
+
+## Runtime (advisory only)
+
+total: 7863.2 s → 7875.5 s
