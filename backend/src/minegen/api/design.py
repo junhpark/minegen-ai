@@ -23,6 +23,7 @@ from minegen.services.design_service import (
     TargetsNotGeneratedError,
     TimelineNotGeneratedError,
     TunnelNotGeneratedError,
+    UnsupportedOrebodyError,
 )
 from minegen.services.job_service import JobAlreadyRunningError, JobService
 from minegen.services.scenario_service import ScenarioNotFoundError
@@ -46,6 +47,14 @@ def _error(status_code: int, code: str, message: str) -> HTTPException:
 
 
 def _guard(scenario_id: str, exc: Exception) -> HTTPException:
+    if isinstance(exc, UnsupportedOrebodyError):
+        return _error(
+            422,
+            "UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT",
+            f"orebody type '{exc}' is valid for Phase 17 world generation, but the "
+            "current legacy decline/access layout supports TABULAR orebodies only; "
+            "generalized mine layout is deferred to Phase 18",
+        )
     if isinstance(exc, ScenarioNotFoundError):
         return _error(404, "SCENARIO_NOT_FOUND", f"scenario '{scenario_id}' does not exist")
     if isinstance(exc, WorldNotGeneratedError):
@@ -188,7 +197,7 @@ def evaluate_cost(scenario_id: str, body: EvaluateRequest, svc: Service) -> dict
 def generate_targets(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.generate_targets(scenario_id)
-    except (ScenarioNotFoundError, WorldNotGeneratedError) as e:
+    except (ScenarioNotFoundError, WorldNotGeneratedError, UnsupportedOrebodyError) as e:
         raise _guard(scenario_id, e) from e
 
 

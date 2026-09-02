@@ -17,6 +17,9 @@ export interface TimelineState {
   play: () => void
   pause: () => void
   setSpeed: (speed: 1 | 5 | 20) => void
+  /** Phase 17.1 §1: the day cursor and its range belong to one scenario's
+   * timeline artifact and never survive a scenario change. */
+  reset: () => void
 }
 
 export const useTimelineStore = create<TimelineState>()((set) => ({
@@ -32,4 +35,6 @@ export const useTimelineStore = create<TimelineState>()((set) => ({
   play: () => set({ playing: true }),
   pause: () => set({ playing: false }),
   setSpeed: (speed) => set({ speed }),
+  // `speed` is a viewing preference, not scenario-derived state
+  reset: () => set({ currentDay: 0, startDay: 0, endDay: 0, playing: false }),
 }))

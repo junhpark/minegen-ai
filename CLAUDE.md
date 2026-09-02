@@ -813,3 +813,63 @@ phase is considered complete.
     Phase 15 temporal integration must not change Phase 13/14 STATIC_FINAL
     collision, spawn, pointer-lock, locomotion or planned-asset inspection
     semantics.
+119. Scenario realization vs world generation (Phase 17): every stochastic
+     PARAMETER draw happens in the explicit, non-persistent realization
+     step (`POST /scenarios/realize`, `services/scenario_realizer.py`);
+     the persisted ScenarioCreate is fully resolved and `generate_world`
+     stays a pure function of it with zero hidden randomness. A persisted
+     scenario alone must reproduce its world forever.
+120. Orebody implementations are ONE solid: `contains`, `signed_distance`
+     (exact Euclidean), `volume`, `bounding_box` and `mesh` must describe
+     the same geometry (mesh vertices exactly on the analytic surface,
+     mesh bounds inside the analytic AABB, sdf/contains sign agreement).
+     A shape that cannot satisfy this (e.g. free-form noise solids without
+     a metric SDF) is deferred, never approximated silently — engineering
+     buffers consume the SDF.
+121. Randomization RNG domains are independent named sub-streams of the
+     scenario seed (orebody 0x0B0D17, faults 0xFA0117, alongside the
+     existing terrain 0x7E44A1, rock 0x20C4, grade 0x6A4D): changing one
+     domain's draw count must never shift another domain's draws. New
+     domains get NEW keys; existing keys are frozen.
+122. Realized faults must actually cut the model volume (FaultPlane
+     clip_to_box non-empty) within a bounded deterministic retry budget;
+     exhaustion is a typed failure (SCENARIO_REALIZATION_INVALID), never a
+     silent drop or an out-of-world plane.
+123. Non-TABULAR orebodies are first-class for world generation and
+     visualization, but the legacy Phase 03+ layout is TABULAR-only until
+     Phase 18: design entry points fail typed
+     (UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT, 422) — never 500, never a
+     partial layout on unsupported geometry.
+124. The backend owns stochastic scenario realization and ALL orebody and
+     fault engineering geometry. The frontend may edit explicit
+     ScenarioCreate PARAMETERS, and only from direct user input: it must
+     never generate stochastic geological parameters (no client-side
+     randomness) nor independently derive orebody or fault geometry. The
+     final explicit ScenarioCreate the user submits is the authoritative
+     persisted scenario — a realization seeds the editable draft and is
+     never silently re-run over user edits; changing preset, seed or fault
+     count invalidates the draft instead.
+125. Randomized orebody acceptance is judged on the ACTUAL analytic solid,
+     never on its centre: build the candidate and test
+     `build_orebody(cfg).bounding_box()` against the world bounds
+     (horizontal safety margin 80 m, top cover margin 40 m, above the model
+     floor). Strike/dip rotation means a centre-only test proves nothing.
+     Invalid candidates are rejected whole and retried from the same
+     deterministic sub-stream — never clamped, never clipped — and
+     exhaustion is a typed SCENARIO_REALIZATION_INVALID failure.
+
+## Roadmap
+
+Product name and direction, and the phases after 17.1 (D0, 18–23), live in
+`docs/roadmap.md`. "Digital Twin" is reserved for the future measured-mine
+(LiDAR / 3DGS) track and is never used for the synthetic sandbox.
+
+126. Claude Code MAY create local commits after the scoped implementation
+     and all required quality gates pass. Claude Code MUST NOT push,
+     force-push, merge, create or update pull requests, or perform any
+     other remote write without Park's explicit approval for THAT
+     SPECIFIC action — a previous approval never authorizes a later push.
+     Before requesting approval, report branch, parent SHA, new local
+     HEAD, git status, diff --stat, backend gate results, frontend gate
+     results, and manual browser acceptance status. Force push is
+     prohibited.

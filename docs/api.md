@@ -8,6 +8,8 @@ meters (`docs/coordinate-system.md`). Schemas live in
 ## Implemented
 
     GET  /api/v1/health                              liveness + version + coordinate system
+    POST /api/v1/scenarios/realize                   Phase 17: deterministic scenario
+                                                     realization; NON-persistent (see below)
     POST /api/v1/scenarios                           create scenario from ScenarioCreate
     GET  /api/v1/scenarios                           list scenario summaries
     GET  /api/v1/scenarios/{id}                      fetch scenario document
@@ -113,6 +115,42 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      Phase 12: persisted typed SensorPayload
                                                      (409 SENSORS_NOT_GENERATED after
                                                      network/upstream invalidation)
+
+### POST /api/v1/scenarios/realize (Phase 17)
+
+Deterministic scenario realization: turns a preset + seed into a fully
+resolved `ScenarioCreate`. **Non-persistent** — nothing is written, no
+scenario id is assigned; the client inspects (and may explicitly edit)
+the returned document and then submits it to `POST /api/v1/scenarios`
+like any other create payload.
+
+Request body:
+
+    preset      BASELINE | RANDOM_TABULAR | RANDOM_ELLIPSOID   (default BASELINE)
+    seed        integer                                        (default 42)
+    faultCount  integer 0-6 or null                            (RANDOM_* only;
+                                                                BASELINE has exactly
+                                                                one fixed fault)
+
+Response `200`: a fully resolved `ScenarioCreate` (same schema as the
+create payload). BASELINE performs zero random draws and reproduces the
+reference mine; RANDOM_* presets draw the orebody and faults from their
+own independent seed sub-streams, so the same preset + seed + faultCount
+always yields byte-identical parameters, and changing the fault count
+never moves the orebody (rule 121).
+
+Errors:
+
+    422 SCENARIO_REALIZATION_INVALID   invalid options (e.g. faultCount on
+                                       BASELINE, count outside 0-6) or bounded
+                                       deterministic retries exhausted without a
+                                       candidate whose ACTUAL geometry fits inside
+                                       the model volume (rules 122, 125)
+
+Note that a realized non-TABULAR orebody is fully supported for world
+generation and visualization, but the legacy Phase 03+ layout rejects it
+with `422 UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT` until Phase 18
+(rule 123).
 
 ## Planned
     GET  /api/v1/scenarios/{id}/design                  Phase 04+

@@ -14,7 +14,9 @@ import { useViewerStore } from '@/stores/viewerStore'
 export function SensorPanel() {
   const scene = useScenarioStore((s) => s.scene)
   const scenario = useScenarioStore((s) => s.scenario)
-  const setScene = useScenarioStore((s) => s.setScene)
+  // §1: epoch-guarded store-internal write — never a captured `scene` copy
+  const applyScene = useScenarioStore((s) => s.applyScene)
+  const epoch = useScenarioStore((s) => s.epoch)
   const setLayerVisible = useViewerStore((s) => s.setLayerVisible)
 
   const network = scene?.network ?? null
@@ -28,7 +30,7 @@ export function SensorPanel() {
     },
     onSuccess: (payload) => {
       // rule 98: sensor regeneration touches nothing else
-      if (scene) setScene(afterSensorsRegen(scene, payload))
+      applyScene(epoch, (current) => afterSensorsRegen(current, payload))
       setLayerVisible('sensors', true)
       setLayerVisible('sensorCoverage', true)
     },

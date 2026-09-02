@@ -7,7 +7,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from minegen.api.deps import get_scenario_store, get_world_service
-from minegen.core.models import ErrorDetail, Scenario, ScenarioCreate, ScenarioSummary
+from minegen.core.models import (
+    ErrorDetail,
+    Scenario,
+    ScenarioCreate,
+    ScenarioRealizeRequest,
+    ScenarioSummary,
+)
+from minegen.services.scenario_realizer import ScenarioRealizationError, realize_scenario
 from minegen.services.scenario_service import ScenarioNotFoundError, ScenarioStore
 from minegen.services.world_service import WorldService
 
@@ -24,6 +31,22 @@ def _not_found(scenario_id: str) -> HTTPException:
             code="SCENARIO_NOT_FOUND", message=f"scenario '{scenario_id}' does not exist"
         ).model_dump(by_alias=True),
     )
+
+
+@router.post("/realize", response_model=ScenarioCreate, response_model_by_alias=True)
+def realize(body: ScenarioRealizeRequest) -> ScenarioCreate:
+    """Phase 17: deterministic preset+seed realization. NON-persistent —
+    returns a fully resolved ScenarioCreate for the client to inspect and
+    then submit to the ordinary create endpoint (rule 119)."""
+    try:
+        return realize_scenario(body.preset, body.seed, body.fault_count)
+    except ScenarioRealizationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=ErrorDetail(code="SCENARIO_REALIZATION_INVALID", message=str(exc)).model_dump(
+                by_alias=True
+            ),
+        ) from exc
 
 
 @router.post(

@@ -10,6 +10,7 @@ Frame convention (CLAUDE.md rule 28, ``docs/coordinate-system.md``):
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -211,7 +212,154 @@ class TabularOrebody(Orebody):
         }
 
 
+class EllipsoidOrebody(Orebody):
+    """Triaxial ellipsoid in the strike/dip frame (Phase 17): semi-axes are
+    ``length/2`` along strike (u), ``height/2`` down dip (v) and
+    ``thickness/2`` across (w) — i.e. the ellipsoid inscribed in the
+    equivalent tabular slab, so every existing OrebodyConfig field keeps
+    its meaning and the persisted schema is unchanged.
+
+    ``signed_distance`` is the EXACT Euclidean distance (rule: the SDF,
+    ``contains``, ``volume``, ``bounding_box`` and ``mesh`` all describe
+    the SAME solid). The nearest-point problem for an axis-aligned
+    ellipsoid is solved per point via the classic largest-root equation
+
+        f(t) = Σ (aᵢ pᵢ / (aᵢ² + t))² − 1 = 0,   t ∈ (−min(aᵢ²), ∞)
+
+    (Eberly), using a deterministic bisection — no iteration-count or
+    seed dependence, mypy/NumPy only.
+    """
+
+    config: OrebodyConfig
+    frame: Frame
+
+    def __init__(self, config: OrebodyConfig) -> None:
+        if config.orebody_type is not OrebodyType.ELLIPSOID:
+            raise ValueError(f"EllipsoidOrebody requires ELLIPSOID, got {config.orebody_type}")
+        self.config = config
+        self.frame = strike_dip_frame(
+            np.array(config.center.as_tuple()), config.strike_deg, config.dip_deg
+        )
+
+    # -- extents ----------------------------------------------------------- #
+
+    @property
+    def semi_axes(self) -> FloatArray:
+        return np.array(
+            [self.config.length / 2.0, self.config.height / 2.0, self.config.thickness / 2.0]
+        )
+
+    @property
+    def half_thickness(self) -> float:
+        return self.config.thickness / 2.0
+
+    # -- geometry ---------------------------------------------------------- #
+
+    def _level(self, local: FloatArray) -> FloatArray:
+        """Quadratic level value: <=1 inside, ==1 on the surface."""
+        return np.asarray(np.sum((local / self.semi_axes) ** 2, axis=-1))
+
+    def contains(self, points: FloatArray) -> BoolArray:
+        local = self.to_local(np.asarray(points, dtype=np.float64))
+        return np.asarray(self._level(local) <= 1.0)
+
+    def signed_distance(self, points: FloatArray) -> FloatArray:
+        pts = np.asarray(points, dtype=np.float64)
+        local = self.to_local(pts).reshape(-1, 3)
+        a = self.semi_axes
+        a2 = a * a
+        p = np.abs(local)  # symmetry: distance depends on |coords| only
+        # zero components make the largest-root equation degenerate (the
+        # nearest point leaves the axis plane); a 1 nm clamp keeps the
+        # bracket valid and perturbs the distance by far less than 1e-6 m
+        p = np.maximum(p, 1e-9)
+        # largest root of f(t) = sum((a p / (a^2 + t))^2) - 1 lives in
+        # (-min(a^2), inf); bracket the upper end analytically:
+        # f(t) < 1 once t >= |a p| * sqrt(3) - min(a^2) elementwise bound
+        t_lo = np.full(p.shape[0], -np.min(a2) + 1e-12)
+        t_hi = np.linalg.norm(a * p, axis=-1) * math.sqrt(3.0) + np.max(a2)
+        # ensure f(t_hi) < 0 (outside the root)
+        for _ in range(80):  # fixed deterministic bisection depth
+            t_mid = 0.5 * (t_lo + t_hi)
+            f = np.sum((a[None, :] * p / (a2[None, :] + t_mid[:, None])) ** 2, axis=-1) - 1.0
+            take_hi = f > 0.0
+            t_lo = np.where(take_hi, t_mid, t_lo)
+            t_hi = np.where(take_hi, t_hi, t_mid)
+        t = 0.5 * (t_lo + t_hi)
+        closest = a2[None, :] * p / (a2[None, :] + t[:, None])
+        dist = np.linalg.norm(p - closest, axis=-1)
+        sign = np.where(self._level(local) <= 1.0, -1.0, 1.0)
+        # points numerically at the center: distance = min semi-axis
+        at_center = np.linalg.norm(local, axis=-1) < 1e-12
+        dist = np.where(at_center, np.min(a), dist)
+        out = sign * dist
+        return np.asarray(out.reshape(pts.shape[:-1]))
+
+    def volume(self) -> float:
+        a = self.semi_axes
+        return float(4.0 / 3.0 * math.pi * a[0] * a[1] * a[2])
+
+    def bounding_box(self) -> tuple[FloatArray, FloatArray]:
+        """Closed-form AABB of a rotated ellipsoid: the world half-extent
+        along axis i is sqrt(Σⱼ (Rᵢⱼ aⱼ)²) with R columns = frame axes."""
+        axes = np.stack([self.u, self.v, self.w], axis=0)  # (3 local, 3 world)
+        half = np.sqrt(np.sum((axes * self.semi_axes[:, None]) ** 2, axis=0))
+        return self.center - half, self.center + half
+
+    def mesh(self, rings: int = 24, sectors: int = 48) -> tuple[FloatArray, npt.NDArray[np.int32]]:
+        """UV-sphere scaled by the semi-axes: every vertex lies EXACTLY on
+        the ellipsoid surface, so the mesh, SDF and contains() describe the
+        same solid. Outward CCW winding (right-handed frame preserved)."""
+        iu = np.arange(1, rings)
+        phi = np.pi * iu / rings  # polar angle, poles handled separately
+        theta = 2.0 * np.pi * np.arange(sectors) / sectors
+        sin_phi = np.sin(phi)[:, None]
+        ring_local = np.stack(
+            [
+                np.broadcast_to(np.cos(theta)[None, :], (rings - 1, sectors)) * sin_phi,
+                np.broadcast_to(np.sin(theta)[None, :], (rings - 1, sectors)) * sin_phi,
+                np.broadcast_to(np.cos(phi)[:, None], (rings - 1, sectors)),
+            ],
+            axis=-1,
+        ).reshape(-1, 3)
+        poles = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]])
+        unit = np.concatenate([poles, ring_local], axis=0)
+        verts = self.to_world(unit * self.semi_axes)
+        faces: list[list[int]] = []
+
+        def rid(r: int, s: int) -> int:
+            return 2 + r * sectors + (s % sectors)
+
+        for sct in range(sectors):  # top cap (north pole = +w local)
+            faces.append([0, rid(0, sct), rid(0, sct + 1)])
+        for r in range(rings - 2):
+            for sct in range(sectors):
+                a_, b_, c_, d_ = rid(r, sct), rid(r, sct + 1), rid(r + 1, sct + 1), rid(r + 1, sct)
+                faces.append([a_, d_, c_])
+                faces.append([a_, c_, b_])
+        for sct in range(sectors):  # bottom cap
+            faces.append([1, rid(rings - 2, sct + 1), rid(rings - 2, sct)])
+        return verts, np.asarray(faces, dtype=np.int32)
+
+    def to_dict(self) -> dict[str, Any]:
+        lo, hi = self.bounding_box()
+        return {
+            "type": self.config.orebody_type.value,
+            "center": self.center.tolist(),
+            "u": self.u.tolist(),
+            "v": self.v.tolist(),
+            "w": self.w.tolist(),
+            "semiAxes": self.semi_axes.tolist(),
+            "volumeM3": self.volume(),
+            "tonnes": self.tonnes(),
+            "bboxMin": lo.tolist(),
+            "bboxMax": hi.tolist(),
+        }
+
+
 def build_orebody(config: OrebodyConfig) -> Orebody:
     if config.orebody_type is OrebodyType.TABULAR:
         return TabularOrebody(config)
+    if config.orebody_type is OrebodyType.ELLIPSOID:
+        return EllipsoidOrebody(config)
     raise NotImplementedError(f"orebody type {config.orebody_type} is not implemented in v0.1")

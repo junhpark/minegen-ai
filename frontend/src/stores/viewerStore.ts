@@ -32,16 +32,23 @@ export interface ViewerState {
   toggleLayer: (layer: LayerId) => void
   setLayerVisible: (layer: LayerId, visible: boolean) => void
   isLayerVisible: (layer: LayerId) => boolean
+  /**
+   * Phase 17.1 §1: drop the viewer state that names objects of the previous
+   * scenario. `visibleLayers`, `mode` and `navigationMode` are user
+   * PREFERENCES, not derived state, and deliberately survive.
+   */
+  resetScenarioScopedState: () => void
 }
 
 const DEFAULT_VISIBLE: LayerId[] = [
   'terrain',
   'orebody',
   'gradeBlocks',
-  'rockQuality',
   'faults',
   'accessTargets',
-  'rawSearchPath',
+  // Phase 17.1 §2/§3: the raw Hybrid-A* search path and the block-field
+  // slice are explicit opt-in diagnostic layers and default OFF —
+  // 'rawSearchPath' and 'rockQuality' are intentionally absent here
   'smoothedDecline',
   'tunnelMesh',
   'ramp',
@@ -115,4 +122,11 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
       return { visibleLayers: next }
     }),
   isLayerVisible: (layer) => get().visibleLayers.has(layer),
+  resetScenarioScopedState: () =>
+    set({
+      selectedObjectId: null,
+      walkthroughContext: null,
+      walkthroughSnapshotDay: null,
+      walkthroughSnapshotIdentity: null,
+    }),
 }))

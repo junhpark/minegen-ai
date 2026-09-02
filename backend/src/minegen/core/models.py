@@ -18,7 +18,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
-from minegen.core.enums import AssetType, MiningMethodType, OrebodyType
+from minegen.core.enums import AssetType, MiningMethodType, OrebodyType, ScenarioPreset
 
 
 class ApiModel(BaseModel):
@@ -470,6 +470,16 @@ class ScenarioCreate(ApiModel):
     mining: MiningConfig = Field(default_factory=MiningConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)
+
+
+class ScenarioRealizeRequest(ApiModel):
+    """Body of the NON-persistent ``POST /scenarios/realize`` (Phase 17):
+    the response is a fully resolved ScenarioCreate the client may inspect,
+    edit and then submit to the existing ``POST /scenarios``."""
+
+    preset: ScenarioPreset = ScenarioPreset.BASELINE
+    seed: int = 42
+    fault_count: Annotated[int, Field(ge=0, le=6)] | None = None
 
 
 class Scenario(ScenarioCreate):

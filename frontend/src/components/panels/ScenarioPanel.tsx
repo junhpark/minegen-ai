@@ -1,9 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, ApiError } from '@/api/client'
+import { AdvancedScenarioEditor } from '@/scenario/AdvancedScenarioEditor'
+import {
+  DEFAULT_BUILDER,
+  faultCountEnabled,
+  realizeRequest,
+  realizedSummary,
+} from '@/scenario/builder'
+import {
+  SCENARIO_PRESETS,
+  type Scenario,
+  type ScenarioCreate,
+  type ScenarioPreset,
+} from '@/types/api'
 import { PanelSection } from '@/components/layout/PanelSection'
+import { activateScenario, scenarioEpoch } from '@/stores/scenarioSession'
 import { useScenarioStore } from '@/stores/scenarioStore'
-import { useSliceStore } from '@/stores/sliceStore'
 import { fmtMeters } from '@/utils/format'
 
 /**
@@ -14,63 +27,61 @@ export function ScenarioPanel() {
   const qc = useQueryClient()
   const scenario = useScenarioStore((s) => s.scenario)
   const scene = useScenarioStore((s) => s.scene)
-  const setScenario = useScenarioStore((s) => s.setScenario)
   const setScene = useScenarioStore((s) => s.setScene)
-  const setSlice = useSliceStore((s) => s.setSlice)
   const [name, setName] = useState('Synthetic Gold Mine 001')
-  const [seed, setSeed] = useState(42)
-  const [withFault, setWithFault] = useState(true)
+  const [seed, setSeed] = useState(DEFAULT_BUILDER.seed)
+  const [preset, setPreset] = useState<ScenarioPreset>(DEFAULT_BUILDER.preset)
+  const [faultCount, setFaultCount] = useState(DEFAULT_BUILDER.faultCount)
+  // realized = the untouched backend realization; draft = the editable
+  // document the user will actually persist (Phase 17 acceptance, rule 124)
+  const [realized, setRealized] = useState<ScenarioCreate | null>(null)
+  const [draft, setDraft] = useState<ScenarioCreate | null>(null)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  // Phase 17 (rule 119): the panel never draws random numbers — it asks the
+  // backend to realize preset+seed and shows/creates the result verbatim
 
   const list = useQuery({ queryKey: ['scenarios'], queryFn: api.listScenarios })
 
-  const loadScene = async (id: string) => {
+  /** `epoch` is captured before the request: a manifest that arrives after
+   * the user moved on to another scenario is dropped by the store (§1). */
+  const loadScene = async (id: string, epoch: number) => {
     try {
       const sc = await api.getScene(id)
-      setScene(sc)
-      setSlice(null)
+      setScene(sc, epoch)
     } catch (e) {
       if (e instanceof ApiError && e.code === 'WORLD_NOT_GENERATED') {
-        setScene(null)
+        setScene(null, epoch)
         return
       }
       throw e
     }
   }
 
+  const realize = useMutation({
+    mutationFn: () => api.realizeScenario(realizeRequest({ preset, seed, faultCount })),
+    onSuccess: (sc) => {
+      setRealized(sc)
+      setDraft(sc) // realization seeds the editable draft
+    },
+  })
+
+  /** preset / seed / fault-count changes make any existing realization
+   * stale — never show or submit it as if it belonged to the new inputs */
+  const invalidateDraft = () => {
+    setRealized(null)
+    setDraft(null)
+  }
+
   const create = useMutation({
-    mutationFn: () =>
-      api.createScenario({
-        name,
-        seed,
-        ...(withFault
-          ? {
-              geology: {
-                rockQuality: {
-                  mean: 65,
-                  std: 12,
-                  correlationLengthXy: 80,
-                  correlationLengthZ: 40,
-                  minimum: 20,
-                  maximum: 90,
-                },
-                faults: [
-                  {
-                    origin: { x: -100, y: -200, z: 0 },
-                    strikeDeg: 120,
-                    dipDeg: 65,
-                    coreHalfWidth: 2.5,
-                    influenceHalfWidth: 20,
-                    corePenalty: 50,
-                    damageZonePenalty: 10,
-                  },
-                ],
-              },
-            }
-          : {}),
-      }),
+    mutationFn: async () => {
+      // the edited draft is authoritative: never re-realize over user edits
+      const resolved =
+        draft ?? (await api.realizeScenario(realizeRequest({ preset, seed, faultCount })))
+      return api.createScenario({ ...resolved, name })
+    },
     onSuccess: (s) => {
-      setScenario(s)
-      setScene(null)
+      // one scenario-identity transition clears everything derived (§1)
+      activateScenario(s)
       void qc.invalidateQueries({ queryKey: ['scenarios'] })
     },
   })
@@ -78,8 +89,8 @@ export function ScenarioPanel() {
   const load = useMutation({
     mutationFn: async (id: string) => {
       const s = await api.getScenario(id)
-      setScenario(s)
-      await loadScene(id)
+      const epoch = activateScenario(s)
+      await loadScene(id, epoch)
       return s
     },
   })
@@ -87,12 +98,13 @@ export function ScenarioPanel() {
   const generate = useMutation({
     mutationFn: async () => {
       if (!scenario) throw new Error('no scenario selected')
+      const epoch = scenarioEpoch()
       await api.generateWorld(scenario.id)
-      await loadScene(scenario.id)
+      await loadScene(scenario.id, epoch)
     },
   })
 
-  const error = create.error ?? load.error ?? generate.error
+  const error = realize.error ?? create.error ?? load.error ?? generate.error
   const errorText =
     error instanceof ApiError ? `${error.code}: ${error.message}` : error ? error.message : null
 
@@ -106,26 +118,87 @@ export function ScenarioPanel() {
           <span className="mb-1 block text-[11px] text-chalk-dim">Name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} className={input} />
         </label>
-        <div className="mb-3 grid grid-cols-[1fr_auto] items-end gap-2">
+        <label className="mb-2 block">
+          <span className="mb-1 block text-[11px] text-chalk-dim">Preset</span>
+          <select
+            value={preset}
+            onChange={(e) => {
+              setPreset(e.target.value as ScenarioPreset)
+              invalidateDraft()
+            }}
+            className={input}
+          >
+            {SCENARIO_PRESETS.map((p) => (
+              <option key={p} value={p}>
+                {p === 'BASELINE'
+                  ? 'Baseline (fixed reference mine)'
+                  : p === 'RANDOM_TABULAR'
+                    ? 'Randomized · tabular orebody'
+                    : 'Randomized · ellipsoid orebody'}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="mb-2 grid grid-cols-[1fr_auto_auto] items-end gap-2">
           <label className="block">
             <span className="mb-1 block text-[11px] text-chalk-dim">Seed</span>
             <input
               type="number"
               value={seed}
-              onChange={(e) => setSeed(Number(e.target.value))}
+              onChange={(e) => {
+                setSeed(Number(e.target.value))
+                invalidateDraft()
+              }}
               className={`readout ${input}`}
             />
           </label>
-          <label className="flex items-center gap-2 pb-1 text-[11px] text-chalk-dim">
+          <label className="block w-16">
+            <span className="mb-1 block text-[11px] text-chalk-dim">Faults</span>
             <input
-              type="checkbox"
-              checked={withFault}
-              onChange={(e) => setWithFault(e.target.checked)}
-              className="accent-lamp"
+              type="number"
+              min={0}
+              max={6}
+              value={faultCountEnabled(preset) ? faultCount : 1}
+              disabled={!faultCountEnabled(preset)}
+              onChange={(e) => {
+                setFaultCount(Math.max(0, Math.min(6, Number(e.target.value))))
+                invalidateDraft()
+              }}
+              className={`readout ${input} disabled:opacity-50`}
             />
-            one fault
           </label>
+          <button
+            type="button"
+            onClick={() => realize.mutate()}
+            disabled={realize.isPending}
+            className="plate rounded-sm border border-rock-600 px-2 py-1 text-[12px] text-chalk hover:bg-rock-700 disabled:opacity-50"
+            title="Preview the deterministic realization for this preset + seed"
+          >
+            {realize.isPending ? '…' : 'Randomize'}
+          </button>
         </div>
+        {draft ? (
+          <>
+            <div className="readout mb-2 rounded-sm border border-rock-700 bg-rock-900/60 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
+              {realizedSummary(draft).map((line) => (
+                <div key={line}>{line}</div>
+              ))}
+              <div className="mt-1 text-mute">
+                {realized && JSON.stringify(draft) !== JSON.stringify(realized)
+                  ? 'Edited — your values will be persisted as-is.'
+                  : 'Same seed always reproduces this exact mine.'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((v) => !v)}
+              className="mb-2 w-full rounded-sm border border-rock-700 px-2 py-1 text-left text-[11px] text-chalk-dim hover:bg-rock-800"
+            >
+              {advancedOpen ? '▾' : '▸'} Advanced
+            </button>
+            {advancedOpen ? <AdvancedScenarioEditor draft={draft} onChange={setDraft} /> : null}
+          </>
+        ) : null}
         <button
           type="button"
           onClick={() => create.mutate()}
@@ -174,46 +247,67 @@ export function ScenarioPanel() {
         ) : null}
       </PanelSection>
 
-      <PanelSection title="Parameters">
-        {scenario ? (
-          <dl className="readout grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-            <dt className="text-mute">World</dt>
-            <dd>
-              {scenario.world.sizeX} × {scenario.world.sizeY} m
-            </dd>
-            <dt className="text-mute">Model depth</dt>
-            <dd>
-              {fmtMeters(scenario.world.depth, 0)} below{' '}
-              {fmtMeters(scenario.terrain.baseElevation, 0)}
-            </dd>
-            <dt className="text-mute">Orebody</dt>
-            <dd>
-              {scenario.orebody.orebodyType} · strike {scenario.orebody.strikeDeg}° · dip{' '}
-              {scenario.orebody.dipDeg}°
-            </dd>
-            <dt className="text-mute">Thickness</dt>
-            <dd>{fmtMeters(scenario.orebody.thickness, 0)}</dd>
-            <dt className="text-mute">Rock quality (synthetic RMR-like, 0-100)</dt>
-            <dd>
-              {scenario.geology.rockQuality.mean} ± {scenario.geology.rockQuality.std}
-            </dd>
-            <dt className="text-mute">Faults</dt>
-            <dd>{scenario.geology.faults.length}</dd>
-            <dt className="text-mute">Block</dt>
-            <dd>
-              {scenario.blockModel.dx} × {scenario.blockModel.dy} × {scenario.blockModel.dz} m
-            </dd>
-            <dt className="text-mute">Max grade</dt>
-            <dd>{(scenario.ramp.maxGradient * 100).toFixed(0)} %</dd>
-            <dt className="text-mute">Min radius</dt>
-            <dd>{fmtMeters(scenario.ramp.minTurnRadius, 0)}</dd>
-          </dl>
-        ) : (
-          <p className="text-[11px] text-mute">
-            No scenario loaded. Create one, then generate its world.
-          </p>
-        )}
-      </PanelSection>
+      <ParametersPanel scenario={scenario} />
     </>
+  )
+}
+
+/**
+ * Scenario parameter readout (Phase 17.1 §4). Split out of `ScenarioPanel`
+ * so the two-column layout is directly testable; it is presentational only
+ * and echoes the backend document without computing anything.
+ */
+export function ParametersPanel({ scenario }: { scenario: Scenario | null }) {
+  return (
+    <PanelSection title="Parameters">
+      {scenario ? (
+        /* Phase 17.1 §4: a fixed label column. `auto` sized itself to the
+           longest label — the synthetic-RMR disclaimer — and squeezed
+           every value into the remainder. Long labels now WRAP inside
+           their own column, so all values keep one left edge. */
+        <dl className="readout grid grid-cols-[7.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1.5 text-[11px]">
+          <dt className="break-words text-mute">World</dt>
+          <dd className="break-words">
+            {scenario.world.sizeX} × {scenario.world.sizeY} m
+          </dd>
+          <dt className="break-words text-mute">Model depth</dt>
+          <dd className="break-words">
+            {fmtMeters(scenario.world.depth, 0)} below{' '}
+            {fmtMeters(scenario.terrain.baseElevation, 0)}
+          </dd>
+          <dt className="break-words text-mute">Orebody</dt>
+          <dd className="break-words">{scenario.orebody.orebodyType}</dd>
+          <dt className="break-words text-mute">Strike / dip</dt>
+          <dd className="break-words">
+            {scenario.orebody.strikeDeg}° / {scenario.orebody.dipDeg}°
+          </dd>
+          <dt className="break-words text-mute">Thickness</dt>
+          <dd className="break-words">{fmtMeters(scenario.orebody.thickness, 0)}</dd>
+          {/* the synthetic-RMR disclaimer is kept in full on its own line;
+              it is never abbreviated to a misleading "RMR" */}
+          <dt className="break-words text-mute">
+            Rock quality
+            <span className="block text-[10px] leading-tight">synthetic RMR-like, 0-100</span>
+          </dt>
+          <dd className="break-words">
+            {scenario.geology.rockQuality.mean} ± {scenario.geology.rockQuality.std}
+          </dd>
+          <dt className="break-words text-mute">Faults</dt>
+          <dd className="break-words">{scenario.geology.faults.length}</dd>
+          <dt className="break-words text-mute">Block</dt>
+          <dd className="break-words">
+            {scenario.blockModel.dx} × {scenario.blockModel.dy} × {scenario.blockModel.dz} m
+          </dd>
+          <dt className="break-words text-mute">Max grade</dt>
+          <dd className="break-words">{(scenario.ramp.maxGradient * 100).toFixed(0)} %</dd>
+          <dt className="break-words text-mute">Min radius</dt>
+          <dd className="break-words">{fmtMeters(scenario.ramp.minTurnRadius, 0)}</dd>
+        </dl>
+      ) : (
+        <p className="text-[11px] text-mute">
+          No scenario loaded. Create one, then generate its world.
+        </p>
+      )}
+    </PanelSection>
   )
 }

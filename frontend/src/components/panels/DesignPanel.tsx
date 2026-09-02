@@ -1,8 +1,9 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { api, ApiError } from '@/api/client'
 import { PanelSection } from '@/components/layout/PanelSection'
+import { DESIGN_UNSUPPORTED_NOTICE, designSupported } from '@/scenario/builder'
 import {
   afterLevelsRegen,
   afterNetworkRegen,
@@ -10,7 +11,7 @@ import {
   afterTimelineRegen,
   afterUpstreamRegen,
 } from '@/scene/invalidation'
-import { useScenarioStore } from '@/stores/scenarioStore'
+import { useScenarioStore, type DesignJobKind } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { fmtMeters } from '@/utils/format'
 import type {
@@ -26,7 +27,15 @@ import type {
 export function DesignPanel() {
   const scenario = useScenarioStore((s) => s.scenario)
   const scene = useScenarioStore((s) => s.scene)
-  const setScene = useScenarioStore((s) => s.setScene)
+  // Phase 17.1 §1: derived results are written through `applyScene`, which
+  // re-reads the scene INSIDE the store and drops any write whose epoch is
+  // no longer active. The previous `setScene({ ...scene, X })` captured the
+  // manifest from the render that started the mutation, so a scenario-A job
+  // resolving after scenario B loaded restored the whole stale A manifest.
+  const applyScene = useScenarioStore((s) => s.applyScene)
+  const epoch = useScenarioStore((s) => s.epoch)
+  const jobs = useScenarioStore((s) => s.jobs)
+  const setJob = useScenarioStore((s) => s.setJob)
   const setLayerVisible = useViewerStore((s) => s.setLayerVisible)
   const targets = scene?.accessTargets ?? null
   const decline = scene?.decline ?? null
@@ -36,112 +45,101 @@ export function DesignPanel() {
   const generate = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('generate the world first')
+      const started = epoch
       const t = await api.generateTargets(scene.scenarioId)
       // rule 64: regenerated targets invalidate the decline AND its smoothing
-      setScene({
-        ...afterUpstreamRegen(scene),
+      applyScene(started, (current) => ({
+        ...afterUpstreamRegen(current),
         accessTargets: t,
         decline: null,
         smoothedDecline: null,
         tunnelMesh: null,
-      })
+      }))
       setLayerVisible('accessTargets', true)
     },
   })
-  // asynchronous decline job: submit → poll GET /jobs/{id} → apply result
-  const [jobId, setJobId] = useState<string | null>(null)
+  // asynchronous decline job: submit → poll GET /jobs/{id} → apply result.
+  // §1: the job id lives in the scenario store, so a scenario change drops
+  // it (the component stays mounted and would otherwise keep polling A).
+  const jobId = jobs.decline
   const generateDecline = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('generate the world first')
+      const started = epoch
       const job = await api.submitDecline(scene.scenarioId)
-      setJobId(job.jobId)
+      setJob('decline', job.jobId, started)
     },
   })
-  const job = useQuery({
-    queryKey: ['job', jobId],
-    queryFn: () => api.getJob(jobId as string),
-    enabled: jobId !== null,
-    refetchInterval: (q) => {
-      const s = q.state.data?.status
-      return s === 'SUCCEEDED' || s === 'FAILED' ? false : 500
-    },
-  })
+  const job = useJobPoll('decline', jobId, epoch, 500)
   const jobRunning = job.data?.status === 'QUEUED' || job.data?.status === 'RUNNING'
   useEffect(() => {
     const rec = job.data
-    if (rec?.status === 'SUCCEEDED' && rec.result && scene && scene.decline !== rec.result) {
+    if (rec?.status === 'SUCCEEDED' && rec.result) {
       // a new decline invalidates the previous smoothed artifact (rule 64)
-      setScene({
-        ...afterUpstreamRegen(scene),
-        decline: rec.result as DeclinePayload,
-        smoothedDecline: null,
-        tunnelMesh: null,
-      })
+      applyScene(epoch, (current) =>
+        current.decline === rec.result
+          ? current
+          : {
+              ...afterUpstreamRegen(current),
+              decline: rec.result as DeclinePayload,
+              smoothedDecline: null,
+              tunnelMesh: null,
+            },
+      )
       setLayerVisible('rawSearchPath', true)
     }
-  }, [job.data, scene, setScene, setLayerVisible])
+  }, [job.data, epoch, applyScene, setLayerVisible])
   // Phase 05 smoothing job: submit → poll → apply smoothedDecline
-  const [smoothJobId, setSmoothJobId] = useState<string | null>(null)
+  const smoothJobId = jobs.smooth
   const smoothDecline = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('generate the decline first')
+      const started = epoch
       const job = await api.submitSmooth(scene.scenarioId)
-      setSmoothJobId(job.jobId)
+      setJob('smooth', job.jobId, started)
     },
   })
-  const smoothJob = useQuery({
-    queryKey: ['job', smoothJobId],
-    queryFn: () => api.getJob(smoothJobId as string),
-    enabled: smoothJobId !== null,
-    refetchInterval: (q) => {
-      const s = q.state.data?.status
-      return s === 'SUCCEEDED' || s === 'FAILED' ? false : 500
-    },
-  })
+  const smoothJob = useJobPoll('smooth', smoothJobId, epoch, 500)
   const smoothRunning = smoothJob.data?.status === 'QUEUED' || smoothJob.data?.status === 'RUNNING'
   useEffect(() => {
     const rec = smoothJob.data
-    if (
-      rec?.status === 'SUCCEEDED' &&
-      rec.result &&
-      scene &&
-      scene.smoothedDecline !== rec.result
-    ) {
+    if (rec?.status === 'SUCCEEDED' && rec.result) {
       // rule 74: a new smoothed artifact invalidates tunnel + levels + network
-      setScene({
-        ...afterUpstreamRegen(scene),
-        smoothedDecline: rec.result as SmoothedDeclinePayload,
-        tunnelMesh: null,
-      })
+      applyScene(epoch, (current) =>
+        current.smoothedDecline === rec.result
+          ? current
+          : {
+              ...afterUpstreamRegen(current),
+              smoothedDecline: rec.result as SmoothedDeclinePayload,
+              tunnelMesh: null,
+            },
+      )
       setLayerVisible('smoothedDecline', true)
     }
-  }, [smoothJob.data, scene, setScene, setLayerVisible])
+  }, [smoothJob.data, epoch, applyScene, setLayerVisible])
   // Phase 06 tunnel-mesh job: submit → poll → apply tunnelMesh report
-  const [tunnelJobId, setTunnelJobId] = useState<string | null>(null)
+  const tunnelJobId = jobs.tunnel
   const generateTunnel = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('smooth the decline first')
+      const started = epoch
       const job = await api.submitTunnel(scene.scenarioId)
-      setTunnelJobId(job.jobId)
+      setJob('tunnel', job.jobId, started)
     },
   })
-  const tunnelJob = useQuery({
-    queryKey: ['job', tunnelJobId],
-    queryFn: () => api.getJob(tunnelJobId as string),
-    enabled: tunnelJobId !== null,
-    refetchInterval: (q) => {
-      const s = q.state.data?.status
-      return s === 'SUCCEEDED' || s === 'FAILED' ? false : 400
-    },
-  })
+  const tunnelJob = useJobPoll('tunnel', tunnelJobId, epoch, 400)
   const tunnelRunning = tunnelJob.data?.status === 'QUEUED' || tunnelJob.data?.status === 'RUNNING'
   useEffect(() => {
     const rec = tunnelJob.data
-    if (rec?.status === 'SUCCEEDED' && rec.result && scene && scene.tunnelMesh !== rec.result) {
-      setScene({ ...scene, tunnelMesh: rec.result as TunnelMeshReport })
+    if (rec?.status === 'SUCCEEDED' && rec.result) {
+      applyScene(epoch, (current) =>
+        current.tunnelMesh === rec.result
+          ? current
+          : { ...current, tunnelMesh: rec.result as TunnelMeshReport },
+      )
       setLayerVisible('tunnelMesh', true)
     }
-  }, [tunnelJob.data, scene, setScene, setLayerVisible])
+  }, [tunnelJob.data, epoch, applyScene, setLayerVisible])
   // Phase 08 levels: synchronous deterministic developments (rules 71–74).
   // Regenerating levels invalidates the network server-side (rule 74), so
   // the displayed network report and scene overlay are cleared here too.
@@ -152,9 +150,8 @@ export function DesignPanel() {
       return api.generateLevels(scene.scenarioId)
     },
     onSuccess: (payload: LevelsPayload) => {
-      if (!scene) return
       // rules 74/79: levels regeneration invalidates network + stopes (tunnel kept)
-      setScene(afterLevelsRegen(scene, payload))
+      applyScene(epoch, (current) => afterLevelsRegen(current, payload))
       setLayerVisible('levels', true)
       setLayerVisible('crosscuts', true)
     },
@@ -170,7 +167,7 @@ export function DesignPanel() {
     onSuccess: (payload: StopesPayload) => {
       // rules 79/86: stope regeneration leaves tunnel/network/levels
       // untouched but invalidates the timeline
-      if (scene) setScene(afterStopesRegen(scene, payload))
+      applyScene(epoch, (current) => afterStopesRegen(current, payload))
       setLayerVisible('stopes', true)
     },
   })
@@ -185,7 +182,7 @@ export function DesignPanel() {
     },
     onSuccess: (payload: TimelinePayload) => {
       // rule 86: timeline regeneration touches nothing upstream
-      if (scene) setScene(afterTimelineRegen(scene, payload))
+      applyScene(epoch, (current) => afterTimelineRegen(current, payload))
     },
   })
 
@@ -199,7 +196,7 @@ export function DesignPanel() {
     },
     onSuccess: (payload) => {
       // rule 86: a rebuilt network invalidates the timeline
-      if (scene) setScene(afterNetworkRegen(scene, payload))
+      applyScene(epoch, (current) => afterNetworkRegen(current, payload))
       setLayerVisible('network', true)
     },
   })
@@ -218,6 +215,11 @@ export function DesignPanel() {
 
   return (
     <PanelSection title="Access targets" tag="Phase 03">
+      {!designSupported(scenario) ? (
+        <p className="mb-2 rounded-sm border border-rock-700 bg-rock-900/70 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
+          {DESIGN_UNSUPPORTED_NOTICE}
+        </p>
+      ) : null}
       {scenario ? (
         <dl className="readout mb-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
           <dt className="text-mute">Sublevel</dt>
@@ -236,7 +238,7 @@ export function DesignPanel() {
       <button
         type="button"
         onClick={() => generate.mutate()}
-        disabled={!scene || generate.isPending}
+        disabled={!scene || !designSupported(scenario) || generate.isPending}
         className="plate w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {generate.isPending
@@ -670,4 +672,23 @@ export function DesignPanel() {
       ) : null}
     </PanelSection>
   )
+}
+
+/**
+ * Poll one asynchronous design job (Phase 17.1 §1). The query key carries
+ * the scenario epoch and the job id comes from the scenario store, so a
+ * scenario change both stops the poll (the store cleared the id) and makes
+ * it impossible for a cached scenario-A job record to be served to
+ * scenario B under the same key.
+ */
+function useJobPoll(kind: DesignJobKind, jobId: string | null, epoch: number, intervalMs: number) {
+  return useQuery({
+    queryKey: ['job', kind, epoch, jobId],
+    queryFn: () => api.getJob(jobId as string),
+    enabled: jobId !== null,
+    refetchInterval: (q) => {
+      const s = q.state.data?.status
+      return s === 'SUCCEEDED' || s === 'FAILED' ? false : intervalMs
+    },
+  })
 }

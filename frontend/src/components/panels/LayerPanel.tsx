@@ -23,6 +23,7 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
       { id: 'terrain', label: 'Terrain', phase: 2 },
       { id: 'orebody', label: 'Orebody', phase: 2 },
       { id: 'gradeBlocks', label: 'Grade blocks', phase: 2 },
+      // §3: explicit opt-in viewer layer, default OFF
       { id: 'rockQuality', label: 'Field slice', phase: 2 },
       { id: 'faults', label: 'Faults', phase: 2 },
     ],
@@ -34,6 +35,7 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
   {
     title: 'Excavations',
     rows: [
+      // §2: default OFF, and suppressed outright in 4D / TIMELINE_SNAPSHOT
       { id: 'rawSearchPath', label: 'Raw search path', phase: 4 },
       { id: 'smoothedDecline', label: 'Smoothed / effective decline', phase: 5 },
       { id: 'tunnelMesh', label: 'Tunnel mesh', phase: 6 },
@@ -134,11 +136,16 @@ function SliceControls() {
     }
   }, [scene, setField, setAxis, setIndex, setSlice])
 
+  // Phase 17.1 §1/§3: slice COMPUTATION is independent of slice VISIBILITY —
+  // the fetch runs whether or not the layer is on, and the layer renders only
+  // when the user has enabled it. `placeholderData` keeps the slider smooth
+  // WITHIN one scenario but must never carry scenario A's slice into B.
   const q = useQuery({
     queryKey: ['slice', scenarioId, field, axis, index],
     queryFn: () => api.getSlice(scenarioId as string, field, axis, index),
     enabled: Boolean(scenarioId) && count > 0,
-    placeholderData: (prev) => prev,
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[1] === scenarioId ? prev : undefined,
   })
   useEffect(() => {
     if (q.data) setSlice(q.data)

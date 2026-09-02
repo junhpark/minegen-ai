@@ -14,7 +14,9 @@ import { useViewerStore } from '@/stores/viewerStore'
 export function CommunicationPanel() {
   const scene = useScenarioStore((s) => s.scene)
   const scenario = useScenarioStore((s) => s.scenario)
-  const setScene = useScenarioStore((s) => s.setScene)
+  // §1: epoch-guarded store-internal write — never a captured `scene` copy
+  const applyScene = useScenarioStore((s) => s.applyScene)
+  const epoch = useScenarioStore((s) => s.epoch)
   const setLayerVisible = useViewerStore((s) => s.setLayerVisible)
 
   const network = scene?.network ?? null
@@ -28,7 +30,7 @@ export function CommunicationPanel() {
     },
     onSuccess: (payload) => {
       // rule 92: communication regeneration touches nothing upstream
-      if (scene) setScene(afterCommunicationRegen(scene, payload))
+      applyScene(epoch, (current) => afterCommunicationRegen(current, payload))
       setLayerVisible('routers', true)
       setLayerVisible('coverage', true)
     },
