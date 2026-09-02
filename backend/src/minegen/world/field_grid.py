@@ -72,6 +72,46 @@ class FieldGrid:
         gx, gy, gz = np.meshgrid(x, y, z, indexing="ij")
         return np.stack([gx, gy, gz], axis=-1)
 
+    @property
+    def cell_half_diagonal(self) -> float:
+        """Half the space diagonal of one cell: the largest distance from a
+        cell center to any point of that cell. A solid whose signed distance
+        at the center exceeds this cannot reach into the cell."""
+        return 0.5 * float(np.linalg.norm(np.asarray(self.spacing)))
+
+    def cell_subsample_offsets(self, n: int) -> FloatArray:
+        """Offsets (relative to a cell CENTER) of a deterministic ``n×n×n``
+        sub-sampling pattern inside one cell, shape ``(n³, 3)``. Midpoints of
+        equal sub-boxes, so the pattern is symmetric and seed-independent."""
+        if n < 1:
+            raise ValueError(f"sub-sample count must be >= 1, got {n}")
+        t = (np.arange(n, dtype=np.float64) + 0.5) / n - 0.5
+        ox, oy, oz = np.meshgrid(
+            t * self.spacing[0], t * self.spacing[1], t * self.spacing[2], indexing="ij"
+        )
+        return np.stack([ox.ravel(), oy.ravel(), oz.ravel()], axis=-1)
+
+    def plane_centers(self, axis: int, index: int) -> FloatArray:
+        """World coordinates of the cell centers on ONE lattice plane, shape
+        ``(rows·cols, 3)``, ordered row-major over the two remaining axes —
+        the same ordering as ``np.take(values, index, axis=axis).ravel()``.
+
+        Only the requested plane is built: a full ``centers()`` allocation is
+        ~1 M × 3 floats on the default lattice and would be rebuilt on every
+        slice request."""
+        n = self.shape[axis]
+        if not 0 <= index < n:
+            raise IndexError(f"plane index {index} out of range [0, {n})")
+        others = [a for a in range(3) if a != axis]
+        gr, gc = np.meshgrid(
+            self.axis_centers(others[0]), self.axis_centers(others[1]), indexing="ij"
+        )
+        pts = np.empty((gr.size, 3), dtype=np.float64)
+        pts[:, others[0]] = gr.ravel()
+        pts[:, others[1]] = gc.ravel()
+        pts[:, axis] = self.axis_centers(axis)[index]
+        return pts
+
     def world_to_index(self, points: FloatArray) -> npt.NDArray[np.int64]:
         """Floor index of each point, shape ``(N, 3)``. Out-of-range points get
         out-of-range indices; callers clip or mask."""

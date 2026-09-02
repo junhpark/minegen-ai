@@ -837,7 +837,7 @@ phase is considered complete.
      silent drop or an out-of-world plane.
 123. Non-TABULAR orebodies are first-class for world generation and
      visualization, but the legacy Phase 03+ layout is TABULAR-only until
-     Phase 18: design entry points fail typed
+     the Phase 20 generalized layout: design entry points fail typed
      (UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT, 422) — never 500, never a
      partial layout on unsupported geometry.
 124. The backend owns stochastic scenario realization and ALL orebody and
@@ -900,8 +900,12 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      planning field defined everywhere on the lattice; outside the
      orebody it has no mineral-resource meaning, and every consumer
      applies the orebody geometry itself. A slice of the grade field is
-     shipped with an explicit backend display `mask` (orebody membership
-     ∧ below terrain); the lattice is never presented as ore blocks.
+     shipped with an explicit backend display `mask`; the lattice is never
+     presented as ore blocks. That mask marks display CELLS that INTERSECT
+     the analytic solid (`OREBODY_INTERSECTION_BELOW_TERRAIN`), decided by
+     the solid's own signed distance plus a deterministic sub-sample of the
+     cell — a proximity or intersection test is never named or exposed as
+     membership, which is `orebody.contains` and nothing else.
 130. The longhole planning grade proxy is
      `stope prism ∩ orebody solid ∩ below terrain` sampled by a
      deterministic equal-volume midpoint quadrature (spacing ≤ 2.5 m) of

@@ -47,6 +47,19 @@ decides mineralized membership (rule 129), and ``orebody.volume()`` is the
 only volume reported — there is no in-situ ore volume or tonnage
 (rule 131).
 
+### Slice display mask (``export/scene_manifest.py``)
+A slice ships ``values`` plus a ``mask``. Every field is masked to
+terrain-supported cells (``BELOW_TERRAIN``). The grade field is additionally
+masked to cells that INTERSECT the analytic orebody solid
+(``OREBODY_INTERSECTION_BELOW_TERRAIN``): ``sdf(centre) <= 0`` decides yes,
+``sdf(centre) > cell_half_diagonal`` decides no, and the remainder is settled
+by a deterministic ``3³`` sub-sample of the cell through ``contains``. An
+intersection thinner than the sub-sample spacing is missed, which hides a
+cell rather than inventing mineralization. This is a visualization mask; point
+membership is ``orebody.contains`` alone (rule 129). Only the requested plane's
+centers are built (``FieldGrid.plane_centers``) — never the full ~1 M-cell
+``centers()`` array per slice request.
+
 ### Batch sampling (``RegularScalarField.sample``)
 ``sample(points N×3) → N`` float64: trilinear on the cell-center lattice,
 coordinates clamped to the outermost centers (no extrapolation), pure NumPy

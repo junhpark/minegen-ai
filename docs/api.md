@@ -25,7 +25,9 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  /api/v1/scenarios/{id}/world/slice          ?field=rockQuality|grade|faultInfluence|
                                                      faultZone&axis=x|y|z&index=n → values plus a
                                                      display mask (BELOW_TERRAIN, or for grade
-                                                     OREBODY_MEMBERSHIP_BELOW_TERRAIN)
+                                                     OREBODY_INTERSECTION_BELOW_TERRAIN — cells
+                                                     intersecting the analytic solid, never a
+                                                     point-membership claim)
     GET  /api/v1/scenarios/{id}/scene                web scene manifest (terrain heightmap,
                                                      orebody mesh, fault polygons, fieldGrid
                                                      lattice description, default rock-quality
@@ -163,8 +165,8 @@ Errors:
 
 Note that a realized non-TABULAR orebody is fully supported for world
 generation and visualization, but the legacy Phase 03+ layout rejects it
-with `422 UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT` until Phase 18
-(rule 123).
+with `422 UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT` until the Phase 20
+generalized layout (rule 123).
 
 ## Planned
     GET  /api/v1/scenarios/{id}/design                  Phase 04+

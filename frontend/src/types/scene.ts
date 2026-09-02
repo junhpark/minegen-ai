@@ -26,7 +26,12 @@ export interface SlicePayload {
   values: number[]
   /** row-major display mask, 1 = shown, 0 = hidden (backend-derived) */
   mask: number[]
-  /** how the mask was derived, e.g. BELOW_TERRAIN or OREBODY_MEMBERSHIP_BELOW_TERRAIN */
+  /**
+   * How the mask was derived: BELOW_TERRAIN, or for the grade field
+   * OREBODY_INTERSECTION_BELOW_TERRAIN — display cells that intersect the
+   * analytic orebody solid. An intersection is never a membership claim
+   * about the sampled point (rule 129).
+   */
   maskSemantics: string
   /** display range over the SHOWN cells */
   min: number

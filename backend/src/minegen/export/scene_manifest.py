@@ -6,7 +6,8 @@ Large volumes are never sent whole: fields go out as axis-aligned slices on
 request. There is no block payload (Phase 18): the orebody is visible through
 its own backend-authored mesh, and a slice of the grade field carries an
 explicit display MASK derived from the analytic orebody so the lattice is
-never presented as ore blocks (rule 129).
+never presented as ore blocks (rule 129). That mask is a cell/solid
+INTERSECTION test; point membership stays ``orebody.contains`` alone.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ import numpy.typing as npt
 
 from minegen.config import CANONICAL_COORDINATE_SYSTEM
 from minegen.core.models import Scenario
+from minegen.world.field_grid import FieldGrid
+from minegen.world.orebody import Orebody
 from minegen.world.synthetic_world import SyntheticWorld
 
 SliceAxis = Literal["x", "y", "z"]
@@ -33,7 +36,12 @@ _AXIS_INDEX: dict[str, int] = {"x": 0, "y": 1, "z": 2}
 
 #: how the ``mask`` of a slice was derived (display semantics only)
 MASK_BELOW_TERRAIN = "BELOW_TERRAIN"
-MASK_OREBODY_BELOW_TERRAIN = "OREBODY_MEMBERSHIP_BELOW_TERRAIN"
+#: the display CELL intersects the analytic orebody solid — an intersection
+#: test, deliberately NOT called membership: membership is a property of a
+#: point and belongs to ``orebody.contains`` alone (rule 129)
+MASK_OREBODY_INTERSECTION_BELOW_TERRAIN = "OREBODY_INTERSECTION_BELOW_TERRAIN"
+#: sub-samples per axis for the cell/solid intersection test
+OREBODY_INTERSECTION_SUBSAMPLES = 3
 
 
 def _finite_minmax(a: npt.NDArray[Any]) -> tuple[float, float]:
@@ -43,13 +51,40 @@ def _finite_minmax(a: npt.NDArray[Any]) -> tuple[float, float]:
     return float(f.min()), float(f.max())
 
 
-def _plane_centers(world: SyntheticWorld, ax: int, index: int) -> npt.NDArray[np.float64]:
-    """World coordinates of the cell centers on one lattice plane, ordered
-    row-major over the two remaining axes (rows × cols)."""
-    grid = world.fields.grid
-    centers = grid.centers()  # (nx, ny, nz, 3)
-    plane = np.take(centers, index, axis=ax)  # (rows, cols, 3)
-    return np.asarray(plane.reshape(-1, 3), dtype=np.float64)
+def cells_intersect_orebody(
+    grid: FieldGrid,
+    centers: npt.NDArray[np.float64],
+    orebody: Orebody,
+    n_sub: int = OREBODY_INTERSECTION_SUBSAMPLES,
+) -> npt.NDArray[np.bool_]:
+    """``True`` where the display CELL centred on each point intersects the
+    analytic orebody solid.
+
+    This is an INTERSECTION test on a cell, never a membership claim about a
+    point: membership is ``orebody.contains`` and nothing else (rule 129).
+    Deciding it takes three steps, each of them the analytic solid's own
+    geometry:
+
+    1. ``sdf(center) <= 0`` — the center is inside, so the cell certainly
+       intersects;
+    2. ``sdf(center) > cell_half_diagonal`` — the solid cannot reach any
+       point of the cell, so it certainly does not;
+    3. otherwise a deterministic ``n³`` sub-sample of the cell is tested with
+       ``contains``.
+
+    Step 3 is an inner approximation: an intersection thinner than the
+    sub-sample spacing can be missed. It is a visualization mask, so a missed
+    sliver hides a cell rather than inventing mineralization — the failure
+    direction we want."""
+    sdf = orebody.signed_distance(centers)
+    hit = sdf <= 0.0
+    undecided = (~hit) & (sdf <= grid.cell_half_diagonal)
+    if bool(undecided.any()):
+        offsets = grid.cell_subsample_offsets(n_sub)
+        pts = centers[undecided][:, None, :] + offsets[None, :, :]
+        inside = orebody.contains(pts.reshape(-1, 3)).reshape(-1, offsets.shape[0])
+        hit[undecided] = inside.any(axis=1)
+    return np.asarray(hit, dtype=np.bool_)
 
 
 def slice_mask(
@@ -58,18 +93,20 @@ def slice_mask(
     """Display mask for a slice: ``True`` where the value is shown.
 
     Every field is masked to terrain-supported cells (below ground). The
-    grade field is additionally masked by ANALYTIC orebody membership —
-    the cell center must be within half a cell of the solid — because a
-    synthetic grade value outside the orebody has no mineral meaning
-    (rule 129). This is a visualization mask, not a resource classification."""
+    grade field is additionally masked to the cells that actually intersect
+    the analytic orebody solid, because a synthetic grade value outside the
+    orebody has no mineral meaning (rule 129). The mask is a visualization
+    device — never a resource classification, and never a membership claim
+    about the sampled point."""
     ax = _AXIS_INDEX[axis]
     supported = np.take(world.fields.supported, index, axis=ax).ravel()
     if field != "grade":
         return np.asarray(supported, dtype=np.bool_), MASK_BELOW_TERRAIN
-    pts = _plane_centers(world, ax, index)
-    half_cell = 0.5 * max(world.fields.grid.spacing)
-    inside = world.orebody.signed_distance(pts) <= half_cell
-    return np.asarray(supported & inside, dtype=np.bool_), MASK_OREBODY_BELOW_TERRAIN
+    grid = world.fields.grid
+    intersects = cells_intersect_orebody(grid, grid.plane_centers(ax, index), world.orebody)
+    return np.asarray(supported & intersects, dtype=np.bool_), (
+        MASK_OREBODY_INTERSECTION_BELOW_TERRAIN
+    )
 
 
 def slice_payload(

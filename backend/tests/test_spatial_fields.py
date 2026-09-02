@@ -352,3 +352,37 @@ def test_wrong_artifact_version_or_missing_arrays_is_rejected(tmp_path) -> None:
     np.savez_compressed(q, **fields)
     with np.load(q) as npz, pytest.raises(IncompatibleFieldArtifactError, match="missing"):
         SpatialFieldSet.from_npz(npz)
+
+
+# -- lattice plane construction (Phase 18 acceptance hotfix) ---------------- #
+
+
+def test_plane_centers_match_the_full_lattice_but_build_one_plane_only() -> None:
+    """``plane_centers`` must equal the corresponding plane of ``centers()``
+    in value AND order (the slice payload ravels the field the same way),
+    while allocating only rows×cols points instead of the whole lattice."""
+    g = FieldGrid(origin=(-20.0, -10.0, 0.0), spacing=(10.0, 5.0, 10.0), shape=(4, 4, 3))
+    full = g.centers()
+    for axis in range(3):
+        for index in range(g.shape[axis]):
+            expected = np.take(full, index, axis=axis).reshape(-1, 3)
+            got = g.plane_centers(axis, index)
+            np.testing.assert_array_equal(got, expected)
+            assert got.shape[0] == expected.shape[0] < g.cell_count
+    with pytest.raises(IndexError):
+        g.plane_centers(2, 3)
+
+
+def test_cell_subsample_offsets_are_deterministic_symmetric_midpoints() -> None:
+    g = FieldGrid(origin=(0.0, 0.0, 0.0), spacing=(10.0, 4.0, 2.0), shape=(2, 2, 2))
+    off = g.cell_subsample_offsets(3)
+    assert off.shape == (27, 3)
+    np.testing.assert_array_equal(off, g.cell_subsample_offsets(3))  # deterministic
+    np.testing.assert_allclose(off.mean(axis=0), [0.0, 0.0, 0.0], atol=1e-12)  # symmetric
+    # every offset stays inside its own cell
+    assert np.all(np.abs(off) < np.asarray(g.spacing) / 2.0)
+    np.testing.assert_allclose(np.unique(off[:, 0]), [-10 / 3, 0.0, 10 / 3], atol=1e-12)
+    assert g.cell_subsample_offsets(1).tolist() == [[0.0, 0.0, 0.0]]
+    with pytest.raises(ValueError):
+        g.cell_subsample_offsets(0)
+    assert g.cell_half_diagonal == pytest.approx(0.5 * np.sqrt(100 + 16 + 4))

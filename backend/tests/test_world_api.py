@@ -94,7 +94,7 @@ def test_grade_slice_is_masked_by_analytic_orebody_membership(client: TestClient
     assert r.status_code == 200
     s = r.json()
     mask = np.asarray(s["mask"])
-    assert s["maskSemantics"] == "OREBODY_MEMBERSHIP_BELOW_TERRAIN"
+    assert s["maskSemantics"] == "OREBODY_INTERSECTION_BELOW_TERRAIN"
     assert 0 < mask.sum() < 0.5 * mask.size  # the slab is a thin band, not the whole grid
     values = np.asarray(s["values"])
     assert (values > 0).all()  # the field is defined everywhere …
@@ -167,3 +167,56 @@ def test_scenario_replace_invalidates_all_derived_state(
     # geometry-only quantities are unchanged by the seed
     assert after["orebody"] == before["orebody"]
     assert after["fields"]["grid"] == before["fields"]["grid"]
+
+
+def test_grade_slice_mask_is_cell_intersection_never_named_membership() -> None:
+    """Phase 18 acceptance hotfix (rule 129): the grade display mask marks
+    display CELLS that intersect the analytic solid. It is a different
+    predicate from the old `sdf(centre) <= half_cell` proximity rule, it is
+    never called membership, and a point it shows is NOT thereby a member."""
+    from minegen.export.scene_manifest import (
+        MASK_OREBODY_INTERSECTION_BELOW_TERRAIN,
+        cells_intersect_orebody,
+        slice_mask,
+    )
+    from minegen.world.synthetic_world import generate_world
+
+    sc = small_scenario(with_fault=False)
+    w = generate_world(sc)
+    ob, grid = w.orebody, w.fields.grid
+    half_cell = 0.5 * max(grid.spacing)
+
+    # the name never claims membership, and a shown cell does not make its
+    # sample point a member: this is the distinction the hotfix is about
+    assert "MEMBERSHIP" not in MASK_OREBODY_INTERSECTION_BELOW_TERRAIN
+    near = ob.center + (ob.half_thickness + half_cell * 0.9) * ob.w
+    assert bool(cells_intersect_orebody(grid, near[None, :], ob)[0])  # cell overlaps
+    assert not bool(ob.contains(near[None, :])[0])  # the POINT is not a member
+
+    # centre inside is always shown; beyond the cell half-diagonal never is
+    assert bool(cells_intersect_orebody(grid, ob.center[None, :], ob)[0])
+    beyond = ob.center + (ob.half_thickness + grid.cell_half_diagonal + 1.0) * ob.w
+    assert ob.signed_distance(beyond[None, :])[0] > grid.cell_half_diagonal
+    assert not bool(cells_intersect_orebody(grid, beyond[None, :], ob)[0])
+    assert not bool(cells_intersect_orebody(grid, (ob.center + 500.0 * ob.w)[None, :], ob)[0])
+
+    k = int(np.argmin(np.abs(grid.axis_centers(2) - ob.center[2])))
+    mask, semantics = slice_mask(w, "grade", "z", k)
+    assert semantics == MASK_OREBODY_INTERSECTION_BELOW_TERRAIN
+    pts = grid.plane_centers(2, k)
+    supported = w.fields.supported[:, :, k].ravel()
+    assert 0 < mask.sum() < 0.5 * mask.size  # a band, not the whole lattice
+    assert np.all(supported[mask])  # never shows an above-ground cell
+
+    # the predicate really changed: it is not the old proximity rule
+    proximity = (ob.signed_distance(pts) <= half_cell) & supported
+    assert not np.array_equal(mask, proximity)
+
+    # every shown cell genuinely reaches the solid, verified independently
+    # with a much denser sub-sample than the production 3³ pattern
+    dense = grid.cell_subsample_offsets(7)
+    probes = (pts[mask][:, None, :] + dense[None, :, :]).reshape(-1, 3)
+    hits = ob.contains(probes).reshape(int(mask.sum()), dense.shape[0])
+    assert np.all(hits.any(axis=1))
+    # and nothing outside the necessary bound is ever shown
+    assert np.all(ob.signed_distance(pts[mask]) <= grid.cell_half_diagonal)

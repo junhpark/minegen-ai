@@ -432,8 +432,8 @@ rotated AABB / UV-sphere mesh with every vertex on the analytic surface
 all describe the SAME solid (rule 120). True free-form irregular bodies
 are DEFERRED: without a metric SDF they would poison the engineering
 buffers. The legacy design pipeline remains TABULAR-only behind a typed
-422 (UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT; rule 123) until the Phase 18
-generalized layout.
+422 (UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT; rule 123) until the Phase 20
+generalized layout (Parametric Layout Family Search).
 
 Frontend: the Scenario panel gained Preset / Seed / fault-count controls
 with a Randomize preview that shows the backend-realized parameters
@@ -482,16 +482,22 @@ property of the field (rule 128). The near-surface behaviour that used to
 be "fill AIR blocks from the column top" is the field's `COLUMN_TOP_FILL`
 terrain boundary policy driven by a per-cell terrain-support fraction — an
 interpolation policy, not a rock classification. Because the arithmetic is
-unchanged, the golden suite shows byte-identical decline, smoothing, level,
-network and timeline results before and after the migration
-(`backend/golden/phase18_vs_phase17.md`).
+unchanged, the golden suite shows decline, smoothing, level, network and
+timeline results that are numerically identical within the golden tolerance
+(1e-9 relative) before and after the migration — a contract-equivalence
+result over the recorded engineering metrics, not a byte hash of the
+artifacts (`backend/golden/phase18_vs_phase17.md`).
 
 Only one number changed by design: the longhole planning grade proxy no
 longer weights ore-flagged cells by `ore_fraction`; it samples the grade
 field on a deterministic equal-volume quadrature of the stope prism ∩
 orebody solid ∩ below terrain (rule 130). The orebody solid is the only
 membership authority (rule 129): the grade field is defined everywhere and
-the scene ships a slice display mask instead of ore blocks. World stats are
+the scene ships a slice display mask instead of ore blocks. That mask marks
+the display CELLS that INTERSECT the solid (centre inside, or a deterministic
+3³ sub-sample inside, bounded by the cell half-diagonal); it is named
+`OREBODY_INTERSECTION_BELOW_TERRAIN` precisely because a proximity or
+intersection test must never be presented as point membership. World stats are
 neutral field diagnostics — no block counts, no sampled ore tonnes, no mean
 ore grade, no in-situ orebody tonnes (rule 131).
 

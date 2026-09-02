@@ -19,7 +19,7 @@ function slice(values: number[], mask: number[], field: SlicePayload['field']): 
     cols: { axis: 'y', origin: 0, spacing: 10, n: 2 },
     values,
     mask,
-    maskSemantics: field === 'grade' ? 'OREBODY_MEMBERSHIP_BELOW_TERRAIN' : 'BELOW_TERRAIN',
+    maskSemantics: field === 'grade' ? 'OREBODY_INTERSECTION_BELOW_TERRAIN' : 'BELOW_TERRAIN',
     min: 0,
     max: 10,
   }

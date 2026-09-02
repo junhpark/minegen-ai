@@ -130,4 +130,7 @@ def test_non_tabular_design_is_typed_unsupported_not_500(client: TestClient) -> 
     assert r.status_code == 422, r.text
     detail = r.json()["detail"]
     assert detail["code"] == "UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT"
-    assert "TABULAR" in detail["message"] and "Phase 18" in detail["message"]
+    # the deferral target must name the phase that will actually deliver the
+    # generalized layout — Phase 18 shipped and did NOT (rule 123)
+    assert "TABULAR" in detail["message"]
+    assert "Phase 20" in detail["message"] and "Phase 18" not in detail["message"]
