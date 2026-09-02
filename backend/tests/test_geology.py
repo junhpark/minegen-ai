@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from minegen.core.models import FaultConfig, Point3D, RockQualityConfig
+from minegen.world.field_grid import FieldGrid
 from minegen.world.geology import (
     FaultPlane,
     FaultZone,
@@ -12,9 +13,8 @@ from minegen.world.geology import (
     generate_grade_field,
     generate_rock_quality,
 )
-from minegen.world.voxel_grid import VoxelGrid
 
-GRID = VoxelGrid(origin=(-300, -300, -300), spacing=(10, 10, 10), shape=(60, 60, 40))
+GRID = FieldGrid(origin=(-300, -300, -300), spacing=(10, 10, 10), shape=(60, 60, 40))
 
 
 def _lag_correlation(f: np.ndarray, axis: int, lag: int) -> float:  # type: ignore[type-arg]

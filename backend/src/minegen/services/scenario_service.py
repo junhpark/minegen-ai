@@ -4,6 +4,11 @@ data/scenarios/{scenario_id}/
     scenario.json
     arrays.npz      (written by later phases)
     derived/        (written by later phases)
+
+Documents are migrated to the current schema version on first read
+(``services/scenario_migration.py``); a migrated scenario loses ALL derived
+state, because artifacts written under the old semantics must never be
+consumed under the new ones (rules 40/46, Phase 18).
 """
 
 from __future__ import annotations
@@ -12,7 +17,8 @@ import json
 import threading
 from pathlib import Path
 
-from minegen.core.models import Scenario, ScenarioCreate, ScenarioSummary
+from minegen.core.models import SCENARIO_SCHEMA_VERSION, Scenario, ScenarioCreate, ScenarioSummary
+from minegen.services.scenario_migration import migrate_scenario_document
 
 
 class ScenarioNotFoundError(KeyError):
@@ -59,7 +65,17 @@ class ScenarioStore:
         path = self.scenario_path(scenario_id)
         if not path.is_file():
             raise ScenarioNotFoundError(scenario_id)
-        return Scenario.model_validate_json(path.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        version = int(raw.get("schemaVersion", raw.get("schema_version", 1)))
+        if version == SCENARIO_SCHEMA_VERSION:
+            return Scenario.model_validate(raw)
+        # legacy (or newer) document: migrate explicitly, persist the migrated
+        # document and drop every derived artifact written under old semantics
+        with self.lock(scenario_id):
+            scenario, _notes = migrate_scenario_document(raw)
+            self._write(scenario)
+            self.clear_derived(scenario_id)
+        return scenario
 
     def replace(self, scenario_id: str, payload: ScenarioCreate) -> Scenario:
         existing = self.get(scenario_id)
@@ -72,9 +88,8 @@ class ScenarioStore:
     def list(self) -> list[ScenarioSummary]:
         summaries: list[ScenarioSummary] = []
         for d in sorted(self.root.iterdir()):
-            p = d / "scenario.json"
-            if p.is_file():
-                s = Scenario.model_validate_json(p.read_text(encoding="utf-8"))
+            if (d / "scenario.json").is_file():
+                s = self.get(d.name)
                 summaries.append(ScenarioSummary(id=s.id, name=s.name, seed=s.seed))
         return summaries
 
@@ -85,6 +100,25 @@ class ScenarioStore:
         for p in sorted(d.rglob("*"), reverse=True):
             p.unlink() if p.is_file() else p.rmdir()
         d.rmdir()
+
+    # -- derived state ----------------------------------------------------- #
+
+    def clear_derived(self, scenario_id: str) -> None:
+        """Delete ``arrays.npz`` and every file under ``derived/`` (the
+        directory itself is kept). Callers that hold in-memory caches drop
+        them separately (``WorldService.invalidate``)."""
+        with self.lock(scenario_id):
+            arrays = self.arrays_path(scenario_id)
+            if arrays.exists():
+                arrays.unlink()
+            derived = self.derived_dir(scenario_id)
+            if derived.is_dir():
+                for p in sorted(derived.rglob("*"), reverse=True):
+                    if p.is_file():
+                        p.unlink()
+                    else:
+                        p.rmdir()
+            derived.mkdir(parents=True, exist_ok=True)
 
     # -- internals --------------------------------------------------------- #
 

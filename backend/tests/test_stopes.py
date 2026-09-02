@@ -195,17 +195,27 @@ def test_thirteen_level_default_lattice_yields_204(tmp_path) -> None:  # type: i
     assert all(s.report.valid for s in payload.stopes)
 
 
-def test_grade_proxy_excludes_aabb_leakage(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    """Blocker-1 regression: ore blocks inside the world-axis AABB of the
-    rotated prism but OUTSIDE the stope's local bounds can never affect
-    meanGradeProxy, and partial blocks weight by ore_fraction."""
+def _proxy_world(grade_values, terrain_z: float):  # type: ignore[no-untyped-def]
+    """Minimal world for the proxy: a grade field, a flat terrain and no
+    lattice classification of any kind."""
     from types import SimpleNamespace
 
+    from minegen.world.field_grid import FieldGrid
+    from minegen.world.spatial_fields import RegularScalarField
+    from minegen.world.terrain import Terrain
+
+    grid = FieldGrid(origin=(-60.0, -60.0, -60.0), spacing=(4.0, 4.0, 4.0), shape=(30, 30, 30))
+    values = grade_values(grid).astype(np.float32)
+    terrain = Terrain(x0=-100.0, y0=-100.0, spacing=200.0, z=np.full((2, 2), terrain_z))
+    return SimpleNamespace(
+        fields=SimpleNamespace(grade=RegularScalarField("grade", grid, values), grid=grid),
+        terrain=terrain,
+    )
+
+
+def _proxy_orebody_and_bounds():  # type: ignore[no-untyped-def]
     from minegen.core.models import OrebodyConfig
-    from minegen.mining.methods.longhole import _grade_proxy
     from minegen.mining.models import StopeLocalBounds
-    from minegen.world.block_model import BlockModel
-    from minegen.world.voxel_grid import VoxelGrid
 
     ob = TabularOrebody(
         OrebodyConfig(
@@ -221,61 +231,75 @@ def test_grade_proxy_excludes_aabb_leakage(tmp_path) -> None:  # type: ignore[no
     bounds = StopeLocalBounds(
         u_min=-15.0, u_max=15.0, v_min=-10.0, v_max=10.0, w_min=-6.0, w_max=6.0
     )
-    grid = VoxelGrid(origin=(-60.0, -60.0, -60.0), spacing=(4.0, 4.0, 4.0), shape=(30, 30, 30))
-    shape = grid.shape
-    zeros = np.zeros(shape, dtype=np.float32)
-    frac = np.zeros(shape, dtype=np.float32)
-    grade = np.zeros(shape, dtype=np.float32)
-    centers = (
-        np.asarray(grid.origin)
-        + (np.stack(np.meshgrid(*[np.arange(n) for n in shape], indexing="ij"), axis=-1) + 0.5)
-        * np.asarray(grid.spacing)
-    ).reshape(-1, 3)
-    local = ob.to_local(centers)
-    inside = (
-        (np.abs(local[:, 0]) <= 15.0 - 2.0)
-        & (np.abs(local[:, 1]) <= 10.0 - 2.0)
-        & (np.abs(local[:, 2]) <= 6.0 - 2.0)
-    ).reshape(shape)
-    # inside the stope: grade 3.0 at half ore_fraction
-    frac[inside] = 0.5
-    grade[inside] = 3.0
-    # OUTSIDE the local bounds but well inside the world AABB of the corners:
-    # strike-neighbour ore just past uMax, absurdly high grade
-    neighbour = (
-        (local[:, 0] > 16.0)
-        & (local[:, 0] < 30.0)
-        & (np.abs(local[:, 1]) <= 8.0)
-        & (np.abs(local[:, 2]) <= 4.0)
-    ).reshape(shape)
-    frac[neighbour] = 1.0
-    grade[neighbour] = 100.0
-    bm = BlockModel(
-        grid=grid,
-        rock_type=np.zeros(shape, dtype=np.uint8),
-        ore_fraction=frac,
-        ore_flag=frac >= 0.5,
-        grade=grade,
-        rock_quality=zeros,
-        fault_signed_distance=zeros,
-        fault_zone=np.zeros(shape, dtype=np.uint8),
-        fault_influence=zeros,
-    )
-    world = SimpleNamespace(block_model=bm)
-    lows = np.array([bounds.u_min, bounds.v_min, bounds.w_min])
-    highs = np.array([bounds.u_max, bounds.v_max, bounds.w_max])
-    corners_local = np.array(
-        [[lows[d] if (i >> d) & 1 == 0 else highs[d] for d in range(3)] for i in range(8)]
-    )
-    corners_world = ob.to_world(corners_local)
-    # the world AABB of these corners certainly contains the 100-grade
-    # neighbour blocks — the local-bounds inclusion must exclude them
-    proxy = _grade_proxy(world, ob, bounds, corners_world)  # type: ignore[arg-type]
-    assert proxy == pytest.approx(3.0, abs=1e-6)
-    # zero ore_fraction inside the bounds → null proxy
-    frac[inside] = 0.0
-    proxy2 = _grade_proxy(world, ob, bounds, corners_world)  # type: ignore[arg-type]
-    assert proxy2 is None
+    return ob, bounds
+
+
+def test_grade_proxy_is_geometry_bounded_field_sampling(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Rule 130: the proxy samples the grade FIELD only inside the stope
+    prism ∩ orebody solid ∩ below terrain. Field values just outside the
+    local bounds (a strike neighbour) — however extreme — never leak in,
+    and there is no ore_fraction / cell weighting anywhere."""
+    from minegen.mining.methods.longhole import _grade_proxy
+
+    ob, bounds = _proxy_orebody_and_bounds()
+
+    def grade(grid):  # type: ignore[no-untyped-def]
+        centers = grid.centers().reshape(-1, 3)
+        local = ob.to_local(centers)
+        g = np.full(centers.shape[0], 3.0)
+        neighbour = (local[:, 0] > 15.0) & (local[:, 0] < 40.0)
+        g[neighbour] = 100.0  # absurd grade just past uMax
+        return g.reshape(grid.shape)
+
+    world = _proxy_world(grade, terrain_z=1000.0)  # everything below ground
+    proxy = _grade_proxy(world, ob, bounds)  # type: ignore[arg-type]
+    assert proxy is not None
+    # trilinear blending toward the neighbour only touches the last ≤ 2.5 m
+    # of quadrature cells; the bulk of the prism must read the 3.0 plateau
+    assert 3.0 <= proxy < 3.0 + 0.5 * (100.0 - 3.0) * (2.5 / 30.0)
+
+
+def test_grade_proxy_excludes_the_part_of_the_prism_above_terrain(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from minegen.mining.methods.longhole import _grade_proxy
+
+    ob, bounds = _proxy_orebody_and_bounds()
+
+    def grade(grid):  # type: ignore[no-untyped-def]
+        centers = grid.centers().reshape(-1, 3)
+        return np.where(centers[:, 2] < 0.0, 3.0, 100.0).reshape(grid.shape)
+
+    buried = _grade_proxy(_proxy_world(grade, terrain_z=1000.0), ob, bounds)  # type: ignore[arg-type]
+    outcrop = _grade_proxy(_proxy_world(grade, terrain_z=0.0), ob, bounds)  # type: ignore[arg-type]
+    assert buried is not None and outcrop is not None
+    # buried: both halves count → close to the (3 + 100) / 2 midpoint;
+    # outcrop: only the below-ground half counts → the 3.0 plateau plus the
+    # trilinear blend across the z = 0 step (one 4 m lattice cell of the
+    # ~9 m below-ground span), far from any 100-grade contribution
+    assert buried > 30.0
+    assert 3.0 <= outcrop < 15.0
+    assert outcrop < 0.25 * buried
+    # a prism entirely above ground has no planning proxy at all
+    assert _grade_proxy(_proxy_world(grade, terrain_z=-1000.0), ob, bounds) is None  # type: ignore[arg-type]
+
+
+def test_grade_proxy_is_deterministic_and_equal_weight(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Equal-volume midpoint quadrature: a linear field in local u averages
+    to its value at the prism centre, independent of the sampling budget."""
+    from minegen.mining.methods.longhole import _grade_proxy
+
+    ob, bounds = _proxy_orebody_and_bounds()
+
+    def grade(grid):  # type: ignore[no-untyped-def]
+        local = ob.to_local(grid.centers().reshape(-1, 3))
+        return (5.0 + 0.1 * local[:, 0]).reshape(grid.shape)
+
+    world = _proxy_world(grade, terrain_z=1000.0)
+    a = _grade_proxy(world, ob, bounds)  # type: ignore[arg-type]
+    b = _grade_proxy(world, ob, bounds)  # type: ignore[arg-type]
+    fine = _grade_proxy(world, ob, bounds, spacing=1.0)  # type: ignore[arg-type]
+    assert a == b
+    assert a == pytest.approx(5.0, abs=0.05)
+    assert fine == pytest.approx(5.0, abs=0.05)
 
 
 def test_duplicate_station_fails(tmp_path) -> None:  # type: ignore[no-untyped-def]

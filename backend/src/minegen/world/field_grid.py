@@ -1,7 +1,11 @@
-"""Regular axis-aligned voxel grid in mine coordinates (ENU Z-up).
+"""Regular axis-aligned NUMERICAL sampling lattice in mine coordinates
+(ENU Z-up), Phase 18 (rule 127).
 
-This is the *block-model* grid (geology / economics). It is deliberately not
-the Hybrid-A* search space, which stays continuous (CLAUDE.md rule 23).
+A ``FieldGrid`` cell is sampling support for a scalar field — nothing
+more. It is never a mining block, an SMU, a resource block or a reserve
+unit, and no engineering quantity (tonnes, ore/waste membership, grade
+inventory) is ever attached to a cell. The Hybrid-A* search space stays
+continuous (rule 23); this lattice only supports interpolation.
 """
 
 from __future__ import annotations
@@ -16,9 +20,10 @@ FloatArray = npt.NDArray[np.float64]
 
 
 @dataclass(frozen=True)
-class VoxelGrid:
-    """``origin`` is the minimum corner of block (0, 0, 0); block ``(i, j, k)``
-    spans ``origin + (i·dx, j·dy, k·dz)`` to ``origin + ((i+1)·dx, …)``."""
+class FieldGrid:
+    """``origin`` is the minimum corner of cell (0, 0, 0); cell ``(i, j, k)``
+    spans ``origin + (i·sx, j·sy, k·sz)`` to ``origin + ((i+1)·sx, …)``.
+    Field values are attached to cell CENTERS."""
 
     origin: tuple[float, float, float]
     spacing: tuple[float, float, float]
@@ -30,26 +35,22 @@ class VoxelGrid:
         min_corner: tuple[float, float, float],
         max_corner: tuple[float, float, float],
         spacing: tuple[float, float, float],
-    ) -> VoxelGrid:
-        """Grid that covers ``[min, max]`` with blocks of ``spacing``; the last
-        block may extend past ``max`` so that the extent is fully covered."""
+    ) -> FieldGrid:
+        """Lattice that covers ``[min, max]`` at ``spacing``; the last cell
+        may extend past ``max`` so that the extent is fully covered."""
         shape = tuple(
             int(np.ceil((hi - lo) / s - 1e-9))
             for lo, hi, s in zip(min_corner, max_corner, spacing, strict=True)
         )
         if any(n <= 0 for n in shape):
-            raise ValueError(f"empty grid for extent {min_corner}..{max_corner}")
+            raise ValueError(f"empty field grid for extent {min_corner}..{max_corner}")
         return cls(origin=min_corner, spacing=spacing, shape=(shape[0], shape[1], shape[2]))
 
     # -- sizes ------------------------------------------------------------- #
 
     @property
-    def n_blocks(self) -> int:
+    def cell_count(self) -> int:
         return int(np.prod(self.shape))
-
-    @property
-    def block_volume(self) -> float:
-        return float(np.prod(self.spacing))
 
     @property
     def max_corner(self) -> tuple[float, float, float]:
@@ -66,19 +67,10 @@ class VoxelGrid:
         return o + (np.arange(n, dtype=np.float64) + 0.5) * s
 
     def centers(self) -> FloatArray:
-        """All block centers, shape ``(nx, ny, nz, 3)``."""
+        """All cell centers, shape ``(nx, ny, nz, 3)``."""
         x, y, z = (self.axis_centers(a) for a in range(3))
         gx, gy, gz = np.meshgrid(x, y, z, indexing="ij")
         return np.stack([gx, gy, gz], axis=-1)
-
-    def subsample_offsets(self, n: int) -> FloatArray:
-        """Offsets (relative to block center) of an ``n×n×n`` sub-sampling
-        pattern inside one block, shape ``(n³, 3)``."""
-        t = (np.arange(n, dtype=np.float64) + 0.5) / n - 0.5
-        ox, oy, oz = np.meshgrid(
-            t * self.spacing[0], t * self.spacing[1], t * self.spacing[2], indexing="ij"
-        )
-        return np.stack([ox.ravel(), oy.ravel(), oz.ravel()], axis=-1)
 
     def world_to_index(self, points: FloatArray) -> npt.NDArray[np.int64]:
         """Floor index of each point, shape ``(N, 3)``. Out-of-range points get
@@ -101,14 +93,14 @@ class VoxelGrid:
 
     def to_npz_fields(self) -> dict[str, FloatArray]:
         return {
-            "grid_origin": np.asarray(self.origin, dtype=np.float64),
-            "grid_spacing": np.asarray(self.spacing, dtype=np.float64),
-            "grid_shape": np.asarray(self.shape, dtype=np.float64),
+            "field_grid_origin": np.asarray(self.origin, dtype=np.float64),
+            "field_grid_spacing": np.asarray(self.spacing, dtype=np.float64),
+            "field_grid_shape": np.asarray(self.shape, dtype=np.float64),
         }
 
     @classmethod
-    def from_npz_fields(cls, npz: Any) -> VoxelGrid:
-        o, s, n = npz["grid_origin"], npz["grid_spacing"], npz["grid_shape"]
+    def from_npz_fields(cls, npz: Any) -> FieldGrid:
+        o, s, n = npz["field_grid_origin"], npz["field_grid_spacing"], npz["field_grid_shape"]
         return cls(
             origin=(float(o[0]), float(o[1]), float(o[2])),
             spacing=(float(s[0]), float(s[1]), float(s[2])),

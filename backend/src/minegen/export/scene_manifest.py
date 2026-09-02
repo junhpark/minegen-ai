@@ -1,9 +1,12 @@
-"""Lightweight web scene payload for Phase 02 (terrain, orebody, faults,
-ore blocks, one rock-quality slice). All coordinates ENU Z-up; the frontend
+"""Lightweight web scene payload (terrain, orebody, faults, field lattice
+description, one rock-quality slice). All coordinates ENU Z-up; the frontend
 converts at its rendering boundary (rule 4 / 17).
 
-Large volumes are never sent whole: rock quality goes out as axis-aligned
-slices on request, ore blocks only as the (small) set of ore-flagged blocks.
+Large volumes are never sent whole: fields go out as axis-aligned slices on
+request. There is no block payload (Phase 18): the orebody is visible through
+its own backend-authored mesh, and a slice of the grade field carries an
+explicit display MASK derived from the analytic orebody so the lattice is
+never presented as ore blocks (rule 129).
 """
 
 from __future__ import annotations
@@ -15,20 +18,22 @@ import numpy.typing as npt
 
 from minegen.config import CANONICAL_COORDINATE_SYSTEM
 from minegen.core.models import Scenario
-from minegen.world.block_model import BlockModel
 from minegen.world.synthetic_world import SyntheticWorld
 
 SliceAxis = Literal["x", "y", "z"]
-SliceField = Literal["rockQuality", "grade", "faultInfluence", "faultZone", "oreFraction"]
+SliceField = Literal["rockQuality", "grade", "faultInfluence", "faultZone"]
 
 _FIELD_ATTR: dict[str, str] = {
     "rockQuality": "rock_quality",
     "grade": "grade",
     "faultInfluence": "fault_influence",
     "faultZone": "fault_zone",
-    "oreFraction": "ore_fraction",
 }
 _AXIS_INDEX: dict[str, int] = {"x": 0, "y": 1, "z": 2}
+
+#: how the ``mask`` of a slice was derived (display semantics only)
+MASK_BELOW_TERRAIN = "BELOW_TERRAIN"
+MASK_OREBODY_BELOW_TERRAIN = "OREBODY_MEMBERSHIP_BELOW_TERRAIN"
 
 
 def _finite_minmax(a: npt.NDArray[Any]) -> tuple[float, float]:
@@ -38,63 +43,84 @@ def _finite_minmax(a: npt.NDArray[Any]) -> tuple[float, float]:
     return float(f.min()), float(f.max())
 
 
-def slice_payload(bm: BlockModel, field: SliceField, axis: SliceAxis, index: int) -> dict[str, Any]:
-    arr = getattr(bm, _FIELD_ATTR[field])
+def _plane_centers(world: SyntheticWorld, ax: int, index: int) -> npt.NDArray[np.float64]:
+    """World coordinates of the cell centers on one lattice plane, ordered
+    row-major over the two remaining axes (rows × cols)."""
+    grid = world.fields.grid
+    centers = grid.centers()  # (nx, ny, nz, 3)
+    plane = np.take(centers, index, axis=ax)  # (rows, cols, 3)
+    return np.asarray(plane.reshape(-1, 3), dtype=np.float64)
+
+
+def slice_mask(
+    world: SyntheticWorld, field: SliceField, axis: SliceAxis, index: int
+) -> tuple[npt.NDArray[np.bool_], str]:
+    """Display mask for a slice: ``True`` where the value is shown.
+
+    Every field is masked to terrain-supported cells (below ground). The
+    grade field is additionally masked by ANALYTIC orebody membership —
+    the cell center must be within half a cell of the solid — because a
+    synthetic grade value outside the orebody has no mineral meaning
+    (rule 129). This is a visualization mask, not a resource classification."""
     ax = _AXIS_INDEX[axis]
-    n = bm.grid.shape[ax]
+    supported = np.take(world.fields.supported, index, axis=ax).ravel()
+    if field != "grade":
+        return np.asarray(supported, dtype=np.bool_), MASK_BELOW_TERRAIN
+    pts = _plane_centers(world, ax, index)
+    half_cell = 0.5 * max(world.fields.grid.spacing)
+    inside = world.orebody.signed_distance(pts) <= half_cell
+    return np.asarray(supported & inside, dtype=np.bool_), MASK_OREBODY_BELOW_TERRAIN
+
+
+def slice_payload(
+    world: SyntheticWorld, field: SliceField, axis: SliceAxis, index: int
+) -> dict[str, Any]:
+    grid = world.fields.grid
+    f = world.fields.field(_FIELD_ATTR[field])
+    ax = _AXIS_INDEX[axis]
+    n = grid.shape[ax]
     if not 0 <= index < n:
         raise IndexError(f"slice index {index} out of range [0, {n})")
-    plane = np.take(arr, index, axis=ax).astype(np.float64)
+    plane = f.slice(ax, index)
     # non-finite values (no-fault signed distances) never reach the wire
     plane = np.where(np.isfinite(plane), plane, 0.0)
     other = [a for a in range(3) if a != ax]
     names = ["x", "y", "z"]
-    lo, hi = _finite_minmax(plane)
+    mask, semantics = slice_mask(world, field, axis, index)
+    shown = plane.ravel()[mask]
+    lo, hi = _finite_minmax(shown if shown.size else plane)
     return {
         "field": field,
         "axis": axis,
         "index": index,
         "count": n,
-        "coordinate": float(bm.grid.axis_centers(ax)[index]),
+        "coordinate": float(grid.axis_centers(ax)[index]),
         "rows": {
             "axis": names[other[0]],
-            "origin": bm.grid.origin[other[0]],
-            "spacing": bm.grid.spacing[other[0]],
-            "n": bm.grid.shape[other[0]],
+            "origin": grid.origin[other[0]],
+            "spacing": grid.spacing[other[0]],
+            "n": grid.shape[other[0]],
         },
         "cols": {
             "axis": names[other[1]],
-            "origin": bm.grid.origin[other[1]],
-            "spacing": bm.grid.spacing[other[1]],
-            "n": bm.grid.shape[other[1]],
+            "origin": grid.origin[other[1]],
+            "spacing": grid.spacing[other[1]],
+            "n": grid.shape[other[1]],
         },
         "values": plane.ravel().tolist(),  # row-major: rows × cols
+        "mask": mask.astype(np.uint8).tolist(),  # 1 = shown, 0 = hidden
+        "maskSemantics": semantics,
         "min": lo,
         "max": hi,
-    }
-
-
-def ore_blocks_payload(bm: BlockModel) -> dict[str, Any]:
-    idx = np.argwhere(bm.ore_flag)
-    centers = bm.grid.origin + (idx + 0.5) * np.asarray(bm.grid.spacing)
-    grade = bm.grade[bm.ore_flag].astype(np.float64)
-    lo, hi = _finite_minmax(grade)
-    return {
-        "count": int(idx.shape[0]),
-        "spacing": list(bm.grid.spacing),
-        "centers": centers.ravel().tolist(),
-        "grade": grade.tolist(),
-        "gradeMin": lo,
-        "gradeMax": hi,
     }
 
 
 def build_scene(scenario: Scenario, world: SyntheticWorld) -> dict[str, Any]:
     t = world.terrain
     verts, faces = world.orebody.mesh()
-    bm = world.block_model
-    box_min = np.asarray(bm.grid.origin)
-    box_max = np.asarray(bm.grid.max_corner)
+    grid = world.fields.grid
+    box_min = np.asarray(grid.origin)
+    box_max = np.asarray(grid.max_corner)
 
     faults = []
     for i, f in enumerate(world.faults):
@@ -114,9 +140,9 @@ def build_scene(scenario: Scenario, world: SyntheticWorld) -> dict[str, Any]:
         )
 
     # default rock-quality slice: horizontal through the orebody center
-    zc = bm.grid.axis_centers(2)
+    zc = grid.axis_centers(2)
     k = int(np.clip(np.argmin(np.abs(zc - world.orebody.center[2])), 0, len(zc) - 1))
-    rq_lo, rq_hi = _finite_minmax(bm.rock_quality[bm.rock_type != 0])
+    rq_stats = world.fields.rock_quality.stats(world.fields.supported)
 
     return {
         "scenarioId": scenario.id,
@@ -144,12 +170,13 @@ def build_scene(scenario: Scenario, world: SyntheticWorld) -> dict[str, Any]:
             "indices": faces.ravel().tolist(),
         },
         "faults": faults,
-        "oreBlocks": ore_blocks_payload(bm),
-        "blockGrid": bm.grid.to_dict(),
+        # numerical lattice description ONLY (rule 127): origin / spacing /
+        # shape so the client can address slices — never blocks
+        "fieldGrid": grid.to_dict(),
         "rockQuality": {
-            "min": rq_lo,
-            "max": rq_hi,
-            "defaultSlice": slice_payload(bm, "rockQuality", "z", k),
+            "min": rq_stats["min"],
+            "max": rq_stats["max"],
+            "defaultSlice": slice_payload(world, "rockQuality", "z", k),
         },
         "stats": world.stats(scenario),
     }

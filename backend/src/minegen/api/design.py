@@ -27,7 +27,10 @@ from minegen.services.design_service import (
 )
 from minegen.services.job_service import JobAlreadyRunningError, JobService
 from minegen.services.scenario_service import ScenarioNotFoundError
-from minegen.services.world_service import WorldNotGeneratedError
+from minegen.services.world_service import (
+    WorldArtifactIncompatibleError,
+    WorldNotGeneratedError,
+)
 
 router = APIRouter(prefix="/scenarios/{scenario_id}/design", tags=["design"])
 
@@ -57,6 +60,13 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
         )
     if isinstance(exc, ScenarioNotFoundError):
         return _error(404, "SCENARIO_NOT_FOUND", f"scenario '{scenario_id}' does not exist")
+    if isinstance(exc, WorldArtifactIncompatibleError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "WORLD_ARTIFACT_INCOMPATIBLE",
+            f"scenario '{scenario_id}' has a world artifact from an older schema "
+            f"({exc}); POST …/world/generate to regenerate it",
+        )
     if isinstance(exc, WorldNotGeneratedError):
         return _error(
             status.HTTP_409_CONFLICT,

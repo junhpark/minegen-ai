@@ -99,10 +99,14 @@ def test_footwall_point_for_vertical_orebody_is_horizontal_offset() -> None:
 # -- mesh / volume --------------------------------------------------------- #
 
 
-def test_volume_and_tonnes() -> None:
+def test_volume_is_geometric_and_payload_carries_no_tonnes() -> None:
+    """Rule 131: the orebody reports geometric volume only; in-situ tonnes
+    could be mistaken for a resource estimate and are not emitted."""
     ob = make(35.0, 70.0)
     assert ob.volume() == 600 * 350 * 12
-    assert ob.tonnes() == pytest.approx(600 * 350 * 12 * 2.8)
+    assert not hasattr(ob, "tonnes")
+    assert "tonnes" not in ob.to_dict()
+    assert ob.to_dict()["volumeM3"] == 600 * 350 * 12
 
 
 def test_mesh_is_closed_box_with_outward_normals() -> None:

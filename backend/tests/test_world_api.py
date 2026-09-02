@@ -24,7 +24,8 @@ def test_world_generate_and_persist(client: TestClient, store: ScenarioStore) ->
     r = client.post(f"/api/v1/scenarios/{sid}/world/generate")
     assert r.status_code == 200, r.text
     stats = r.json()
-    assert stats["blockModel"]["nOreBlocks"] > 0
+    assert stats["fields"]["cellCount"] > 0
+    assert "blockModel" not in stats and "tonnes" not in stats["orebody"]
     assert stats["faults"] == 1
     assert store.arrays_path(sid).is_file()
     assert (store.derived_dir(sid) / "world.json").is_file()
@@ -44,13 +45,16 @@ def test_scene_manifest_shape(client: TestClient) -> None:
     assert len(t["z"]) == t["nx"] * t["ny"]
     assert len(s["orebody"]["positions"]) == 8 * 3 and len(s["orebody"]["indices"]) == 12 * 3
     assert len(s["faults"]) == 1 and s["faults"][0]["vertexCount"] >= 3
-    ob = s["oreBlocks"]
-    assert ob["count"] == len(ob["grade"]) == len(ob["centers"]) // 3
+    # Phase 18: the lattice is described, never shipped as blocks
+    assert "oreBlocks" not in s and "blockGrid" not in s
+    assert len(s["fieldGrid"]["shape"]) == 3 and s["fieldGrid"]["spacing"] == [10.0, 10.0, 10.0]
+    assert "tonnes" not in s["orebody"] and s["orebody"]["volumeM3"] > 0
     sl = s["rockQuality"]["defaultSlice"]
     assert sl["axis"] == "z" and len(sl["values"]) == sl["rows"]["n"] * sl["cols"]["n"]
+    assert len(sl["mask"]) == len(sl["values"]) and sl["maskSemantics"] == "BELOW_TERRAIN"
     assert s["world"]["bottomElevation"] == -150.0  # 100 − 250 (rule 35)
     # nothing non-finite on the wire
-    for arr in (t["z"], ob["grade"], ob["centers"], sl["values"]):
+    for arr in (t["z"], sl["values"]):
         assert np.isfinite(arr).all()
 
 
@@ -74,6 +78,33 @@ def test_slice_endpoint(client: TestClient) -> None:
 
     r = client.get(f"/api/v1/scenarios/{sid}/world/slice", params={"field": "bogus"})
     assert r.status_code == 422
+    # Phase 18: oreFraction is gone — the lattice never describes ore blocks
+    r = client.get(f"/api/v1/scenarios/{sid}/world/slice", params={"field": "oreFraction"})
+    assert r.status_code == 422
+
+
+def test_grade_slice_is_masked_by_analytic_orebody_membership(client: TestClient) -> None:
+    sid = _create(client)
+    client.post(f"/api/v1/scenarios/{sid}/world/generate")
+    scene = client.get(f"/api/v1/scenarios/{sid}/scene").json()
+    k = scene["rockQuality"]["defaultSlice"]["index"]  # through the orebody centre
+    r = client.get(
+        f"/api/v1/scenarios/{sid}/world/slice", params={"field": "grade", "axis": "z", "index": k}
+    )
+    assert r.status_code == 200
+    s = r.json()
+    mask = np.asarray(s["mask"])
+    assert s["maskSemantics"] == "OREBODY_MEMBERSHIP_BELOW_TERRAIN"
+    assert 0 < mask.sum() < 0.5 * mask.size  # the slab is a thin band, not the whole grid
+    values = np.asarray(s["values"])
+    assert (values > 0).all()  # the field is defined everywhere …
+    assert s["min"] >= values[mask == 1].min() and s["max"] <= values[mask == 1].max()
+    # … but the display range is computed over the shown cells only
+    rq = client.get(
+        f"/api/v1/scenarios/{sid}/world/slice",
+        params={"field": "rockQuality", "axis": "z", "index": k},
+    ).json()
+    assert rq["maskSemantics"] == "BELOW_TERRAIN" and np.asarray(rq["mask"]).sum() > mask.sum()
 
 
 def test_world_reload_from_disk_matches_memory(client: TestClient, store: ScenarioStore) -> None:
@@ -132,7 +163,7 @@ def test_scenario_replace_invalidates_all_derived_state(
 
     after = client.post(f"/api/v1/scenarios/{sid}/world/generate").json()
     assert after["terrain"]["zMin"] != before["terrain"]["zMin"]
-    assert after["blockModel"]["rockQualityMean"] != before["blockModel"]["rockQualityMean"]
+    assert after["fields"]["rockQuality"]["mean"] != before["fields"]["rockQuality"]["mean"]
     # geometry-only quantities are unchanged by the seed
     assert after["orebody"] == before["orebody"]
-    assert after["blockModel"]["nOreBlocks"] == before["blockModel"]["nOreBlocks"]
+    assert after["fields"]["grid"] == before["fields"]["grid"]
