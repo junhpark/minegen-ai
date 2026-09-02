@@ -1,20 +1,53 @@
+import { NAVIGATION_MODES, type WalkthroughNavigationMode } from './navigation'
+import type { TeleportTarget } from './teleport'
+
 /**
- * Minimal walkthrough overlay (§6): passive crosshair, keyboard control
- * legend and the Phase 15 temporal snapshot label. The walkthrough is
- * keyboard-only — no pointer lock, no entry click, no mouse look — so the
- * HUD renders identically for the whole session. The crosshair still has
- * no interaction semantics of its own; E inspects the focused asset in
- * STATIC_FINAL only.
+ * Compact walkthrough overlay (Phase 16 §31–34): center crosshair, a
+ * pointer-enabled mode selector (1/2/3 keys mirror it), a per-mode
+ * keyboard legend bottom-left, temporal snapshot info top-right and the
+ * DEV perf readout bottom-right. Mode/speed and the minimap live in the
+ * separate MinimapOverlay (top-left).
  */
+const LEGENDS: Record<WalkthroughNavigationMode, [string, string][]> = {
+  PERSON: [
+    ['WASD', 'Move'],
+    ['IJKL', 'Look'],
+    ['Shift', 'Run'],
+    ['R', 'Reset'],
+  ],
+  VEHICLE: [
+    ['W/S', 'Drive'],
+    ['A/D', 'Steer'],
+    ['IJKL', 'Look'],
+    ['Shift', 'Boost'],
+    ['R', 'Reset'],
+  ],
+  DRONE: [
+    ['WASD', 'Move'],
+    ['IJKL', 'Look'],
+    ['Space', 'Up'],
+    ['C', 'Down'],
+    ['Shift', 'Boost'],
+    ['R', 'Reset'],
+  ],
+}
+
 export function WalkthroughHUD({
   focusedKind,
   snapshotDay = null,
+  navigationMode,
+  onNavigationMode,
+  teleportTargets = [],
+  onTeleport,
   perfRef,
 }: {
   focusedKind: 'MESH_ROUTER' | 'GAS_SENSOR' | null
-  /** captured MineTimeline day for TIMELINE_SNAPSHOT, null when static */
   snapshotDay?: number | null
-  /** DEV-only performance readout target (unused in production) */
+  navigationMode: WalkthroughNavigationMode
+  onNavigationMode: (mode: WalkthroughNavigationMode) => void
+  /** decline stations for the level-teleport select (hotfix 2) */
+  teleportTargets?: readonly TeleportTarget[]
+  onTeleport?: (chainageM: number) => void
   perfRef?: { current: HTMLDivElement | null }
 }) {
   const temporal = snapshotDay !== null
@@ -31,6 +64,45 @@ export function WalkthroughHUD({
           <div className="text-chalk-dim">E Inspect</div>
         </div>
       ) : null}
+      <div className="pointer-events-auto absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1">
+        {teleportTargets.length > 0 && onTeleport ? (
+          <select
+            aria-label="Teleport to level"
+            className="plate rounded-sm bg-rock-900/80 px-1.5 py-0.5 text-[11px] text-chalk-dim"
+            value=""
+            onChange={(e) => {
+              const t = teleportTargets.find((x) => x.id === e.target.value)
+              if (t) onTeleport(t.chainageM)
+              e.target.value = ''
+            }}
+          >
+            <option value="" disabled>
+              Go to…
+            </option>
+            {teleportTargets.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label} · CH {t.chainageM.toFixed(0)} m
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {NAVIGATION_MODES.map((m, i) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => onNavigationMode(m)}
+            aria-pressed={m === navigationMode}
+            className={[
+              'plate rounded-sm px-2 py-0.5 text-[11px]',
+              m === navigationMode
+                ? 'bg-rock-700 text-lamp shadow-[inset_0_-2px_0_0_var(--color-lamp)]'
+                : 'bg-rock-900/70 text-chalk-dim hover:bg-rock-700/60',
+            ].join(' ')}
+          >
+            {i + 1} {m}
+          </button>
+        ))}
+      </div>
       {temporal ? (
         <div className="readout absolute right-3 top-3 rounded-sm bg-rock-900/80 px-3 py-2 text-right text-[11px] leading-relaxed">
           <div className="text-lamp">Day {snapshotDay.toFixed(1)}</div>
@@ -42,13 +114,15 @@ export function WalkthroughHUD({
       {import.meta.env.DEV ? (
         <div
           ref={perfRef}
-          className="readout absolute left-3 top-3 whitespace-pre rounded-sm bg-rock-900/70 px-2 py-1 text-[10px] text-chalk-dim"
+          className="readout absolute bottom-3 right-3 whitespace-pre rounded-sm bg-rock-900/70 px-2 py-1 text-[10px] text-chalk-dim"
         />
       ) : null}
       <div className="readout absolute bottom-3 left-3 rounded-sm bg-rock-900/70 px-3 py-2 text-[11px] leading-relaxed text-chalk-dim">
-        <div>WASD&ensp;Move</div>
-        <div>IJKL&ensp;Look</div>
-        <div>R&ensp;Reset</div>
+        {LEGENDS[navigationMode].map(([k, v]) => (
+          <div key={k}>
+            {k}&ensp;{v}
+          </div>
+        ))}
         {temporal ? null : <div>E&ensp;Inspect</div>}
       </div>
     </div>

@@ -3,6 +3,7 @@ import type { AppMode, LayerId } from '@/types/enums'
 import { useTimelineStore } from './timelineStore'
 import { useScenarioStore } from './scenarioStore'
 import { temporalSessionIdentity } from '@/walkthrough/temporalPlan'
+import type { WalkthroughNavigationMode } from '@/walkthrough/navigation'
 
 export type CameraMode = 'orbit' | 'walkthrough'
 export type WalkthroughContext = 'STATIC_FINAL' | 'TIMELINE_SNAPSHOT'
@@ -21,6 +22,9 @@ export interface ViewerState {
    * the live scene means the session must exit, never re-snapshot */
   walkthroughSnapshotIdentity: string | null
   walkthroughReturnMode: AppMode
+  /** ephemeral navigation proxy (Phase 16 §3); never persisted */
+  navigationMode: WalkthroughNavigationMode
+  setNavigationMode: (mode: WalkthroughNavigationMode) => void
 
   setMode: (mode: AppMode) => void
   setCameraMode: (cameraMode: CameraMode) => void
@@ -45,6 +49,12 @@ const DEFAULT_VISIBLE: LayerId[] = [
   'crosscuts',
   'network',
   'stopes',
+  // Phase 16 hotfix 2 (item 6): infrastructure families default ON — they
+  // only render inside INFRASTRUCTURE mode, so other modes stay clean
+  'routers',
+  'coverage',
+  'sensors',
+  'sensorCoverage',
 ]
 
 export const useViewerStore = create<ViewerState>()((set, get) => ({
@@ -54,10 +64,12 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   walkthroughSnapshotDay: null,
   walkthroughSnapshotIdentity: null,
   walkthroughReturnMode: 'DESIGN',
+  navigationMode: 'PERSON',
   selectedObjectId: null,
   visibleLayers: new Set(DEFAULT_VISIBLE),
   walkthroughEnabled: false,
 
+  setNavigationMode: (navigationMode) => set({ navigationMode }),
   setMode: (mode) =>
     set((s) => {
       if (mode === 'WALKTHROUGH') {
@@ -76,7 +88,9 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
         }
       }
       // leaving WALKTHROUGH clears the temporal snapshot state (rule 112)
+      // and returns navigation to the PERSON default
       return {
+        navigationMode: 'PERSON' as WalkthroughNavigationMode,
         mode,
         cameraMode: 'orbit' as CameraMode,
         walkthroughContext: null,

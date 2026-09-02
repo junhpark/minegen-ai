@@ -1,22 +1,9 @@
 import { useGLTF } from '@react-three/drei'
 import { useMemo } from 'react'
-import { DoubleSide, Mesh, MeshStandardMaterial } from 'three'
+import { Mesh } from 'three'
+import { applyRockTexture, CAP_MATERIAL, TUNNEL_MATERIAL } from '@/walkthrough/tunnelMaterials'
 import { readTunnelPrimitiveMetadata } from '@/walkthrough/tunnelRuntimeGeometry'
-
-const TUNNEL_MATERIAL = new MeshStandardMaterial({
-  color: '#8a7a63',
-  roughness: 0.95,
-  metalness: 0.0,
-  side: DoubleSide, // visible from inside the void too (rule 66 note)
-})
-const CAP_MATERIAL = new MeshStandardMaterial({
-  color: '#5c5348',
-  roughness: 1.0,
-  metalness: 0.0,
-  side: DoubleSide,
-  transparent: true,
-  opacity: 0.55,
-})
+import { useRockTexture } from '@/walkthrough/useRockTexture'
 
 /**
  * Phase 06 excavation mesh. The GLB is in mine coordinates (ENU, Z-up); the
@@ -26,6 +13,8 @@ const CAP_MATERIAL = new MeshStandardMaterial({
  */
 export function TunnelMeshLayer({ url }: { url: string }) {
   const gltf = useGLTF(url)
+  const rock = useRockTexture()
+  useMemo(() => applyRockTexture(rock), [rock])
   const object = useMemo(() => {
     const scene = gltf.scene
     scene.traverse((o) => {

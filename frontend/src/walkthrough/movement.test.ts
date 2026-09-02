@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyLook,
   createKeyState,
+  createModeScopedKeyStates,
   desiredHorizontalVelocity,
   isEditableTarget,
   NO_KEYS,
@@ -60,9 +61,14 @@ describe('walkthrough movement math (rule 101)', () => {
     expect(ks.handleKey('KeyQ', true)).toBe(false) // unrelated key ignored
     expect(ks.keys).toEqual({ forward: true, backward: false, left: false, right: true })
     expect(ks.look).toEqual({ yawLeft: true, yawRight: false, pitchUp: true, pitchDown: false })
+    expect(ks.handleKey('ShiftLeft', true)).toBe(true)
+    expect(ks.handleKey('Space', true)).toBe(true)
+    expect(ks.handleKey('KeyC', true)).toBe(true)
+    expect(ks.actions).toEqual({ boost: true, up: true, down: true })
     ks.clear() // blur / unmount / mode switch / scenario invalidation
     expect(ks.keys).toEqual(NO_KEYS)
     expect(ks.look).toEqual(NO_LOOK)
+    expect(ks.actions).toEqual({ boost: false, up: false, down: false })
   })
 })
 
@@ -116,5 +122,45 @@ describe('editable-target shortcut exclusion (hotfix §5/§18)', () => {
     expect(isEditableTarget({ tagName: 'CANVAS' })).toBe(false)
     expect(isEditableTarget({ tagName: 'BODY', isContentEditable: false })).toBe(false)
     expect(isEditableTarget(null)).toBe(false)
+  })
+})
+
+describe('mode-scoped KeyState (PR #13 blocker 2)', () => {
+  it('PERSON -> VEHICLE cannot inherit movement/boost, VEHICLE -> DRONE cannot inherit up/down', () => {
+    const states = createModeScopedKeyStates<'PERSON' | 'VEHICLE' | 'DRONE'>()
+    const person = states.forMode('PERSON')
+    person.handleKey('KeyW', true)
+    person.handleKey('ShiftLeft', true)
+    person.handleKey('KeyJ', true)
+    const vehicle = states.forMode('VEHICLE')
+    expect(vehicle).not.toBe(person) // fresh instance per mode
+    expect(vehicle.keys).toEqual(NO_KEYS)
+    expect(vehicle.look).toEqual(NO_LOOK)
+    expect(vehicle.actions).toEqual({ boost: false, up: false, down: false })
+    // the superseded state is also cleared (one-frame stragglers see nothing)
+    expect(person.keys).toEqual(NO_KEYS)
+    expect(person.actions.boost).toBe(false)
+    vehicle.handleKey('Space', true)
+    vehicle.handleKey('KeyC', true)
+    vehicle.handleKey('KeyD', true)
+    const drone = states.forMode('DRONE')
+    expect(drone.actions).toEqual({ boost: false, up: false, down: false })
+    expect(drone.keys).toEqual(NO_KEYS)
+  })
+
+  it('covers BOTH entry paths by construction: any setNavigationMode source yields the same fresh state', () => {
+    // keyboard 1/2/3 and HUD buttons both mutate the store; the runtime
+    // derives KeyState from the store value through this single factory,
+    // so the safety property is entry-path independent
+    const states = createModeScopedKeyStates()
+    const a = states.forMode('PERSON')
+    a.handleKey('KeyW', true)
+    expect(states.forMode('PERSON')).toBe(a) // same mode -> same instance, keys kept
+    expect(a.keys.forward).toBe(true)
+    const b = states.forMode('DRONE') // direct store-style change (HUD-equivalent)
+    expect(b.keys.forward).toBe(false)
+    const c = states.forMode('PERSON') // returning to a mode is fresh again
+    expect(c).not.toBe(a)
+    expect(c.keys).toEqual(NO_KEYS)
   })
 })

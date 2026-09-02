@@ -109,3 +109,29 @@ describe('temporal session artifact immutability (rule 112, PR #12 blocker 2)', 
     expect(useViewerStore.getState().walkthroughSnapshotIdentity).toBeNull()
   })
 })
+
+describe('navigation mode runtime state (Phase 16 §3)', () => {
+  beforeEach(() => {
+    useViewerStore.getState().setMode('DESIGN')
+  })
+
+  it('defaults to PERSON, switches without touching selection or layers', () => {
+    useViewerStore.getState().setMode('WALKTHROUGH')
+    expect(useViewerStore.getState().navigationMode).toBe('PERSON')
+    const layers = useViewerStore.getState().visibleLayers
+    const selected = useViewerStore.getState().selectedObjectId
+    useViewerStore.getState().setNavigationMode('VEHICLE')
+    expect(useViewerStore.getState().navigationMode).toBe('VEHICLE')
+    useViewerStore.getState().setNavigationMode('DRONE')
+    expect(useViewerStore.getState().navigationMode).toBe('DRONE')
+    expect(useViewerStore.getState().visibleLayers).toBe(layers)
+    expect(useViewerStore.getState().selectedObjectId).toBe(selected)
+  })
+
+  it('leaving WALKTHROUGH returns navigation to the PERSON default', () => {
+    useViewerStore.getState().setMode('WALKTHROUGH')
+    useViewerStore.getState().setNavigationMode('DRONE')
+    useViewerStore.getState().setMode('DESIGN')
+    expect(useViewerStore.getState().navigationMode).toBe('PERSON')
+  })
+})

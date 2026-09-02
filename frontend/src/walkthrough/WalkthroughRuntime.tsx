@@ -3,12 +3,15 @@ import { useThree } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import { Physics } from '@react-three/rapier'
 import { WALKTHROUGH_CONFIG } from './config'
-import { createKeyState } from './movement'
+import { createModeScopedKeyStates } from './movement'
 import { clearTransientInput, createInspectTrigger } from './interactionRay'
 import { resolveColliderPolicy, type WalkthroughContext } from './colliderPolicy'
+import { navigationBody } from './navigation'
+import { useViewerStore as useViewerStoreNav } from '@/stores/viewerStore'
+import type { WalkthroughTelemetry } from './telemetry'
 import { resolveTemporalWalkthroughPlan } from './temporalPlan'
 import { FrontierBarrier } from './FrontierBarrier'
-import { resolveWalkthroughSpawn } from './spawn'
+import { resolveSpawnAtChainage, resolveWalkthroughSpawn, type WalkthroughSpawn } from './spawn'
 import { extractTunnelRuntimeGeometry } from './tunnelRuntimeGeometry'
 import { TunnelColliderSet } from './TunnelColliderSet'
 import { WalkthroughControls } from './WalkthroughControls'
@@ -35,6 +38,8 @@ export function WalkthroughRuntime({
   snapshotDay,
   ramp,
   perfRef,
+  telemetry,
+  registerTeleport,
   onFocusChange,
   onGeometryError,
 }: {
@@ -44,6 +49,9 @@ export function WalkthroughRuntime({
   snapshotDay: number | null
   ramp: { tunnelWidth: number; tunnelHeight: number } | null
   perfRef: { current: HTMLDivElement | null }
+  telemetry: WalkthroughTelemetry
+  /** MineCanvas registers the HUD-facing teleport executor here */
+  registerTeleport: (fn: ((chainageM: number) => void) | null) => void
   onFocusChange: (kind: 'MESH_ROUTER' | 'GAS_SENSOR' | null) => void
   onGeometryError: () => void
 }) {
@@ -64,10 +72,17 @@ export function WalkthroughRuntime({
   const planSmoothed = temporal ? frozenRef.current!.smoothed : smoothed
   const gltf = useGLTF(meshUrl)
   const camera = useThree((s) => s.camera)
-  const keyState = useMemo(() => createKeyState(), [])
+  const navigationMode = useViewerStoreNav((s) => s.navigationMode)
+  // PR #13 blocker 2: KeyState is MODE-SCOPED — recreated for every
+  // navigationMode value, so both the 1/2/3 keyboard path and the HUD
+  // buttons (which mutate the store directly) start the new mode with an
+  // empty movement/look/action state through the same mechanism
+  const keyStates = useMemo(() => createModeScopedKeyStates(), [])
+  const keyState = useMemo(() => keyStates.forMode(navigationMode), [keyStates, navigationMode])
   // owned here so EVERY lifecycle exit can reach it (PR #11 blocker 1)
   const inspectTrigger = useMemo(() => createInspectTrigger(), [])
   const resetSignal = useRef(0)
+  const teleportRef = useRef<WalkthroughSpawn | null>(null)
   const focusedRef = useRef<string | null>(null)
   // mirror of focusedRef for rendering; updated ONLY when the id changes
   const [focusedId, setFocusedId] = useState<string | null>(null)
@@ -90,10 +105,15 @@ export function WalkthroughRuntime({
       return null
     }
   }, [gltf])
-  const spawn = useMemo(
-    () => resolveWalkthroughSpawn(planSmoothed, WALKTHROUGH_CONFIG),
-    [planSmoothed],
-  )
+  // mode-specific deterministic spawn (§30): floor reference stays
+  // authoritative; only the body dimensions differ per mode
+  const spawn = useMemo(() => {
+    const nav = navigationBody(navigationMode)
+    return resolveWalkthroughSpawn(planSmoothed, {
+      ...WALKTHROUGH_CONFIG,
+      bodyHeightM: nav.bodyHeightM,
+    })
+  }, [planSmoothed, navigationMode])
   // rule 112: the temporal plan is resolved ONCE per snapshot and the
   // physical topology stays immutable for the session
   const plan = useMemo(
@@ -156,6 +176,30 @@ export function WalkthroughRuntime({
   const reset = useCallback(() => {
     resetSignal.current += 1
   }, [])
+  // level teleport (hotfix 2): same deterministic spawn rules at a chosen
+  // decline chainage; invalid chainages are ignored, never guessed
+  const navBodyHeight = navigationBody(navigationMode).bodyHeightM
+  useEffect(() => {
+    registerTeleport((chainageM: number) => {
+      const pose = resolveSpawnAtChainage(
+        planSmoothed,
+        {
+          ...WALKTHROUGH_CONFIG,
+          bodyHeightM: navBodyHeight,
+        },
+        chainageM,
+      )
+      if (pose) {
+        teleportRef.current = pose
+        resetSignal.current += 1
+      }
+    })
+    return () => registerTeleport(null)
+  }, [registerTeleport, planSmoothed, navBodyHeight])
+  // both keyboard and HUD funnel through the store; the mode-scoped
+  // KeyState above owns the transient-input lifecycle (§29 spawn remount
+  // via key={navigationMode} is unchanged)
+  const setNavigationMode = useViewerStoreNav((s) => s.setNavigationMode)
   const inspect = useCallback(() => {
     // E latches the currently focused asset into the canonical global
     // selection (rule 109); no focus -> no-op
@@ -178,6 +222,7 @@ export function WalkthroughRuntime({
         allowInspect={!temporal}
         onReset={reset}
         onInspect={inspect}
+        onNavigationMode={setNavigationMode}
       />
       <WalkthroughDiagnostics targetRef={perfRef} />
       <WalkthroughAssetLayer assets={interactables} focusedId={focusedId} selectedId={selectedId} />
@@ -203,10 +248,14 @@ export function WalkthroughRuntime({
           />
         ) : null}
         <WalkthroughPlayer
+          key={navigationMode}
+          mode={navigationMode}
           config={WALKTHROUGH_CONFIG}
           spawn={spawn}
           keyState={keyState}
           resetSignal={resetSignal}
+          teleportRef={teleportRef}
+          telemetry={telemetry}
         />
       </Physics>
     </>

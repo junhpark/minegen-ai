@@ -67,7 +67,7 @@ export function TimelineStopeLayer({
   return (
     <group>
       {items.map((it) => (
-        <mesh key={it.key} geometry={it.geometry}>
+        <mesh key={it.key} geometry={it.geometry} frustumCulled={false}>
           <meshStandardMaterial
             color={it.style.color}
             transparent

@@ -59,7 +59,7 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
 const CURRENT_PHASE = 4
 
 const FIELDS: { id: SliceField; label: string }[] = [
-  { id: 'rockQuality', label: 'Rock quality' },
+  { id: 'rockQuality', label: 'Rock quality (synthetic RMR-like, 0-100)' },
   { id: 'grade', label: 'Grade' },
   { id: 'faultInfluence', label: 'Fault influence' },
   { id: 'faultZone', label: 'Fault zone' },

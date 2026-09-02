@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { clearTransientInput, createInspectTrigger, type InspectTrigger } from './interactionRay'
 import { isEditableTarget, type KeyState } from './movement'
+import { type WalkthroughNavigationMode } from './navigation'
 
 /**
  * Keyboard-only walkthrough input lifecycle (hotfix §2/§5): WASD walks,
@@ -17,12 +18,14 @@ export function WalkthroughControls({
   allowInspect,
   onReset,
   onInspect,
+  onNavigationMode,
 }: {
   keyState: KeyState
   inspectTrigger: InspectTrigger
   allowInspect: boolean
   onReset: () => void
   onInspect: () => void
+  onNavigationMode: (mode: WalkthroughNavigationMode) => void
 }) {
   useEffect(() => {
     const inspect = inspectTrigger
@@ -33,11 +36,19 @@ export function WalkthroughControls({
         if (!e.repeat && reset.press()) onReset()
         return
       }
+      if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
+        if (!e.repeat) {
+          onNavigationMode(
+            e.code === 'Digit1' ? 'PERSON' : e.code === 'Digit2' ? 'VEHICLE' : 'DRONE',
+          )
+        }
+        return
+      }
       if (e.code === 'KeyE') {
         if (allowInspect && !e.repeat && inspect.press()) onInspect()
         return
       }
-      if (keyState.handleKey(e.code, true)) e.preventDefault()
+      if (keyState.handleKey(e.code, true)) e.preventDefault() // incl. Space scroll
     }
     const up = (e: KeyboardEvent) => {
       if (e.code === 'KeyR') {
@@ -64,6 +75,6 @@ export function WalkthroughControls({
       clearTransientInput(keyState, inspect)
       reset.clear()
     }
-  }, [allowInspect, inspectTrigger, keyState, onInspect, onReset])
+  }, [allowInspect, inspectTrigger, keyState, onInspect, onNavigationMode, onReset])
   return null
 }

@@ -29,9 +29,33 @@ export function resolveWalkthroughSpawn(
   smoothed: SmoothedDeclinePayload | null | undefined,
   config: WalkthroughConfig,
 ): WalkthroughSpawn | null {
-  const first = smoothed?.segments?.[0]
-  const flat = first?.effectiveCenterline?.points
-  if (!Array.isArray(flat) || flat.length < 6 || flat.length % 3 !== 0) return null
+  return resolveSpawnAtChainage(smoothed, config, config.spawnChainageM)
+}
+
+/**
+ * Deterministic body pose at an arbitrary decline chainage (hotfix 2 —
+ * level teleport). Walks the CONCATENATED effective centerlines from the
+ * portal; identical rules to the entry spawn (floor reference, inward
+ * yaw, no fallback). Callers own eligibility (temporal contexts must not
+ * pass beyond-frontier chainages).
+ */
+export function resolveSpawnAtChainage(
+  smoothed: SmoothedDeclinePayload | null | undefined,
+  config: WalkthroughConfig,
+  chainageM: number,
+): WalkthroughSpawn | null {
+  if (!Number.isFinite(chainageM) || chainageM < 0) return null
+  const segments = smoothed?.segments
+  if (!segments || segments.length === 0) return null
+  const flat: number[] = []
+  for (const seg of segments) {
+    const pts = seg.effectiveCenterline?.points
+    if (!Array.isArray(pts) || pts.length % 3 !== 0) return null
+    // segments share boundary points; skip the duplicated first point
+    const start = flat.length > 0 ? 3 : 0
+    for (let i = start; i < pts.length; i++) flat.push(pts[i]!)
+  }
+  if (flat.length < 6) return null
   const n = flat.length / 3
   const pts: [number, number, number][] = []
   for (let i = 0; i < n; i++) {
@@ -39,8 +63,8 @@ export function resolveWalkthroughSpawn(
     if (!finite3(p) || p.some((v) => typeof v !== 'number')) return null
     pts.push(p as [number, number, number])
   }
-  // walk the polyline from the portal end (chain start) to the fixed chainage
-  const target = config.spawnChainageM
+  // walk the polyline from the portal end (chain start) to the chainage
+  const target = chainageM
   let acc = 0
   let floor: [number, number, number] | null = null
   let tangent: [number, number, number] | null = null

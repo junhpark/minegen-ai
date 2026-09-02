@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
+import { createPerfSampler } from './perfSampler'
 
 /**
  * DEV-only walkthrough performance readout (hotfix §14): FPS, rendered
@@ -7,26 +8,6 @@ import { useFrame, useThree } from '@react-three/fiber'
  * bounded ~2 Hz — never per React frame, never through Zustand, never
  * persisted, absent from production builds.
  */
-export interface PerfSampler {
-  sample: (deltaSeconds: number, triangles: number, calls: number) => string | null
-}
-
-export function createPerfSampler(intervalSeconds = 0.5): PerfSampler {
-  let acc = 0
-  let frames = 0
-  return {
-    sample(deltaSeconds, triangles, calls) {
-      acc += deltaSeconds
-      frames += 1
-      if (acc + 1e-9 < intervalSeconds) return null
-      const fps = frames / acc
-      acc = 0
-      frames = 0
-      const tri = triangles >= 1000 ? `${(triangles / 1000).toFixed(0)}k` : String(triangles)
-      return `FPS ${fps.toFixed(0)}\nTriangles ${tri}\nDraw calls ${calls}`
-    },
-  }
-}
 
 export function WalkthroughDiagnostics({
   targetRef,

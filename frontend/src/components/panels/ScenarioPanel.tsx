@@ -193,7 +193,7 @@ export function ScenarioPanel() {
             </dd>
             <dt className="text-mute">Thickness</dt>
             <dd>{fmtMeters(scenario.orebody.thickness, 0)}</dd>
-            <dt className="text-mute">Rock quality</dt>
+            <dt className="text-mute">Rock quality (synthetic RMR-like, 0-100)</dt>
             <dd>
               {scenario.geology.rockQuality.mean} ± {scenario.geology.rockQuality.std}
             </dd>

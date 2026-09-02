@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { WALKTHROUGH_DPR } from './config'
-import { createPerfSampler } from './WalkthroughDiagnostics'
+import { createPerfSampler } from './perfSampler'
 
 describe('walkthrough performance baseline (hotfix §12/§14/§21)', () => {
   it('walkthrough renders at DPR 1', () => {
