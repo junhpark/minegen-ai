@@ -31,12 +31,17 @@ from minegen.core.models import (
     ScenarioCreate,
 )
 from minegen.world.geology import FaultPlane
+from minegen.world.orebody import build_orebody
 
 OREBODY_REALIZATION_STREAM = 0x0B0D17
 FAULT_REALIZATION_STREAM = 0xFA0117
 
 _FAULT_RETRIES = 8
-_OREBODY_RETRIES = 16
+_OREBODY_RETRIES = 64
+#: horizontal safety margin and top (cover) margin applied to the ACTUAL
+#: analytic orebody AABB, not to the centre (rule 125)
+HORIZONTAL_MARGIN_M = 80.0
+TOP_MARGIN_M = 40.0
 
 
 class ScenarioRealizationError(ValueError):
@@ -78,37 +83,64 @@ def _world_bounds(base: ScenarioCreate) -> tuple[np.ndarray, np.ndarray]:
     )
 
 
-def _realize_orebody(seed: int, orebody_type: OrebodyType, base: ScenarioCreate) -> OrebodyConfig:
-    """Deterministic orebody parameters, substantially inside the model
-    volume (rule: bounded retries, explicit failure — never silent
-    clipping)."""
-    rng = np.random.default_rng([seed, OREBODY_REALIZATION_STREAM])
+def orebody_within_world(cfg: OrebodyConfig, base: ScenarioCreate) -> bool:
+    """Rule 125 acceptance gate: the ACTUAL analytic orebody solid — not its
+    centre — must sit inside the model volume.
+
+    A tabular slab or ellipsoid is rotated by strike/dip, so a centre-only
+    test says nothing about where the body actually reaches; the world AABB
+    of the built geometry is the only sound source. Horizontal edges keep
+    the ``HORIZONTAL_MARGIN_M`` safety margin, the top keeps
+    ``TOP_MARGIN_M`` of cover below the terrain reference elevation, and
+    the bottom must stay above the model floor.
+    """
     lo, hi = _world_bounds(base)
-    margin = 80.0
+    bbox_min, bbox_max = build_orebody(cfg).bounding_box()
+    return bool(
+        bbox_min[0] >= lo[0] + HORIZONTAL_MARGIN_M
+        and bbox_max[0] <= hi[0] - HORIZONTAL_MARGIN_M
+        and bbox_min[1] >= lo[1] + HORIZONTAL_MARGIN_M
+        and bbox_max[1] <= hi[1] - HORIZONTAL_MARGIN_M
+        and bbox_min[2] >= lo[2]
+        and bbox_max[2] <= hi[2] - TOP_MARGIN_M
+    )
+
+
+def _realize_orebody(seed: int, orebody_type: OrebodyType, base: ScenarioCreate) -> OrebodyConfig:
+    """Deterministic orebody parameters whose BUILT geometry lies inside the
+    model volume (rule 125): candidates are drawn from the orebody
+    sub-stream and accepted or rejected whole — never clamped — with a
+    bounded retry budget and an explicit typed failure on exhaustion.
+
+    Sampling ranges are chosen so a rotated body of the largest sampled
+    size still fits: the world is 1200 x 1200 m with an 80 m margin on each
+    side, leaving a 1040 m usable span, so the centre range and the
+    length/height ranges below keep the acceptance rate high while the AABB
+    gate remains the authority.
+    """
+    rng = np.random.default_rng([seed, OREBODY_REALIZATION_STREAM])
     for _ in range(_OREBODY_RETRIES):
         cfg = OrebodyConfig(
             orebody_type=orebody_type,
             center=Point3D(
-                x=float(rng.uniform(-250.0, 250.0)),
-                y=float(rng.uniform(-250.0, 250.0)),
-                z=float(rng.uniform(-150.0, 50.0)),
+                x=float(rng.uniform(-180.0, 180.0)),
+                y=float(rng.uniform(-180.0, 180.0)),
+                z=float(rng.uniform(-150.0, -20.0)),
             ),
             strike_deg=float(rng.uniform(0.0, 360.0)),
             dip_deg=float(rng.uniform(45.0, 80.0)),
-            length=float(rng.uniform(350.0, 700.0)),
-            height=float(rng.uniform(200.0, 400.0)),
+            length=float(rng.uniform(350.0, 650.0)),
+            height=float(rng.uniform(200.0, 380.0)),
             thickness=float(rng.uniform(6.0, 25.0)),
             mean_grade=float(rng.uniform(2.5, 6.0)),
             grade_variability=float(rng.uniform(0.2, 0.45)),
         )
-        c = np.array(cfg.center.as_tuple())
-        if (
-            lo[0] + margin <= c[0] <= hi[0] - margin
-            and lo[1] + margin <= c[1] <= hi[1] - margin
-            and lo[2] + cfg.vertical_extent / 2.0 <= c[2] <= hi[2] - 40.0
-        ):
+        if orebody_within_world(cfg, base):
             return cfg
-    raise ScenarioRealizationError("orebody realization exhausted bounded retries")
+    raise ScenarioRealizationError(
+        "orebody realization exhausted bounded retries without a candidate whose "
+        "geometry fits inside the model volume"
+    )
 
 
 def _realize_faults(seed: int, count: int, base: ScenarioCreate) -> list[FaultConfig]:

@@ -438,3 +438,21 @@ verbatim (rule 124 — the client never draws or computes geometry), and
 the design panel disables target generation with an explanatory notice
 for non-tabular scenarios. The 'one fault' checkbox is superseded by the
 BASELINE preset, which reproduces it exactly.
+
+### Phase 17 acceptance hotfix
+
+Two acceptance blockers closed on the Phase 17 branch. (1) The scenario
+panel now realizes into an EDITABLE draft: Randomize calls the backend and
+seeds the draft, an Advanced section exposes the explicit orebody (type
+restricted to the implemented TABULAR/ELLIPSOID), grade, rock-quality and
+per-fault parameters (add/remove within the backend 0-6 contract), and
+Create submits the edited draft verbatim — never a fresh realization over
+user edits. Changing preset, seed or fault count invalidates the draft so
+a stale preview can never be mistaken for the new inputs; the client still
+contains no randomness and derives no geometry (rule 124). (2) Randomized
+orebody acceptance now tests the ACTUAL analytic solid —
+`build_orebody(cfg).bounding_box()` against the world bounds with the
+intended 80 m horizontal and 40 m top margins — because strike/dip
+rotation means a centre-only test proves nothing; invalid candidates are
+rejected whole and retried deterministically (budget 64), never clamped
+(rule 125).

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, ApiError } from '@/api/client'
+import { AdvancedScenarioEditor } from '@/scenario/AdvancedScenarioEditor'
 import {
   DEFAULT_BUILDER,
   faultCountEnabled,
@@ -28,7 +29,11 @@ export function ScenarioPanel() {
   const [seed, setSeed] = useState(DEFAULT_BUILDER.seed)
   const [preset, setPreset] = useState<ScenarioPreset>(DEFAULT_BUILDER.preset)
   const [faultCount, setFaultCount] = useState(DEFAULT_BUILDER.faultCount)
+  // realized = the untouched backend realization; draft = the editable
+  // document the user will actually persist (Phase 17 acceptance, rule 124)
   const [realized, setRealized] = useState<ScenarioCreate | null>(null)
+  const [draft, setDraft] = useState<ScenarioCreate | null>(null)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   // Phase 17 (rule 119): the panel never draws random numbers — it asks the
   // backend to realize preset+seed and shows/creates the result verbatim
 
@@ -50,15 +55,24 @@ export function ScenarioPanel() {
 
   const realize = useMutation({
     mutationFn: () => api.realizeScenario(realizeRequest({ preset, seed, faultCount })),
-    onSuccess: (sc) => setRealized(sc),
+    onSuccess: (sc) => {
+      setRealized(sc)
+      setDraft(sc) // realization seeds the editable draft
+    },
   })
+
+  /** preset / seed / fault-count changes make any existing realization
+   * stale — never show or submit it as if it belonged to the new inputs */
+  const invalidateDraft = () => {
+    setRealized(null)
+    setDraft(null)
+  }
 
   const create = useMutation({
     mutationFn: async () => {
-      // deterministic: an existing preview is reused; otherwise the same
-      // realize call happens now (same preset+seed → same scenario)
+      // the edited draft is authoritative: never re-realize over user edits
       const resolved =
-        realized ?? (await api.realizeScenario(realizeRequest({ preset, seed, faultCount })))
+        draft ?? (await api.realizeScenario(realizeRequest({ preset, seed, faultCount })))
       return api.createScenario({ ...resolved, name })
     },
     onSuccess: (s) => {
@@ -105,7 +119,7 @@ export function ScenarioPanel() {
             value={preset}
             onChange={(e) => {
               setPreset(e.target.value as ScenarioPreset)
-              setRealized(null)
+              invalidateDraft()
             }}
             className={input}
           >
@@ -128,7 +142,7 @@ export function ScenarioPanel() {
               value={seed}
               onChange={(e) => {
                 setSeed(Number(e.target.value))
-                setRealized(null)
+                invalidateDraft()
               }}
               className={`readout ${input}`}
             />
@@ -143,7 +157,7 @@ export function ScenarioPanel() {
               disabled={!faultCountEnabled(preset)}
               onChange={(e) => {
                 setFaultCount(Math.max(0, Math.min(6, Number(e.target.value))))
-                setRealized(null)
+                invalidateDraft()
               }}
               className={`readout ${input} disabled:opacity-50`}
             />
@@ -158,13 +172,27 @@ export function ScenarioPanel() {
             {realize.isPending ? '…' : 'Randomize'}
           </button>
         </div>
-        {realized ? (
-          <div className="readout mb-3 rounded-sm border border-rock-700 bg-rock-900/60 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
-            {realizedSummary(realized).map((line) => (
-              <div key={line}>{line}</div>
-            ))}
-            <div className="mt-1 text-mute">Same seed always reproduces this exact mine.</div>
-          </div>
+        {draft ? (
+          <>
+            <div className="readout mb-2 rounded-sm border border-rock-700 bg-rock-900/60 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
+              {realizedSummary(draft).map((line) => (
+                <div key={line}>{line}</div>
+              ))}
+              <div className="mt-1 text-mute">
+                {realized && JSON.stringify(draft) !== JSON.stringify(realized)
+                  ? 'Edited — your values will be persisted as-is.'
+                  : 'Same seed always reproduces this exact mine.'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((v) => !v)}
+              className="mb-2 w-full rounded-sm border border-rock-700 px-2 py-1 text-left text-[11px] text-chalk-dim hover:bg-rock-800"
+            >
+              {advancedOpen ? '▾' : '▸'} Advanced
+            </button>
+            {advancedOpen ? <AdvancedScenarioEditor draft={draft} onChange={setDraft} /> : null}
+          </>
         ) : null}
         <button
           type="button"

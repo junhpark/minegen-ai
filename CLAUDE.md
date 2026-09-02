@@ -840,7 +840,20 @@ phase is considered complete.
      Phase 18: design entry points fail typed
      (UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT, 422) — never 500, never a
      partial layout on unsupported geometry.
-124. The frontend scenario builder assembles realize REQUESTS and echoes
-     the backend-realized document verbatim (preview and create submit the
-     same resolved ScenarioCreate); it never draws random parameters or
-     computes orebody/fault geometry client-side.
+124. The backend owns stochastic scenario realization and ALL orebody and
+     fault engineering geometry. The frontend may edit explicit
+     ScenarioCreate PARAMETERS, and only from direct user input: it must
+     never generate stochastic geological parameters (no client-side
+     randomness) nor independently derive orebody or fault geometry. The
+     final explicit ScenarioCreate the user submits is the authoritative
+     persisted scenario — a realization seeds the editable draft and is
+     never silently re-run over user edits; changing preset, seed or fault
+     count invalidates the draft instead.
+125. Randomized orebody acceptance is judged on the ACTUAL analytic solid,
+     never on its centre: build the candidate and test
+     `build_orebody(cfg).bounding_box()` against the world bounds
+     (horizontal safety margin 80 m, top cover margin 40 m, above the model
+     floor). Strike/dip rotation means a centre-only test proves nothing.
+     Invalid candidates are rejected whole and retried from the same
+     deterministic sub-stream — never clamped, never clipped — and
+     exhaustion is a typed SCENARIO_REALIZATION_INVALID failure.
