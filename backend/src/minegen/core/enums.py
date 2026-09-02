@@ -9,6 +9,15 @@ from __future__ import annotations
 from enum import StrEnum
 
 
+class ScenarioPreset(StrEnum):
+    """Phase 17 scenario-realization presets (rule 119): realization happens
+    BEFORE persistence; generate_world never draws hidden randomness."""
+
+    BASELINE = "BASELINE"
+    RANDOM_TABULAR = "RANDOM_TABULAR"
+    RANDOM_ELLIPSOID = "RANDOM_ELLIPSOID"
+
+
 class OrebodyType(StrEnum):
     TABULAR = "TABULAR"
     ELLIPSOID = "ELLIPSOID"

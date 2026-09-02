@@ -402,3 +402,39 @@ Deferred to Phase 17+: orebody/fault randomization, irregular orebody +
 regularized ramp patterns, third-person/truck view, true 3D minimap,
 drone tunnel-relative altitude, access-target concept revisit, Analysis
 mode (reserved since Phase 01).
+
+## Phase 17 — deterministic geology & orebody scenario engine
+
+Scenario REALIZATION is now an explicit non-persistent step (rule 119):
+`POST /scenarios/realize` maps preset + seed (+ fault count) to a fully
+resolved ScenarioCreate that the client inspects and then submits to the
+ordinary create endpoint, so `generate_world` keeps its pure contract and
+a persisted scenario reproduces its world forever. Presets: BASELINE (the
+exact Phase 16 user-facing mine — backend-default tabular orebody plus
+the fixed fault — with zero random draws), RANDOM_TABULAR and
+RANDOM_ELLIPSOID. Draws come from NEW independent seed sub-streams
+(orebody 0x0B0D17, faults 0xFA0117; rule 121) so the existing terrain /
+rock / grade streams — and therefore every existing world — are
+bit-identical. Realized faults must demonstrably cut the model volume
+(clip_to_box, bounded deterministic retries, typed failure; rule 122).
+
+ELLIPSOID is the first non-tabular orebody: the triaxial ellipsoid
+inscribed in the equivalent tabular slab (semi-axes = length/height/
+thickness ÷ 2 in the same strike/dip frame), so the persisted schema is
+unchanged (schema_version stays 1). Its signed distance is the EXACT
+Euclidean distance via the classic largest-root equation solved with a
+deterministic bisection (axis-plane degeneracies handled with a 1 nm
+clamp, error ≪ 1e-6 m); contains / volume (4/3·π·abc) / closed-form
+rotated AABB / UV-sphere mesh with every vertex on the analytic surface
+all describe the SAME solid (rule 120). True free-form irregular bodies
+are DEFERRED: without a metric SDF they would poison the engineering
+buffers. The legacy design pipeline remains TABULAR-only behind a typed
+422 (UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT; rule 123) until the Phase 18
+generalized layout.
+
+Frontend: the Scenario panel gained Preset / Seed / fault-count controls
+with a Randomize preview that shows the backend-realized parameters
+verbatim (rule 124 — the client never draws or computes geometry), and
+the design panel disables target generation with an explanatory notice
+for non-tabular scenarios. The 'one fault' checkbox is superseded by the
+BASELINE preset, which reproduces it exactly.

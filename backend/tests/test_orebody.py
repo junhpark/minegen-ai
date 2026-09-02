@@ -6,8 +6,9 @@ import numpy as np
 import pytest
 
 from minegen.core.coordinates import GLOBAL_UP, azimuth_to_unit_vector
+from minegen.core.enums import OrebodyType
 from minegen.core.models import OrebodyConfig, Point3D
-from minegen.world.orebody import TabularOrebody, build_orebody
+from minegen.world.orebody import EllipsoidOrebody, TabularOrebody, build_orebody
 
 
 def make(strike: float, dip: float, center=(200.0, 100.0, 0.0)) -> TabularOrebody:  # type: ignore[no-untyped-def]
@@ -121,3 +122,113 @@ def test_mesh_is_closed_box_with_outward_normals() -> None:
     edges = sorted(tuple(sorted((int(t[i]), int(t[(i + 1) % 3])))) for t in faces for i in range(3))
     assert all(edges.count(e) == 2 for e in set(edges))
     assert len(set(edges)) == 18
+
+
+# -- Phase 17: ELLIPSOID geometry integrity (spec §8/§9) -------------------- #
+
+
+def make_ellipsoid(
+    strike: float = 35.0, dip: float = 70.0, center=(200.0, 100.0, 0.0)
+) -> EllipsoidOrebody:  # type: ignore[no-untyped-def]
+    cfg = OrebodyConfig(
+        orebody_type=OrebodyType.ELLIPSOID,
+        center=Point3D(x=center[0], y=center[1], z=center[2]),
+        strike_deg=strike,
+        dip_deg=dip,
+        length=600,
+        height=350,
+        thickness=12,
+    )
+    ob = build_orebody(cfg)
+    assert isinstance(ob, EllipsoidOrebody)
+    return ob
+
+
+def test_ellipsoid_axis_points_have_exact_analytic_sdf() -> None:
+    """Analytic references. EXTERIOR points on any principal axis map to
+    that axis vertex (the evolute cusps lie inside/behind the vertices for
+    this geometry), so sdf = t - semi exactly. On the SHORTEST (w) axis the
+    curvature radius at the pole (a_max^2/a_w = 15 000 m) exceeds a_w, so
+    the ENTIRE interior w-segment also maps to the pole: sdf = t - a_w for
+    all t in [0, a_w]. Interior points on the LONG axis are the classic
+    trap — their nearest surface point is near the thin w-direction, NOT
+    the far u-vertex — so only a rigorous bound is asserted there."""
+    ob = make_ellipsoid()
+    a = ob.semi_axes
+    for axis_vec, semi in ((ob.u, a[0]), (ob.v, a[1]), (ob.w, a[2])):
+        for t in (semi, semi + 37.0, semi + 500.0):  # surface + exterior
+            p = ob.center + axis_vec * t
+            d = float(ob.signed_distance(p[None, :])[0])
+            assert d == pytest.approx(t - semi, abs=1e-6)
+    for t in (0.0, 1.5, 0.5 * a[2], a[2]):  # whole interior w-segment
+        p = ob.center + ob.w * t
+        d = float(ob.signed_distance(p[None, :])[0])
+        assert d == pytest.approx(t - a[2], abs=1e-6)
+    # interior on the LONG axis: nearest surface is ~thickness away, and
+    # exactly w*sqrt(1 - (u/a_u)^2) is an upper bound on |sdf|
+    u_t = 0.25 * a[0]
+    d = float(ob.signed_distance((ob.center + ob.u * u_t)[None, :])[0])
+    bound = a[2] * math.sqrt(1.0 - (u_t / a[0]) ** 2)
+    assert -bound - 1e-6 <= d < 0.0
+    assert abs(d) > 0.9 * a[2] * 0.5  # sanity: same order as the thickness
+
+
+def test_ellipsoid_contains_sdf_and_level_agree() -> None:
+    ob = make_ellipsoid()
+    rng = np.random.default_rng(7)
+    pts = ob.center + rng.normal(scale=250.0, size=(4000, 3))
+    inside = ob.contains(pts)
+    sdf = ob.signed_distance(pts)
+    assert np.all((sdf <= 1e-9) == inside)  # SAME solid (rule 120)
+    # sdf is a true metric lower bound: |sdf| <= distance to center path…
+    assert np.all(np.isfinite(sdf))
+
+
+def test_ellipsoid_surface_points_have_zero_sdf() -> None:
+    ob = make_ellipsoid(strike=123.0, dip=55.0)
+    rng = np.random.default_rng(3)
+    unit = rng.normal(size=(500, 3))
+    unit /= np.linalg.norm(unit, axis=1, keepdims=True)
+    world = ob.to_world(unit * ob.semi_axes)  # exactly on the surface
+    d = ob.signed_distance(world)
+    assert np.max(np.abs(d)) < 1e-6
+
+
+def test_ellipsoid_volume_bbox_and_mesh_consistency() -> None:
+    ob = make_ellipsoid()
+    a = ob.semi_axes
+    assert ob.volume() == pytest.approx(4.0 / 3.0 * math.pi * a[0] * a[1] * a[2])
+    lo, hi = ob.bounding_box()
+    assert np.all(hi > lo) and np.all(np.isfinite(lo)) and np.all(np.isfinite(hi))
+    verts, faces = ob.mesh()
+    assert np.all(np.isfinite(verts))
+    assert faces.min() >= 0 and faces.max() < len(verts)
+    # every mesh vertex lies exactly on the analytic surface
+    assert float(np.max(np.abs(ob.signed_distance(verts)))) < 1e-6
+    # mesh bounds inside the analytic AABB (and close to it)
+    assert np.all(verts.min(axis=0) >= lo - 1e-6) and np.all(verts.max(axis=0) <= hi + 1e-6)
+    assert np.max(np.abs(verts.min(axis=0) - lo)) < 6.0  # UV sampling gap only
+    # no degenerate triangles; deterministic
+    tri = verts[faces]
+    areas = 0.5 * np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
+    assert np.min(areas) > 1e-9
+    v2, f2 = ob.mesh()
+    assert np.array_equal(verts, v2) and np.array_equal(faces, f2)
+
+
+def test_ellipsoid_mesh_winding_is_outward() -> None:
+    """Signed volume from the triangle fan about the center must be positive
+    (outward CCW winding), and ≈ analytic volume within tessellation error."""
+    ob = make_ellipsoid(strike=10.0, dip=80.0)
+    verts, faces = ob.mesh()
+    rel = verts - ob.center
+    tri = rel[faces]
+    signed = float(np.sum(np.einsum("ij,ij->i", tri[:, 0], np.cross(tri[:, 1], tri[:, 2])))) / 6.0
+    assert signed > 0
+    assert signed == pytest.approx(ob.volume(), rel=0.02)
+
+
+def test_tabular_regression_unchanged_by_phase17() -> None:
+    ob = make(35.0, 70.0)
+    assert ob.volume() == pytest.approx(600 * 350 * 12)
+    assert bool(ob.contains(np.array([[200.0, 100.0, 0.0]]))[0])

@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from minegen.core.enums import OrebodyType
 from minegen.core.models import Scenario
 from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import DesignCostEvaluator
@@ -38,6 +39,12 @@ from minegen.scheduling.models import TimelinePayload
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
 from minegen.world.synthetic_world import SyntheticWorld
+
+
+class UnsupportedOrebodyError(RuntimeError):
+    """Phase 17 gate: the legacy Phase 03+ layout supports TABULAR only.
+    Non-tabular scenarios are valid for world generation/visualization;
+    generalized layout is deferred to Phase 18 (rule 123)."""
 
 
 class TargetsNotGeneratedError(LookupError):
@@ -147,6 +154,8 @@ class DesignService:
 
     def generate_targets(self, scenario_id: str) -> dict[str, Any]:
         scenario, world, ev = self.evaluator(scenario_id)
+        if scenario.orebody.orebody_type is not OrebodyType.TABULAR:
+            raise UnsupportedOrebodyError(scenario.orebody.orebody_type.value)
         portal, generated = resolve_portal(scenario, world)
         targets: AccessTargetSet = generate_access_targets(
             world,

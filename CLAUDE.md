@@ -813,3 +813,34 @@ phase is considered complete.
     Phase 15 temporal integration must not change Phase 13/14 STATIC_FINAL
     collision, spawn, pointer-lock, locomotion or planned-asset inspection
     semantics.
+119. Scenario realization vs world generation (Phase 17): every stochastic
+     PARAMETER draw happens in the explicit, non-persistent realization
+     step (`POST /scenarios/realize`, `services/scenario_realizer.py`);
+     the persisted ScenarioCreate is fully resolved and `generate_world`
+     stays a pure function of it with zero hidden randomness. A persisted
+     scenario alone must reproduce its world forever.
+120. Orebody implementations are ONE solid: `contains`, `signed_distance`
+     (exact Euclidean), `volume`, `bounding_box` and `mesh` must describe
+     the same geometry (mesh vertices exactly on the analytic surface,
+     mesh bounds inside the analytic AABB, sdf/contains sign agreement).
+     A shape that cannot satisfy this (e.g. free-form noise solids without
+     a metric SDF) is deferred, never approximated silently — engineering
+     buffers consume the SDF.
+121. Randomization RNG domains are independent named sub-streams of the
+     scenario seed (orebody 0x0B0D17, faults 0xFA0117, alongside the
+     existing terrain 0x7E44A1, rock 0x20C4, grade 0x6A4D): changing one
+     domain's draw count must never shift another domain's draws. New
+     domains get NEW keys; existing keys are frozen.
+122. Realized faults must actually cut the model volume (FaultPlane
+     clip_to_box non-empty) within a bounded deterministic retry budget;
+     exhaustion is a typed failure (SCENARIO_REALIZATION_INVALID), never a
+     silent drop or an out-of-world plane.
+123. Non-TABULAR orebodies are first-class for world generation and
+     visualization, but the legacy Phase 03+ layout is TABULAR-only until
+     Phase 18: design entry points fail typed
+     (UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT, 422) — never 500, never a
+     partial layout on unsupported geometry.
+124. The frontend scenario builder assembles realize REQUESTS and echoes
+     the backend-realized document verbatim (preview and create submit the
+     same resolved ScenarioCreate); it never draws random parameters or
+     computes orebody/fault geometry client-side.

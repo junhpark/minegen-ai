@@ -1,6 +1,12 @@
 // Typed fetch client. Thin: no engineering logic, no coordinate conversion.
 
-import type { HealthResponse, Scenario, ScenarioCreate, ScenarioSummary } from '@/types/api'
+import type {
+  HealthResponse,
+  Scenario,
+  ScenarioCreate,
+  ScenarioRealizeRequest,
+  ScenarioSummary,
+} from '@/types/api'
 import type {
   AccessTargetsPayload,
   CommunicationPayload,
@@ -70,6 +76,13 @@ export const api = {
   health: () => request<HealthResponse>('/health'),
   listScenarios: () => request<ScenarioSummary[]>('/scenarios'),
   getScenario: (id: string) => request<Scenario>(`/scenarios/${id}`),
+  /** Phase 17: deterministic preset+seed realization — non-persistent
+   * preview; submit the returned ScenarioCreate to createScenario. */
+  realizeScenario: (payload: ScenarioRealizeRequest) =>
+    request<ScenarioCreate>('/scenarios/realize', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   createScenario: (payload: Partial<ScenarioCreate>) =>
     request<Scenario>('/scenarios', { method: 'POST', body: JSON.stringify(payload) }),
   replaceScenario: (id: string, payload: ScenarioCreate) =>

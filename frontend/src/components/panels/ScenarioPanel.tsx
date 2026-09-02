@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, ApiError } from '@/api/client'
+import {
+  DEFAULT_BUILDER,
+  faultCountEnabled,
+  realizeRequest,
+  realizedSummary,
+} from '@/scenario/builder'
+import { SCENARIO_PRESETS, type ScenarioCreate, type ScenarioPreset } from '@/types/api'
 import { PanelSection } from '@/components/layout/PanelSection'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useSliceStore } from '@/stores/sliceStore'
@@ -18,8 +25,12 @@ export function ScenarioPanel() {
   const setScene = useScenarioStore((s) => s.setScene)
   const setSlice = useSliceStore((s) => s.setSlice)
   const [name, setName] = useState('Synthetic Gold Mine 001')
-  const [seed, setSeed] = useState(42)
-  const [withFault, setWithFault] = useState(true)
+  const [seed, setSeed] = useState(DEFAULT_BUILDER.seed)
+  const [preset, setPreset] = useState<ScenarioPreset>(DEFAULT_BUILDER.preset)
+  const [faultCount, setFaultCount] = useState(DEFAULT_BUILDER.faultCount)
+  const [realized, setRealized] = useState<ScenarioCreate | null>(null)
+  // Phase 17 (rule 119): the panel never draws random numbers — it asks the
+  // backend to realize preset+seed and shows/creates the result verbatim
 
   const list = useQuery({ queryKey: ['scenarios'], queryFn: api.listScenarios })
 
@@ -37,37 +48,19 @@ export function ScenarioPanel() {
     }
   }
 
+  const realize = useMutation({
+    mutationFn: () => api.realizeScenario(realizeRequest({ preset, seed, faultCount })),
+    onSuccess: (sc) => setRealized(sc),
+  })
+
   const create = useMutation({
-    mutationFn: () =>
-      api.createScenario({
-        name,
-        seed,
-        ...(withFault
-          ? {
-              geology: {
-                rockQuality: {
-                  mean: 65,
-                  std: 12,
-                  correlationLengthXy: 80,
-                  correlationLengthZ: 40,
-                  minimum: 20,
-                  maximum: 90,
-                },
-                faults: [
-                  {
-                    origin: { x: -100, y: -200, z: 0 },
-                    strikeDeg: 120,
-                    dipDeg: 65,
-                    coreHalfWidth: 2.5,
-                    influenceHalfWidth: 20,
-                    corePenalty: 50,
-                    damageZonePenalty: 10,
-                  },
-                ],
-              },
-            }
-          : {}),
-      }),
+    mutationFn: async () => {
+      // deterministic: an existing preview is reused; otherwise the same
+      // realize call happens now (same preset+seed → same scenario)
+      const resolved =
+        realized ?? (await api.realizeScenario(realizeRequest({ preset, seed, faultCount })))
+      return api.createScenario({ ...resolved, name })
+    },
     onSuccess: (s) => {
       setScenario(s)
       setScene(null)
@@ -92,7 +85,7 @@ export function ScenarioPanel() {
     },
   })
 
-  const error = create.error ?? load.error ?? generate.error
+  const error = realize.error ?? create.error ?? load.error ?? generate.error
   const errorText =
     error instanceof ApiError ? `${error.code}: ${error.message}` : error ? error.message : null
 
@@ -106,26 +99,73 @@ export function ScenarioPanel() {
           <span className="mb-1 block text-[11px] text-chalk-dim">Name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} className={input} />
         </label>
-        <div className="mb-3 grid grid-cols-[1fr_auto] items-end gap-2">
+        <label className="mb-2 block">
+          <span className="mb-1 block text-[11px] text-chalk-dim">Preset</span>
+          <select
+            value={preset}
+            onChange={(e) => {
+              setPreset(e.target.value as ScenarioPreset)
+              setRealized(null)
+            }}
+            className={input}
+          >
+            {SCENARIO_PRESETS.map((p) => (
+              <option key={p} value={p}>
+                {p === 'BASELINE'
+                  ? 'Baseline (fixed reference mine)'
+                  : p === 'RANDOM_TABULAR'
+                    ? 'Randomized · tabular orebody'
+                    : 'Randomized · ellipsoid orebody'}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="mb-2 grid grid-cols-[1fr_auto_auto] items-end gap-2">
           <label className="block">
             <span className="mb-1 block text-[11px] text-chalk-dim">Seed</span>
             <input
               type="number"
               value={seed}
-              onChange={(e) => setSeed(Number(e.target.value))}
+              onChange={(e) => {
+                setSeed(Number(e.target.value))
+                setRealized(null)
+              }}
               className={`readout ${input}`}
             />
           </label>
-          <label className="flex items-center gap-2 pb-1 text-[11px] text-chalk-dim">
+          <label className="block w-16">
+            <span className="mb-1 block text-[11px] text-chalk-dim">Faults</span>
             <input
-              type="checkbox"
-              checked={withFault}
-              onChange={(e) => setWithFault(e.target.checked)}
-              className="accent-lamp"
+              type="number"
+              min={0}
+              max={6}
+              value={faultCountEnabled(preset) ? faultCount : 1}
+              disabled={!faultCountEnabled(preset)}
+              onChange={(e) => {
+                setFaultCount(Math.max(0, Math.min(6, Number(e.target.value))))
+                setRealized(null)
+              }}
+              className={`readout ${input} disabled:opacity-50`}
             />
-            one fault
           </label>
+          <button
+            type="button"
+            onClick={() => realize.mutate()}
+            disabled={realize.isPending}
+            className="plate rounded-sm border border-rock-600 px-2 py-1 text-[12px] text-chalk hover:bg-rock-700 disabled:opacity-50"
+            title="Preview the deterministic realization for this preset + seed"
+          >
+            {realize.isPending ? '…' : 'Randomize'}
+          </button>
         </div>
+        {realized ? (
+          <div className="readout mb-3 rounded-sm border border-rock-700 bg-rock-900/60 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
+            {realizedSummary(realized).map((line) => (
+              <div key={line}>{line}</div>
+            ))}
+            <div className="mt-1 text-mute">Same seed always reproduces this exact mine.</div>
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={() => create.mutate()}

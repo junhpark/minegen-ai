@@ -156,6 +156,21 @@ export interface InfrastructureConfig {
   sensors: SensorConfig
 }
 
+/** Phase 17 scenario-realization presets (backend ScenarioPreset). */
+export type ScenarioPreset = 'BASELINE' | 'RANDOM_TABULAR' | 'RANDOM_ELLIPSOID'
+export const SCENARIO_PRESETS: readonly ScenarioPreset[] = [
+  'BASELINE',
+  'RANDOM_TABULAR',
+  'RANDOM_ELLIPSOID',
+]
+
+/** Body of the non-persistent POST /scenarios/realize. */
+export interface ScenarioRealizeRequest {
+  preset: ScenarioPreset
+  seed: number
+  faultCount?: number | null
+}
+
 export interface ScenarioCreate {
   name: string
   seed: number

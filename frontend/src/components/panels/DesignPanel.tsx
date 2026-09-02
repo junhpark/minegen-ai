@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { api, ApiError } from '@/api/client'
 import { PanelSection } from '@/components/layout/PanelSection'
+import { DESIGN_UNSUPPORTED_NOTICE, designSupported } from '@/scenario/builder'
 import {
   afterLevelsRegen,
   afterNetworkRegen,
@@ -218,6 +219,11 @@ export function DesignPanel() {
 
   return (
     <PanelSection title="Access targets" tag="Phase 03">
+      {!designSupported(scenario) ? (
+        <p className="mb-2 rounded-sm border border-rock-700 bg-rock-900/70 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
+          {DESIGN_UNSUPPORTED_NOTICE}
+        </p>
+      ) : null}
       {scenario ? (
         <dl className="readout mb-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
           <dt className="text-mute">Sublevel</dt>
@@ -236,7 +242,7 @@ export function DesignPanel() {
       <button
         type="button"
         onClick={() => generate.mutate()}
-        disabled={!scene || generate.isPending}
+        disabled={!scene || !designSupported(scenario) || generate.isPending}
         className="plate w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {generate.isPending
