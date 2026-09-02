@@ -1,8 +1,9 @@
 """Analytic orebody geometry.
 
-The orebody is an exact mathematical solid. The block model *samples* it
-(Phase 02); access targets (Phase 03) and stopes (Phase 09) are derived from
-it. It is never reconstructed from voxels.
+The orebody is an exact mathematical solid and the ONLY authority for
+mineralized-domain membership (rule 129): access targets (Phase 03) and
+stopes (Phase 09) are derived from it, and the numerical field lattice never
+defines ore/waste geometry. It is never reconstructed from voxels.
 
 Frame convention (CLAUDE.md rule 28, ``docs/coordinate-system.md``):
 ``u`` along strike, ``v`` down dip, ``w = u × v`` to the footwall side.
@@ -53,9 +54,6 @@ class Orebody(ABC):
     @abstractmethod
     def mesh(self) -> tuple[FloatArray, npt.NDArray[np.int32]]:
         """Triangle mesh ``(vertices (N,3), faces (M,3))`` in world coords."""
-
-    def tonnes(self) -> float:
-        return self.volume() * self.config.density
 
     def to_local(self, points: FloatArray) -> FloatArray:
         return self.frame.world_to_local(points)
@@ -206,7 +204,6 @@ class TabularOrebody(Orebody):
             "w": self.w.tolist(),
             "halfExtents": self.half_extents.tolist(),
             "volumeM3": self.volume(),
-            "tonnes": self.tonnes(),
             "bboxMin": lo.tolist(),
             "bboxMax": hi.tolist(),
         }
@@ -351,7 +348,6 @@ class EllipsoidOrebody(Orebody):
             "w": self.w.tolist(),
             "semiAxes": self.semi_axes.tolist(),
             "volumeM3": self.volume(),
-            "tonnes": self.tonnes(),
             "bboxMin": lo.tolist(),
             "bboxMax": hi.tolist(),
         }

@@ -46,8 +46,9 @@ parent/child (CLAUDE.md rule 13).
 
     minegen/
       core/            enums, Pydantic models, coordinate utilities, units
-      world/           terrain, orebody, block model, geology (rock quality,
-                       faults), voxel grid
+      world/           terrain, authoritative orebody solid, numerical field
+                       lattice (FieldGrid), SpatialFieldSet (rock quality, grade,
+                       fault measurements; batch sample()), geology generators
       design/          cost field, level access targets, motion primitives,
                        smoothing + shared sample validation (Phase 05),
                        chained Hybrid-A* decline generator, smoothing,
@@ -117,7 +118,7 @@ fault is added.
 ## Development phases
 
     01 Repository scaffold                   done
-    02 Synthetic world (terrain, orebody, block model, rock quality, faults)   done
+    02 Synthetic world (terrain, orebody, spatial fields, rock quality, faults)   done
     03 Design cost evaluator & level access targets   done
     04 Chained Hybrid-A* decline generator (raw path)   done
     04.5 Async jobs + progress + CI                      done
@@ -132,10 +133,11 @@ fault is added.
     13 First-person walkthrough done
     14 Walkthrough interaction done
     15 4D walkthrough done
-    16 Navigation / visual polish ← current
-    14 Walkthrough object interaction
-    15 4D walkthrough integration
-    16 Integrated v0.1 demo
+    16 Navigation / visual polish   done
+    17 Deterministic geology & orebody scenario engine   done
+    17.1 Scenario isolation & viewer polish   done
+    18 Spatial Field Core (no block/SMU semantics)   done ← current
+    (19 … 23: see docs/roadmap.md)
 
 ## Scenario document shape
 
@@ -146,7 +148,8 @@ fault is added.
      ├─ geology
      │    ├─ rockQuality
      │    └─ faults[]   (half-widths from the plane)
-     ├─ blockModel
+     ├─ fieldSampling  numerical field spacing (never a block / SMU size);
+     │                 schemaVersion 2 — v1 `blockModel` is migrated on read
      ├─ portal
      ├─ ramp
      ├─ tunnelProfile
@@ -429,8 +432,8 @@ rotated AABB / UV-sphere mesh with every vertex on the analytic surface
 all describe the SAME solid (rule 120). True free-form irregular bodies
 are DEFERRED: without a metric SDF they would poison the engineering
 buffers. The legacy design pipeline remains TABULAR-only behind a typed
-422 (UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT; rule 123) until the Phase 18
-generalized layout.
+422 (UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT; rule 123) until the Phase 20
+generalized layout (Parametric Layout Family Search).
 
 Frontend: the Scenario panel gained Preset / Seed / fault-count controls
 with a Randomize preview that shows the backend-realized parameters
@@ -456,3 +459,55 @@ intended 80 m horizontal and 40 m top margins — because strike/dip
 rotation means a centre-only test proves nothing; invalid candidates are
 rejected whole and retried deterministically (budget 64), never clamped
 (rule 125).
+
+### Phase 18 — Spatial Field Core
+
+Core-representation migration, not a rename. The world is now
+
+    Scenario → Terrain → authoritative Orebody solid → FieldGrid
+             → SpatialFieldSet {rock_quality, grade, fault_signed_distance,
+                                fault_zone, fault_influence; terrain_support}
+             → engineering consumers
+
+`BlockModel`, `BlockModelConfig`, `RockType`, `ore_fraction`, `ore_flag` and
+`rock_type` are gone (rule 127). The 10 m lattice remains numerically
+identical but is described only as numerical field spacing
+(`scenario.fieldSampling`, schemaVersion 2 — v1 documents are migrated on
+first read and lose their derived artifacts; a Phase-17 `arrays.npz` is
+rejected with 409 WORLD_ARTIFACT_INCOMPATIBLE, never reinterpreted).
+
+The public field API is batch-first: `RegularScalarField.sample(N×3)` is
+the trilinear interpolation the Phase-17 evaluator used to own, now a
+property of the field (rule 128). The near-surface behaviour that used to
+be "fill AIR blocks from the column top" is the field's `COLUMN_TOP_FILL`
+terrain boundary policy driven by a per-cell terrain-support fraction — an
+interpolation policy, not a rock classification. Because the arithmetic is
+unchanged, the golden suite shows decline, smoothing, level, network and
+timeline results that are numerically identical within the golden tolerance
+(1e-9 relative) before and after the migration — a contract-equivalence
+result over the recorded engineering metrics, not a byte hash of the
+artifacts (`backend/golden/phase18_vs_phase17.md`).
+
+Only one number changed by design: the longhole planning grade proxy no
+longer weights ore-flagged cells by `ore_fraction`; it samples the grade
+field on a deterministic equal-volume quadrature of the stope prism ∩
+orebody solid ∩ below terrain (rule 130). The orebody solid is the only
+membership authority (rule 129): the grade field is defined everywhere and
+the scene ships a slice display mask instead of ore blocks. That mask marks
+the display CELLS that INTERSECT the solid (centre inside, or a deterministic
+3³ sub-sample inside, bounded by the cell half-diagonal); it is named
+`OREBODY_INTERSECTION_BELOW_TERRAIN` precisely because a proximity or
+intersection test must never be presented as point membership. World stats are
+neutral field diagnostics — no block counts, no sampled ore tonnes, no mean
+ore grade, no in-situ orebody tonnes (rule 131).
+
+Task 0 of the phase was the golden-scenario harness
+(`python -m minegen.regression`, rule 132): 22 fixed cases (5 BASELINE,
+12 RANDOM_TABULAR with 0–3 faults, 5 world-only RANDOM_ELLIPSOID that fail
+the legacy layout deterministically), a HARD CONTRACT / QUALITY METRIC
+split, committed Phase-17 baseline, a machine-readable comparison and a
+3-case smoke subset in ordinary CI. Frontend: the Grade-blocks layer, the
+`oreBlocks` / `blockGrid` payloads and the `oreFraction` slice are removed;
+Field Slice stays an explicit default-OFF layer, now masked by the backend;
+the Parameters panel shows "Field sampling · numerical spacing" instead of
+"Block".

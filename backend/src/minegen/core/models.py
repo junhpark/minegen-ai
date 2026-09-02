@@ -4,9 +4,9 @@ Conventions
 -----------
 * Coordinates are ENU Z-up meters (``docs/coordinate-system.md``).
 * Wire format is camelCase; Python attribute names are snake_case.
-* These are *boundary* models. Bulk numerical data (block model fields, cost
-  fields, meshes) live in NumPy arrays and are never expanded into lists of
-  these objects (CLAUDE.md rule 6).
+* These are *boundary* models. Bulk numerical data (spatial field arrays,
+  cost fields, meshes) live in NumPy arrays and are never expanded into lists
+  of these objects (CLAUDE.md rule 6).
 """
 
 from __future__ import annotations
@@ -202,10 +202,19 @@ class GeologyConfig(ApiModel):
     faults: list[FaultConfig] = Field(default_factory=list)
 
 
-class BlockModelConfig(ApiModel):
-    dx: PositiveFloat = 10.0
-    dy: PositiveFloat = 10.0
-    dz: PositiveFloat = 10.0
+class FieldSamplingConfig(ApiModel):
+    """NUMERICAL sampling resolution of the synthetic spatial fields
+    (Phase 18, rule 127): the lattice spacing on which rock quality, grade
+    and fault measurements are generated and interpolated. It is sampling
+    support only — never a block size, an SMU, an ore block or any mining
+    unit. The 10 m default keeps the Phase-17 numerical behaviour."""
+
+    spacing_x: PositiveFloat = 10.0
+    spacing_y: PositiveFloat = 10.0
+    spacing_z: PositiveFloat = 10.0
+
+    def as_tuple(self) -> tuple[float, float, float]:
+        return (self.spacing_x, self.spacing_y, self.spacing_z)
 
 
 class RampConstraints(ApiModel):
@@ -459,7 +468,7 @@ class ScenarioCreate(ApiModel):
         )
     )
     geology: GeologyConfig = Field(default_factory=GeologyConfig)
-    block_model: BlockModelConfig = Field(default_factory=BlockModelConfig)
+    field_sampling: FieldSamplingConfig = Field(default_factory=FieldSamplingConfig)
     portal: Point3D | None = Field(
         default=None,
         description="Portal location on the terrain surface. If None, Phase 03 picks one.",
@@ -470,6 +479,27 @@ class ScenarioCreate(ApiModel):
     mining: MiningConfig = Field(default_factory=MiningConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_block_model(cls, data: Any) -> Any:
+        """Schema v1 → v2 (Phase 18): the persisted ``blockModel {dx, dy, dz}``
+        becomes ``fieldSampling {spacingX, spacingY, spacingZ}``. The numbers
+        are identical — only the semantics changed from mining-block size to
+        numerical field spacing. A document carrying BOTH keys is rejected
+        (``extra="forbid"`` sees the leftover legacy key)."""
+        if isinstance(data, dict) and "fieldSampling" not in data and "field_sampling" not in data:
+            legacy = data.pop("blockModel", None)
+            if legacy is None:
+                legacy = data.pop("block_model", None)
+            if isinstance(legacy, dict):
+                data = dict(data)
+                data["fieldSampling"] = {
+                    "spacingX": legacy.get("dx", 10.0),
+                    "spacingY": legacy.get("dy", 10.0),
+                    "spacingZ": legacy.get("dz", 10.0),
+                }
+        return data
 
 
 class ScenarioRealizeRequest(ApiModel):
@@ -482,11 +512,16 @@ class ScenarioRealizeRequest(ApiModel):
     fault_count: Annotated[int, Field(ge=0, le=6)] | None = None
 
 
+#: persisted-document schema version. 1 = Phase 02–17 (``blockModel``);
+#: 2 = Phase 18 (``fieldSampling``, spatial-field arrays.npz).
+SCENARIO_SCHEMA_VERSION = 2
+
+
 class Scenario(ScenarioCreate):
     """Persisted scenario document."""
 
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
-    schema_version: int = 1
+    schema_version: int = SCENARIO_SCHEMA_VERSION
 
 
 class ScenarioSummary(ApiModel):

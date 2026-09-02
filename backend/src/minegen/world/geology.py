@@ -34,7 +34,7 @@ from scipy import ndimage
 
 from minegen.core.coordinates import strike_dip_vectors
 from minegen.core.models import FaultConfig, RockQualityConfig
-from minegen.world.voxel_grid import VoxelGrid
+from minegen.world.field_grid import FieldGrid
 
 FloatArray = npt.NDArray[np.float64]
 F32 = npt.NDArray[np.float32]
@@ -78,9 +78,9 @@ def correlated_standard_field(
 
 
 def generate_rock_quality(
-    grid: VoxelGrid, cfg: RockQualityConfig, seed: int
+    grid: FieldGrid, cfg: RockQualityConfig, seed: int
 ) -> tuple[F32, FloatArray]:
-    """Rock-quality field (0–100) on the block grid.
+    """Rock-quality field (0–100) on the numerical field lattice.
 
     Returns ``(rock_quality float32, standard_field float64)``; the standard
     field is exposed so callers can test correlation structure directly."""
@@ -93,7 +93,7 @@ def generate_rock_quality(
 
 
 def generate_grade_field(
-    grid: VoxelGrid,
+    grid: FieldGrid,
     mean_grade: float,
     variability: float,
     correlation_length_xy: float,
@@ -186,7 +186,7 @@ class FaultPlane:
 
 @dataclass(frozen=True)
 class FaultFields:
-    """Per-block fault measurements (closest fault wins)."""
+    """Per-cell fault measurements on the field lattice (closest fault wins)."""
 
     signed_distance: F32  # to the nearest fault plane; +inf if no faults
     zone: npt.NDArray[np.uint8]
@@ -194,7 +194,7 @@ class FaultFields:
     nearest_index: npt.NDArray[np.int16]  # −1 if no faults
 
 
-def compute_fault_fields(grid: VoxelGrid, faults: list[FaultPlane]) -> FaultFields:
+def compute_fault_fields(grid: FieldGrid, faults: list[FaultPlane]) -> FaultFields:
     shape = grid.shape
     if not faults:
         return FaultFields(

@@ -43,7 +43,6 @@ export interface ViewerState {
 const DEFAULT_VISIBLE: LayerId[] = [
   'terrain',
   'orebody',
-  'gradeBlocks',
   'faults',
   'accessTargets',
   // Phase 17.1 §2/§3: the raw Hybrid-A* search path and the block-field

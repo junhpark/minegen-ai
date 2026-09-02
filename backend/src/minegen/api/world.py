@@ -9,7 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from minegen.api.deps import get_world_service
 from minegen.core.models import ErrorDetail
 from minegen.services.scenario_service import ScenarioNotFoundError
-from minegen.services.world_service import WorldNotGeneratedError, WorldService
+from minegen.services.world_service import (
+    WorldArtifactIncompatibleError,
+    WorldNotGeneratedError,
+    WorldService,
+)
 
 router = APIRouter(prefix="/scenarios/{scenario_id}", tags=["world"])
 
@@ -29,6 +33,13 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             status.HTTP_404_NOT_FOUND,
             "SCENARIO_NOT_FOUND",
             f"scenario '{scenario_id}' does not exist",
+        )
+    if isinstance(exc, WorldArtifactIncompatibleError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "WORLD_ARTIFACT_INCOMPATIBLE",
+            f"scenario '{scenario_id}' has a world artifact from an older schema "
+            f"({exc}); POST …/world/generate to regenerate it",
         )
     if isinstance(exc, WorldNotGeneratedError):
         return _error(
@@ -59,9 +70,7 @@ def get_world(scenario_id: str, svc: Service) -> dict[str, Any]:
 def get_slice(
     scenario_id: str,
     svc: Service,
-    field: Literal["rockQuality", "grade", "faultInfluence", "faultZone", "oreFraction"] = (
-        "rockQuality"
-    ),
+    field: Literal["rockQuality", "grade", "faultInfluence", "faultZone"] = "rockQuality",
     axis: Literal["x", "y", "z"] = "z",
     index: Annotated[int, Query(ge=0)] = 0,
 ) -> dict[str, Any]:

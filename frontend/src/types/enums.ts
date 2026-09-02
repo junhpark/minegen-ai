@@ -66,7 +66,6 @@ export type AppMode = (typeof APP_MODES)[number]
 export const LAYER_IDS = [
   'terrain',
   'orebody',
-  'gradeBlocks',
   'rockQuality',
   'faults',
   'accessTargets',

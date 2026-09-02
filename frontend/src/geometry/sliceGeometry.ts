@@ -1,4 +1,4 @@
-/** Corner/uv layout for an axis-aligned block-field slice quad. */
+/** Corner/uv layout for an axis-aligned spatial-field slice quad. */
 import { mineToThree } from './coordinateTransform'
 import type { SliceAxis, SlicePayload } from '@/types/scene'
 

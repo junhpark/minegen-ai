@@ -45,6 +45,9 @@ FloatArray = npt.NDArray[np.float64]
 ANCHOR_TOLERANCE = 1e-6  # m — terminal on the footwall face, u == stationU
 PILLAR_TOLERANCE = 1e-9  # m
 SAMPLE_SPACING = 5.0  # m — deterministic hard-validation lattice inside the prism
+#: maximum spacing of the deterministic midpoint quadrature used by the
+#: planning grade proxy (rule 130); every sample carries equal local volume
+GRADE_PROXY_SAMPLE_SPACING = 2.5  # m
 
 # canonical box corners: bit i&1 → u, i>>1&1 → v, i>>2&1 → w. Triangles are
 # wound OUTWARD for a right-handed (u, v, w) local frame; the generator
@@ -82,52 +85,38 @@ def _grade_proxy(
     world: SyntheticWorld,
     orebody: TabularOrebody,
     bounds: StopeLocalBounds,
-    corners_world: FloatArray,
+    spacing: float = GRADE_PROXY_SAMPLE_SPACING,
 ) -> float | None:
-    """Deterministic planning proxy from the existing BlockModel grade and
-    ore_fraction — NOT a reserve/resource estimate and never a feasibility
-    criterion. The world-axis AABB of the rotated prism is used ONLY to crop
-    candidate blocks; actual inclusion tests every candidate BLOCK CENTER in
-    the analytic orebody local frame against the stope's true
-    [uMin,uMax] × [vMin,vMax] × [wMin,wMax], so mineralized blocks of a
-    strike neighbour, pillar or vertical interval inside the AABB can never
-    leak into this stope's proxy. Partial blocks contribute through
-    ore_fraction weighting: Σ(grade·oreFraction) / Σ(oreFraction)."""
-    bm = world.block_model
-    grid = bm.grid
-    origin = np.asarray(grid.origin)
-    spacing = np.asarray(grid.spacing)
-    shape = np.asarray(grid.shape)
-    lo = np.clip(np.floor((corners_world.min(axis=0) - origin) / spacing).astype(int), 0, shape - 1)
-    hi = np.clip(np.floor((corners_world.max(axis=0) - origin) / spacing).astype(int), 0, shape - 1)
-    if bool(np.any(hi < lo)):
+    """Deterministic PLANNING grade proxy (rule 130) — never a resource,
+    reserve or feasibility grade.
+
+        stope prism (analytic local frame)
+            ∩ authoritative orebody solid        (``orebody.contains``)
+            ∩ below the terrain surface          (``terrain.sample``)
+                ↓ deterministic midpoint quadrature, cell size ≤ ``spacing``
+                ↓ ``world.fields.grade.sample(points)``
+        geometry-weighted mean grade
+
+    Every quadrature point represents an equal local volume, so the plain
+    mean of the sampled field IS the volume-weighted mean over the part of
+    the excavation that is actually mineralized and below ground. The field
+    lattice never decides membership — only the analytic solid does (rule
+    129). ``None`` when no sample lies inside the orebody below ground."""
+    lows = np.array([bounds.u_min, bounds.v_min, bounds.w_min])
+    highs = np.array([bounds.u_max, bounds.v_max, bounds.w_max])
+    extent = highs - lows
+    if bool(np.any(extent <= 0.0)):
         return None
-    ii, jj, kk = np.meshgrid(
-        np.arange(lo[0], hi[0] + 1),
-        np.arange(lo[1], hi[1] + 1),
-        np.arange(lo[2], hi[2] + 1),
-        indexing="ij",
-    )
-    idx = np.column_stack([ii.ravel(), jj.ravel(), kk.ravel()])
-    centers = origin + (idx + 0.5) * spacing
-    local = orebody.to_local(centers)
-    inside = (
-        (local[:, 0] >= bounds.u_min)
-        & (local[:, 0] <= bounds.u_max)
-        & (local[:, 1] >= bounds.v_min)
-        & (local[:, 1] <= bounds.v_max)
-        & (local[:, 2] >= bounds.w_min)
-        & (local[:, 2] <= bounds.w_max)
-    )
-    if not bool(inside.any()):
+    counts = [max(1, math.ceil(float(extent[d]) / spacing)) for d in range(3)]
+    axes = [lows[d] + (np.arange(counts[d]) + 0.5) * (extent[d] / counts[d]) for d in range(3)]
+    gu, gv, gw = np.meshgrid(*axes, indexing="ij")
+    local = np.column_stack([gu.ravel(), gv.ravel(), gw.ravel()])
+    pts = orebody.to_world(local)
+    keep = orebody.contains(pts) & (pts[:, 2] <= world.terrain.sample(pts[:, :2]))
+    if not bool(keep.any()):
         return None
-    i, j, k = idx[inside].T
-    frac = bm.ore_fraction[i, j, k].astype(np.float64)
-    total = float(frac.sum())
-    if total <= 0.0:
-        return None
-    grades = bm.grade[i, j, k].astype(np.float64)
-    return float(np.dot(grades, frac) / total)
+    grade = world.fields.grade.sample(pts[keep])
+    return float(grade.mean())
 
 
 class LongholeOpenStopingStrategy:
@@ -351,7 +340,7 @@ class LongholeOpenStopingStrategy:
                 volume = float(du * dv * dw)
                 tonnes = volume * float(scenario.orebody.density)
                 vertical = float(dv * abs(ob.v[2]))
-                proxy = _grade_proxy(world, ob, bounds, corners_world)
+                proxy = _grade_proxy(world, ob, bounds)
                 values = [volume, tonnes, du, dv, dw, vertical, up_err, lo_err] + (
                     [proxy] if proxy is not None else []
                 )

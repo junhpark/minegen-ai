@@ -123,8 +123,8 @@ def test_persisted_realization_reproduces_identical_world() -> None:
     assert restored == sc
     w1 = generate_world(Scenario(**sc.model_dump()))
     w2 = generate_world(Scenario(**restored.model_dump()))
-    assert np.array_equal(w1.block_model.grade, w2.block_model.grade)
-    assert np.array_equal(w1.block_model.rock_quality, w2.block_model.rock_quality)
+    assert np.array_equal(w1.fields.grade.values, w2.fields.grade.values)
+    assert np.array_equal(w1.fields.rock_quality.values, w2.fields.rock_quality.values)
     assert w1.orebody.to_dict() == w2.orebody.to_dict()
 
 

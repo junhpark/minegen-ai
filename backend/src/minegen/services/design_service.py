@@ -42,9 +42,10 @@ from minegen.world.synthetic_world import SyntheticWorld
 
 
 class UnsupportedOrebodyError(RuntimeError):
-    """Phase 17 gate: the legacy Phase 03+ layout supports TABULAR only.
-    Non-tabular scenarios are valid for world generation/visualization;
-    generalized layout is deferred to Phase 18 (rule 123)."""
+    """The legacy Phase 03+ layout supports TABULAR only. Non-tabular
+    scenarios are valid for world generation/visualization; generalized
+    layout is deferred to Phase 20 — Parametric Layout Family Search
+    (rule 123, docs/roadmap.md)."""
 
 
 class TargetsNotGeneratedError(LookupError):

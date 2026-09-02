@@ -14,8 +14,8 @@ from minegen.api.deps import (
     get_world_service,
 )
 from minegen.core.models import (
-    BlockModelConfig,
     FaultConfig,
+    FieldSamplingConfig,
     GeologyConfig,
     OrebodyConfig,
     Point3D,
@@ -78,7 +78,7 @@ def client(
 
 
 def small_scenario(seed: int = 42, with_fault: bool = True) -> Scenario:
-    """Fast world (≈ 40×40×30 blocks) for algorithm tests."""
+    """Fast world (≈ 40×40×30 field cells) for algorithm tests."""
     faults = (
         [
             FaultConfig(
@@ -109,6 +109,6 @@ def small_scenario(seed: int = 42, with_fault: bool = True) -> Scenario:
                 grade_variability=0.3,
             ),
             geology=GeologyConfig(faults=faults),
-            block_model=BlockModelConfig(dx=10, dy=10, dz=10),
+            field_sampling=FieldSamplingConfig(spacing_x=10, spacing_y=10, spacing_z=10),
         ).model_dump()
     )

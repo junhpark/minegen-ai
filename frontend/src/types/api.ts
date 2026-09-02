@@ -65,10 +65,14 @@ export interface GeologyConfig {
   faults: FaultConfig[]
 }
 
-export interface BlockModelConfig {
-  dx: number
-  dy: number
-  dz: number
+/**
+ * NUMERICAL sampling resolution of the synthetic spatial fields (Phase 18,
+ * rule 127). Sampling support only — never a block size, SMU or mining unit.
+ */
+export interface FieldSamplingConfig {
+  spacingX: number
+  spacingY: number
+  spacingZ: number
 }
 
 export interface RampConstraints {
@@ -178,7 +182,7 @@ export interface ScenarioCreate {
   terrain: TerrainConfig
   orebody: OrebodyConfig
   geology: GeologyConfig
-  blockModel: BlockModelConfig
+  fieldSampling: FieldSamplingConfig
   portal: Point3D | null
   ramp: RampConstraints
   design: DesignConfig

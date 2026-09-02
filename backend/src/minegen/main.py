@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from minegen import __version__
 from minegen.api import design, health, infrastructure, jobs, network, scenarios, world
 from minegen.config import get_settings
+from minegen.services.scenario_migration import UnsupportedSchemaVersionError
 
 API_PREFIX = "/api/v1"
 
@@ -48,6 +49,15 @@ async def validation_exception_handler(_: Request, exc: Exception) -> JSONRespon
     )
 
 
+async def unsupported_schema_handler(_: Request, exc: Exception) -> JSONResponse:
+    """A persisted document newer than this backend is a typed 422, never a
+    500 and never a silent downgrade (Phase 18 migration contract)."""
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={"detail": {"code": "SCENARIO_SCHEMA_UNSUPPORTED", "message": str(exc)}},
+    )
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
@@ -67,6 +77,7 @@ def create_app() -> FastAPI:
     )
 
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(UnsupportedSchemaVersionError, unsupported_schema_handler)
 
     api = APIRouter(prefix=API_PREFIX)
     api.include_router(health.router)

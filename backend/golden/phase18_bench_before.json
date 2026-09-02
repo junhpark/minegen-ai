@@ -1,0 +1,24 @@
+{
+  "repeat": 3,
+  "worldGenerationSeconds": {
+    "min": 0.32504552099999273,
+    "median": 0.34450741899991044,
+    "max": 0.5676683510000657
+  },
+  "rockQualitySampling1M": {
+    "min": 0.3304085690001557,
+    "median": 0.6010542569997597,
+    "max": 0.9440463659998386,
+    "pointsPerSecond": 1663743.311613214
+  },
+  "evaluatePoints200k": {
+    "min": 0.32728746600014347,
+    "median": 0.3433475349997934,
+    "max": 0.3638728529999753,
+    "pointsPerSecond": 582500.1772624357
+  },
+  "declineSeconds": 59.361874266000086,
+  "declineStatus": "SUCCESS",
+  "declineExpandedStates": 55467,
+  "declineRawLength": 3837.4332305258145
+}

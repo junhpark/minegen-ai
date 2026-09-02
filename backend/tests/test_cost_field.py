@@ -10,7 +10,6 @@ import pytest
 from minegen.core.models import FaultConfig, Point3D, RestrictedZone
 from minegen.design.constraints import DesignContext, RejectionReason
 from minegen.design.cost_field import DesignCostEvaluator
-from minegen.world.block_model import RockType
 from minegen.world.geology import FaultPlane
 from minegen.world.synthetic_world import generate_world
 from tests.conftest import small_scenario
@@ -140,33 +139,46 @@ def test_fault_penalty_overlap_is_summed(setup) -> None:  # type: ignore[no-unty
 # -- rock quality interpolation ---------------------------------------------
 
 
-def test_rock_quality_exact_at_block_centers(setup) -> None:  # type: ignore[no-untyped-def]
+def test_rock_quality_is_the_spatial_field_sample(setup) -> None:  # type: ignore[no-untyped-def]
+    """Rule 128: the evaluator's rock quality IS the batch field sample —
+    no lattice classification lives in the evaluator any more."""
     _, w, ev = setup
-    bm = w.block_model
-    idx = np.argwhere(bm.rock_type != RockType.AIR)
+    rng = np.random.default_rng(3)
+    pts = rng.uniform([-200, -200, -150], [200, 200, 60], size=(2000, 3))
+    np.testing.assert_array_equal(ev.rock_quality(pts), w.fields.rock_quality.sample(pts))
+    assert not hasattr(w, "block_model")
+
+
+def test_rock_quality_exact_at_cell_centers(setup) -> None:  # type: ignore[no-untyped-def]
+    _, w, ev = setup
+    fields = w.fields
+    idx = np.argwhere(fields.supported)
     rng = np.random.default_rng(3)
     pick = idx[rng.choice(idx.shape[0], size=500, replace=False)]
-    centers = bm.grid.origin + (pick + 0.5) * np.asarray(bm.grid.spacing)
+    centers = fields.grid.origin + (pick + 0.5) * np.asarray(fields.grid.spacing)
     rq = ev.rock_quality(centers)
-    truth = bm.rock_quality[pick[:, 0], pick[:, 1], pick[:, 2]]
+    truth = fields.rock_quality.values[pick[:, 0], pick[:, 1], pick[:, 2]]
     assert np.abs(rq - truth).max() < 1e-4
 
 
-def test_rock_quality_midpoint_is_linear_and_air_does_not_pull_to_zero(setup) -> None:  # type: ignore[no-untyped-def]
+def test_rock_quality_midpoint_is_linear_and_surface_is_not_pulled_to_zero(setup) -> None:  # type: ignore[no-untyped-def]
     _, w, ev = setup
-    bm = w.block_model
+    fields = w.fields
+    grid = fields.grid
     i, j, k = 10, 10, 3
-    c0 = bm.grid.origin + (np.array([i, j, k]) + 0.5) * np.asarray(bm.grid.spacing)
-    c1 = c0 + np.array([bm.grid.spacing[0], 0, 0])
+    c0 = grid.origin + (np.array([i, j, k]) + 0.5) * np.asarray(grid.spacing)
+    c1 = c0 + np.array([grid.spacing[0], 0, 0])
     mid = (c0 + c1) / 2
-    expected = (bm.rock_quality[i, j, k] + bm.rock_quality[i + 1, j, k]) / 2
+    v = fields.rock_quality.values
+    expected = (v[i, j, k] + v[i + 1, j, k]) / 2
     assert ev.rock_quality(mid[None, :])[0] == pytest.approx(expected, abs=1e-4)
-    # just below the surface (topmost rock block) the value is a real rock value
-    col = bm.rock_type[i, j]
-    k_top = int(np.nonzero(col != RockType.AIR)[0].max())
-    z_top = bm.grid.axis_centers(2)[k_top] + bm.grid.spacing[2] * 0.45
-    v = ev.rock_quality(np.array([[c0[0], c0[1], z_top]]))[0]
-    assert v > 15.0  # never dragged toward the AIR fill of 0
+    # just below the surface (topmost supported cell) the value is a real
+    # field value: the COLUMN_TOP_FILL boundary policy, not an AIR fill of 0
+    col = fields.supported[i, j]
+    k_top = int(np.nonzero(col)[0].max())
+    z_top = grid.axis_centers(2)[k_top] + grid.spacing[2] * 0.45
+    val = ev.rock_quality(np.array([[c0[0], c0[1], z_top]]))[0]
+    assert val > 15.0
 
 
 # -- hard constraints --------------------------------------------------------

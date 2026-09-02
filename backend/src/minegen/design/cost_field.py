@@ -5,7 +5,7 @@
     valid                  all hard constraints satisfied
     total_cost_per_m       base + rock + fault + orebody penalties (+inf if invalid)
     base_cost, rock_penalty, fault_penalty, orebody_penalty
-    rock_quality           trilinear interpolation of the block field
+    rock_quality           batch trilinear sample of the rock-quality spatial field
     nearest_fault_distance |signed distance| to the nearest analytic fault plane
     orebody_distance       analytic signed distance to the orebody (negative inside)
     rejection_reasons      list[RejectionReason] per point
@@ -21,8 +21,13 @@ Interpretation (engineering, not geology — rule 42):
                                                                if core_f < |d_f| ≤ infl_f
     orebody_penalty = w_ster · max(0, 1 − (sdf − buffer) / range)   (outside buffer)
 
-Hard rejections: outside block-grid extent, above terrain (or cover < min),
-inside orebody, within the exclusion buffer, inside a restricted zone.
+Hard rejections: outside the field-lattice extent, above terrain (or cover
+< min), inside orebody, within the exclusion buffer, inside a restricted zone.
+
+Rock quality comes ONLY from ``world.fields.rock_quality.sample`` (rule 128):
+the evaluator knows nothing about lattice cells, rock types or ore membership
+of cells — the field's terrain boundary policy (COLUMN_TOP_FILL) is what
+keeps near-surface interpolation sound.
 """
 
 from __future__ import annotations
@@ -35,7 +40,6 @@ import numpy.typing as npt
 
 from minegen.core.models import DesignConfig
 from minegen.design.constraints import DesignContext, RejectionReason, in_restricted_zone
-from minegen.world.block_model import BlockModel, RockType
 from minegen.world.geology import FaultPlane
 from minegen.world.orebody import Orebody
 from minegen.world.synthetic_world import SyntheticWorld
@@ -88,17 +92,6 @@ class CostEvaluation:
         return out
 
 
-def _rock_only_field(bm: BlockModel) -> FloatArray:
-    """Rock-quality field with AIR blocks filled from the topmost rock block of
-    their column, so near-surface interpolation is not pulled toward 0.
-    Air is a column property (everything above an air block is air)."""
-    rq = bm.rock_quality.astype(np.float64).copy()
-    air = bm.rock_type == RockType.AIR
-    for k in range(1, rq.shape[2]):  # bottom layer is never air
-        rq[:, :, k] = np.where(air[:, :, k], rq[:, :, k - 1], rq[:, :, k])
-    return rq
-
-
 class DesignCostEvaluator:
     def __init__(
         self,
@@ -113,39 +106,21 @@ class DesignCostEvaluator:
         self.terrain: Terrain = world.terrain
         self.faults: list[FaultPlane] = world.faults
 
-        grid = world.block_model.grid
+        # the modelled volume is the field-lattice extent (rule 127: a
+        # numerical sampling extent, not a block-model volume)
+        grid = world.fields.grid
         self.grid_min = np.asarray(grid.origin, dtype=np.float64)
         self.grid_max = np.asarray(grid.max_corner, dtype=np.float64)
-        centers = [grid.axis_centers(a) for a in range(3)]
-        self._center_lo = np.array([c[0] for c in centers])
-        self._center_hi = np.array([c[-1] for c in centers])
-        self._spacing = np.asarray(grid.spacing, dtype=np.float64)
-        self._shape = np.asarray(grid.shape, dtype=np.intp)
-        self._rq_field = _rock_only_field(world.block_model)
+        self._rock_quality_field = world.fields.rock_quality
 
     # -- component queries ------------------------------------------------- #
 
     def rock_quality(self, points: FloatArray) -> FloatArray:
-        """Trilinear rock quality. Coordinates are clamped to the block-center
-        lattice (no extrapolation); validity of the point is decided
-        separately by ``world_valid``."""
-        p = np.clip(np.asarray(points, dtype=np.float64), self._center_lo, self._center_hi)
-        f = (p - self._center_lo) / self._spacing  # fractional index in the center lattice
-        f = np.minimum(f, self._shape - 1 - 1e-12)
-        i0 = np.floor(f).astype(np.intp)
-        t = f - i0
-        i1 = np.minimum(i0 + 1, self._shape - 1)
-        v = self._rq_field
-        x0, y0, z0 = i0[:, 0], i0[:, 1], i0[:, 2]
-        x1, y1, z1 = i1[:, 0], i1[:, 1], i1[:, 2]
-        tx, ty, tz = t[:, 0], t[:, 1], t[:, 2]
-        c00 = v[x0, y0, z0] * (1 - tx) + v[x1, y0, z0] * tx
-        c10 = v[x0, y1, z0] * (1 - tx) + v[x1, y1, z0] * tx
-        c01 = v[x0, y0, z1] * (1 - tx) + v[x1, y0, z1] * tx
-        c11 = v[x0, y1, z1] * (1 - tx) + v[x1, y1, z1] * tx
-        c0 = c00 * (1 - ty) + c10 * ty
-        c1 = c01 * (1 - ty) + c11 * ty
-        return np.asarray(c0 * (1 - tz) + c1 * tz, dtype=np.float64)
+        """Batch rock quality from the spatial field (rule 128). Coordinates
+        are clamped to the field's center lattice by the field itself (no
+        extrapolation); validity of the point is decided separately by
+        ``world_valid``."""
+        return self._rock_quality_field.sample(np.asarray(points, dtype=np.float64))
 
     def fault_penalty(self, points: FloatArray) -> tuple[FloatArray, FloatArray]:
         """(summed penalty, |distance| to nearest fault). Analytic per plane."""

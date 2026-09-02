@@ -1,0 +1,240 @@
+{
+  "baselineLabel": "phase17_baseline",
+  "currentLabel": "phase18_after_migration",
+  "missingCases": [],
+  "newCases": [],
+  "contractRegressions": [],
+  "metricChanges": [
+    {
+      "key": "BASELINE-1234",
+      "field": "gradeProxy",
+      "baseline": 4.173161703018696,
+      "current": 4.164913993600818,
+      "expected": true,
+      "absDelta": -0.008247709417878113,
+      "relDelta": -0.001976369478305155
+    },
+    {
+      "key": "BASELINE-2026",
+      "field": "gradeProxy",
+      "baseline": 3.908134029320228,
+      "current": 3.9107031394241125,
+      "expected": true,
+      "absDelta": 0.0025691101038844977,
+      "relDelta": 0.000657375127006932
+    },
+    {
+      "key": "BASELINE-42",
+      "field": "gradeProxy",
+      "baseline": 3.990998288419237,
+      "current": 3.9980178962049715,
+      "expected": true,
+      "absDelta": 0.007019607785734294,
+      "relDelta": 0.0017588601343436394
+    },
+    {
+      "key": "BASELINE-7",
+      "field": "gradeProxy",
+      "baseline": 3.7723852823353843,
+      "current": 3.773937177438762,
+      "expected": true,
+      "absDelta": 0.0015518951033777206,
+      "relDelta": 0.0004113829811193048
+    },
+    {
+      "key": "BASELINE-99",
+      "field": "gradeProxy",
+      "baseline": 4.339457637092807,
+      "current": 4.342256473542342,
+      "expected": true,
+      "absDelta": 0.002798836449534825,
+      "relDelta": 0.0006449737924875534
+    },
+    {
+      "key": "RANDOM_TABULAR-103",
+      "field": "gradeProxy",
+      "baseline": 3.255928310205251,
+      "current": 3.2719685724696843,
+      "expected": true,
+      "absDelta": 0.016040262264433114,
+      "relDelta": 0.0049264789443174035
+    },
+    {
+      "key": "RANDOM_TABULAR-104",
+      "field": "gradeProxy",
+      "baseline": 5.439890242665487,
+      "current": 5.4458897565520035,
+      "expected": true,
+      "absDelta": 0.005999513886516539,
+      "relDelta": 0.001102874068940193
+    },
+    {
+      "key": "RANDOM_TABULAR-107",
+      "field": "gradeProxy",
+      "baseline": 5.523483696720187,
+      "current": 5.516229910507772,
+      "expected": true,
+      "absDelta": -0.007253786212414681,
+      "relDelta": -0.0013132628990508179
+    },
+    {
+      "key": "RANDOM_TABULAR-108",
+      "field": "gradeProxy",
+      "baseline": 5.843528948051227,
+      "current": 5.840439707295468,
+      "expected": true,
+      "absDelta": -0.00308924075575856,
+      "relDelta": -0.0005286601269920634
+    },
+    {
+      "key": "RANDOM_TABULAR-109",
+      "field": "gradeProxy",
+      "baseline": 2.9601902199816506,
+      "current": 2.957110199171113,
+      "expected": true,
+      "absDelta": -0.003080020810537487,
+      "relDelta": -0.001040480706188057
+    },
+    {
+      "key": "RANDOM_TABULAR-111",
+      "field": "gradeProxy",
+      "baseline": 2.7581705440146633,
+      "current": 2.758429263867949,
+      "expected": true,
+      "absDelta": 0.00025871985328551617,
+      "relDelta": 9.380125309761873e-05
+    },
+    {
+      "key": "RANDOM_TABULAR-112",
+      "field": "gradeProxy",
+      "baseline": 5.091233893356697,
+      "current": 5.094693332611092,
+      "expected": true,
+      "absDelta": 0.003459439254394958,
+      "relDelta": 0.000679489358936939
+    }
+  ],
+  "runtimeAdvisory": {
+    "baselineTotalSeconds": 7863.201374527001,
+    "currentTotalSeconds": 7875.480713956999,
+    "perCase": [
+      {
+        "key": "BASELINE-1234",
+        "baseline": 176.1805101939999,
+        "current": 173.88297540099984
+      },
+      {
+        "key": "BASELINE-2026",
+        "baseline": 1106.960572423,
+        "current": 1080.383586818
+      },
+      {
+        "key": "BASELINE-42",
+        "baseline": 75.708099963,
+        "current": 74.68343066099987
+      },
+      {
+        "key": "BASELINE-7",
+        "baseline": 216.3900473499998,
+        "current": 217.83292912699972
+      },
+      {
+        "key": "BASELINE-99",
+        "baseline": 268.357898533,
+        "current": 273.88071219799986
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-201",
+        "baseline": 0.637509277999925,
+        "current": 0.773121991998778
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-202",
+        "baseline": 0.6383312260004459,
+        "current": 0.7741509190000215
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-203",
+        "baseline": 0.6251308110004175,
+        "current": 0.778598658998817
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-204",
+        "baseline": 0.609296524000456,
+        "current": 0.7680564189995494
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-205",
+        "baseline": 0.6739398119989346,
+        "current": 0.7839695570000913
+      },
+      {
+        "key": "RANDOM_TABULAR-101",
+        "baseline": 0.460287967000113,
+        "current": 0.6018803449996994
+      },
+      {
+        "key": "RANDOM_TABULAR-102",
+        "baseline": 1049.3307095310001,
+        "current": 1070.8405719889997
+      },
+      {
+        "key": "RANDOM_TABULAR-103",
+        "baseline": 1418.5338844479998,
+        "current": 1406.3343954109996
+      },
+      {
+        "key": "RANDOM_TABULAR-104",
+        "baseline": 336.33980807900025,
+        "current": 332.50162289699983
+      },
+      {
+        "key": "RANDOM_TABULAR-105",
+        "baseline": 0.7355376919995251,
+        "current": 0.7596680540000307
+      },
+      {
+        "key": "RANDOM_TABULAR-106",
+        "baseline": 0.6459111839994875,
+        "current": 0.6194329939999079
+      },
+      {
+        "key": "RANDOM_TABULAR-107",
+        "baseline": 79.66805831999955,
+        "current": 81.94308342499971
+      },
+      {
+        "key": "RANDOM_TABULAR-108",
+        "baseline": 427.1394805589998,
+        "current": 423.9492995239998
+      },
+      {
+        "key": "RANDOM_TABULAR-109",
+        "baseline": 264.1855140560001,
+        "current": 269.38111016699986
+      },
+      {
+        "key": "RANDOM_TABULAR-110",
+        "baseline": 1090.339997872,
+        "current": 1129.877050064999
+      },
+      {
+        "key": "RANDOM_TABULAR-111",
+        "baseline": 1247.7789073289996,
+        "current": 1235.9426686470015
+      },
+      {
+        "key": "RANDOM_TABULAR-112",
+        "baseline": 101.1419161419999,
+        "current": 98.07500360999984
+      }
+    ]
+  },
+  "summary": {
+    "comparedCases": 22,
+    "contractRegressions": 0,
+    "metricChanges": 12,
+    "unexpectedMetricChanges": 0,
+    "expectedMetricChanges": 12
+  }
+}

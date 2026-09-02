@@ -19,7 +19,7 @@ export function InspectorPanel() {
   const scenario = useScenarioStore((s) => s.scenario)
   const scene = useScenarioStore((s) => s.scene)
   const st = scene?.stats
-  const bm = st?.blockModel
+  const fields = st?.fields
   const candidate =
     selected && scene?.accessTargets
       ? (scene.accessTargets.levels.flatMap((l) => l.candidates).find((c) => c.id === selected) ??
@@ -111,46 +111,49 @@ export function InspectorPanel() {
       </PanelSection>
 
       <PanelSection title="World" tag={scene ? 'generated' : undefined}>
-        {st && bm ? (
-          <dl className="readout grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-            <dt className="text-mute">Terrain</dt>
-            <dd>
+        {st && fields ? (
+          /* Phase 18: neutral field diagnostics only (rule 131) — no block
+             counts, no sampled ore tonnes, no resource-like figures */
+          <dl className="readout grid grid-cols-[7.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1.5 text-[11px]">
+            <dt className="break-words text-mute">Terrain</dt>
+            <dd className="break-words">
               {st.terrain.nx} × {st.terrain.ny} · z {st.terrain.zMin.toFixed(0)}–
               {st.terrain.zMax.toFixed(0)} m
             </dd>
-            <dt className="text-mute">Orebody</dt>
-            <dd>
-              {(st.orebody.volumeM3 / 1e6).toFixed(2)} Mm³ · {(st.orebody.tonnes / 1e6).toFixed(2)}{' '}
-              Mt
-            </dd>
-            <dt className="text-mute">Ore z</dt>
-            <dd>
+            <dt className="break-words text-mute">Orebody volume</dt>
+            <dd className="break-words">{(st.orebody.volumeM3 / 1e6).toFixed(2)} Mm³ geometric</dd>
+            <dt className="break-words text-mute">Ore z</dt>
+            <dd className="break-words">
               {st.orebody.bboxMin[2].toFixed(0)} … {st.orebody.bboxMax[2].toFixed(0)} m
             </dd>
-            <dt className="text-mute">Blocks</dt>
-            <dd>
-              {bm.shape.join(' × ')} = {bm.nBlocks.toLocaleString()}
+            <dt className="break-words text-mute">
+              Field lattice
+              <span className="block text-[10px] leading-tight">numerical sampling only</span>
+            </dt>
+            <dd className="break-words">
+              {fields.grid.shape.join(' × ')} @ {fields.grid.spacing.join(' × ')} m
             </dd>
-            <dt className="text-mute">Ore blocks</dt>
-            <dd>
-              {bm.nOreBlocks.toLocaleString()} · {(bm.oreTonnes / 1e6).toFixed(2)} Mt sampled
+            <dt className="break-words text-mute">Below terrain</dt>
+            <dd className="break-words">
+              {(fields.terrainSupportedFraction * 100).toFixed(0)} % of cells
             </dd>
-            <dt className="text-mute">Mean grade</dt>
-            <dd>{bm.meanOreGrade.toFixed(2)}</dd>
-            <dt className="text-mute">Rock quality (RMR-like)</dt>
-            <dd>{bm.rockQualityMean.toFixed(1)} mean</dd>
-            <dt className="text-mute">Fault blocks</dt>
-            <dd>
-              {bm.faultCoreBlocks.toLocaleString()} core · {bm.faultDamageBlocks.toLocaleString()}{' '}
-              damage
+            <dt className="break-words text-mute">
+              Rock quality
+              <span className="block text-[10px] leading-tight">synthetic RMR-like, 0-100</span>
+            </dt>
+            <dd className="break-words">
+              {fields.rockQuality.mean.toFixed(1)} mean · {fields.rockQuality.min.toFixed(0)}–
+              {fields.rockQuality.max.toFixed(0)}
             </dd>
-            <dt className="text-mute">Memory</dt>
-            <dd>{bm.totalMB.toFixed(1)} MB</dd>
+            <dt className="break-words text-mute">Faults</dt>
+            <dd className="break-words">{st.faults}</dd>
+            <dt className="break-words text-mute">Field memory</dt>
+            <dd className="break-words">{fields.totalMB.toFixed(1)} MB</dd>
           </dl>
         ) : scenario ? (
           <p className="text-[11px] text-mute">
-            World not generated yet. Use “Generate world” to build terrain, orebody, block model and
-            geology.
+            World not generated yet. Use “Generate world” to build terrain, orebody, spatial fields
+            and geology.
           </p>
         ) : (
           <p className="text-[11px] text-mute">Generation results appear here.</p>

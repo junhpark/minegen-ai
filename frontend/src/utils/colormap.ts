@@ -56,7 +56,6 @@ export const rampForField = (field: string): ((t: number) => RGB) => {
     case 'rockQuality':
       return rockQualityRamp
     case 'grade':
-    case 'oreFraction':
       return gradeRamp
     case 'faultInfluence':
     case 'faultZone':

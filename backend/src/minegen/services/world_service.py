@@ -1,10 +1,14 @@
 """World generation + persistence.
 
-    data/scenarios/{id}/arrays.npz         block model arrays + grid + terrain
+    data/scenarios/{id}/arrays.npz         spatial field arrays + lattice + terrain
+                                           (``field_artifact_version`` stamped)
     data/scenarios/{id}/derived/world.json stats snapshot
 
 Generated worlds are cached in memory per scenario id so slice requests do
-not reload the NPZ every time.
+not reload the NPZ every time. An ``arrays.npz`` that is not a current field
+artifact (e.g. a Phase-17 BlockModel NPZ) is never loaded: it raises the
+typed :class:`WorldArtifactIncompatibleError` (409 WORLD_ARTIFACT_INCOMPATIBLE)
+until the world is regenerated.
 """
 
 from __future__ import annotations
@@ -22,15 +26,21 @@ from minegen.export.scene_manifest import (
     slice_payload,
 )
 from minegen.services.scenario_service import ScenarioStore
-from minegen.world.block_model import BlockModel
 from minegen.world.geology import FaultPlane
 from minegen.world.orebody import build_orebody
+from minegen.world.spatial_fields import IncompatibleFieldArtifactError, SpatialFieldSet
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 from minegen.world.terrain import Terrain
 
 
 class WorldNotGeneratedError(LookupError):
     pass
+
+
+class WorldArtifactIncompatibleError(WorldNotGeneratedError):
+    """``arrays.npz`` exists but is not a current-version field artifact.
+    Subclass of WorldNotGeneratedError so every 409 guard already applies;
+    routers report the more specific code."""
 
 
 class WorldService:
@@ -49,10 +59,8 @@ class WorldService:
         return world.stats(scenario)
 
     def _save(self, scenario: Scenario, world: SyntheticWorld) -> None:
-        bm = world.block_model
         path = self.store.arrays_path(scenario.id)
-        fields: dict[str, Any] = {name: getattr(bm, name) for name in BlockModel.ARRAY_FIELDS}
-        fields.update(bm.grid.to_npz_fields())
+        fields: dict[str, Any] = dict(world.fields.to_npz_fields())
         fields["terrain_z"] = world.terrain.z
         fields["terrain_meta"] = np.array(
             [world.terrain.x0, world.terrain.y0, world.terrain.spacing], dtype=np.float64
@@ -76,10 +84,10 @@ class WorldService:
         if not path.is_file():
             raise WorldNotGeneratedError(scenario_id)
         with np.load(path) as npz:
-            from minegen.world.voxel_grid import VoxelGrid
-
-            grid = VoxelGrid.from_npz_fields(npz)
-            data = {name: npz[name] for name in BlockModel.ARRAY_FIELDS}
+            try:
+                fields = SpatialFieldSet.from_npz(npz)
+            except IncompatibleFieldArtifactError as exc:
+                raise WorldArtifactIncompatibleError(str(exc)) from exc
             tz = np.asarray(npz["terrain_z"])
             tm = npz["terrain_meta"]
         terrain = Terrain(x0=float(tm[0]), y0=float(tm[1]), spacing=float(tm[2]), z=tz)
@@ -87,7 +95,7 @@ class WorldService:
             terrain=terrain,
             orebody=build_orebody(scenario.orebody),
             faults=[FaultPlane.from_config(f) for f in scenario.geology.faults],
-            block_model=BlockModel(grid=grid, **data),
+            fields=fields,
         )
         self._cache[scenario_id] = world
         return scenario, world
@@ -100,55 +108,27 @@ class WorldService:
         scenario, world = self.load(scenario_id)
         scene = build_scene(scenario, world)
         derived = self.store.derived_dir(scenario_id)
-        targets = derived / "targets.json"
-        scene["accessTargets"] = (
-            json.loads(targets.read_text(encoding="utf-8")) if targets.is_file() else None
-        )
-        decline = derived / "decline.json"
-        scene["decline"] = (
-            json.loads(decline.read_text(encoding="utf-8")) if decline.is_file() else None
-        )
-        smoothed = derived / "decline_smoothed.json"
-        scene["smoothedDecline"] = (
-            json.loads(smoothed.read_text(encoding="utf-8")) if smoothed.is_file() else None
-        )
-        tunnel = derived / "tunnel_mesh.json"
-        scene["tunnelMesh"] = (
-            json.loads(tunnel.read_text(encoding="utf-8")) if tunnel.is_file() else None
-        )
-        levels = derived / "levels.json"
-        scene["levels"] = (
-            json.loads(levels.read_text(encoding="utf-8")) if levels.is_file() else None
-        )
-        network = derived / "network.json"
-        scene["network"] = (
-            json.loads(network.read_text(encoding="utf-8")) if network.is_file() else None
-        )
-        stopes = derived / "stopes.json"
-        scene["stopes"] = (
-            json.loads(stopes.read_text(encoding="utf-8")) if stopes.is_file() else None
-        )
-        timeline = derived / "timeline.json"
-        scene["timeline"] = (
-            json.loads(timeline.read_text(encoding="utf-8")) if timeline.is_file() else None
-        )
-        communication = derived / "communication.json"
-        scene["communication"] = (
-            json.loads(communication.read_text(encoding="utf-8"))
-            if communication.is_file()
-            else None
-        )
-        sensors = derived / "sensors.json"
-        scene["sensors"] = (
-            json.loads(sensors.read_text(encoding="utf-8")) if sensors.is_file() else None
-        )
+        for key, name in (
+            ("accessTargets", "targets.json"),
+            ("decline", "decline.json"),
+            ("smoothedDecline", "decline_smoothed.json"),
+            ("tunnelMesh", "tunnel_mesh.json"),
+            ("levels", "levels.json"),
+            ("network", "network.json"),
+            ("stopes", "stopes.json"),
+            ("timeline", "timeline.json"),
+            ("communication", "communication.json"),
+            ("sensors", "sensors.json"),
+        ):
+            path = derived / name
+            scene[key] = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
         return scene
 
     def slice(
         self, scenario_id: str, field: SliceField, axis: SliceAxis, index: int
     ) -> dict[str, Any]:
         _, world = self.load(scenario_id)
-        return slice_payload(world.block_model, field, axis, index)
+        return slice_payload(world, field, axis, index)
 
     def invalidate(self, scenario_id: str) -> None:
         """Discard ALL derived world state for a scenario: memory cache,
@@ -157,17 +137,7 @@ class WorldService:
         409 WORLD_NOT_GENERATED until the world is regenerated."""
         with self.store.lock(scenario_id):
             self._cache.pop(scenario_id, None)
-            arrays = self.store.arrays_path(scenario_id)
-            if arrays.exists():
-                arrays.unlink()
-            derived = self.store.derived_dir(scenario_id)
-            if derived.is_dir():
-                for p in sorted(derived.rglob("*"), reverse=True):
-                    if p.is_file():
-                        p.unlink()
-                    else:
-                        p.rmdir()
-            derived.mkdir(parents=True, exist_ok=True)
+            self.store.clear_derived(scenario_id)
 
     def is_generated(self, scenario_id: str) -> bool:
         return scenario_id in self._cache or self.store.arrays_path(scenario_id).is_file()
