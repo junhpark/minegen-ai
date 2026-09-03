@@ -20,17 +20,60 @@ function candidate(over: Partial<LayoutCandidateSummary>): LayoutCandidateSummar
     failureDetail: null,
     shortlisted: true,
     rank: 1,
-    servedLevels: 4,
+    screenedLevels: 4,
+    accessibleLevels: 4,
     requiredLevels: 4,
-    levelService: [
+    rampLevelReferences: [
       {
         levelId: 'L01',
         elevation: -1.5,
-        served: true,
-        connectionPosition: [1, 2, -1.5],
-        connectionChainage: 120,
-        accessDistance: 21.4,
-        unservedReason: null,
+        withinReach: true,
+        referencePosition: [1, 2, -1.5],
+        referenceChainage: 120,
+        footprintDistance: 21.4,
+        screenReason: null,
+      },
+    ],
+    access: {
+      feasible: true,
+      levelCount: 4,
+      accessibleLevelCount: 4,
+      totalAccessLength: 211.1,
+      worstAccessLength: 17.2,
+      maxAccessGradient: 0.12,
+      minAccessPlanRadius: 18,
+      perLevelLength: { L01: 17.2 },
+      failures: {},
+      maxGradientLimit: 0.12,
+      minTurnRadiusLimit: 18,
+      requiredClearance: 10.59,
+    },
+    levelAccesses: [
+      {
+        levelId: 'L01',
+        elevation: -1.5,
+        status: 'OK',
+        anchor: null,
+        rampJunction: [0, 0, 0],
+        rampJunctionChainage: 1300,
+        rampJunctionHeadingDeg: 10,
+        rampJunctionEdgeIndex: 3,
+        levelEntry: [5, 5, -1.5],
+        terminalHeadingDeg: 40,
+        connector: 'RSL',
+        pieces: [],
+        length3d: 17.2,
+        horizontalLength: 17.1,
+        maxGradient: 0.12,
+        minPlanRadius: 18,
+        fieldCost: 1,
+        validation: {},
+        candidatesTried: 9,
+        candidatesValid: 2,
+        rejectionCounts: {},
+        failureReason: null,
+        failureDetail: null,
+        centerline: null,
       },
     ],
     diagnostics: {
@@ -109,7 +152,10 @@ const CATALOGUE: LayoutV2Catalogue = {
       scores: null,
       clearance: null,
       failureReasons: ['LEVEL_SERVICE_INFEASIBLE'],
-      failureDetail: '2 of 4 required levels unserved (NO_RL_CROSSING)',
+      failureDetail: '2 of 4 required levels fail the access-potential screen (NO_RL_CROSSING)',
+      accessibleLevels: null,
+      access: null,
+      levelAccesses: null,
     }),
   ],
 }
@@ -189,7 +235,11 @@ describe('LayoutPanel', () => {
     expect(html).toContain('3825 m')
     expect(html).toContain('R ≥ 18.8 m')
     expect(html).toContain('20.0 m ≥ 10.6 m (bound 10.8 m)')
-    expect(html).toContain('served · 21 m')
+    // Phase 20B: explicit access, never "served" by an RL crossing
+    expect(html).toContain('4/4 accessible')
+    expect(html).toContain('access 211 m · worst 17 m')
+    expect(html).toContain('junction @1300 m · access 17 m')
+    expect(html).not.toContain('served')
   })
 
   it('disables the LAYOUT_V2 source until a candidate is selected', () => {

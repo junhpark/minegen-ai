@@ -50,6 +50,7 @@ const DEFAULT_VISIBLE: LayerId[] = [
   // 'rawSearchPath' and 'rockQuality' are intentionally absent here
   'smoothedDecline',
   'layoutV2',
+  'levelAccesses',
   'tunnelMesh',
   'ramp',
   'levels',

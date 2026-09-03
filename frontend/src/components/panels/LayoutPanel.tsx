@@ -13,7 +13,6 @@ import type {
   LayoutV2Catalogue,
   RampSource,
   RampSourceSummary,
-  SmoothedDeclinePayload,
   WorldScene,
 } from '@/types/scene'
 
@@ -69,21 +68,31 @@ export function LayoutPanel() {
   const select = useMutation({
     mutationFn: async (candidateId: string) => {
       if (!scene) throw new Error('generate the world first')
-      return api.selectLayoutCandidate(scene.scenarioId, candidateId)
+      const selected = await api.selectLayoutCandidate(scene.scenarioId, candidateId)
+      // rule 157: the level-access artifact is written with the selection
+      const accesses = await api.getLevelAccesses(scene.scenarioId)
+      return { selected, accesses }
     },
-    onSuccess: (payload: SmoothedDeclinePayload) => {
-      applyScene(epoch, (current) => afterLayoutSelect(current, payload))
+    onSuccess: ({ selected, accesses }) => {
+      applyScene(epoch, (current) => afterLayoutSelect(current, selected, accesses))
       setLayerVisible('layoutV2', true)
+      setLayerVisible('levelAccesses', true)
     },
   })
   const activate = useMutation({
     mutationFn: async (candidateId: string) => {
       if (!scene) throw new Error('generate the world first')
-      return api.activateLayoutCandidate(scene.scenarioId, candidateId)
+      const result = await api.activateLayoutCandidate(scene.scenarioId, candidateId)
+      const accesses = await api.getLevelAccesses(scene.scenarioId)
+      return { ...result, accesses }
     },
-    onSuccess: ({ rampSource: src, selected: sel }) => {
-      applyScene(epoch, (current) => afterRampSourceChange(current, src, sel))
+    onSuccess: ({ rampSource: src, selected: sel, accesses }) => {
+      applyScene(epoch, (current) => ({
+        ...afterRampSourceChange(current, src, sel),
+        levelAccesses: accesses,
+      }))
       setLayerVisible('smoothedDecline', true)
+      setLayerVisible('levelAccesses', true)
     },
   })
   const switchSource = useMutation({
@@ -278,8 +287,11 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
                   </span>
                   <span className="flex w-full justify-between text-mute">
                     <span>
-                      {c.servedLevels}/{c.requiredLevels} levels
-                      {c.diagnostics ? ` · ${c.diagnostics.length3d.toFixed(0)} m` : ''}
+                      {c.accessibleLevels !== null
+                        ? `${String(c.accessibleLevels)}/${String(c.requiredLevels)} accessible`
+                        : `${String(c.screenedLevels)}/${String(c.requiredLevels)} screened`}
+                      {c.diagnostics ? ` · ramp ${c.diagnostics.length3d.toFixed(0)} m` : ''}
+                      {c.access ? ` · access ${c.access.totalAccessLength.toFixed(0)} m` : ''}
                     </span>
                     <span>
                       {c.scores
@@ -359,19 +371,48 @@ function CandidateDetail({ candidate }: { candidate: LayoutCandidateSummary | nu
       {candidate.failureDetail ? (
         <div className="text-danger">{candidate.failureDetail}</div>
       ) : null}
+      {candidate.access ? (
+        <div className="flex justify-between" aria-label="level access summary">
+          <span>
+            {candidate.access.accessibleLevelCount}/{candidate.access.levelCount} levels accessed
+          </span>
+          <span>
+            access {candidate.access.totalAccessLength.toFixed(0)} m · worst{' '}
+            {candidate.access.worstAccessLength.toFixed(0)} m · g ≤{' '}
+            {candidate.access.maxAccessGradient.toFixed(3)} · R ≥{' '}
+            {candidate.access.minAccessPlanRadius === null
+              ? '—'
+              : candidate.access.minAccessPlanRadius.toFixed(1)}{' '}
+            m
+          </span>
+        </div>
+      ) : null}
       <ul className="mt-0.5 max-h-24 overflow-y-auto">
-        {candidate.levelService.map((r) => (
-          <li key={r.levelId} className="flex justify-between">
-            <span>
-              {r.levelId} <span>{r.elevation.toFixed(0)} m</span>
-            </span>
-            <span className={r.served ? '' : 'text-danger'}>
-              {r.served
-                ? `served · ${(r.accessDistance ?? 0).toFixed(0)} m`
-                : (r.unservedReason ?? 'unserved')}
-            </span>
-          </li>
-        ))}
+        {candidate.levelAccesses
+          ? candidate.levelAccesses.map((a) => (
+              <li key={a.levelId} className="flex justify-between">
+                <span>
+                  {a.levelId} <span>{a.elevation.toFixed(0)} m</span>
+                </span>
+                <span className={a.status === 'OK' ? '' : 'text-danger'}>
+                  {a.status === 'OK'
+                    ? `junction @${(a.rampJunctionChainage ?? 0).toFixed(0)} m · access ${a.length3d.toFixed(0)} m`
+                    : (a.failureReason ?? 'no access')}
+                </span>
+              </li>
+            ))
+          : candidate.rampLevelReferences.map((r) => (
+              <li key={r.levelId} className="flex justify-between">
+                <span>
+                  {r.levelId} <span>{r.elevation.toFixed(0)} m</span>
+                </span>
+                <span className={r.withinReach ? '' : 'text-danger'}>
+                  {r.withinReach
+                    ? `screen ok · ${(r.footprintDistance ?? 0).toFixed(0)} m to ore`
+                    : (r.screenReason ?? 'screen failed')}
+                </span>
+              </li>
+            ))}
       </ul>
     </div>
   )

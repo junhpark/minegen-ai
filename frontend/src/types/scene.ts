@@ -303,24 +303,119 @@ export type EffectiveSource = 'SMOOTHED' | 'RAW_FALLBACK' | 'PARAMETRIC_V2'
 export type RampSourceKind = 'LEGACY_SMOOTHED' | 'LEGACY_RAW_FALLBACK' | 'PARAMETRIC_V2'
 export type RampSource = 'LEGACY' | 'LAYOUT_V2'
 
-/** Backend-authored level connection of a layout-v2 ramp segment (§6). */
-export interface LevelConnection {
+/** Phase 20B: turnout on the main ramp where a level access leaves it. */
+export interface RampJunction {
+  levelId: string
+  chainage: number
+  position: [number, number, number]
+}
+
+/** Phase 20B: the main ramp's RL crossing of a required level — a search /
+ * diagnostics reference only, never a level entry (rule 153). */
+export interface RampLevelReference {
+  levelId: string
+  elevation: number
+  position: [number, number, number] | null
+  chainage: number | null
+  footprintDistance: number | null
+}
+
+export interface LevelDevelopmentAnchorPayload {
   levelId: string
   elevation: number
   position: [number, number, number]
-  chainage: number
-  accessDistance: number | null
+  headingDeg: number
+  backboneDirection: [number, number]
+  backboneExtent: [number, number]
+  role: string
+  orebodySide: string
+  miningMethod: string
+  standoff: number
+  rampLevelReference: [number, number, number] | null
+  diagnostics: Record<string, unknown>
+}
+
+/** Phase 20B level access (rule 157): RAMP_JUNCTION → LEVEL_ENTRY branch. */
+export interface LevelAccessPayload {
+  levelId: string
+  elevation: number
+  status: 'OK' | 'INFEASIBLE'
+  anchor: LevelDevelopmentAnchorPayload | null
+  rampJunction: [number, number, number] | null
+  rampJunctionChainage: number | null
+  rampJunctionHeadingDeg: number | null
+  rampJunctionEdgeIndex: number | null
+  levelEntry: [number, number, number] | null
+  terminalHeadingDeg: number | null
+  connector: string | null
+  pieces: Record<string, unknown>[]
+  length3d: number
+  horizontalLength: number
+  maxGradient: number
+  minPlanRadius: number | null
+  fieldCost: number | null
+  validation: Record<string, number>
+  candidatesTried: number
+  candidatesValid: number
+  rejectionCounts: Record<string, number>
+  failureReason: string | null
+  failureDetail: string | null
+  centerline: { points: number[]; pointCount: number } | null
+}
+
+export interface LevelAccessSummary {
+  feasible: boolean
+  levelCount: number
+  accessibleLevelCount: number
+  totalAccessLength: number
+  worstAccessLength: number
+  maxAccessGradient: number
+  minAccessPlanRadius: number | null
+  perLevelLength: Record<string, number | null>
+  failures: Record<string, string | null>
+  maxGradientLimit: number
+  minTurnRadiusLimit: number
+  requiredClearance: number
+}
+
+/** derived/level_accesses.json (rule 157) */
+export interface LevelAccessesPayload {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  sourceRevision: string
+  layoutRevision?: string
+  rampSource: 'LAYOUT_V2'
+  rampArtifact: string
+  candidateId: string
+  family: RampFamily
+  miningMethod: string
+  clearanceBasis: 'EXACT' | 'CONSERVATIVE'
+  requiredClearance: number
+  anchors: (LevelDevelopmentAnchorPayload | null)[]
+  accesses: LevelAccessPayload[]
+  summary: LevelAccessSummary
 }
 
 export interface SmoothedSegmentPayload {
-  levelId: string
+  /** LEGACY: the level whose entry ends this segment; PARAMETRIC_V2: the level
+   * whose RAMP JUNCTION ends it (null for the RAMP_END tail) */
+  levelId: string | null
+  /** stable segment identity (PARAMETRIC_V2: RAMP_JUNCTION:Lxx | RAMP_END) */
+  segmentId?: string
+  terminalKind?: 'RAMP_JUNCTION' | 'RAMP_END'
+  rampJunction?: RampJunction | null
   candidateId: string
   smoothed: { points: number[]; pointCount: number } | null
   effectiveSource: EffectiveSource
   effectiveCenterline: { points: number[]; pointCount: number }
   boundaryTangents: { start: [number, number, number]; end: [number, number, number] }
   report: SmoothedSegmentReport
-  levelConnection?: LevelConnection
+}
+
+/** Stable identity of an effective-ramp segment (matches the tunnel mesh
+ * segmentId): explicit for PARAMETRIC_V2, the level id for LEGACY. */
+export function rampSegmentId(s: Pick<SmoothedSegmentPayload, 'segmentId' | 'levelId'>): string {
+  return s.segmentId ?? s.levelId ?? ''
 }
 
 /**
@@ -337,10 +432,13 @@ export interface SmoothedDeclinePayload {
   activeSource?: RampSource
   candidateId?: string | null
   family?: RampFamily | null
-  levelConnections?: LevelConnection[]
+  rampJunctions?: RampJunction[]
+  rampLevelReferences?: RampLevelReference[]
+  levelAccessArtifact?: string
   layoutRevision?: string
   clearance?: LayoutClearanceReport | null
   scores?: LayoutScores | null
+  access?: LevelAccessSummary | null
   segments: SmoothedSegmentPayload[]
   totals: {
     segments: number
@@ -370,14 +468,16 @@ export interface TunnelSegmentSummary {
 export type RampFamily = 'SPIRAL' | 'LONGITUDINAL' | 'SWITCHBACK'
 export type LayoutCandidateStatus = 'FEASIBLE' | 'INFEASIBLE' | 'NOT_VALIDATED'
 
+/** Cheap access-potential screen of one level against the main ramp
+ * (Phase 20A semantics kept as a stage-2 screen): NOT "served". */
 export interface LayoutLevelServiceRecord {
   levelId: string
   elevation: number
-  served: boolean
-  connectionPosition: [number, number, number] | null
-  connectionChainage: number | null
-  accessDistance: number | null
-  unservedReason: string | null
+  withinReach: boolean
+  referencePosition: [number, number, number] | null
+  referenceChainage: number | null
+  footprintDistance: number | null
+  screenReason: string | null
 }
 
 export interface LayoutClearanceReport {
@@ -426,9 +526,15 @@ export interface LayoutCandidateSummary {
   failureDetail: string | null
   shortlisted: boolean
   rank: number | null
-  servedLevels: number
+  /** levels passing the cheap access-potential screen */
+  screenedLevels: number
+  /** levels with a validated level access (null before detailed validation) */
+  accessibleLevels: number | null
   requiredLevels: number
-  levelService: LayoutLevelServiceRecord[]
+  rampLevelReferences: LayoutLevelServiceRecord[]
+  access: LevelAccessSummary | null
+  /** level accesses (geometry only for shortlisted candidates) */
+  levelAccesses: LevelAccessPayload[] | null
   diagnostics: LayoutCandidateDiagnostics | null
   scores: LayoutScores | null
   clearance: LayoutClearanceReport | null
@@ -482,12 +588,14 @@ export interface RampSourceSummary {
 
 export interface NetworkNode {
   id: string
-  type: 'PORTAL' | 'LEVEL_ENTRY' | 'JUNCTION' | 'STOPE_ACCESS'
+  type: 'PORTAL' | 'LEVEL_ENTRY' | 'JUNCTION' | 'STOPE_ACCESS' | 'RAMP_JUNCTION' | 'RAMP_END'
   position: [number, number, number]
   levelId?: string | null
   candidateId?: string | null
   elevation?: number | null
   stationIndex?: number | null
+  /** Phase 20B RAMP_JUNCTION: chainage along the main ramp */
+  chainage?: number | null
   stationU?: number | null
 }
 
@@ -772,6 +880,14 @@ export interface LevelsPayload {
   status: 'SUCCESS' | 'FAILED'
   failureReason: string | null
   sourceRevision: string
+  /** Phase 20B: where the LEVEL_ENTRY positions came from (rule 157) */
+  entrySource?: 'LEGACY_RAMP_SEGMENT' | 'LEVEL_ACCESS'
+  /** Phase 20B: method-specific production development status (rule 159) */
+  productionDevelopment?: {
+    method: string
+    status: 'IMPLEMENTED' | 'UNSUPPORTED_METHOD'
+    reason: string | null
+  } | null
   developments: LevelDevelopment[]
   levels: {
     levelId: string
@@ -805,7 +921,7 @@ export interface SimulationSlots {
 
 export interface NetworkEdge {
   id: string
-  type: 'RAMP' | 'DRIFT' | 'CROSSCUT' | 'RAISE' | 'SHAFT'
+  type: 'RAMP' | 'LEVEL_ACCESS' | 'DRIFT' | 'CROSSCUT' | 'RAISE' | 'SHAFT'
   fromNode: string
   toNode: string
   length3d: number
@@ -819,6 +935,9 @@ export interface NetworkEdge {
 }
 
 export interface NetworkMetrics {
+  rampJunctionCount?: number
+  levelAccessEdgeCount?: number
+  totalLevelAccessLength3d?: number
   nodeCount: number
   edgeCount: number
   levelCount: number
@@ -962,6 +1081,8 @@ export interface WorldScene {
   layoutV2: LayoutV2Catalogue | null
   /** the selected (materialized) layout-v2 effective ramp, active or not */
   layoutV2Selected: SmoothedDeclinePayload | null
+  /** Phase 20B: ramp junctions + level accesses of the selection (rule 157) */
+  levelAccesses: LevelAccessesPayload | null
   tunnelMesh: TunnelMeshReport | null
   levels: LevelsPayload | null
   network: NetworkPayload | null

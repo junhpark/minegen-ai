@@ -16,7 +16,7 @@ export function LayoutSelectedLayer({ selected }: { selected: SmoothedDeclinePay
   const segments = useMemo(
     () =>
       selected.segments.map((s) => ({
-        key: s.levelId,
+        key: s.segmentId ?? s.levelId ?? '',
         positions: positionsToThree(s.effectiveCenterline.points),
         end: s.effectiveCenterline.points.slice(-3) as [number, number, number],
       })),
@@ -39,7 +39,7 @@ export function LayoutSelectedLayer({ selected }: { selected: SmoothedDeclinePay
             anchorX="center"
             anchorY="bottom"
           >
-            {`${s.key} (selected)`}
+            {`${s.key.replace('RAMP_JUNCTION:', '⊢ ')} (selected)`}
           </Text>
         </group>
       ))}

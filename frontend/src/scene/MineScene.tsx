@@ -13,6 +13,7 @@ import { FaultLayer } from './FaultLayer'
 import { OrebodyLayer } from './OrebodyLayer'
 import { RawDeclineLayer } from './RawDeclineLayer'
 import { LayoutSelectedLayer } from '@/scene/LayoutSelectedLayer'
+import { LevelAccessLayer } from '@/scene/LevelAccessLayer'
 import { SmoothedDeclineLayer } from './SmoothedDeclineLayer'
 import { TunnelMeshLayer } from './TunnelMeshLayer'
 import { LevelDevelopmentLayer } from './LevelDevelopmentLayer'
@@ -147,6 +148,7 @@ export function MineScene() {
           timeline={scene.timeline}
           smoothed={scene.smoothedDecline}
           levels={scene.levels}
+          levelAccesses={scene.levelAccesses}
         />
       ) : null}
       {timelineActive && scene?.timeline && scene.stopes ? (
@@ -163,6 +165,9 @@ export function MineScene() {
       scene.rampSource.activeSource !== 'LAYOUT_V2' &&
       visible.has('layoutV2') ? (
         <LayoutSelectedLayer selected={scene.layoutV2Selected} />
+      ) : null}
+      {showStatic && scene?.levelAccesses && visible.has('levelAccesses') ? (
+        <LevelAccessLayer accesses={scene.levelAccesses} />
       ) : null}
       {scene?.decline && visible.has('rawSearchPath') ? (
         <RawDeclineLayer decline={scene.decline} />

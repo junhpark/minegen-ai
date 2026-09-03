@@ -389,8 +389,8 @@ export function DesignPanel() {
             </span>
           </div>
           <ul className="mt-1 max-h-40 overflow-y-auto">
-            {legacySmoothed.segments.map((s) => (
-              <li key={s.levelId} className="flex justify-between py-0.5 text-chalk-dim">
+            {legacySmoothed.segments.map((s, i) => (
+              <li key={s.levelId ?? i} className="flex justify-between py-0.5 text-chalk-dim">
                 <span>
                   {s.levelId}{' '}
                   <span className={s.effectiveSource === 'SMOOTHED' ? 'text-mute' : 'text-danger'}>

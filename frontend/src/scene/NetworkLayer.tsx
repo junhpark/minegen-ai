@@ -7,15 +7,21 @@ const NODE_COLORS: Record<string, string> = {
   LEVEL_ENTRY: '#7fd4b8',
   JUNCTION: '#9aa3ad',
   STOPE_ACCESS: '#e08a4e',
+  // Phase 20B: turnouts on the main ramp and the ramp terminal
+  RAMP_JUNCTION: '#f2c14e',
+  RAMP_END: '#9aa3ad',
 }
 const NODE_SIZES: Record<string, number> = {
   PORTAL: 8,
   LEVEL_ENTRY: 6,
   JUNCTION: 3.5,
   STOPE_ACCESS: 4.5,
+  RAMP_JUNCTION: 6,
+  RAMP_END: 4,
 }
 const EDGE_COLORS: Record<string, string> = {
   RAMP: '#7fd4b8',
+  LEVEL_ACCESS: '#f2c14e',
   DRIFT: '#8fb8de',
   CROSSCUT: '#deb46a',
   RAISE: '#c7a0e8',

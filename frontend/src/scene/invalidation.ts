@@ -1,6 +1,7 @@
 import type {
   CommunicationPayload,
   LayoutV2Catalogue,
+  LevelAccessesPayload,
   LevelsPayload,
   NetworkPayload,
   RampSourceSummary,
@@ -161,6 +162,7 @@ export function afterLayoutRegen(scene: WorldScene, catalogue: LayoutV2Catalogue
     ...base,
     layoutV2: catalogue,
     layoutV2Selected: null,
+    levelAccesses: null,
     smoothedDecline: active === 'LAYOUT_V2' ? null : scene.smoothedDecline,
     rampSource: {
       ...scene.rampSource,
@@ -183,12 +185,19 @@ export function afterLayoutRegen(scene: WorldScene, catalogue: LayoutV2Catalogue
 /** A candidate was selected (materialized). Inert unless LAYOUT_V2 is the
  * active source, in which case it becomes the effective ramp and the chain
  * is stale. */
-export function afterLayoutSelect(scene: WorldScene, selected: SmoothedDeclinePayload): WorldScene {
+export function afterLayoutSelect(
+  scene: WorldScene,
+  selected: SmoothedDeclinePayload,
+  accesses: LevelAccessesPayload | null = null,
+): WorldScene {
   const active = scene.rampSource.activeSource
+  // rule 157: the level-access artifact is owned by the selection
+  const levelAccesses = accesses ?? scene.levelAccesses
   if (active !== 'LAYOUT_V2') {
     return {
       ...scene,
       layoutV2Selected: selected,
+      levelAccesses,
       rampSource: { ...scene.rampSource, layoutV2Selected: true },
     }
   }
@@ -196,11 +205,12 @@ export function afterLayoutSelect(scene: WorldScene, selected: SmoothedDeclinePa
     scene.smoothedDecline?.candidateId === selected.candidateId &&
     scene.smoothedDecline?.layoutRevision === selected.layoutRevision
   ) {
-    return { ...scene, layoutV2Selected: selected }
+    return { ...scene, layoutV2Selected: selected, levelAccesses }
   }
   return {
     ...afterRampChange(scene),
     layoutV2Selected: selected,
+    levelAccesses,
     smoothedDecline: { ...selected, activeSource: 'LAYOUT_V2' },
     rampSource: rampSourceFor(scene.rampSource, 'LAYOUT_V2', selected),
   }

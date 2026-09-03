@@ -23,15 +23,19 @@ export function SmoothedDeclineLayer({ smoothed }: { smoothed: SmoothedDeclinePa
         const color = parametric ? PARAMETRIC_COLOR : fallback ? FALLBACK_COLOR : SMOOTHED_COLOR
         const end = s.effectiveCenterline.points.slice(-3) as [number, number, number]
         return {
-          key: s.levelId,
+          key: s.segmentId ?? s.levelId ?? String(s.effectiveCenterline.pointCount),
           color,
           positions: positionsToThree(s.effectiveCenterline.points),
           end,
+          // PARAMETRIC_V2 segments end at ramp JUNCTIONS (rule 157): label the
+          // turnout by its level, never as if the ramp had entered the level
           label: parametric
-            ? s.levelId
+            ? s.rampJunction
+              ? `⊢ ${s.levelId ?? ''} turnout`
+              : 'ramp end'
             : fallback
-              ? `${s.levelId} raw fallback`
-              : `${s.levelId} smoothed`,
+              ? `${s.levelId ?? ''} raw fallback`
+              : `${s.levelId ?? ''} smoothed`,
           labelled: fallback || parametric,
           labelOffset: parametric ? 8 : 16,
         }

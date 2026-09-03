@@ -15,6 +15,7 @@ import type {
   JobRecord,
   JobSubmission,
   LayoutV2Catalogue,
+  LevelAccessesPayload,
   LevelsPayload,
   RampSource,
   RampSourceSummary,
@@ -139,6 +140,9 @@ export const api = {
     ),
   getLayoutSelected: (id: string) =>
     request<SmoothedDeclinePayload>(`/scenarios/${id}/design/layout-v2/selected`),
+  /** Phase 20B: ramp junctions + level accesses of the selected candidate. */
+  getLevelAccesses: (id: string) =>
+    request<LevelAccessesPayload>(`/scenarios/${id}/design/level-accesses`),
   getRampSource: (id: string) => request<RampSourceSummary>(`/scenarios/${id}/design/ramp-source`),
   setRampSource: (id: string, activeSource: RampSource) =>
     request<RampSourceSummary>(`/scenarios/${id}/design/ramp-source`, {

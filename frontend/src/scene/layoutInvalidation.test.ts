@@ -78,6 +78,7 @@ function scene(active: 'LEGACY' | 'LAYOUT_V2'): WorldScene {
     legacySmoothedDecline: legacy,
     layoutV2: { winnerId: 'SPIRAL-n1-CW-e+0-g0.120', candidates: [] },
     layoutV2Selected: selected,
+    levelAccesses: { status: 'SUCCESS', candidateId: 'SPIRAL-n1-CW-e+0-g0.120', accesses: [] },
     smoothedDecline: active === 'LEGACY' ? legacy : selected,
     rampSource: rampSource(active),
     tunnelMesh: { tag: 'm' },
@@ -141,6 +142,7 @@ describe('layout catalogue regeneration', () => {
     const after = afterLayoutRegen(before, catalogue)
     expect(after.layoutV2).toBe(catalogue)
     expect(after.layoutV2Selected).toBeNull()
+    expect(after.levelAccesses).toBeNull()
     expect(after.rampSource.layoutV2Selected).toBe(false)
     expect(after.smoothedDecline).toBe(before.legacySmoothedDecline)
     expectDownstreamKept(after, before)

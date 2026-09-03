@@ -38,6 +38,7 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
       { id: 'rawSearchPath', label: 'Raw search path', phase: 4 },
       { id: 'smoothedDecline', label: 'Effective ramp (active source)', phase: 5 },
       { id: 'layoutV2', label: 'Layout v2 selected candidate', phase: 20 },
+      { id: 'levelAccesses', label: 'Ramp junctions & level accesses', phase: 20 },
       { id: 'tunnelMesh', label: 'Tunnel mesh', phase: 6 },
       { id: 'ramp', label: 'Ramp', phase: 6 },
       { id: 'levels', label: 'Levels', phase: 8 },
