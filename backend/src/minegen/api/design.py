@@ -200,7 +200,7 @@ def evaluate_cost(scenario_id: str, body: EvaluateRequest, svc: Service) -> dict
         raise _error(422, "VALIDATION_ERROR", "every point must have exactly 3 coordinates")
     try:
         return svc.evaluate(scenario_id, body.points)
-    except (ScenarioNotFoundError, WorldNotGeneratedError) as e:
+    except (ScenarioNotFoundError, WorldNotGeneratedError, UnsupportedOrebodyError) as e:
         raise _guard(scenario_id, e) from e
 
 

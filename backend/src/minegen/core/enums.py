@@ -16,6 +16,8 @@ class ScenarioPreset(StrEnum):
     BASELINE = "BASELINE"
     RANDOM_TABULAR = "RANDOM_TABULAR"
     RANDOM_ELLIPSOID = "RANDOM_ELLIPSOID"
+    #: Phase 19: deterministic synthetic irregular implicit orebody
+    RANDOM_WARPED_VEIN = "RANDOM_WARPED_VEIN"
 
 
 class OrebodyType(StrEnum):
@@ -23,6 +25,25 @@ class OrebodyType(StrEnum):
     ELLIPSOID = "ELLIPSOID"
     PIPE = "PIPE"
     LENS = "LENS"
+    #: Phase 19: warped-vein implicit solid (rule 133). PIPE and LENS keep
+    #: their own reserved future semantics and are NOT aliases of it.
+    WARPED_VEIN = "WARPED_VEIN"
+
+
+class DistanceContract(StrEnum):
+    """How an orebody answers distance queries (Phase 19, rule 134).
+
+    EXACT_METRIC_SDF
+        ``signed_distance`` is the exact Euclidean signed distance to the
+        solid's surface (TABULAR, ELLIPSOID).
+    DERIVED_APPROXIMATE_CLEARANCE
+        the solid is defined by an implicit membership function; only a
+        lattice-derived, explicitly approximate signed clearance exists
+        (WARPED_VEIN). It never drives hard engineering buffers (rule 135).
+    """
+
+    EXACT_METRIC_SDF = "EXACT_METRIC_SDF"
+    DERIVED_APPROXIMATE_CLEARANCE = "DERIVED_APPROXIMATE_CLEARANCE"
 
 
 class NodeType(StrEnum):

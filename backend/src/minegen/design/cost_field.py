@@ -41,7 +41,7 @@ import numpy.typing as npt
 from minegen.core.models import DesignConfig
 from minegen.design.constraints import DesignContext, RejectionReason, in_restricted_zone
 from minegen.world.geology import FaultPlane
-from minegen.world.orebody import Orebody
+from minegen.world.orebody import AnalyticOrebody
 from minegen.world.synthetic_world import SyntheticWorld
 from minegen.world.terrain import Terrain
 
@@ -92,6 +92,13 @@ class CostEvaluation:
         return out
 
 
+class ExactDistanceRequiredError(TypeError):
+    """The legacy design evaluator applies HARD orebody exclusion buffers
+    from the orebody signed distance, so it accepts only bodies with the
+    EXACT_METRIC_SDF contract (rule 135). An implicit body's approximate
+    clearance must never silently weaken that contract."""
+
+
 class DesignCostEvaluator:
     def __init__(
         self,
@@ -102,7 +109,13 @@ class DesignCostEvaluator:
         self.world = world
         self.cfg = cfg
         self.context = context or DesignContext.decline(cfg)
-        self.orebody: Orebody = world.orebody
+        if not isinstance(world.orebody, AnalyticOrebody):
+            raise ExactDistanceRequiredError(
+                f"orebody type {world.orebody.config.orebody_type.value} has distance "
+                f"contract {world.orebody.distance_contract.value}; the legacy design "
+                "evaluator requires EXACT_METRIC_SDF"
+            )
+        self.orebody: AnalyticOrebody = world.orebody
         self.terrain: Terrain = world.terrain
         self.faults: list[FaultPlane] = world.faults
 

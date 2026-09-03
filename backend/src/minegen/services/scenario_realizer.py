@@ -13,7 +13,8 @@ seed, so changing one domain's draw count can never shift another:
     terrain  [seed, 0x7E44A1]   (existing — untouched)
     rock     [seed, 0x20C4]     (existing — untouched)
     grade    [seed, 0x6A4D]     (existing — untouched)
-    orebody  [seed, 0x0B0D17]   (new, Phase 17)
+    orebody  [seed, 0x0B0D17]   (new, Phase 17; Phase 19 RANDOM_WARPED_VEIN
+                                 draws its morphology from this SAME stream)
     faults   [seed, 0xFA0117]   (new, Phase 17)
 """
 
@@ -25,13 +26,19 @@ from minegen.core.enums import OrebodyType, ScenarioPreset
 from minegen.core.models import (
     FaultConfig,
     GeologyConfig,
+    HarmonicMode,
     OrebodyConfig,
     Point3D,
     RockQualityConfig,
     ScenarioCreate,
+    WarpedVeinConfig,
 )
 from minegen.world.geology import FaultPlane
 from minegen.world.orebody import build_orebody
+from minegen.world.warped_vein import (
+    WarpedVeinGeometryBudgetError,
+    WarpedVeinMorphology,
+)
 
 OREBODY_REALIZATION_STREAM = 0x0B0D17
 FAULT_REALIZATION_STREAM = 0xFA0117
@@ -42,6 +49,25 @@ _OREBODY_RETRIES = 64
 #: analytic orebody AABB, not to the centre (rule 125)
 HORIZONTAL_MARGIN_M = 80.0
 TOP_MARGIN_M = 40.0
+
+#: Phase 19 warped-vein morphology acceptance (cheap 2-D diagnostics on the
+#: authoritative implicit morphology; a candidate failing any check is
+#: rejected whole and the next deterministic draw is tried)
+MIN_PINCH_SWELL_RANGE = 0.15  # max − min interior thickness multiplier
+MIN_WARP_FRACTION = 0.5  # (max − min mid-surface) / warp amplitude
+MIN_EDGE_ASYMMETRY = 0.05  # relative difference between opposite edges
+#: low-order 2-D modes the realizer may draw from (shape model 1, k ≤ 2)
+_PLANE_MODE_PAIRS: tuple[tuple[int, int], ...] = (
+    (1, 0),
+    (0, 1),
+    (1, 1),
+    (2, 0),
+    (0, 2),
+    (2, 1),
+    (1, 2),
+)
+#: down-dip-only modes for the lateral centreline deviation
+_DEVIATION_MODE_PAIRS: tuple[tuple[int, int], ...] = ((0, 1), (0, 2), (0, 3))
 
 
 class ScenarioRealizationError(ValueError):
@@ -143,6 +169,117 @@ def _realize_orebody(seed: int, orebody_type: OrebodyType, base: ScenarioCreate)
     )
 
 
+def _draw_modes(
+    rng: np.random.Generator, pairs: tuple[tuple[int, int], ...], count: int
+) -> list[HarmonicMode]:
+    """``count`` distinct low-order modes with random phases and weights of
+    magnitude ≥ 0.25 (so every drawn mode actually shapes the body)."""
+    picks = rng.choice(len(pairs), size=count, replace=False)
+    modes: list[HarmonicMode] = []
+    for idx in sorted(int(i) for i in picks):
+        ku, kv = pairs[idx]
+        sign = 1.0 if rng.uniform() < 0.5 else -1.0
+        modes.append(
+            HarmonicMode(
+                ku=ku,
+                kv=kv,
+                phase_u=float(rng.uniform(0.0, 2.0 * np.pi)),
+                phase_v=float(rng.uniform(0.0, 2.0 * np.pi)),
+                weight=sign * float(rng.uniform(0.25, 1.0)),
+            )
+        )
+    return modes
+
+
+def warped_vein_morphology_valid(cfg: OrebodyConfig) -> tuple[bool, str]:
+    """Rule 139 acceptance on the ACTUAL implicit morphology: one connected
+    planform, the guaranteed thickness floor, a real pinch/swell range, a
+    real warp and an asymmetric outline, all finite, within the derived
+    geometry budget. Returns ``(ok, reason)``."""
+    try:
+        ob = build_orebody(cfg)
+    except WarpedVeinGeometryBudgetError as exc:
+        return False, f"geometry budget: {exc}"
+    assert cfg.warped_vein is not None
+    d = WarpedVeinMorphology(cfg).diagnostics()
+    values = [v for v in d.values() if isinstance(v, float)]
+    if not all(np.isfinite(values)):
+        return False, "non-finite morphology diagnostics"
+    if d["planformConnectedComponents"] != 1:
+        return False, f"planform has {d['planformConnectedComponents']} components"
+    if d["minInteriorThicknessMultiplier"] is None:
+        return False, "no interior samples"
+    if d["minInteriorThicknessMultiplier"] < cfg.warped_vein.pinch_floor_ratio - 1e-9:
+        return False, "interior thickness below the pinch floor"
+    swell = d["maxInteriorThicknessMultiplier"] - d["minInteriorThicknessMultiplier"]
+    if swell < MIN_PINCH_SWELL_RANGE:
+        return False, f"pinch/swell range {swell:.3f} too small"
+    warp = d["midSurfaceMax"] - d["midSurfaceMin"]
+    if cfg.warped_vein.warp_amplitude > 0 and warp < MIN_WARP_FRACTION * (
+        cfg.warped_vein.warp_amplitude
+    ):
+        return False, f"warp range {warp:.1f} m too small"
+    if max(d["strikeEdgeAsymmetry"], d["dipEdgeAsymmetry"]) < MIN_EDGE_ASYMMETRY:
+        return False, "outline not asymmetric"
+    lo, hi = ob.bounding_box()
+    if not (np.all(np.isfinite(lo)) and np.all(np.isfinite(hi))):
+        return False, "non-finite bounding box"
+    return True, "ok"
+
+
+def _realize_warped_vein(seed: int, base: ScenarioCreate) -> OrebodyConfig:
+    """RANDOM_WARPED_VEIN: same orebody sub-stream (rule 121 — no new key),
+    same world-fit gate as the analytic presets (rule 125) plus the
+    morphology acceptance above. Every control AND every mode coefficient
+    is drawn here and persisted resolved (rule 136); nothing is regenerated
+    from the seed later. Candidates are accepted or rejected whole."""
+    rng = np.random.default_rng([seed, OREBODY_REALIZATION_STREAM])
+    for _ in range(_OREBODY_RETRIES):
+        length = float(rng.uniform(350.0, 650.0))
+        height = float(rng.uniform(200.0, 380.0))
+        thickness = float(rng.uniform(8.0, 25.0))
+        pinch_floor = float(rng.uniform(0.3, 0.55))
+        vein = WarpedVeinConfig(
+            shape_model_version=1,
+            warp_amplitude=float(rng.uniform(0.03, 0.09)) * height,
+            centerline_deviation=float(rng.uniform(0.05, 0.15)) * length,
+            outline_irregularity=float(rng.uniform(0.15, 0.4)),
+            thickness_variability=float(rng.uniform(0.25, 1.0 - pinch_floor)),
+            pinch_floor_ratio=pinch_floor,
+            edge_taper=float(rng.uniform(0.3, 0.8)),
+            geometry_resolution=5.0,
+            warp_modes=_draw_modes(rng, _PLANE_MODE_PAIRS, 3),
+            deviation_modes=_draw_modes(rng, _DEVIATION_MODE_PAIRS, 2),
+            outline_modes=_draw_modes(rng, _PLANE_MODE_PAIRS, 3),
+            thickness_modes=_draw_modes(rng, _PLANE_MODE_PAIRS, 3),
+        )
+        cfg = OrebodyConfig(
+            orebody_type=OrebodyType.WARPED_VEIN,
+            center=Point3D(
+                x=float(rng.uniform(-180.0, 180.0)),
+                y=float(rng.uniform(-180.0, 180.0)),
+                z=float(rng.uniform(-150.0, -20.0)),
+            ),
+            strike_deg=float(rng.uniform(0.0, 360.0)),
+            dip_deg=float(rng.uniform(45.0, 80.0)),
+            length=length,
+            height=height,
+            thickness=thickness,
+            mean_grade=float(rng.uniform(2.5, 6.0)),
+            grade_variability=float(rng.uniform(0.2, 0.45)),
+            warped_vein=vein,
+        )
+        if not orebody_within_world(cfg, base):
+            continue
+        ok, _reason = warped_vein_morphology_valid(cfg)
+        if ok:
+            return cfg
+    raise ScenarioRealizationError(
+        "warped-vein realization exhausted bounded retries without a candidate that "
+        "fits the model volume and passes the morphology acceptance checks"
+    )
+
+
 def _realize_faults(seed: int, count: int, base: ScenarioCreate) -> list[FaultConfig]:
     """Deterministic fault set; every generated plane must actually cut the
     model volume (verified with FaultPlane.clip_to_box) within bounded
@@ -194,11 +331,16 @@ def realize_scenario(
         return ScenarioCreate(
             name="Baseline synthetic mine", seed=seed, geology=_baseline_geology()
         )
-    orebody_type = (
-        OrebodyType.ELLIPSOID if preset is ScenarioPreset.RANDOM_ELLIPSOID else OrebodyType.TABULAR
-    )
     count = 2 if fault_count is None else fault_count
-    orebody = _realize_orebody(seed, orebody_type, base)
+    if preset is ScenarioPreset.RANDOM_WARPED_VEIN:
+        orebody = _realize_warped_vein(seed, base)
+    else:
+        orebody_type = (
+            OrebodyType.ELLIPSOID
+            if preset is ScenarioPreset.RANDOM_ELLIPSOID
+            else OrebodyType.TABULAR
+        )
+        orebody = _realize_orebody(seed, orebody_type, base)
     faults = _realize_faults(seed, count, base)
     return ScenarioCreate(
         name=f"{preset.value.title().replace('_', ' ')} mine",

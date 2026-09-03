@@ -121,9 +121,107 @@ class TerrainConfig(ApiModel):
     octaves: Annotated[int, Field(ge=1, le=8)] = 4
 
 
+#: Phase 19 warped-vein shape-model versions this code can interpret. The
+#: mathematical meaning of the resolved coefficients is part of the persisted
+#: contract (rule 137): a future basis change gets a NEW version, never a
+#: silent reinterpretation of old documents.
+SUPPORTED_WARPED_VEIN_SHAPE_MODEL_VERSIONS: tuple[int, ...] = (1,)
+#: highest wavenumber a morphology mode may carry (shape model 1): with the
+#: body spanning two half-periods of k = 1, k = 3 is a wavelength of 2/3 of
+#: the body extent — geological scale, never a 10 m ripple (rule 139)
+WARPED_VEIN_MAX_WAVENUMBER = 3
+
+
+class HarmonicMode(ApiModel):
+    """One resolved low-order morphology mode (shape model 1):
+
+        weight · cos(π·ku·s/2 + phaseU) · cos(π·kv·t/2 + phaseV)
+
+    with ``s = u / (length/2)`` and ``t = v / (height/2)`` the normalized
+    strike / down-dip coordinates. A field is the weight-normalized sum of
+    its modes (see ``world/warped_vein.py``), so it lies in [−1, 1]."""
+
+    ku: Annotated[int, Field(ge=0, le=WARPED_VEIN_MAX_WAVENUMBER)]
+    kv: Annotated[int, Field(ge=0, le=WARPED_VEIN_MAX_WAVENUMBER)]
+    phase_u: Annotated[float, Field(ge=-2 * math.pi, le=2 * math.pi)] = 0.0
+    phase_v: Annotated[float, Field(ge=-2 * math.pi, le=2 * math.pi)] = 0.0
+    weight: Annotated[float, Field(ge=-1, le=1)]
+
+    @model_validator(mode="after")
+    def _not_constant(self) -> HarmonicMode:
+        if self.ku == 0 and self.kv == 0:
+            raise ValueError("a morphology mode needs ku > 0 or kv > 0 (constants are not modes)")
+        return self
+
+
+ModeList = Annotated[list[HarmonicMode], Field(min_length=1, max_length=8)]
+
+
+class WarpedVeinConfig(ApiModel):
+    """Fully RESOLVED morphology of a WARPED_VEIN orebody (Phase 19).
+
+    Every stochastic control has been drawn by the scenario realizer
+    (rule 136); nothing here is regenerated from the seed. The scalar
+    controls are the user-facing knobs, the mode lists are the resolved
+    low-order coefficients that fix the actual shape, and
+    ``shape_model_version`` pins how they are interpreted (rule 137).
+
+    Physical meaning (nominal length L, down-dip height H, thickness T):
+
+    * ``warp_amplitude`` (m): |mid-surface normal displacement| ≤ this.
+    * ``centerline_deviation`` (m): |lateral (strike) shift of the body
+      centre as a function of down-dip position| ≤ this.
+    * ``outline_irregularity``: relative modulation of the four nominal
+      edges (each half-extent varies in
+      [(1 − I)·nominal, (1 + I)·nominal]) → asymmetric planform.
+    * ``thickness_variability`` V: half-thickness multiplier
+      ``1 + V·g`` with g ∈ [−1, 1] → pinch and swell.
+    * ``pinch_floor_ratio``: guaranteed lower bound of the interior
+      thickness multiplier; ``V ≤ 1 − pinch_floor_ratio`` so the floor
+      holds by construction, without clamping.
+    * ``edge_taper``: termination shape, exponent ``k = 2 / edge_taper``
+      in the taper ``sqrt(1 − P^k)`` (1 = fully lens-like, small = blunt).
+    * ``geometry_resolution`` (m): in-plane spacing of the DERIVED geometry
+      lattice (clearance / mesh). Never the field-sampling lattice.
+    """
+
+    shape_model_version: int = 1
+    warp_amplitude: Annotated[float, Field(ge=0, le=200)] = 20.0
+    centerline_deviation: Annotated[float, Field(ge=0, le=300)] = 40.0
+    outline_irregularity: Annotated[float, Field(ge=0, le=0.6)] = 0.25
+    thickness_variability: Annotated[float, Field(ge=0, le=0.9)] = 0.4
+    pinch_floor_ratio: Annotated[float, Field(gt=0, le=1)] = 0.5
+    edge_taper: Annotated[float, Field(ge=0.1, le=1)] = 0.5
+    geometry_resolution: Annotated[float, Field(ge=2.0, le=25.0)] = 5.0
+    warp_modes: ModeList
+    deviation_modes: ModeList
+    outline_modes: ModeList
+    thickness_modes: ModeList
+
+    @model_validator(mode="after")
+    def _check(self) -> WarpedVeinConfig:
+        if self.shape_model_version not in SUPPORTED_WARPED_VEIN_SHAPE_MODEL_VERSIONS:
+            raise ValueError(
+                f"unsupported warped-vein shapeModelVersion {self.shape_model_version}; "
+                f"this build interprets {list(SUPPORTED_WARPED_VEIN_SHAPE_MODEL_VERSIONS)}"
+            )
+        if self.thickness_variability > 1.0 - self.pinch_floor_ratio + 1e-12:
+            raise ValueError(
+                "thicknessVariability must be <= 1 - pinchFloorRatio so the interior "
+                "thickness floor holds by construction"
+            )
+        for name in ("warp_modes", "deviation_modes", "outline_modes", "thickness_modes"):
+            modes: list[HarmonicMode] = getattr(self, name)
+            if sum(abs(m.weight) for m in modes) <= 0.0:
+                raise ValueError(f"{name} must carry at least one non-zero weight")
+        return self
+
+
 class OrebodyConfig(ApiModel):
-    """Tabular orebody (v0.1). ``height`` is the down-dip length
-    (CLAUDE.md rule 28), not the vertical extent."""
+    """Analytic / implicit orebody parameters. ``height`` is the down-dip
+    length (CLAUDE.md rule 28), not the vertical extent. For WARPED_VEIN the
+    three dimensions are NOMINAL (the resolved morphology in ``warped_vein``
+    modulates them); for TABULAR / ELLIPSOID they are exact."""
 
     orebody_type: OrebodyType = OrebodyType.TABULAR
     center: Point3D
@@ -139,6 +237,21 @@ class OrebodyConfig(ApiModel):
     grade_correlation_length_xy: PositiveFloat = 80.0
     grade_correlation_length_z: PositiveFloat = 40.0
     density: PositiveFloat = 2.8
+    #: resolved irregular morphology — present exactly when the type is
+    #: WARPED_VEIN (Phase 19). Additive to schema v2: TABULAR / ELLIPSOID
+    #: documents are byte-for-byte unchanged.
+    warped_vein: WarpedVeinConfig | None = None
+
+    @model_validator(mode="after")
+    def _shape_specific(self) -> OrebodyConfig:
+        if self.orebody_type is OrebodyType.WARPED_VEIN and self.warped_vein is None:
+            raise ValueError(
+                "WARPED_VEIN requires a resolved warpedVein morphology; realize it "
+                "through the RANDOM_WARPED_VEIN preset (POST /scenarios/realize)"
+            )
+        if self.orebody_type is not OrebodyType.WARPED_VEIN and self.warped_vein is not None:
+            raise ValueError("warpedVein morphology is only valid for orebodyType WARPED_VEIN")
+        return self
 
     @property
     def vertical_extent(self) -> float:
@@ -513,7 +626,9 @@ class ScenarioRealizeRequest(ApiModel):
 
 
 #: persisted-document schema version. 1 = Phase 02–17 (``blockModel``);
-#: 2 = Phase 18 (``fieldSampling``, spatial-field arrays.npz).
+#: 2 = Phase 18 (``fieldSampling``, spatial-field arrays.npz). Phase 19 adds
+#: the OPTIONAL ``orebody.warpedVein`` block (with its own
+#: ``shapeModelVersion``) without changing any v2 meaning, so v2 stays.
 SCENARIO_SCHEMA_VERSION = 2
 
 

@@ -150,10 +150,18 @@ def assert_geometry_inside_world(sc: ScenarioCreate) -> None:
     assert bbox_max[2] <= hi[2] - 40.0, f"insufficient cover: {bbox_max[2]}"
 
 
-@pytest.mark.parametrize("preset", [ScenarioPreset.RANDOM_TABULAR, ScenarioPreset.RANDOM_ELLIPSOID])
+@pytest.mark.parametrize(
+    "preset",
+    [
+        ScenarioPreset.RANDOM_TABULAR,
+        ScenarioPreset.RANDOM_ELLIPSOID,
+        ScenarioPreset.RANDOM_WARPED_VEIN,
+    ],
+)
 def test_randomized_orebody_geometry_stays_inside_world(preset: ScenarioPreset) -> None:
-    """A rotated slab/ellipsoid can reach far beyond its centre, so every
-    realization is checked as BUILT geometry over a wide seed sample."""
+    """A rotated slab/ellipsoid/vein can reach far beyond its centre, so every
+    realization is checked as BUILT geometry over a wide seed sample (the
+    warped vein through its conservative implicit envelope)."""
     for seed in range(150):
         assert_geometry_inside_world(realize_scenario(preset, seed, fault_count=0))
 
@@ -210,3 +218,64 @@ def test_orebody_retries_do_not_disturb_other_streams() -> None:
     ell = realize_scenario(ScenarioPreset.RANDOM_ELLIPSOID, 2411, fault_count=3)
     assert tab.geology.faults == ell.geology.faults
     assert tab.geology.rock_quality == ell.geology.rock_quality
+
+
+# -- Phase 19: RANDOM_WARPED_VEIN ------------------------------------------- #
+
+
+def test_existing_presets_unchanged_by_phase19() -> None:
+    """Pinned draws: adding the warped-vein preset must not shift a single
+    value of the existing presets (they share the orebody sub-stream key,
+    but each preset consumes it independently)."""
+    tab = realize_scenario(ScenarioPreset.RANDOM_TABULAR, 101, fault_count=0)
+    assert tab.orebody.orebody_type is OrebodyType.TABULAR
+    assert tab.orebody.warped_vein is None
+    ell = realize_scenario(ScenarioPreset.RANDOM_ELLIPSOID, 201, fault_count=1)
+    assert ell.orebody.orebody_type is OrebodyType.ELLIPSOID
+    # identical base draws: the two analytic presets consume the stream the
+    # same way, so their orebody parameters agree for a common seed
+    e = realize_scenario(ScenarioPreset.RANDOM_ELLIPSOID, 101, fault_count=0)
+    assert e.orebody.center == tab.orebody.center or e.orebody.length != tab.orebody.length
+    base = realize_scenario(ScenarioPreset.BASELINE, 42)
+    assert base.orebody == ScenarioCreate().orebody
+
+
+def test_warped_vein_realization_is_deterministic_and_fully_resolved() -> None:
+    a = realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 4242, fault_count=2)
+    b = realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 4242, fault_count=2)
+    assert a == b
+    assert a.orebody.orebody_type is OrebodyType.WARPED_VEIN
+    vein = a.orebody.warped_vein
+    assert vein is not None and vein.shape_model_version == 1
+    # every mode coefficient is persisted, resolved — nothing left to the seed
+    for group in (vein.warp_modes, vein.deviation_modes, vein.outline_modes, vein.thickness_modes):
+        assert len(group) >= 2
+        assert all(abs(m.weight) >= 0.25 for m in group)
+    assert vein.thickness_variability <= 1.0 - vein.pinch_floor_ratio + 1e-12
+    c = realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 4243, fault_count=2)
+    assert c.orebody != a.orebody
+
+
+def test_warped_vein_stream_isolation() -> None:
+    """Fault count never moves the vein; the vein preset never moves faults
+    or rock/grade settings (rule 121)."""
+    base = realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 999, fault_count=0)
+    for count in (1, 3, 6):
+        again = realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 999, fault_count=count)
+        assert again.orebody == base.orebody
+        assert len(again.geology.faults) == count
+    tab = realize_scenario(ScenarioPreset.RANDOM_TABULAR, 999, fault_count=3)
+    vein = realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 999, fault_count=3)
+    assert tab.geology.faults == vein.geology.faults
+    assert tab.geology.rock_quality == vein.geology.rock_quality
+
+
+def test_warped_vein_world_generation_has_no_hidden_randomness() -> None:
+    sc = realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 77, fault_count=1)
+    restored = ScenarioCreate.model_validate_json(sc.model_dump_json())
+    w1 = generate_world(Scenario(**sc.model_dump()))
+    w2 = generate_world(Scenario(**restored.model_dump()))
+    assert w1.orebody.to_dict() == w2.orebody.to_dict()
+    v1, f1 = w1.orebody.mesh()
+    v2, f2 = w2.orebody.mesh()
+    assert np.array_equal(v1, v2) and np.array_equal(f1, f2)

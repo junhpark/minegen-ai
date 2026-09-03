@@ -1,9 +1,20 @@
-"""Analytic orebody geometry.
+"""Orebody geometry contracts and the analytic reference bodies.
 
-The orebody is an exact mathematical solid and the ONLY authority for
-mineralized-domain membership (rule 129): access targets (Phase 03) and
-stopes (Phase 09) are derived from it, and the numerical field lattice never
-defines ore/waste geometry. It is never reconstructed from voxels.
+The orebody solid is the ONLY authority for mineralized-domain membership
+(rule 129): access targets (Phase 03) and stopes (Phase 09) are derived from
+it, and the numerical field lattice never defines ore/waste geometry. It is
+never reconstructed from voxels.
+
+Phase 19 splits the contract honestly (rule 134):
+
+``AnalyticOrebody``
+    TABULAR / ELLIPSOID — closed-form solids with an EXACT Euclidean signed
+    distance (``signed_distance``), exact/analytic volume and bounding box.
+``ImplicitOrebody``
+    WARPED_VEIN (``world/warped_vein.py``) — defined by a smooth implicit
+    membership function ``level`` (φ < 0 inside). Only a lattice-derived,
+    explicitly APPROXIMATE signed clearance exists; it is never called an
+    SDF and never drives hard engineering buffers (rule 135).
 
 Frame convention (CLAUDE.md rule 28, ``docs/coordinate-system.md``):
 ``u`` along strike, ``v`` down dip, ``w = u × v`` to the footwall side.
@@ -20,7 +31,7 @@ import numpy as np
 import numpy.typing as npt
 
 from minegen.core.coordinates import Frame, strike_dip_frame
-from minegen.core.enums import OrebodyType
+from minegen.core.enums import DistanceContract, OrebodyType
 from minegen.core.models import OrebodyConfig
 
 FloatArray = npt.NDArray[np.float64]
@@ -28,32 +39,39 @@ BoolArray = npt.NDArray[np.bool_]
 
 
 class Orebody(ABC):
-    """Analytic orebody interface. Subclasses are pure geometry."""
+    """Shape-neutral orebody interface (rule 120: one solid — ``contains``,
+    ``volume``, ``bounding_box`` and ``mesh`` describe the same geometry).
+
+    Distance queries are NOT part of this base contract: they differ by
+    ``distance_contract`` (rule 134) and live on the two sub-interfaces."""
 
     config: OrebodyConfig
     frame: Frame
 
+    @property
     @abstractmethod
-    def contains(self, points: FloatArray) -> BoolArray:
-        """Inclusion test for world points of shape ``(..., 3)``."""
+    def distance_contract(self) -> DistanceContract: ...
 
     @abstractmethod
-    def signed_distance(self, points: FloatArray) -> FloatArray:
-        """Exact signed distance to the solid's surface for world points of
-        shape ``(..., 3)``: negative inside, zero on the surface, positive
-        outside (Euclidean distance to the nearest surface point)."""
+    def contains(self, points: FloatArray) -> BoolArray:
+        """Authoritative inclusion test for world points of shape ``(..., 3)``."""
 
     @abstractmethod
     def volume(self) -> float:
-        """Exact solid volume in m³."""
+        """Solid volume in m³ (exact for analytic bodies, a documented
+        deterministic numerical estimate for implicit bodies). Geometric
+        only — never a resource, reserve or recoverable figure."""
 
     @abstractmethod
     def bounding_box(self) -> tuple[FloatArray, FloatArray]:
-        """Axis-aligned world bounds ``(min, max)`` of the solid."""
+        """Axis-aligned world bounds ``(min, max)`` guaranteed to contain
+        the whole solid (tight for analytic bodies, conservative for
+        implicit ones)."""
 
     @abstractmethod
     def mesh(self) -> tuple[FloatArray, npt.NDArray[np.int32]]:
-        """Triangle mesh ``(vertices (N,3), faces (M,3))`` in world coords."""
+        """Triangle mesh ``(vertices (N,3), faces (M,3))`` in world coords —
+        a DERIVATIVE of the solid for rendering; never membership."""
 
     def to_local(self, points: FloatArray) -> FloatArray:
         return self.frame.world_to_local(points)
@@ -78,26 +96,60 @@ class Orebody(ABC):
         """Unit normal toward the footwall side (downward for dip < 90°)."""
         return np.asarray(self.frame.axes[2], dtype=np.float64)
 
-    def footwall_point(self, local_u: float, local_v: float, offset: float) -> FloatArray:
-        """World point on the footwall side of the orebody: at in-plane local
-        coordinates ``(local_u, local_v)``, displaced ``offset`` metres past the
-        footwall contact along ``+w``. Used by Phase 03 access targets."""
-        w_local = self.half_thickness + offset
-        return self.to_world(np.array([local_u, local_v, w_local]))
-
-    @property
-    @abstractmethod
-    def half_thickness(self) -> float: ...
-
     @abstractmethod
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe description (no arrays larger than a few vectors)."""
 
 
+class AnalyticOrebody(Orebody):
+    """Closed-form solid with an EXACT Euclidean signed distance. The legacy
+    Phase 03–18 design pipeline (hard orebody exclusion buffers) accepts
+    only this contract (rule 135)."""
+
+    @property
+    def distance_contract(self) -> DistanceContract:
+        return DistanceContract.EXACT_METRIC_SDF
+
+    @abstractmethod
+    def signed_distance(self, points: FloatArray) -> FloatArray:
+        """Exact signed distance to the solid's surface for world points of
+        shape ``(..., 3)``: negative inside, zero on the surface, positive
+        outside (Euclidean distance to the nearest surface point)."""
+
+
+class ImplicitOrebody(Orebody):
+    """Solid defined by a smooth implicit membership function φ
+    (rule 133): ``contains`` is ``level(points) <= 0`` and nothing else.
+    Distance is available only as a DERIVED, explicitly approximate signed
+    clearance whose sign is forced to agree with ``contains``."""
+
+    @property
+    def distance_contract(self) -> DistanceContract:
+        return DistanceContract.DERIVED_APPROXIMATE_CLEARANCE
+
+    @abstractmethod
+    def level(self, points: FloatArray) -> FloatArray:
+        """Dimensionless implicit value φ for world points ``(..., 3)``:
+        φ < 0 inside, φ = 0 on the boundary, φ > 0 outside. NOT a metric
+        distance."""
+
+    @abstractmethod
+    def approximate_clearance(self, points: FloatArray) -> FloatArray:
+        """Lattice-derived approximate signed Euclidean clearance (m):
+        negative inside, positive outside, sign guaranteed to agree with
+        ``contains``. Never an exact SDF; see ``clearance_info``."""
+
+    @abstractmethod
+    def clearance_info(self) -> dict[str, Any]:
+        """Metadata of the clearance approximation: contract, lattice
+        spacing, method, error estimate."""
+
+
 @dataclass(init=False)
-class TabularOrebody(Orebody):
+class TabularOrebody(AnalyticOrebody):
     """Rectangular slab: ``|u| ≤ length/2``, ``|v| ≤ height/2`` (down-dip),
-    ``|w| ≤ thickness/2``."""
+    ``|w| ≤ thickness/2``. The legacy Phase 03–18 layout (targets, levels,
+    stopes) is typed against THIS class, not the generic interface."""
 
     config: OrebodyConfig
     frame: Frame
@@ -127,6 +179,14 @@ class TabularOrebody(Orebody):
     @property
     def half_extents(self) -> FloatArray:
         return np.array([self.half_length, self.half_height, self.half_thickness])
+
+    def footwall_point(self, local_u: float, local_v: float, offset: float) -> FloatArray:
+        """World point on the footwall side of the slab: at in-plane local
+        coordinates ``(local_u, local_v)``, displaced ``offset`` metres past
+        the footwall contact along ``+w``. Used by Phase 03 access targets.
+        Tabular-only: an irregular body has no global footwall plane."""
+        w_local = self.half_thickness + offset
+        return self.to_world(np.array([local_u, local_v, w_local]))
 
     # -- geometry ---------------------------------------------------------- #
 
@@ -204,12 +264,14 @@ class TabularOrebody(Orebody):
             "w": self.w.tolist(),
             "halfExtents": self.half_extents.tolist(),
             "volumeM3": self.volume(),
+            "volumeMethod": "analytic",
+            "distanceContract": self.distance_contract.value,
             "bboxMin": lo.tolist(),
             "bboxMax": hi.tolist(),
         }
 
 
-class EllipsoidOrebody(Orebody):
+class EllipsoidOrebody(AnalyticOrebody):
     """Triaxial ellipsoid in the strike/dip frame (Phase 17): semi-axes are
     ``length/2`` along strike (u), ``height/2`` down dip (v) and
     ``thickness/2`` across (w) — i.e. the ellipsoid inscribed in the
@@ -348,14 +410,23 @@ class EllipsoidOrebody(Orebody):
             "w": self.w.tolist(),
             "semiAxes": self.semi_axes.tolist(),
             "volumeM3": self.volume(),
+            "volumeMethod": "analytic",
+            "distanceContract": self.distance_contract.value,
             "bboxMin": lo.tolist(),
             "bboxMax": hi.tolist(),
         }
 
 
 def build_orebody(config: OrebodyConfig) -> Orebody:
+    """Factory. Construction is cheap for every type (the realizer builds
+    candidates only to test their bounding box, rule 125); implicit bodies
+    derive clearance and mesh lazily (rule 138)."""
     if config.orebody_type is OrebodyType.TABULAR:
         return TabularOrebody(config)
     if config.orebody_type is OrebodyType.ELLIPSOID:
         return EllipsoidOrebody(config)
+    if config.orebody_type is OrebodyType.WARPED_VEIN:
+        from minegen.world.warped_vein import WarpedVeinOrebody  # cycle: warped_vein imports us
+
+        return WarpedVeinOrebody(config)
     raise NotImplementedError(f"orebody type {config.orebody_type} is not implemented in v0.1")

@@ -20,6 +20,10 @@ dependencies = [
     # Phase 02: scipy.ndimage for anisotropic Gaussian smoothing of the
     # rock-quality / grade fields and for terrain octave upsampling.
     "scipy>=1.13",
+    # Phase 19: scikit-image's proven marching-cubes (Lewiner) extracts the
+    # DERIVED render mesh of the implicit WARPED_VEIN orebody. A hand-written
+    # triangulator would be fragile for no benefit (directive §13).
+    "scikit-image>=0.24",
 ]
 
 [project.optional-dependencies]
