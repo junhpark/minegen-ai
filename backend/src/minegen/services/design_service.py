@@ -14,6 +14,12 @@ from typing import Any
 
 import numpy as np
 
+from minegen.core.artifacts import (
+    LAYOUT_V2_ARTIFACT,
+    LAYOUT_V2_SELECTED_ARTIFACT,
+    LEGACY_RAMP_ARTIFACT,
+    RAMP_SOURCE_FILE,
+)
 from minegen.core.enums import DistanceContract, OrebodyType
 from minegen.core.models import Scenario
 from minegen.design.constraints import DesignContext
@@ -28,6 +34,12 @@ from minegen.design.progress import (
 from minegen.design.smoothing import DeclineSmoother
 from minegen.design.targets import AccessTargetSet, generate_access_targets, resolve_portal
 from minegen.design.tunnel_mesh import TunnelMeshBuilder
+from minegen.layout.search import (
+    CandidateStatus,
+    LayoutSearchResult,
+    LayoutV2Search,
+    materialize_effective_ramp,
+)
 from minegen.levels.builder import LevelDevelopmentBuilder
 from minegen.levels.models import LevelsPayload
 from minegen.mining.methods.base import strategy_for, unsupported_method_payload
@@ -36,6 +48,13 @@ from minegen.network.builder import MineNetworkBuilder
 from minegen.network.models import NetworkPayload
 from minegen.scheduling.builder import MineTimelineBuilder
 from minegen.scheduling.models import TimelinePayload
+from minegen.services.effective_ramp import (
+    RampSource,
+    file_revision,
+    read_ramp_source,
+    resolve_effective_ramp,
+    write_ramp_source,
+)
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
 from minegen.world.synthetic_world import SyntheticWorld
@@ -88,6 +107,34 @@ class DeclineNotGeneratedError(LookupError):
     pass
 
 
+class LayoutV2NotGeneratedError(LookupError):
+    """layout_v2.json does not exist for the scenario."""
+
+
+class LayoutV2NotSelectedError(LookupError):
+    """layout_v2_selected.json does not exist (no candidate selected), or
+    LAYOUT_V2 is the active ramp source without a selection."""
+
+
+class LayoutCandidateNotFoundError(LookupError):
+    def __init__(self, candidate_id: str) -> None:
+        super().__init__(f"layout-v2 candidate '{candidate_id}' does not exist")
+        self.candidate_id = candidate_id
+
+
+class LayoutCandidateInfeasibleError(ValueError):
+    """Only FEASIBLE candidates can be selected / activated (rule 149)."""
+
+    def __init__(self, candidate_id: str, status: str, reasons: list[str]) -> None:
+        super().__init__(
+            f"layout-v2 candidate '{candidate_id}' is {status}"
+            + (f" ({', '.join(reasons)})" if reasons else "")
+        )
+        self.candidate_id = candidate_id
+        self.status = status
+        self.reasons = reasons
+
+
 class StaleInputsError(RuntimeError):
     """The scenario/world/targets revision changed while a design job was
     running (rule 60). The stale result is discarded, never persisted."""
@@ -131,6 +178,7 @@ class DesignService:
         self.worlds = worlds
         self._evaluators: dict[str, tuple[SyntheticWorld, DesignCostEvaluator]] = {}
         self._targets: dict[str, AccessTargetSet] = {}
+        self._layouts: dict[str, tuple[SyntheticWorld, LayoutV2Search, LayoutSearchResult]] = {}
 
     # -- evaluator --------------------------------------------------------- #
 
@@ -183,13 +231,9 @@ class DesignService:
             smoothed = self.smoothed_path(scenario_id)
             if smoothed.exists():
                 smoothed.unlink()  # rule 64: derived from the deleted decline
-            self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
-            self._delete_levels_artifact(scenario_id)  # rule 74 chain
-            self._delete_stopes_artifact(scenario_id)  # rule 79 chain
-            self._delete_timeline_artifact(scenario_id)  # rule 86 chain
-            self._delete_communication_artifact(scenario_id)  # rule 92 chain
-            self._delete_sensors_artifact(scenario_id)  # rule 98
-            self._delete_network_artifact(scenario_id)  # rule 68 chain
+            # rules 67/74/79/86/92/98/68: everything derived from the LEGACY
+            # effective ramp is stale (a LAYOUT_V2-derived chain is not)
+            self._delete_ramp_downstream_if_active(scenario_id, "LEGACY")
         return payload
 
     # -- decline (Phase 04) ------------------------------------------------ #
@@ -257,13 +301,7 @@ class DesignService:
             smoothed = self.smoothed_path(scenario_id)
             if smoothed.exists():
                 smoothed.unlink()  # rule 64: the old smoothed artifact is stale
-            self._delete_tunnel_artifacts(scenario_id)  # rule 67 chain
-            self._delete_levels_artifact(scenario_id)  # rule 74 chain
-            self._delete_stopes_artifact(scenario_id)  # rule 79 chain
-            self._delete_timeline_artifact(scenario_id)  # rule 86 chain
-            self._delete_communication_artifact(scenario_id)  # rule 92 chain
-            self._delete_sensors_artifact(scenario_id)  # rule 98
-            self._delete_network_artifact(scenario_id)  # rule 68 chain
+            self._delete_ramp_downstream_if_active(scenario_id, "LEGACY")  # rules 67–98
         return payload
 
     # -- smoothing (Phase 05, rules 61–64) ---------------------------------- #
@@ -325,13 +363,8 @@ class DesignService:
             path = self.smoothed_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload), encoding="utf-8")
-            self._delete_tunnel_artifacts(scenario_id)  # rule 67: mesh is stale
-            self._delete_levels_artifact(scenario_id)  # rule 74: levels are stale
-            self._delete_stopes_artifact(scenario_id)  # rule 79: stopes are stale
-            self._delete_timeline_artifact(scenario_id)  # rule 86: timeline is stale
-            self._delete_communication_artifact(scenario_id)  # rule 92: stale
-            self._delete_sensors_artifact(scenario_id)  # rule 98
-            self._delete_network_artifact(scenario_id)  # rule 68: network is stale
+            # rules 67/74/79/86/92/98/68: the LEGACY effective ramp changed
+            self._delete_ramp_downstream_if_active(scenario_id, "LEGACY")
         return payload
 
     def smoothed(self, scenario_id: str) -> dict[str, Any]:
@@ -345,6 +378,201 @@ class DesignService:
             raise SmoothedNotGeneratedError(scenario_id)
         data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return data
+
+    # -- layout-v2 + Effective Ramp (Phase 20A, rules 141–152) --------------- #
+
+    def layout_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / LAYOUT_V2_ARTIFACT
+
+    def layout_selected_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / LAYOUT_V2_SELECTED_ARTIFACT
+
+    def ramp_source_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / RAMP_SOURCE_FILE
+
+    def _ramp_input_paths(self, scenario_id: str) -> list[Path]:
+        """Every file that decides the Effective Ramp (rule 150): the legacy
+        artifact, the layout-v2 selection and the active-source switch.
+        Downstream fingerprints include all three, so switching the source
+        or re-selecting a candidate is a new input revision."""
+        return [
+            Path(self.smoothed_path(scenario_id)),
+            self.layout_selected_path(scenario_id),
+            self.ramp_source_path(scenario_id),
+        ]
+
+    def _layout_input_paths(self, scenario_id: str) -> list[Path]:
+        return [self.store.scenario_path(scenario_id), self.store.arrays_path(scenario_id)]
+
+    def layout_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._layout_input_paths(scenario_id))
+
+    def _delete_layout_selection(self, scenario_id: str) -> None:
+        path = self.layout_selected_path(scenario_id)
+        if path.exists():
+            path.unlink()
+
+    def _delete_ramp_downstream(self, scenario_id: str) -> None:
+        """Everything derived from the Effective Ramp (rule 151): tunnel,
+        levels, stopes, timeline, communication, sensors, network. Never
+        geology, never the ramp artifacts themselves."""
+        self._delete_tunnel_artifacts(scenario_id)  # rule 67
+        self._delete_levels_artifact(scenario_id)  # rule 74
+        self._delete_stopes_artifact(scenario_id)  # rule 79
+        self._delete_timeline_artifact(scenario_id)  # rule 86
+        self._delete_communication_artifact(scenario_id)  # rule 92
+        self._delete_sensors_artifact(scenario_id)  # rule 98
+        self._delete_network_artifact(scenario_id)  # rule 68
+
+    def _delete_ramp_downstream_if_active(self, scenario_id: str, source: RampSource) -> None:
+        if read_ramp_source(self.store.derived_dir(scenario_id)) == source:
+            self._delete_ramp_downstream(scenario_id)
+
+    def generate_layout_v2(
+        self, scenario_id: str, on_progress: ProgressCallback = no_progress
+    ) -> dict[str, Any]:
+        """Phase 20A parametric family search over the generated world. Uses
+        the layout's own evaluator (EXACT or CONSERVATIVE clearance policy),
+        so non-TABULAR orebodies are first-class here (rule 146). Persists
+        ``derived/layout_v2.json``; a previous selection is stale and is
+        deleted, and if LAYOUT_V2 is the active source its downstream chain
+        is invalidated too (rule 151)."""
+        fingerprint = self.layout_fingerprint(scenario_id)
+        scenario, world = self.worlds.load(scenario_id)
+        search = LayoutV2Search(scenario, world)
+        result = search.run(on_progress)
+        payload = result.to_dict()
+        serialized = json.dumps(payload)
+        with self.store.lock(scenario_id):
+            if self.layout_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            path = self.layout_path(scenario_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(serialized, encoding="utf-8")
+            self._layouts[scenario_id] = (world, search, result)
+            self._delete_layout_selection(scenario_id)
+            self._delete_ramp_downstream_if_active(scenario_id, "LAYOUT_V2")
+        return payload
+
+    def layout_v2(self, scenario_id: str) -> dict[str, Any]:
+        self.store.get(scenario_id)
+        if not self.worlds.is_generated(scenario_id):
+            from minegen.services.world_service import WorldNotGeneratedError
+
+            raise WorldNotGeneratedError(scenario_id)
+        path = self.layout_path(scenario_id)
+        if not path.is_file():
+            raise LayoutV2NotGeneratedError(scenario_id)
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
+
+    def _layout_object(self, scenario_id: str) -> tuple[LayoutV2Search, LayoutSearchResult]:
+        """In-memory search result behind ``layout_v2.json``; rebuilt
+        deterministically (same inputs → same result) when this process did
+        not run the search itself."""
+        if not self.layout_path(scenario_id).is_file():
+            raise LayoutV2NotGeneratedError(scenario_id)
+        scenario, world = self.worlds.load(scenario_id)
+        cached = self._layouts.get(scenario_id)
+        if cached is not None and cached[0] is world:
+            return cached[1], cached[2]
+        search = LayoutV2Search(scenario, world)
+        result = search.run()
+        self._layouts[scenario_id] = (world, search, result)
+        return search, result
+
+    def select_layout_candidate(self, scenario_id: str, candidate_id: str) -> dict[str, Any]:
+        """Materialize a FEASIBLE candidate as the layout-v2 Effective Ramp
+        (``derived/layout_v2_selected.json``, rule 149). Selecting the
+        candidate that is already selected for the same layout revision is a
+        no-op; a different selection invalidates the LAYOUT_V2 downstream
+        chain when that source is active."""
+        fingerprint = InputFingerprint.capture(
+            [*self._layout_input_paths(scenario_id), self.layout_path(scenario_id)]
+        )
+        search, result = self._layout_object(scenario_id)
+        cand = result.candidate(candidate_id)
+        if cand is None:
+            raise LayoutCandidateNotFoundError(candidate_id)
+        if cand.status != CandidateStatus.FEASIBLE:
+            raise LayoutCandidateInfeasibleError(candidate_id, cand.status, cand.failure_reasons)
+        layout_rev = file_revision(self.layout_path(scenario_id)) or ""
+        revision = hashlib.sha256(
+            json.dumps([fingerprint.entries, layout_rev, candidate_id], sort_keys=True).encode()
+        ).hexdigest()[:16]
+        existing = self._layout_selected_if_present(scenario_id)
+        if (
+            existing is not None
+            and existing.get("candidateId") == candidate_id
+            and existing.get("layoutRevision") == layout_rev
+        ):
+            return existing
+        payload = materialize_effective_ramp(result, cand, search.evaluator, revision)
+        payload["layoutRevision"] = layout_rev
+        payload["owningArtifact"] = LAYOUT_V2_SELECTED_ARTIFACT
+        serialized = json.dumps(payload)
+        with self.store.lock(scenario_id):
+            current = InputFingerprint.capture(
+                [*self._layout_input_paths(scenario_id), self.layout_path(scenario_id)]
+            )
+            if current != fingerprint:
+                raise StaleInputsError(scenario_id)
+            path = self.layout_selected_path(scenario_id)
+            path.write_text(serialized, encoding="utf-8")
+            self._delete_ramp_downstream_if_active(scenario_id, "LAYOUT_V2")
+        return payload
+
+    def _layout_selected_if_present(self, scenario_id: str) -> dict[str, Any] | None:
+        path = self.layout_selected_path(scenario_id)
+        if not path.is_file():
+            return None
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
+
+    def layout_selected(self, scenario_id: str) -> dict[str, Any]:
+        self.store.get(scenario_id)
+        data = self._layout_selected_if_present(scenario_id)
+        if data is None:
+            raise LayoutV2NotSelectedError(scenario_id)
+        return data
+
+    def ramp_source(self, scenario_id: str) -> dict[str, Any]:
+        self.store.get(scenario_id)
+        return resolve_effective_ramp(self.store.derived_dir(scenario_id)).summary()
+
+    def set_ramp_source(self, scenario_id: str, source: RampSource) -> dict[str, Any]:
+        """Explicit active-source switch (rule 150). Changing the source
+        invalidates every ramp-derived artifact (rule 151) and nothing else;
+        LAYOUT_V2 requires a persisted selection."""
+        self.store.get(scenario_id)
+        derived = self.store.derived_dir(scenario_id)
+        with self.store.lock(scenario_id):
+            if source == "LAYOUT_V2" and not self.layout_selected_path(scenario_id).is_file():
+                raise LayoutV2NotSelectedError(scenario_id)
+            if read_ramp_source(derived) != source:
+                write_ramp_source(derived, source)
+                self._delete_ramp_downstream(scenario_id)
+        return self.ramp_source(scenario_id)
+
+    def activate_layout_candidate(self, scenario_id: str, candidate_id: str) -> dict[str, Any]:
+        selected = self.select_layout_candidate(scenario_id, candidate_id)
+        source = self.set_ramp_source(scenario_id, "LAYOUT_V2")
+        return {"rampSource": source, "selected": selected}
+
+    def effective_ramp(self, scenario_id: str) -> dict[str, Any]:
+        """The ACTIVE Effective Ramp (rule 149): the only ramp geometry the
+        downstream builders consume."""
+        self.store.get(scenario_id)
+        if not self.worlds.is_generated(scenario_id):
+            from minegen.services.world_service import WorldNotGeneratedError
+
+            raise WorldNotGeneratedError(scenario_id)
+        res = resolve_effective_ramp(self.store.derived_dir(scenario_id))
+        if res.payload is None:
+            if res.active_source == "LEGACY":
+                raise SmoothedNotGeneratedError(scenario_id)
+            raise LayoutV2NotSelectedError(scenario_id)
+        return res.payload
 
     # -- level developments (Phase 08, rules 71–74) -------------------------- #
 
@@ -362,7 +590,7 @@ class DesignService:
         return [
             Path(self.store.scenario_path(scenario_id)),
             Path(self.store.arrays_path(scenario_id)),
-            Path(self.smoothed_path(scenario_id)),
+            *self._ramp_input_paths(scenario_id),
         ]
 
     def levels_fingerprint(self, scenario_id: str) -> InputFingerprint:
@@ -373,7 +601,7 @@ class DesignService:
         reserves async jobs for long-running operations). Regenerating levels
         invalidates the MineNetwork but never the tunnel mesh (rule 74)."""
         fingerprint = self.levels_fingerprint(scenario_id)
-        smoothed_payload = self.smoothed(scenario_id)  # 409 if not generated
+        smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
         scenario, world, drift_ev = self.evaluator(scenario_id)
         crosscut_ev = DesignCostEvaluator(
             world, scenario.design, DesignContext.crosscut(scenario.design)
@@ -497,7 +725,7 @@ class DesignService:
             Path(self.store.scenario_path(scenario_id)),
             Path(self.network_path(scenario_id)),
             Path(self.stopes_path(scenario_id)),
-            Path(self.smoothed_path(scenario_id)),
+            *self._ramp_input_paths(scenario_id),
             Path(self.levels_path(scenario_id)),
         ]
 
@@ -511,7 +739,7 @@ class DesignService:
         fingerprint = self.timeline_fingerprint(scenario_id)
         network_payload = self.network(scenario_id)  # NetworkNotFoundError if absent
         stopes_payload = self.stopes(scenario_id)  # 409 if absent
-        smoothed_payload = self.smoothed(scenario_id)
+        smoothed_payload = self.effective_ramp(scenario_id)
         levels_payload = self.levels(scenario_id)
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
@@ -557,7 +785,7 @@ class DesignService:
         # developments from levels.json (rule 74)
         return [
             Path(self.store.scenario_path(scenario_id)),
-            Path(self.smoothed_path(scenario_id)),
+            *self._ramp_input_paths(scenario_id),
             Path(self.levels_path(scenario_id)),
         ]
 
@@ -570,7 +798,7 @@ class DesignService:
         long-running operations). Sibling branch of the tunnel mesh: neither
         invalidates the other (rule 68)."""
         fingerprint = self.network_fingerprint(scenario_id)
-        smoothed_payload = self.smoothed(scenario_id)  # 409 if not generated
+        smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
         levels_payload = self.levels(scenario_id)  # 409 if not generated (rule 74)
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
@@ -581,6 +809,7 @@ class DesignService:
             smoothed_payload,
             source_revision,
             levels_payload=levels_payload.model_dump(mode="json", by_alias=True),
+            geometry_artifact=str(smoothed_payload.get("owningArtifact", LEGACY_RAMP_ARTIFACT)),
         )
         # deterministic serialization of the TYPED contract (rule 69): field
         # order is the model definition order, values are JSON-mode primitives
@@ -617,7 +846,7 @@ class DesignService:
                 path.unlink()
 
     def _tunnel_input_paths(self, scenario_id: str) -> list[Path]:
-        return [*self._smoothing_input_paths(scenario_id), Path(self.smoothed_path(scenario_id))]
+        return [*self._smoothing_input_paths(scenario_id), *self._ramp_input_paths(scenario_id)]
 
     def tunnel_fingerprint(self, scenario_id: str) -> InputFingerprint:
         return InputFingerprint.capture(self._tunnel_input_paths(scenario_id))
@@ -631,7 +860,7 @@ class DesignService:
         (rule 60). The GLB is written only on SUCCESS; the report is always
         persisted with an explicit status."""
         fingerprint = self.tunnel_fingerprint(scenario_id)
-        smoothed_payload = self.smoothed(scenario_id)  # 409 if not generated
+        smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
         scenario, _, ev = self.evaluator(scenario_id)
         builder = TunnelMeshBuilder(ev, scenario.ramp, scenario.tunnel_profile)
 

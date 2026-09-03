@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import Field
@@ -15,6 +15,10 @@ from minegen.scheduling.models import TimelinePayload
 from minegen.services.design_service import (
     DeclineNotGeneratedError,
     DesignService,
+    LayoutCandidateInfeasibleError,
+    LayoutCandidateNotFoundError,
+    LayoutV2NotGeneratedError,
+    LayoutV2NotSelectedError,
     LevelsNotGeneratedError,
     NetworkNotFoundError,
     SmoothedNotGeneratedError,
@@ -40,6 +44,14 @@ Jobs = Annotated[JobService, Depends(get_job_service)]
 
 class EvaluateRequest(ApiModel):
     points: Annotated[list[list[float]], Field(min_length=1, max_length=200_000)]
+
+
+class LayoutCandidateRequest(ApiModel):
+    candidate_id: Annotated[str, Field(min_length=1, max_length=120)]
+
+
+class RampSourceRequest(ApiModel):
+    active_source: Literal["LEGACY", "LAYOUT_V2"]
 
 
 def _error(status_code: int, code: str, message: str) -> HTTPException:
@@ -122,6 +134,23 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             "TIMELINE_NOT_GENERATED",
             f"scenario '{scenario_id}' has no timeline; POST …/design/timeline first",
         )
+    if isinstance(exc, LayoutV2NotGeneratedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "LAYOUT_V2_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no layout-v2 catalogue; POST …/design/layout-v2 first",
+        )
+    if isinstance(exc, LayoutV2NotSelectedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "LAYOUT_V2_NOT_SELECTED",
+            f"scenario '{scenario_id}' has no selected layout-v2 candidate; "
+            "POST …/design/layout-v2/select first",
+        )
+    if isinstance(exc, LayoutCandidateNotFoundError):
+        return _error(404, "LAYOUT_V2_CANDIDATE_NOT_FOUND", str(exc))
+    if isinstance(exc, LayoutCandidateInfeasibleError):
+        return _error(422, "LAYOUT_V2_CANDIDATE_INFEASIBLE", str(exc))
     if isinstance(exc, StaleInputsError):
         return _error(
             status.HTTP_409_CONFLICT,
@@ -129,6 +158,122 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             "inputs changed during generation; retry",
         )
     raise exc
+
+
+def _job_conflict(scenario_id: str, e: JobAlreadyRunningError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=ErrorDetail(
+            code="JOB_ALREADY_RUNNING",
+            message=f"scenario '{scenario_id}' already has job '{e.job_id}' running",
+        ).model_dump(by_alias=True)
+        | {"jobId": e.job_id},
+    )
+
+
+# -- Phase 20A: layout-v2 + Effective Ramp (rules 141–152) ------------------- #
+
+
+@router.post("/layout-v2", status_code=status.HTTP_202_ACCEPTED)
+def generate_layout_v2(
+    scenario_id: str,
+    svc: Service,
+    jobs: Jobs,
+    response: Response,
+    sync: Annotated[
+        bool, Query(description="Run inline and return the catalogue (tests/CLI).")
+    ] = False,
+) -> dict[str, Any]:
+    """Parametric whole-mine layout search (Phase 20A): finite family grid
+    → cheap evaluation → shortlist → detailed validation → ranking. Async
+    job kind ``LAYOUT_V2`` → 202; persisted as ``derived/layout_v2.json``.
+    Works for every orebody type (EXACT or CONSERVATIVE clearance)."""
+    try:
+        svc.worlds.load(scenario_id)
+    except (ScenarioNotFoundError, WorldNotGeneratedError) as e:
+        raise _guard(scenario_id, e) from e
+    if sync:
+        response.status_code = status.HTTP_200_OK
+        try:
+            return svc.generate_layout_v2(scenario_id)
+        except StaleInputsError as e:
+            raise _error(status.HTTP_409_CONFLICT, e.code, str(e)) from e
+    try:
+        job = jobs.submit(
+            scenario_id,
+            "LAYOUT_V2",
+            lambda on_progress: svc.generate_layout_v2(scenario_id, on_progress),
+        )
+    except JobAlreadyRunningError as e:
+        raise _job_conflict(scenario_id, e) from e
+    return {"jobId": job.id, "status": "QUEUED", "scenarioId": scenario_id, "kind": job.kind}
+
+
+@router.get("/layout-v2")
+def get_layout_v2(scenario_id: str, svc: Service) -> dict[str, Any]:
+    try:
+        return svc.layout_v2(scenario_id)
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.post("/layout-v2/select")
+def select_layout_candidate(
+    scenario_id: str, body: LayoutCandidateRequest, svc: Service
+) -> dict[str, Any]:
+    """Materialize a FEASIBLE candidate as ``derived/layout_v2_selected.json``
+    (the layout-v2 Effective Ramp). Does not change the active source."""
+    try:
+        return svc.select_layout_candidate(scenario_id, body.candidate_id)
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.get("/layout-v2/selected")
+def get_layout_selected(scenario_id: str, svc: Service) -> dict[str, Any]:
+    try:
+        return svc.layout_selected(scenario_id)
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.post("/layout-v2/activate")
+def activate_layout_candidate(
+    scenario_id: str, body: LayoutCandidateRequest, svc: Service
+) -> dict[str, Any]:
+    """Select the candidate AND make LAYOUT_V2 the active ramp source
+    (invalidates every ramp-derived artifact, rule 151)."""
+    try:
+        return svc.activate_layout_candidate(scenario_id, body.candidate_id)
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.get("/ramp-source")
+def get_ramp_source(scenario_id: str, svc: Service) -> dict[str, Any]:
+    try:
+        return svc.ramp_source(scenario_id)
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.put("/ramp-source")
+def set_ramp_source(scenario_id: str, body: RampSourceRequest, svc: Service) -> dict[str, Any]:
+    """Explicit active-source switch (LEGACY | LAYOUT_V2). LAYOUT_V2 needs a
+    persisted selection (409 ``LAYOUT_V2_NOT_SELECTED`` otherwise)."""
+    try:
+        return svc.set_ramp_source(scenario_id, body.active_source)
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.get("/ramp")
+def get_effective_ramp(scenario_id: str, svc: Service) -> dict[str, Any]:
+    """The ACTIVE Effective Ramp in the source-neutral contract."""
+    try:
+        return svc.effective_ramp(scenario_id)
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
 
 
 @router.post("/levels")
@@ -362,13 +507,15 @@ def generate_tunnel(
     persisted smoothed decline (409 ``SMOOTHED_NOT_GENERATED`` otherwise)."""
     try:
         svc.evaluator(scenario_id)
-        svc.smoothed(scenario_id)  # precondition
+        svc.effective_ramp(scenario_id)  # precondition: the ACTIVE ramp exists
     except (
         ScenarioNotFoundError,
         WorldNotGeneratedError,
         TargetsNotGeneratedError,
         DeclineNotGeneratedError,
         SmoothedNotGeneratedError,
+        LayoutV2NotSelectedError,
+        UnsupportedOrebodyError,
     ) as e:
         raise _guard(scenario_id, e) from e
     if sync:

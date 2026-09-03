@@ -14,7 +14,10 @@ import type {
   DeclinePayload,
   JobRecord,
   JobSubmission,
+  LayoutV2Catalogue,
   LevelsPayload,
+  RampSource,
+  RampSourceSummary,
   NetworkPayload,
   SensorPayload,
   SliceAxis,
@@ -118,6 +121,32 @@ export const api = {
   submitTunnel: (id: string) =>
     request<JobSubmission>(`/scenarios/${id}/design/tunnel`, { method: 'POST' }),
   getTunnel: (id: string) => request<TunnelMeshReport>(`/scenarios/${id}/design/tunnel`),
+  /** Phase 20A: submits the asynchronous layout-v2 search (202, kind LAYOUT_V2). */
+  submitLayoutV2: (id: string) =>
+    request<JobSubmission>(`/scenarios/${id}/design/layout-v2`, { method: 'POST' }),
+  getLayoutV2: (id: string) => request<LayoutV2Catalogue>(`/scenarios/${id}/design/layout-v2`),
+  /** Materialize a FEASIBLE candidate as the layout-v2 effective ramp. */
+  selectLayoutCandidate: (id: string, candidateId: string) =>
+    request<SmoothedDeclinePayload>(`/scenarios/${id}/design/layout-v2/select`, {
+      method: 'POST',
+      body: JSON.stringify({ candidateId }),
+    }),
+  /** Select + make LAYOUT_V2 the active ramp source (rule 151 invalidation). */
+  activateLayoutCandidate: (id: string, candidateId: string) =>
+    request<{ rampSource: RampSourceSummary; selected: SmoothedDeclinePayload }>(
+      `/scenarios/${id}/design/layout-v2/activate`,
+      { method: 'POST', body: JSON.stringify({ candidateId }) },
+    ),
+  getLayoutSelected: (id: string) =>
+    request<SmoothedDeclinePayload>(`/scenarios/${id}/design/layout-v2/selected`),
+  getRampSource: (id: string) => request<RampSourceSummary>(`/scenarios/${id}/design/ramp-source`),
+  setRampSource: (id: string, activeSource: RampSource) =>
+    request<RampSourceSummary>(`/scenarios/${id}/design/ramp-source`, {
+      method: 'PUT',
+      body: JSON.stringify({ activeSource }),
+    }),
+  /** The ACTIVE effective ramp in the source-neutral contract. */
+  getEffectiveRamp: (id: string) => request<SmoothedDeclinePayload>(`/scenarios/${id}/design/ramp`),
   /** Synchronous Phase 08 level developments (rules 71–74). */
   generateLevels: (id: string) =>
     request<LevelsPayload>(`/scenarios/${id}/design/levels`, { method: 'POST' }),

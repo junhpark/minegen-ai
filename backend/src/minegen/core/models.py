@@ -561,6 +561,130 @@ class ScheduleConfig(ApiModel):
     backfill_cure_days: PositiveFloat = 7.0
 
 
+# --------------------------------------------------------------------------- #
+# Phase 20A — layout-v2 (parametric ramp family search) configuration
+# --------------------------------------------------------------------------- #
+
+TurnSense = Literal["CW", "CCW"]
+StrikeOrientation = Literal["STRIKE_POSITIVE", "STRIKE_NEGATIVE"]
+CorridorSide = Literal["FOOTWALL", "HANGING_WALL"]
+
+
+def _both_turn_senses() -> list[TurnSense]:
+    return ["CW", "CCW"]
+
+
+def _both_strike_orientations() -> list[StrikeOrientation]:
+    return ["STRIKE_POSITIVE", "STRIKE_NEGATIVE"]
+
+
+def _both_corridor_sides() -> list[CorridorSide]:
+    return ["FOOTWALL", "HANGING_WALL"]
+
+
+class SpiralFamilyGrid(ApiModel):
+    """Declared finite SPIRAL grid (rule 142). Radius is DERIVED from level
+    spacing, target gradient and turns per level — never sampled."""
+
+    turns_per_level: Annotated[list[Annotated[float, Field(gt=0, le=4)]], Field(min_length=1)] = (
+        Field(default_factory=lambda: [1.0, 1.5, 2.0])
+    )
+    turn_senses: Annotated[list[TurnSense], Field(min_length=1)] = Field(
+        default_factory=_both_turn_senses
+    )
+    #: axis placement azimuth offset from the horizontal footwall normal (deg)
+    entry_orientations_deg: Annotated[
+        list[Annotated[float, Field(ge=-90, le=90)]], Field(min_length=1)
+    ] = Field(default_factory=lambda: [-45.0, 0.0, 45.0])
+
+
+class LongitudinalFamilyGrid(ApiModel):
+    """Declared finite LONGITUDINAL grid: one-direction along-strike descent
+    whose plan direction is coupled to the footwall drift with depth."""
+
+    orientations: Annotated[list[StrikeOrientation], Field(min_length=1)] = Field(
+        default_factory=_both_strike_orientations
+    )
+    sides: Annotated[list[CorridorSide], Field(min_length=1)] = Field(
+        default_factory=_both_corridor_sides
+    )
+
+
+class SwitchbackFamilyGrid(ApiModel):
+    """Declared finite SWITCHBACK grid: stacked antiparallel legs joined by
+    180° hairpins; leg length is DERIVED from level spacing, gradient and
+    the hairpin arc length (rule 143)."""
+
+    legs_per_level: Annotated[list[Annotated[int, Field(ge=1, le=4)]], Field(min_length=1)] = Field(
+        default_factory=lambda: [1, 2]
+    )
+    #: leg azimuth offset from strike (deg)
+    principal_orientations_deg: Annotated[
+        list[Annotated[float, Field(ge=-60, le=60)]], Field(min_length=1)
+    ] = Field(default_factory=lambda: [-20.0, 0.0, 20.0])
+    initial_turn_senses: Annotated[list[TurnSense], Field(min_length=1)] = Field(
+        default_factory=_both_turn_senses
+    )
+
+
+class LayoutScoreWeights(ApiModel):
+    """The ONLY user-facing objective controls (rule 148): three
+    interpretable groups. Internal coefficients are documented constants in
+    ``layout/search.py``."""
+
+    development: NonNegativeFloat = 1.0
+    geology: NonNegativeFloat = 1.0
+    geometry: NonNegativeFloat = 1.0
+
+
+class LayoutV2Config(ApiModel):
+    """Phase 20A parametric ramp family search (CLAUDE.md rules 141–152).
+
+    Every grid value is declared here; the enumeration order is frozen
+    (family order SPIRAL, LONGITUDINAL, SWITCHBACK; then the field order of
+    each grid) and candidate IDs encode their parameters. No optimizer, no
+    random sampling."""
+
+    #: target descent gradients shared by every family (vertical/horizontal);
+    #: a value above ``ramp.max_gradient`` yields an explicit GRADE_LIMIT
+    #: infeasible candidate, never a silent clamp
+    target_gradients: Annotated[
+        list[Annotated[float, Field(gt=0, le=0.25)]], Field(min_length=1)
+    ] = Field(default_factory=lambda: [0.12, 0.10])
+    #: maximum horizontal distance from a level crossing to the orebody
+    #: footprint at that level for the level to count as SERVED (m)
+    access_reach: PositiveFloat = 60.0
+    #: perpendicular stand-off of the corridor's ore-facing edge from the
+    #: footwall footprint edge; ``None`` → ``ramp.footwall_access_offset``
+    footwall_standoff: PositiveFloat | None = None
+    #: deterministic discretization / validation spacing of the delivered
+    #: centerline (horizontal, m)
+    sample_spacing: Annotated[float, Field(ge=0.5, le=5.0)] = 2.0
+    #: in-plane spacing of the level-section sampling used by the access
+    #: distance (m); the access distance is an upper bound (never optimistic)
+    #: whose over-estimate is within ``spacing·√2`` beside a full footprint
+    #: cell and wider only across thin slivers (see ``layout/levels.py``)
+    section_sampling_spacing: Annotated[float, Field(ge=0.5, le=10.0)] = 2.0
+    #: relative tolerance on adjacent level-interval equality for families
+    #: that require one constant interval (SPIRAL, SWITCHBACK)
+    level_interval_tolerance: Annotated[float, Field(ge=0, le=0.05)] = 1e-6
+    #: bounded shortlist that receives detailed engineering validation
+    shortlist_size: Annotated[int, Field(ge=1, le=64)] = 12
+    #: shortest admissible straight leg / approach piece (m)
+    min_straight_length: PositiveFloat = 20.0
+    #: SPIRAL approach gradient may be lowered to this fraction of the
+    #: target gradient so that level crossings land on the ore-facing side
+    approach_min_gradient_fraction: Annotated[float, Field(ge=0.1, le=1.0)] = 0.5
+    #: keep every candidate this far inside the world's horizontal edges (m)
+    world_margin: NonNegativeFloat = 25.0
+    #: how far a LONGITUDINAL corridor may run past the orebody ends (m)
+    longitudinal_extension: NonNegativeFloat = 400.0
+    spiral: SpiralFamilyGrid = Field(default_factory=SpiralFamilyGrid)
+    longitudinal: LongitudinalFamilyGrid = Field(default_factory=LongitudinalFamilyGrid)
+    switchback: SwitchbackFamilyGrid = Field(default_factory=SwitchbackFamilyGrid)
+    weights: LayoutScoreWeights = Field(default_factory=LayoutScoreWeights)
+
+
 class ScenarioCreate(ApiModel):
     """Payload for ``POST /scenarios``. Every field has a default so an empty
     body produces a valid baseline scenario."""
@@ -592,6 +716,8 @@ class ScenarioCreate(ApiModel):
     mining: MiningConfig = Field(default_factory=MiningConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)
+    #: Phase 20A layout-v2 search configuration (additive; schema v2 stays)
+    layout: LayoutV2Config = Field(default_factory=LayoutV2Config)
 
     @model_validator(mode="before")
     @classmethod

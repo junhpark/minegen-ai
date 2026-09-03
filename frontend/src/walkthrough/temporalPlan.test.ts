@@ -37,6 +37,30 @@ function smoothed(): SmoothedDeclinePayload {
   } as unknown as SmoothedDeclinePayload
 }
 
+describe('owning artifact resolution (Phase 20A, rule 149)', () => {
+  it('accepts a layout-v2 effective ramp only through its own owning artifact', () => {
+    const v2 = {
+      ...smoothed(),
+      owningArtifact: 'layout_v2_selected.json',
+      sourceKind: 'PARAMETRIC_V2',
+    } as SmoothedDeclinePayload
+    const legacyRefs = timeline()
+    expect(resolveActiveRampIndices(legacyRefs, v2, 250)).toMatch(
+      /expected layout_v2_selected.json/,
+    )
+    const v2Refs = timeline({
+      0: { geometryRef: { artifact: 'layout_v2_selected.json', segmentIndex: 0 } },
+      1: { geometryRef: { artifact: 'layout_v2_selected.json', segmentIndex: 1 } },
+      2: { geometryRef: { artifact: 'layout_v2_selected.json', segmentIndex: 2 } },
+    })
+    expect(resolveActiveRampIndices(v2Refs, v2, 250)).toEqual({ indices: [0, 1], total: 3 })
+    // a legacy artifact (no provenance) is still owned by decline_smoothed.json
+    expect(resolveActiveRampIndices(v2Refs, smoothed(), 250)).toMatch(
+      /expected decline_smoothed.json/,
+    )
+  })
+})
+
 function runtime(ids = ['SEG:A', 'SEG:B', 'SEG:C']): TunnelRuntimeGeometry {
   const prim = () => ({ positions: new Float32Array(9), indices: new Uint32Array(3) })
   return {

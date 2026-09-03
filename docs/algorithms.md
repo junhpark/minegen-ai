@@ -536,3 +536,63 @@ Default acceptance (accepted Phase 09 topology): 454 development tasks
 total; ramp completion day ≈ 959.1, first stoping day ≈ 392.8, baseline
 end day ≈ 1106.3 — the duration of the synthetic precedence-only baseline,
 not a production forecast.
+
+## Phase 20A — layout-v2 parametric family search (`layout/`, rules 141–152)
+
+Inputs: the authoritative portal (`default_portal`, generic frame use),
+the required levels of the ONE existing generator, in-plane orebody
+sections at each level (world-origin-anchored 2 m grid classified by
+`contains`; access distance = KD-tree nearest inside sample + 24-step
+bisection along that segment → an UPPER bound, never optimistic), and a
+footwall track = sample-weighted linear fit in z of the per-level footwall
+edge references (an implicit body has no global strike; the fit is what
+the families follow).
+
+Families (closed form, chord-exact descent so the delivered per-edge
+gradient never exceeds g):
+
+- SPIRAL: straight approach → single arc → drifting helix of radius
+  `R = ΔZ/(2π·g·n)` whose axis follows the footwall track offset by
+  `standoff + R` in the rotated horizontal normal (`entryOrientation`);
+  the approach gradient is tuned within `[f·g, g]` so level crossings land
+  on the ore-facing angle. Non-uniform level intervals are typed
+  infeasible.
+- LONGITUDINAL: one-direction along-strike corridor tilted by the footwall
+  drift per metre of descent, clipped to the world margin, extended at most
+  `longitudinalExtension` past the body.
+- SWITCHBACK: `k` legs per level of equal length `ΔZ/(k·g) − π·R_min`
+  joined by constant-sense minimum-radius hairpins; the pair drift of the
+  footwall is absorbed by bulging the hairpin (`R_min + |drift|/2`); a
+  landing straight closes the last cycle exactly on the deepest level.
+
+Delivered-centerline diagnostics: per-edge gradient, chord-based plan
+radius at interior vertices (exact for uniformly sampled arcs), unwrapped
+heading change; family signature = cumulative / signed heading change,
+turning length (R < 500 m), hairpin runs (same-sense runs ≥ 150°),
+reversals (runs within 150°–210°), dominant folded azimuths (15° bins),
+turn-direction consistency. Measured on the TABULAR reference: spirals
+show ≈ 2 400–6 200° cumulative change, consistency 1.0, 0 reversals;
+2-leg switchbacks 13 reversals; longitudinal ≈ 150° with ≤ 1.
+
+Search: cheap stage on every candidate (grade ≤ g_max + 1e-9, plan radius
+≥ R_min − 0.05 m, inside the world, monotonic, all serviceable levels
+served), shortlist of 12 by `length / grade-limited ideal + 0.5 ·
+mean access / reach`, detailed stage through
+`design/validation.evaluate_and_validate` + `accepted_mask` (rule 52
+portal transition), clearance report under the evaluator's policy,
+`design/exposure.measure_exposure`, scores:
+
+    development = L/L_ideal + 0.5·meanAccess/reach
+    geology     = 10·coreFrac + 3·damageFrac + 5·poorRockFrac + 0.1·crossings
+    geometry    = unusedGrade + 0.5·turningFrac + maxAccess/reach + clearanceHeadroom
+    total       = w_dev·development + w_geo·geology + w_geom·geometry
+
+Ranking `(feasible, round(total, 1e-9), family order, id)`. Measured
+(defaults): TABULAR reference 68 candidates, 6 feasible, winner
+`SWITCHBACK-k2-p+0-CCW-g0.120` (3 825 m, 13/13 levels) in ≈ 3.3 s;
+WARPED_VEIN seed 301 6 feasible, winner `SPIRAL-n1-CCW-e+0-g0.120`
+(14/14 serviceable of 18 required, conservative clearance 20.0 m ≥ 10.6 m)
+in ≈ 9 s; geometry-stress (15 m levels, R_min 20 m) 3 feasible; WARPED_VEIN
+seed 307 honestly returns NO_FEASIBLE_CANDIDATE (all 68 typed). Effective
+Ramp materialization inserts the exact level-crossing vertices and splits
+there; boundary tangents are shared chord directions.

@@ -25,16 +25,17 @@ from typing import Any
 
 import numpy as np
 
+from minegen.core.artifacts import RAMP_OWNING_ARTIFACTS
 from minegen.infrastructure.models import CandidateSite, DemandPoint
 
 LENGTH_SYNC_TOLERANCE = 1e-6  # m — recomputed centerline vs edge.length3d
 ENDPOINT_TOLERANCE = 1e-6  # m — centerline ends vs from/to node positions
 
 _SUPPORTED_EDGE_TYPES = ("RAMP", "DRIFT", "CROSSCUT")
-_OWNING_ARTIFACT = {
-    "RAMP": "decline_smoothed.json",
-    "DRIFT": "levels.json",
-    "CROSSCUT": "levels.json",
+_OWNING_ARTIFACTS: dict[str, tuple[str, ...]] = {
+    "RAMP": RAMP_OWNING_ARTIFACTS,
+    "DRIFT": ("levels.json",),
+    "CROSSCUT": ("levels.json",),
 }
 
 SampleRow = tuple[str, str | None, str | None, float | None, tuple[float, float, float]]
@@ -221,27 +222,24 @@ class InfrastructureNetworkDomain:
         smoothed_payload: dict[str, Any],
         levels_payload: dict[str, Any],
     ) -> EdgeGeometry:
-        expected_artifact = _OWNING_ARTIFACT[e["type"]]
+        expected_artifacts = _OWNING_ARTIFACTS[e["type"]]
         ref = e.get("geometryRef")
         if not isinstance(ref, dict):
             raise DomainValidationError(f"edge {e['id']} geometryRef is not an object")
         artifact = ref.get("artifact")
-        if artifact != expected_artifact:
+        if artifact not in expected_artifacts:
             raise DomainValidationError(
                 f"edge {e['id']} of type {e['type']} must be owned by "
-                f"{expected_artifact}, geometryRef points to {artifact!r}"
+                f"{' or '.join(expected_artifacts)}, geometryRef points to {artifact!r}"
             )
         raw_index = ref.get("segmentIndex")
         if not isinstance(raw_index, int) or isinstance(raw_index, bool) or raw_index < 0:
             raise DomainValidationError(
                 f"edge {e['id']} segmentIndex {raw_index!r} is not a non-negative integer"
             )
-        owners = (
-            smoothed_payload.get("segments")
-            if artifact == "decline_smoothed.json"
-            else levels_payload.get("developments")
-        )
-        container = "effectiveCenterline" if artifact == "decline_smoothed.json" else "centerline"
+        is_ramp = artifact in RAMP_OWNING_ARTIFACTS
+        owners = smoothed_payload.get("segments") if is_ramp else levels_payload.get("developments")
+        container = "effectiveCenterline" if is_ramp else "centerline"
         if not isinstance(owners, list) or raw_index >= len(owners):
             count = len(owners) if isinstance(owners, list) else 0
             raise DomainValidationError(

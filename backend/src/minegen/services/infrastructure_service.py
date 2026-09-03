@@ -44,7 +44,7 @@ class InfrastructureService:
         return [
             Path(self.store.scenario_path(scenario_id)),
             Path(self.design.network_path(scenario_id)),
-            Path(self.design.smoothed_path(scenario_id)),
+            *self.design._ramp_input_paths(scenario_id),
             Path(self.design.levels_path(scenario_id)),
         ]
 
@@ -56,7 +56,7 @@ class InfrastructureService:
         communication touches NOTHING upstream (rule 92)."""
         fingerprint = self.communication_fingerprint(scenario_id)
         network_payload = self.design.network(scenario_id)  # NetworkNotFoundError -> 409
-        smoothed_payload = self.design.smoothed(scenario_id)  # SmoothedNotGeneratedError
+        smoothed_payload = self.design.effective_ramp(scenario_id)  # 409 if not available
         levels_payload = self.design.levels(scenario_id)  # LevelsNotGeneratedError
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
@@ -100,7 +100,7 @@ class InfrastructureService:
         Regenerating sensors touches NOTHING else (rule 98)."""
         fingerprint = self.sensors_fingerprint(scenario_id)
         network_payload = self.design.network(scenario_id)
-        smoothed_payload = self.design.smoothed(scenario_id)
+        smoothed_payload = self.design.effective_ramp(scenario_id)
         levels_payload = self.design.levels(scenario_id)
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(

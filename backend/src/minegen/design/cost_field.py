@@ -41,7 +41,7 @@ import numpy.typing as npt
 from minegen.core.models import DesignConfig
 from minegen.design.constraints import DesignContext, RejectionReason, in_restricted_zone
 from minegen.world.geology import FaultPlane
-from minegen.world.orebody import AnalyticOrebody
+from minegen.world.orebody import AnalyticOrebody, ImplicitOrebody, Orebody
 from minegen.world.synthetic_world import SyntheticWorld
 from minegen.world.terrain import Terrain
 
@@ -99,23 +99,107 @@ class ExactDistanceRequiredError(TypeError):
     clearance must never silently weaken that contract."""
 
 
+# --------------------------------------------------------------------------- #
+# Orebody clearance policies (Phase 20A)
+# --------------------------------------------------------------------------- #
+
+#: multiple of the derived-geometry lattice diagonal used as the conservative
+#: error bound of the Phase 19 approximate clearance (see
+#: ``ConservativeClearance`` for the derivation)
+CONSERVATIVE_CLEARANCE_DIAGONAL_FACTOR = 1.5
+
+
+@dataclass(frozen=True)
+class ExactClearance:
+    """EXACT basis: the analytic body's Euclidean signed distance. This is
+    exactly what the legacy evaluator always used; it is the default policy
+    and its numbers are unchanged."""
+
+    orebody: AnalyticOrebody
+    basis: str = "EXACT"
+    error_bound: float = 0.0
+
+    def signed_clearance(self, points: FloatArray) -> FloatArray:
+        return self.orebody.signed_distance(points)
+
+
+@dataclass(frozen=True)
+class ConservativeClearance:
+    """CONSERVATIVE basis for implicit bodies (Phase 20A, rule 146):
+
+        safe_clearance = approximate_clearance − error_bound
+
+    with ``error_bound = CONSERVATIVE_CLEARANCE_DIAGONAL_FACTOR × ‖lattice
+    spacing‖``. Derivation: the Phase 19 clearance is a signed Euclidean
+    distance transform between lattice CELL CENTERS classified by φ, queried
+    by trilinear interpolation. (1) The classified boundary lies within one
+    cell of the true φ = 0 surface, so the cell-to-cell distance differs from
+    the true distance to the surface by at most one cell diagonal; (2) the
+    distance field is 1-Lipschitz, so trilinear interpolation between
+    centers adds at most half a diagonal. The factor 1.5 covers both terms.
+    Slivers thinner than the across-thickness spacing are the only feature
+    the lattice cannot see; the Phase 19 lattice keeps ≥ 3 cells across the
+    guaranteed interior thickness floor, so only the vanishing taper rim
+    (< 1 m wide in plan) is affected, well inside one in-plane cell. The
+    bound is exercised empirically in ``tests/test_layout_v2.py`` against
+    the dense mesh surface. Subtracting the bound only ever makes a point
+    LESS clear, so no accepted design can rely on optimistic distance."""
+
+    orebody: ImplicitOrebody
+    error_bound: float
+    basis: str = "CONSERVATIVE"
+
+    @classmethod
+    def for_orebody(cls, orebody: ImplicitOrebody) -> ConservativeClearance:
+        spacing = np.asarray(orebody.clearance_info()["latticeSpacing"], dtype=np.float64)
+        bound = CONSERVATIVE_CLEARANCE_DIAGONAL_FACTOR * float(np.linalg.norm(spacing))
+        return cls(orebody=orebody, error_bound=bound)
+
+    def signed_clearance(self, points: FloatArray) -> FloatArray:
+        return np.asarray(self.orebody.approximate_clearance(points) - self.error_bound)
+
+
+ClearancePolicy = ExactClearance | ConservativeClearance
+
+
+def clearance_policy_for(orebody: Orebody) -> ClearancePolicy:
+    """Layout-v2 policy selection (rule 146): exact for analytic bodies,
+    conservative bounded clearance for implicit ones. The LEGACY evaluator
+    never calls this — it still requires an analytic body."""
+    if isinstance(orebody, AnalyticOrebody):
+        return ExactClearance(orebody)
+    if isinstance(orebody, ImplicitOrebody):
+        return ConservativeClearance.for_orebody(orebody)
+    raise ExactDistanceRequiredError(
+        f"orebody type {orebody.config.orebody_type.value} has no clearance policy"
+    )
+
+
 class DesignCostEvaluator:
     def __init__(
         self,
         world: SyntheticWorld,
         cfg: DesignConfig,
         context: DesignContext | None = None,
+        clearance: ClearancePolicy | None = None,
     ) -> None:
         self.world = world
         self.cfg = cfg
         self.context = context or DesignContext.decline(cfg)
-        if not isinstance(world.orebody, AnalyticOrebody):
-            raise ExactDistanceRequiredError(
-                f"orebody type {world.orebody.config.orebody_type.value} has distance "
-                f"contract {world.orebody.distance_contract.value}; the legacy design "
-                "evaluator requires EXACT_METRIC_SDF"
-            )
-        self.orebody: AnalyticOrebody = world.orebody
+        # Legacy contract (rule 135): with no explicit policy the evaluator
+        # takes the analytic body's EXACT signed distance and refuses every
+        # other body. Only layout-v2 passes an explicit policy; the exact
+        # path is numerically identical to the pre-Phase-20A evaluator.
+        if clearance is None:
+            if not isinstance(world.orebody, AnalyticOrebody):
+                raise ExactDistanceRequiredError(
+                    f"orebody type {world.orebody.config.orebody_type.value} has distance "
+                    f"contract {world.orebody.distance_contract.value}; the legacy design "
+                    "evaluator requires EXACT_METRIC_SDF"
+                )
+            clearance = ExactClearance(world.orebody)
+        self.clearance: ClearancePolicy = clearance
+        self.orebody: Orebody = world.orebody
         self.terrain: Terrain = world.terrain
         self.faults: list[FaultPlane] = world.faults
 
@@ -153,7 +237,10 @@ class DesignCostEvaluator:
         return penalty, nearest
 
     def orebody_distance(self, points: FloatArray) -> FloatArray:
-        return self.orebody.signed_distance(points)
+        """Signed clearance to the orebody under the evaluator's policy:
+        exact SDF (legacy / analytic) or conservative bounded clearance
+        (layout-v2 on implicit bodies). Negative inside."""
+        return self.clearance.signed_clearance(points)
 
     def surface_elevation(self, points: FloatArray) -> FloatArray:
         return self.terrain.sample(np.asarray(points, dtype=np.float64)[:, :2])

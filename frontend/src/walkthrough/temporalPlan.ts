@@ -17,6 +17,17 @@ import type { SmoothedDeclinePayload, TimelinePayload, WorldScene } from '@/type
 import type { TunnelRuntimeGeometry } from './tunnelRuntimeGeometry'
 
 export const SMOOTHED_ARTIFACT = 'decline_smoothed.json'
+export const LAYOUT_V2_SELECTED_ARTIFACT = 'layout_v2_selected.json'
+
+/**
+ * The derived artifact that OWNS the effective ramp's segment geometry
+ * (rule 149). A legacy Phase 05 artifact without provenance fields is owned
+ * by decline_smoothed.json; every other effective ramp declares its owner.
+ * RAMP geometryRefs must point at exactly this artifact (rule 113).
+ */
+export function rampOwningArtifact(smoothed: Pick<SmoothedDeclinePayload, 'owningArtifact'>) {
+  return smoothed.owningArtifact ?? SMOOTHED_ARTIFACT
+}
 
 export interface TemporalFrontier {
   /** last ACTIVE segment id owning the barrier */
@@ -66,12 +77,13 @@ export function resolveActiveRampIndices(
   if (ramps.length !== segments.length) {
     return `RAMP development count ${ramps.length} != smoothed segment count ${segments.length}`
   }
+  const owner = rampOwningArtifact(smoothed)
   const seen = new Set<number>()
   const active: number[] = []
   for (const dev of ramps) {
     const ref = dev.geometryRef
-    if (ref.artifact !== SMOOTHED_ARTIFACT) {
-      return `RAMP ${dev.edgeId} owns artifact ${ref.artifact}, expected ${SMOOTHED_ARTIFACT}`
+    if (ref.artifact !== owner) {
+      return `RAMP ${dev.edgeId} owns artifact ${ref.artifact}, expected ${owner}`
     }
     const i = ref.segmentIndex
     if (!Number.isInteger(i) || i < 0 || i >= segments.length) {

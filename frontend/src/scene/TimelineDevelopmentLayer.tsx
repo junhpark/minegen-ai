@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { rampOwningArtifact } from '@/walkthrough/temporalPlan'
 import { extend, type ThreeElement } from '@react-three/fiber'
 import { Line } from 'three'
 
@@ -48,7 +49,7 @@ export function TimelineDevelopmentLayer({
       if (state === 'NOT_BUILT') continue
       const ref = dev.geometryRef
       const points =
-        ref.artifact === 'decline_smoothed.json'
+        ref.artifact === rampOwningArtifact(smoothed)
           ? smoothed.segments[ref.segmentIndex]?.effectiveCenterline.points
           : levels.developments[ref.segmentIndex]?.centerline.points
       if (!points) continue

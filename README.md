@@ -158,6 +158,34 @@ Every phase must pass all of these before it is considered complete:
    network → 4D unchanged; the warped-vein mesh (≈ 10–25 k vertices) orbits
    smoothly in the browser.
 
+## Phase 20A manual acceptance (layout-v2 & Effective Ramp)
+
+1. Baseline TABULAR scenario → Generate world. In **Layout v2 — parametric
+   families** click **Generate candidates**: the job progresses through
+   68 candidates; the list shows ranked feasible candidates (family, served
+   levels, length, Development / Geology / Geometry totals) with the winner
+   starred; "show infeasible" reveals every typed failure reason.
+2. Pick a SPIRAL candidate → **Select**: an amber preview polyline with
+   `L01…` labels at the level connections appears (layer "Layout v2 selected
+   candidate"); the active source stays **Legacy** and any legacy chain is
+   untouched.
+3. **Activate as ramp source**: the source radio switches to **Layout v2**,
+   the effective ramp layer renders the parametric spiral (amber), tunnel /
+   levels / network / stopes / timeline readouts clear (rule 151).
+4. Design panel: Generate tunnel mesh → levels → network → stopes →
+   timeline over the parametric ramp; 4D playback and **Walk** traverse the
+   spiral decline (level connections are the LEVEL_ENTRY nodes).
+5. Switch the radio back to **Legacy**: the ramp layer shows the legacy
+   smoothed decline again (or nothing if none exists); downstream is
+   cleared; switching back restores the selection instantly.
+6. Randomized · irregular warped vein → Generate world → Generate
+   candidates: clearance reads CONSERVATIVE (−10.8 m bound); feasible
+   candidates list level service on the authoritative solid; Select /
+   Activate render the ramp. Levels / tunnel still answer the typed legacy
+   rejection (Phase 20B).
+7. Regenerating the world or editing the scenario removes catalogue,
+   selection and source switch (back to Legacy).
+
 ## Phase 02 smoke test
 
 1. Start backend and frontend, click **New synthetic mine** (leave "one fault" on).

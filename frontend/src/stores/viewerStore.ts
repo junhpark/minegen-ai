@@ -49,6 +49,7 @@ const DEFAULT_VISIBLE: LayerId[] = [
   // slice are explicit opt-in diagnostic layers and default OFF —
   // 'rawSearchPath' and 'rockQuality' are intentionally absent here
   'smoothedDecline',
+  'layoutV2',
   'tunnelMesh',
   'ramp',
   'levels',

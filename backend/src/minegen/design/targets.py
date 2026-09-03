@@ -274,14 +274,16 @@ def entry_burial_margin(
     return float(np.min(surface - decline))
 
 
-def default_portal(scenario: Scenario, orebody: TabularOrebody, terrain: Terrain) -> FloatArray:
+def default_portal(scenario: Scenario, orebody: Orebody, terrain: Terrain) -> FloatArray:
     """Surface point on the footwall side of the orebody chosen so that a
     max-gradient entry toward the orebody stays buried.
 
     Candidates are sampled on the footwall side (against the dip direction)
     at distances around ``portal_footwall_distance`` and along-strike offsets;
     the one with the largest ``entry_burial_margin`` wins (ties → closest to
-    the nominal distance). A placeholder until the user picks a portal."""
+    the nominal distance). A placeholder until the user picks a portal.
+    Uses only the generic strike/dip frame (``u``, ``w``, ``center``), so
+    layout-v2 (Phase 20A) shares it for every orebody type."""
     fw = np.array([orebody.w[0], orebody.w[1]])
     norm = float(np.linalg.norm(fw))
     fw = np.array([1.0, 0.0]) if norm < 1e-9 else fw / norm

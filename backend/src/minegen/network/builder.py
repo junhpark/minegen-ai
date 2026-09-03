@@ -38,6 +38,7 @@ import networkx as nx
 import numpy as np
 import numpy.typing as npt
 
+from minegen.core.artifacts import LEGACY_RAMP_ARTIFACT, RAMP_OWNING_ARTIFACTS
 from minegen.core.models import Scenario
 from minegen.design.profile import build_profile
 from minegen.network.models import (
@@ -60,7 +61,7 @@ FloatArray = npt.NDArray[np.float64]
 SYNC_TOLERANCE = 1e-6  # m — node/edge vs centerline synchronization gate
 REQUIRED_SURFACE_PATHS = 2  # advisory criterion only (rule 70)
 ADVISORY_CRITERION = "TWO_EDGE_DISJOINT_SURFACE_PATHS"
-GEOMETRY_ARTIFACT = "decline_smoothed.json"
+GEOMETRY_ARTIFACT = LEGACY_RAMP_ARTIFACT  # default RAMP owner (legacy Phase 05)
 LEVELS_ARTIFACT = "levels.json"
 STATION_MERGE_TOLERANCE = 1e-6  # m — co-located LEVEL_ENTRY/JUNCTION reuse
 CONSUMABLE_SMOOTHED_STATUSES = ("SUCCESS", "SUCCESS_WITH_FALLBACK")
@@ -163,7 +164,17 @@ class MineNetworkBuilder:
         smoothed_payload: dict[str, Any],
         source_revision: str,
         levels_payload: dict[str, Any] | None = None,
+        geometry_artifact: str = GEOMETRY_ARTIFACT,
     ) -> NetworkBuildResult:
+        """``smoothed_payload`` is the Effective Ramp (Phase 05 shape) and
+        ``geometry_artifact`` names the derived file that owns it (rule 149:
+        ``decline_smoothed.json`` or ``layout_v2_selected.json``)."""
+        if geometry_artifact not in RAMP_OWNING_ARTIFACTS:
+            return _failed(
+                source_revision,
+                f"{geometry_artifact!r} is not a RAMP-owning artifact "
+                f"({', '.join(RAMP_OWNING_ARTIFACTS)})",
+            )
         # prerequisite gates: FAILED artifacts may contain already-completed
         # partial geometry — they never yield a network (rules 68/74)
         smoothed_status = smoothed_payload.get("status")
@@ -249,7 +260,7 @@ class MineNetworkBuilder:
                 cross_section=cross_section,
                 effective_source=source,
                 field_cost=float(field_cost),
-                geometry_ref=GeometryRef(artifact=GEOMETRY_ARTIFACT, segment_index=idx),
+                geometry_ref=GeometryRef(artifact=geometry_artifact, segment_index=idx),
                 simulation=SimulationSlots(),
             )
             edges.append(edge)

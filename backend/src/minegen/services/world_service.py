@@ -25,6 +25,7 @@ from minegen.export.scene_manifest import (
     build_scene,
     slice_payload,
 )
+from minegen.services.effective_ramp import resolve_effective_ramp
 from minegen.services.scenario_service import ScenarioStore
 from minegen.world.geology import FaultPlane
 from minegen.world.orebody import build_orebody
@@ -35,6 +36,18 @@ from minegen.world.terrain import Terrain
 
 class WorldNotGeneratedError(LookupError):
     pass
+
+
+def _layout_summary(catalogue: dict[str, Any]) -> dict[str, Any]:
+    """Scene view of the layout-v2 catalogue: every candidate summary
+    without its centerline / piece geometry (the selected ramp is shipped
+    separately; the full catalogue is served by GET …/design/layout-v2)."""
+    slim = dict(catalogue)
+    slim["candidates"] = [
+        {k: v for k, v in c.items() if k not in ("centerline", "pieces")}
+        for c in catalogue.get("candidates", [])
+    ]
+    return slim
 
 
 class WorldArtifactIncompatibleError(WorldNotGeneratedError):
@@ -122,6 +135,26 @@ class WorldService:
         ):
             path = derived / name
             scene[key] = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+        # Phase 20A (rules 149–150): ``smoothedDecline`` is the ACTIVE Effective
+        # Ramp — for the LEGACY source the Phase 05 artifact itself (adapter
+        # view, geometry untouched); the raw legacy artifact stays available
+        # as ``legacySmoothedDecline`` for the legacy pipeline status.
+        ramp = resolve_effective_ramp(derived)
+        scene["legacySmoothedDecline"] = scene["smoothedDecline"]
+        scene["smoothedDecline"] = ramp.payload
+        scene["rampSource"] = ramp.summary()
+        layout_path = derived / "layout_v2.json"
+        scene["layoutV2"] = (
+            _layout_summary(json.loads(layout_path.read_text(encoding="utf-8")))
+            if layout_path.is_file()
+            else None
+        )
+        selected_path = derived / "layout_v2_selected.json"
+        scene["layoutV2Selected"] = (
+            json.loads(selected_path.read_text(encoding="utf-8"))
+            if selected_path.is_file()
+            else None
+        )
         return scene
 
     def slice(

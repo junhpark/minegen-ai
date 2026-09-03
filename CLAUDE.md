@@ -989,3 +989,94 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      regression blocks acceptance; an intentional metric change is
      documented in the comparison, never hidden. The smoke subset runs in
      CI (`tests/test_golden_smoke.py`).
+
+141. Required levels are ONE definition. Layout-v2 (Phase 20A) reuses
+     `generate_level_elevations(orebody, sublevel_interval, top_margin,
+     bottom_margin)` and the `L01…` id convention for every orebody type;
+     no second elevation generator exists. A required level with no orebody
+     section at its elevation (conservative bounding box of an implicit body)
+     is reported (`hasOrebodySection = false`, NO_OREBODY_SECTION_AT_LEVEL)
+     and excluded from the serviceable set, never silently dropped or
+     re-derived.
+142. Finite declared enumeration. Layout-v2 candidates come only from the
+     typed `scenario.layout` grids (SPIRAL, LONGITUDINAL, SWITCHBACK ×
+     target gradients) in a frozen order (family order, then declared
+     field order, gradient innermost); candidate ids encode their
+     parameters. No optimizer, no random sampling, no hidden parameter;
+     the enumerated count is reported. FIGURE_EIGHT / HYBRID are reserved
+     names, not implemented.
+143. Derived coupling, never free parameters. SPIRAL radius is
+     `R = ΔZ / (2π·g·n)` (infeasible below R_min or outside the world;
+     non-uniform level intervals are LEVEL_INTERVAL_NONUNIFORM);
+     SWITCHBACK straight leg is `ΔZ/(k·g) − π·R_min` (LEG_TOO_SHORT below
+     `minStraightLength`); LONGITUDINAL plan direction is coupled to the
+     footwall drift with depth. Every candidate starts at the authoritative
+     portal with continuous position and heading.
+144. Only the DELIVERED discretized centerline is judged: gradient
+     (vertical/horizontal per edge), chord-based plan radius, world bounds,
+     monotonic descent, cover, restricted zones, orebody clearance and
+     level service are all measured on the sampled polyline
+     (`sampleSpacing`), never on analytic intent. Level service is the
+     first z-crossing by segment interpolation (no elevation tolerance) and
+     `d_access = min horizontal distance to the footprint (contains) at zL`
+     ≤ `accessReach`, with per-level typed unserved reasons.
+145. Family-signature diagnostics are quantitative: cumulative / signed
+     heading change, hairpin runs and reversals (same-sense runs of
+     150°–210°), dominant azimuths, turn-direction consistency, min plan
+     radius. A SPIRAL has a large consistent cumulative change and zero
+     reversals; a SWITCHBACK has repeated reversals; a LONGITUDINAL has one
+     dominant axis. WARPED_VEIN level access is measured on the authoritative
+     solid, never from a global strike.
+146. Clearance policy is explicit. `DesignCostEvaluator` accepts a
+     `ClearancePolicy`: EXACT (analytic SDF, legacy numerics unchanged and
+     still the only policy the legacy pipeline constructs) or CONSERVATIVE
+     (`safe = approximateClearance − errorBound`, errorBound = 1.5 × the
+     derived-lattice diagonal; empirically ≥ the measured mesh-distance
+     error). Layout-v2 reports clearanceBasis, approximate / conservative
+     minimum clearance, error bound and required clearance
+     (`buffer + hypot(width/2, height)`); WARPED_VEIN is first-class in
+     layout-v2 and still refused by the legacy pipeline (rule 135).
+147. Hard constraints stay hard. Layout-v2 stages are enumerate → cheap
+     evaluation → bounded shortlist → detailed validation through the shared
+     `DesignCostEvaluator` sample validator → deterministic ranking; a
+     violated hard constraint makes the candidate INFEASIBLE with typed
+     reasons and is never converted into a score penalty. Every candidate
+     stays inspectable with its status.
+148. Three score groups only. Development, Geology and Geometry are the
+     user-facing objective; each is a documented combination of module
+     constants (`layout/search.py`), only the three group weights are
+     configurable, and ranking is `(feasible, total within 1e-9, family
+     order, candidate id)`. Scores are planning comparators — not an
+     optimality claim and not a cost estimate.
+149. Effective Ramp contract. Downstream phases consume one source-neutral
+     ramp (`status, sourceKind ∈ {LEGACY_SMOOTHED, LEGACY_RAW_FALLBACK,
+     PARAMETRIC_V2}, owningArtifact, sourceRevision, portal, segments[]` in
+     the Phase 05 shape). The legacy artifact is exposed through an adapter
+     (geometry untouched); a layout-v2 ramp is the validated candidate
+     centerline split EXACTLY at its level connection points, never forced
+     through the Phase 05 smoother and never forged as `decline.json`.
+     `layout_v2.json` (catalogue, geometry only for shortlisted candidates)
+     and `layout_v2_selected.json` (materialized winner) are separate,
+     revision-aware, backend-authored artifacts.
+150. Active-source resolution is explicit and backend-owned:
+     `derived/ramp_source.json` (`LEGACY` default | `LAYOUT_V2`) decides
+     which artifact the tunnel, levels, network, timeline, communication and
+     sensor builders read (`GET …/design/ramp`); the scene's
+     `smoothedDecline` IS the active Effective Ramp. RAMP `geometryRef`s
+     point at the owning artifact (`decline_smoothed.json` or
+     `layout_v2_selected.json`); the frontend resolves them through
+     `rampOwningArtifact`, never by position or name.
+151. Layout lifecycle invalidation. Scenario mutation / world regeneration
+     clears the catalogue, selection, source switch and everything below;
+     regenerating the catalogue deletes the selection; selecting or
+     activating a candidate, or switching the source, deletes tunnel,
+     levels, network, stopes, timeline, communication and sensors. Legacy
+     regeneration invalidates only a LEGACY-derived chain and layout-v2
+     regeneration only a LAYOUT_V2-derived chain. Geology is never
+     invalidated by layout operations.
+152. Phase 20A scope boundary. Drifts / crosscuts for non-TABULAR bodies,
+     the layout-v2 walkthrough for WARPED_VEIN, FIGURE_EIGHT / HYBRID
+     families, local bounded A* refinement and rulebook compliance belong to
+     Phase 20B–20D. The frontend edits only explicit layout parameters and
+     performs no layout engineering (no client-side enumeration, scoring or
+     geometry).

@@ -71,7 +71,14 @@ def test_smooth_sync_lifecycle_and_scene(
     assert got.status_code == 200 and got.json() == body
     assert "NaN" not in got.text and "Infinity" not in got.text
     scene = client.get(f"/api/v1/scenarios/{sid}/scene").json()
-    assert scene["smoothedDecline"] == body
+    # Phase 20A: the scene ships the ACTIVE Effective Ramp — with LEGACY active
+    # that is this artifact plus provenance fields (geometry untouched)
+    assert scene["legacySmoothedDecline"] == body
+    eff = scene["smoothedDecline"]
+    assert eff["activeSource"] == "LEGACY" and eff["owningArtifact"] == "decline_smoothed.json"
+    assert eff["sourceKind"] in ("LEGACY_SMOOTHED", "LEGACY_RAW_FALLBACK")
+    assert {k: v for k, v in eff.items() if k in body} == body
+    assert scene["rampSource"]["activeSource"] == "LEGACY"
 
 
 def test_new_decline_invalidates_old_smoothed(
