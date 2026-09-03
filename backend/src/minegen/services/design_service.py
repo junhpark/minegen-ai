@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 
-from minegen.core.enums import OrebodyType
+from minegen.core.enums import DistanceContract, OrebodyType
 from minegen.core.models import Scenario
 from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import DesignCostEvaluator
@@ -139,6 +139,10 @@ class DesignService:
         cached = self._evaluators.get(scenario_id)
         if cached is not None and cached[0] is world:
             return scenario, world, cached[1]
+        if world.orebody.distance_contract is not DistanceContract.EXACT_METRIC_SDF:
+            # rule 135: an implicit body's approximate clearance never feeds
+            # the legacy hard-buffer evaluator — typed refusal, not a 500
+            raise UnsupportedOrebodyError(scenario.orebody.orebody_type.value)
         ev = DesignCostEvaluator(world, scenario.design)
         self._evaluators[scenario_id] = (world, ev)
         return scenario, world, ev

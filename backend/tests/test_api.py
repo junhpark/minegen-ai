@@ -134,3 +134,85 @@ def test_non_tabular_design_is_typed_unsupported_not_500(client: TestClient) -> 
     # generalized layout — Phase 18 shipped and did NOT (rule 123)
     assert "TABULAR" in detail["message"]
     assert "Phase 20" in detail["message"] and "Phase 18" not in detail["message"]
+
+
+# -- Phase 19: WARPED_VEIN through the API ----------------------------------- #
+
+
+def _realize_vein(client: TestClient, seed: int = 5) -> dict:  # type: ignore[type-arg]
+    r = client.post(
+        "/api/v1/scenarios/realize",
+        json={"preset": "RANDOM_WARPED_VEIN", "seed": seed, "faultCount": 1},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["orebody"]["orebodyType"] == "WARPED_VEIN"
+    assert body["orebody"]["warpedVein"]["shapeModelVersion"] == 1
+    return body  # type: ignore[no-any-return]
+
+
+def test_realize_warped_vein_is_deterministic_and_resolved(client: TestClient) -> None:
+    a = _realize_vein(client)
+    b = _realize_vein(client)
+    assert a == b
+    vein = a["orebody"]["warpedVein"]
+    for key in ("warpModes", "deviationModes", "outlineModes", "thicknessModes"):
+        assert len(vein[key]) >= 2
+    assert client.get("/api/v1/scenarios").json() == []  # still non-persistent
+
+
+def test_warped_vein_world_scene_and_slices_work(client: TestClient) -> None:
+    realized = _realize_vein(client, seed=9)
+    sid = client.post("/api/v1/scenarios", json=realized).json()["id"]
+    loaded = client.get(f"/api/v1/scenarios/{sid}").json()
+    assert loaded["orebody"] == realized["orebody"]
+    assert loaded["schemaVersion"] == 2
+    assert client.post(f"/api/v1/scenarios/{sid}/world/generate").status_code == 200
+    world = client.get(f"/api/v1/scenarios/{sid}/world").json()
+    assert world["orebody"]["type"] == "WARPED_VEIN"
+    assert world["orebody"]["distanceContract"] == "DERIVED_APPROXIMATE_CLEARANCE"
+    scene = client.get(f"/api/v1/scenarios/{sid}/scene").json()
+    ob = scene["orebody"]
+    assert ob["meshVertices"] > 1000 and ob["meshTriangles"] == len(ob["indices"]) // 3
+    for field in ("grade", "rockQuality", "faultZone"):
+        r = client.get(
+            f"/api/v1/scenarios/{sid}/world/slice",
+            params={"field": field, "axis": "z", "index": 20},
+        )
+        assert r.status_code == 200, r.text
+    grade = client.get(
+        f"/api/v1/scenarios/{sid}/world/slice", params={"field": "grade", "axis": "z", "index": 30}
+    ).json()
+    assert grade["maskSemantics"] == "OREBODY_INTERSECTION_BELOW_TERRAIN"
+
+
+def test_warped_vein_design_entry_points_fail_typed_with_phase20(client: TestClient) -> None:
+    realized = _realize_vein(client, seed=11)
+    sid = client.post("/api/v1/scenarios", json=realized).json()["id"]
+    client.post(f"/api/v1/scenarios/{sid}/world/generate")
+    for method, path, body in (
+        ("post", f"/api/v1/scenarios/{sid}/design/targets", None),
+        ("post", f"/api/v1/scenarios/{sid}/design/cost/evaluate", {"points": [[0, 0, -100]]}),
+    ):
+        r = client.request(method, path, json=body)
+        assert r.status_code == 422, r.text
+        detail = r.json()["detail"]
+        assert detail["code"] == "UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT"
+        assert "Phase 20" in detail["message"]
+        assert "Parametric Layout Family Search" in detail["message"]
+
+
+def test_warped_vein_unsupported_shape_model_version_is_422(client: TestClient) -> None:
+    realized = _realize_vein(client, seed=13)
+    realized["orebody"]["warpedVein"]["shapeModelVersion"] = 7
+    r = client.post("/api/v1/scenarios", json=realized)
+    assert r.status_code == 422
+    assert "shapeModelVersion" in r.text
+
+
+def test_warped_vein_without_morphology_is_422(client: TestClient) -> None:
+    realized = _realize_vein(client, seed=13)
+    realized["orebody"]["warpedVein"] = None
+    r = client.post("/api/v1/scenarios", json=realized)
+    assert r.status_code == 422
+    assert "RANDOM_WARPED_VEIN" in r.text

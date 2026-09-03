@@ -24,20 +24,65 @@ export interface TerrainConfig {
   octaves: number
 }
 
+/**
+ * One resolved low-order morphology mode of the Phase 19 warped vein
+ * (shape model 1). The frontend never generates these — they are drawn by
+ * the backend realizer and persisted resolved (rule 136).
+ */
+export interface HarmonicMode {
+  ku: number
+  kv: number
+  phaseU: number
+  phaseV: number
+  weight: number
+}
+
+/**
+ * Fully RESOLVED WARPED_VEIN morphology (Phase 19). `shapeModelVersion`
+ * pins how the coefficients are interpreted (rule 137). The scalar
+ * controls are user-editable; the mode lists are backend-authored and only
+ * ever echoed back.
+ */
+export interface WarpedVeinConfig {
+  shapeModelVersion: number
+  /** m — |mid-surface normal displacement| ≤ this */
+  warpAmplitude: number
+  /** m — |lateral (strike) shift of the centre along dip| ≤ this */
+  centerlineDeviation: number
+  /** 0–0.6 relative edge modulation → asymmetric outline */
+  outlineIrregularity: number
+  /** 0–0.9 relative thickness modulation (pinch & swell) */
+  thicknessVariability: number
+  /** 0–1 guaranteed interior thickness floor (× nominal); needs V ≤ 1 − floor */
+  pinchFloorRatio: number
+  /** 0.1–1 termination taper (1 = lens-like, small = blunt) */
+  edgeTaper: number
+  /** m — DERIVED geometry lattice spacing, never the field-sampling lattice */
+  geometryResolution: number
+  warpModes: HarmonicMode[]
+  deviationModes: HarmonicMode[]
+  outlineModes: HarmonicMode[]
+  thicknessModes: HarmonicMode[]
+}
+
 export interface OrebodyConfig {
   orebodyType: OrebodyType
   center: Point3D
   strikeDeg: number
   dipDeg: number
+  /** NOMINAL for WARPED_VEIN (the morphology modulates it); exact otherwise */
   length: number
-  /** down-dip length, not vertical extent */
+  /** down-dip length, not vertical extent (nominal for WARPED_VEIN) */
   height: number
+  /** nominal for WARPED_VEIN — never constant everywhere there */
   thickness: number
   meanGrade: number
   gradeVariability: number
   gradeCorrelationLengthXy: number
   gradeCorrelationLengthZ: number
   density: number
+  /** present exactly when orebodyType is WARPED_VEIN */
+  warpedVein?: WarpedVeinConfig | null
 }
 
 /** Widths are perpendicular half-widths measured from the fault plane (rule 36). */
@@ -160,12 +205,14 @@ export interface InfrastructureConfig {
   sensors: SensorConfig
 }
 
-/** Phase 17 scenario-realization presets (backend ScenarioPreset). */
-export type ScenarioPreset = 'BASELINE' | 'RANDOM_TABULAR' | 'RANDOM_ELLIPSOID'
+/** Phase 17/19 scenario-realization presets (backend ScenarioPreset). */
+export type ScenarioPreset =
+  'BASELINE' | 'RANDOM_TABULAR' | 'RANDOM_ELLIPSOID' | 'RANDOM_WARPED_VEIN'
 export const SCENARIO_PRESETS: readonly ScenarioPreset[] = [
   'BASELINE',
   'RANDOM_TABULAR',
   'RANDOM_ELLIPSOID',
+  'RANDOM_WARPED_VEIN',
 ]
 
 /** Body of the non-persistent POST /scenarios/realize. */

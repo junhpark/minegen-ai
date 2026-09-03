@@ -142,7 +142,8 @@ like any other create payload.
 
 Request body:
 
-    preset      BASELINE | RANDOM_TABULAR | RANDOM_ELLIPSOID   (default BASELINE)
+    preset      BASELINE | RANDOM_TABULAR | RANDOM_ELLIPSOID
+                | RANDOM_WARPED_VEIN                           (default BASELINE)
     seed        integer                                        (default 42)
     faultCount  integer 0-6 or null                            (RANDOM_* only;
                                                                 BASELINE has exactly
@@ -166,7 +167,45 @@ Errors:
 Note that a realized non-TABULAR orebody is fully supported for world
 generation and visualization, but the legacy Phase 03+ layout rejects it
 with `422 UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT` until the Phase 20
-generalized layout (rule 123).
+generalized layout (rule 123). For WARPED_VEIN this covers
+`POST …/design/targets` AND `POST …/design/cost/evaluate` (rule 135).
+
+#### WARPED_VEIN documents (Phase 19)
+
+`orebody.orebodyType = "WARPED_VEIN"` requires the resolved morphology
+block `orebody.warpedVein` (and the block is forbidden on any other
+type):
+
+    shapeModelVersion     1 (mandatory; unsupported versions → 422)
+    warpAmplitude         m, 0–200      centerlineDeviation   m, 0–300
+    outlineIrregularity   0–0.6         thicknessVariability  0–0.9
+    pinchFloorRatio       (0, 1]        edgeTaper             0.1–1
+    geometryResolution    m, 2–25       (DERIVED geometry lattice only)
+    warpModes / deviationModes / outlineModes / thicknessModes
+                          1–8 × {ku, kv (0–3), phaseU, phaseV, weight ∈ [−1, 1]}
+
+`thicknessVariability <= 1 − pinchFloorRatio` is validated (the floor
+holds by construction). `length` / `height` / `thickness` are NOMINAL.
+The client never generates the mode lists: obtain them from
+`POST /scenarios/realize` with `RANDOM_WARPED_VEIN`.
+
+`POST …/world/generate` answers `422 OREBODY_GEOMETRY_BUDGET_EXCEEDED`
+when an edited body's derived geometry lattice would exceed the supported
+budget (the shape is never silently coarsened).
+
+Scene / world payload additions (`orebody`):
+
+    distanceContract      EXACT_METRIC_SDF | DERIVED_APPROXIMATE_CLEARANCE
+    volumeMethod          "analytic" | {method, spacingM, relativeTolerance, semantics}
+    meshVertices, meshTriangles
+    nominalHalfExtents, shapeModelVersion, morphology {controls + 2-D
+    diagnostics}, clearance {latticeSpacing, maxAbsErrorEstimateM, exact:false},
+    geometryLattice {spacing, shape, cellCount}, bboxSemantics   (WARPED_VEIN)
+    halfExtents (TABULAR) / semiAxes (ELLIPSOID)
+
+The mesh is a backend-authored DERIVATIVE of the implicit solid for
+rendering; membership is `contains` (φ ≤ 0) only. The grade slice mask
+keeps `OREBODY_INTERSECTION_BELOW_TERRAIN` semantics for every type.
 
 ## Planned
     GET  /api/v1/scenarios/{id}/design                  Phase 04+

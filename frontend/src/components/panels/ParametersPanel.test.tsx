@@ -56,3 +56,45 @@ describe('Parameters readout layout', () => {
     expect(empty).not.toContain('<dl')
   })
 })
+
+const VEIN_SCENARIO = {
+  ...SCENARIO,
+  orebody: {
+    orebodyType: 'WARPED_VEIN',
+    strikeDeg: 45,
+    dipDeg: 70,
+    length: 520,
+    height: 310,
+    thickness: 16,
+    warpedVein: {
+      shapeModelVersion: 1,
+      warpAmplitude: 24,
+      thicknessVariability: 0.4,
+      pinchFloorRatio: 0.45,
+    },
+  },
+} as unknown as Scenario
+
+describe('Parameters readout for a WARPED_VEIN (Phase 19)', () => {
+  const html = renderToStaticMarkup(<ParametersPanel scenario={VEIN_SCENARIO} />)
+
+  it('uses nominal wording — the thickness is never constant everywhere', () => {
+    expect(html).toContain('WARPED_VEIN')
+    expect(html).toContain('Nominal thickness')
+    expect(html).toContain('Nominal size')
+    expect(html).not.toMatch(/>\s*Thickness\s*</)
+  })
+
+  it('echoes the backend morphology controls without computing anything', () => {
+    expect(html).toContain('Morphology')
+    expect(html).toContain('warp ±24 m')
+    expect(html).toContain('thickness ±40 %')
+    expect(html).toContain('pinch floor 45 %')
+  })
+
+  it('keeps the plain "Thickness" label for analytic bodies', () => {
+    const tabular = renderToStaticMarkup(<ParametersPanel scenario={SCENARIO} />)
+    expect(tabular).toMatch(/>\s*Thickness\s*</)
+    expect(tabular).not.toContain('Nominal')
+  })
+})

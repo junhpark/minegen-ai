@@ -3,6 +3,8 @@
     python -m minegen.regression run --suite full --label phase17_baseline --out golden
     python -m minegen.regression compare golden/phase17_baseline.json golden/phase18.json \
         --expect gradeProxy --out golden/phase18_vs_phase17
+    python -m minegen.regression warped-vein --suite full --label phase19_warped_vein --out golden
+    python -m minegen.regression warped-vein-compare golden/a.json golden/b.json
 
 ``run`` writes ``<out>/<label>.json`` and ``.csv``; ``compare`` writes
 ``<out>.json`` and ``<out>.md`` and exits non-zero on any HARD CONTRACT
@@ -11,11 +13,13 @@ regression (metric drift never fails the command — it is reported)."""
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+from minegen.regression import warped_vein
 from minegen.regression.golden import (
     compare_reports,
     format_comparison,
@@ -53,7 +57,38 @@ def main(argv: list[str] | None = None) -> int:
     cmp_p.add_argument("--expect", nargs="*", default=[], help="metrics expected to change")
     cmp_p.add_argument("--out", type=Path, default=None, help="report path without extension")
 
+    wv_p = sub.add_parser("warped-vein", help="Phase 19 world-only WARPED_VEIN geometry suite")
+    wv_p.add_argument("--suite", choices=["full", "smoke"], default="full")
+    wv_p.add_argument("--label", required=True)
+    wv_p.add_argument("--out", type=Path, default=Path("golden"))
+
+    wvc_p = sub.add_parser("warped-vein-compare", help="compare two warped-vein reports")
+    wvc_p.add_argument("baseline", type=Path)
+    wvc_p.add_argument("current", type=Path)
+
     args = parser.parse_args(argv)
+    if args.command == "warped-vein":
+        wv_cases = warped_vein.suite(args.suite)
+        print(f"warped-vein suite={args.suite} cases={len(wv_cases)}")
+        report = warped_vein.run_suite(wv_cases, args.label)
+        report["gitHead"] = _git_head()
+        for rec in report["cases"]:
+            c, m, r = rec["contract"], rec["metrics"], rec["runtime"]
+            print(
+                f"  {rec['key']}: realized={c.get('realized')} mesh={c.get('meshVertices')}v/"
+                f"{c.get('meshTriangles')}t watertight={c.get('meshWatertight')} "
+                f"volume={m.get('volumeM3', 0) / 1e6:.3f} Mm3 payload="
+                f"{m.get('scenePayloadBytes', 0) / 1e6:.2f} MB ({r.get('total', 0):.2f} s)"
+            )
+        json_path, csv_path = warped_vein.write_report(report, args.out, args.label)
+        print(f"wrote {json_path} and {csv_path} ({report['totalRuntimeSeconds']:.1f} s)")
+        return 0
+    if args.command == "warped-vein-compare":
+        cmp_wv = warped_vein.compare_reports(
+            warped_vein.load_report(args.baseline), warped_vein.load_report(args.current)
+        )
+        print(json.dumps(cmp_wv, indent=2))
+        return 1 if cmp_wv["contractRegressions"] else 0
     if args.command == "run":
         cases = suite(args.suite)
         if args.only:
@@ -71,8 +106,6 @@ def main(argv: list[str] | None = None) -> int:
     text = format_comparison(cmp)
     print(text)
     if args.out is not None:
-        import json
-
         args.out.parent.mkdir(parents=True, exist_ok=True)
         Path(f"{args.out}.json").write_text(json.dumps(cmp, indent=2), encoding="utf-8")
         Path(f"{args.out}.md").write_text(text, encoding="utf-8")

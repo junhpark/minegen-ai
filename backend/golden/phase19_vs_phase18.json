@@ -1,0 +1,131 @@
+{
+  "baselineLabel": "phase18_after_migration",
+  "currentLabel": "phase19_full",
+  "missingCases": [],
+  "newCases": [],
+  "contractRegressions": [],
+  "metricChanges": [],
+  "runtimeAdvisory": {
+    "baselineTotalSeconds": 7875.480713956999,
+    "currentTotalSeconds": 7322.650972211,
+    "perCase": [
+      {
+        "key": "BASELINE-1234",
+        "baseline": 173.88297540099984,
+        "current": 165.02650022399985
+      },
+      {
+        "key": "BASELINE-2026",
+        "baseline": 1080.383586818,
+        "current": 1002.0060210180002
+      },
+      {
+        "key": "BASELINE-42",
+        "baseline": 74.68343066099987,
+        "current": 65.22447333500008
+      },
+      {
+        "key": "BASELINE-7",
+        "baseline": 217.83292912699972,
+        "current": 188.25477968400014
+      },
+      {
+        "key": "BASELINE-99",
+        "baseline": 273.88071219799986,
+        "current": 260.3211591290001
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-201",
+        "baseline": 0.773121991998778,
+        "current": 0.8639533149998897
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-202",
+        "baseline": 0.7741509190000215,
+        "current": 0.7659363000002486
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-203",
+        "baseline": 0.778598658998817,
+        "current": 0.7655347399995662
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-204",
+        "baseline": 0.7680564189995494,
+        "current": 0.6852412070002174
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-205",
+        "baseline": 0.7839695570000913,
+        "current": 0.6323998759999085
+      },
+      {
+        "key": "RANDOM_TABULAR-101",
+        "baseline": 0.6018803449996994,
+        "current": 0.5667347319999863
+      },
+      {
+        "key": "RANDOM_TABULAR-102",
+        "baseline": 1070.8405719889997,
+        "current": 968.4236586889997
+      },
+      {
+        "key": "RANDOM_TABULAR-103",
+        "baseline": 1406.3343954109996,
+        "current": 1319.8481680659997
+      },
+      {
+        "key": "RANDOM_TABULAR-104",
+        "baseline": 332.50162289699983,
+        "current": 314.5751438389998
+      },
+      {
+        "key": "RANDOM_TABULAR-105",
+        "baseline": 0.7596680540000307,
+        "current": 0.7923576330003925
+      },
+      {
+        "key": "RANDOM_TABULAR-106",
+        "baseline": 0.6194329939999079,
+        "current": 0.6999816399993506
+      },
+      {
+        "key": "RANDOM_TABULAR-107",
+        "baseline": 81.94308342499971,
+        "current": 74.28921480900044
+      },
+      {
+        "key": "RANDOM_TABULAR-108",
+        "baseline": 423.9492995239998,
+        "current": 387.32939145399996
+      },
+      {
+        "key": "RANDOM_TABULAR-109",
+        "baseline": 269.38111016699986,
+        "current": 249.32694597000045
+      },
+      {
+        "key": "RANDOM_TABULAR-110",
+        "baseline": 1129.877050064999,
+        "current": 1052.0859458240002
+      },
+      {
+        "key": "RANDOM_TABULAR-111",
+        "baseline": 1235.9426686470015,
+        "current": 1176.6238752339996
+      },
+      {
+        "key": "RANDOM_TABULAR-112",
+        "baseline": 98.07500360999984,
+        "current": 93.43972505200145
+      }
+    ]
+  },
+  "summary": {
+    "comparedCases": 22,
+    "contractRegressions": 0,
+    "metricChanges": 0,
+    "unexpectedMetricChanges": 0,
+    "expectedMetricChanges": 0
+  }
+}

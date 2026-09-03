@@ -20,7 +20,7 @@ import numpy.typing as npt
 from minegen.config import CANONICAL_COORDINATE_SYSTEM
 from minegen.core.models import Scenario
 from minegen.world.field_grid import FieldGrid
-from minegen.world.orebody import Orebody
+from minegen.world.orebody import AnalyticOrebody, Orebody
 from minegen.world.synthetic_world import SyntheticWorld
 
 SliceAxis = Literal["x", "y", "z"]
@@ -58,17 +58,18 @@ def cells_intersect_orebody(
     n_sub: int = OREBODY_INTERSECTION_SUBSAMPLES,
 ) -> npt.NDArray[np.bool_]:
     """``True`` where the display CELL centred on each point intersects the
-    analytic orebody solid.
+    orebody solid.
 
     This is an INTERSECTION test on a cell, never a membership claim about a
     point: membership is ``orebody.contains`` and nothing else (rule 129).
-    Deciding it takes three steps, each of them the analytic solid's own
-    geometry:
+    Deciding it takes three steps, each of them the solid's own geometry:
 
-    1. ``sdf(center) <= 0`` — the center is inside, so the cell certainly
+    1. ``contains(center)`` — the center is inside, so the cell certainly
        intersects;
-    2. ``sdf(center) > cell_half_diagonal`` — the solid cannot reach any
-       point of the cell, so it certainly does not;
+    2. a certain-miss cull: for an ANALYTIC body ``sdf(center) >
+       cell_half_diagonal`` (exact distance); for an IMPLICIT body only the
+       conservative bounding box is used — the approximate clearance is
+       never treated as an exact rejection bound (rule 134/135);
     3. otherwise a deterministic ``n³`` sub-sample of the cell is tested with
        ``contains``.
 
@@ -76,9 +77,15 @@ def cells_intersect_orebody(
     sub-sample spacing can be missed. It is a visualization mask, so a missed
     sliver hides a cell rather than inventing mineralization — the failure
     direction we want."""
-    sdf = orebody.signed_distance(centers)
-    hit = sdf <= 0.0
-    undecided = (~hit) & (sdf <= grid.cell_half_diagonal)
+    hit = orebody.contains(centers)
+    half = grid.cell_half_diagonal
+    if isinstance(orebody, AnalyticOrebody):
+        undecided = (~hit) & (orebody.signed_distance(centers) <= half)
+    else:
+        lo, hi = orebody.bounding_box()
+        # a cell can only reach the solid if its center is within half a
+        # cell diagonal of the solid's conservative envelope
+        undecided = (~hit) & np.all((centers >= lo - half) & (centers <= hi + half), axis=-1)
     if bool(undecided.any()):
         offsets = grid.cell_subsample_offsets(n_sub)
         pts = centers[undecided][:, None, :] + offsets[None, :, :]
@@ -203,6 +210,10 @@ def build_scene(scenario: Scenario, world: SyntheticWorld) -> dict[str, Any]:
         },
         "orebody": {
             **world.orebody.to_dict(),
+            # backend-authored DERIVED render mesh (rule 138): the client
+            # assembles it as-is and never infers membership from it
+            "meshVertices": int(verts.shape[0]),
+            "meshTriangles": int(faces.shape[0]),
             "positions": verts.ravel().tolist(),
             "indices": faces.ravel().tolist(),
         },

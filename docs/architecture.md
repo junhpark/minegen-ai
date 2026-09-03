@@ -430,9 +430,11 @@ deterministic bisection (axis-plane degeneracies handled with a 1 nm
 clamp, error ≪ 1e-6 m); contains / volume (4/3·π·abc) / closed-form
 rotated AABB / UV-sphere mesh with every vertex on the analytic surface
 all describe the SAME solid (rule 120). True free-form irregular bodies
-are DEFERRED: without a metric SDF they would poison the engineering
-buffers. The legacy design pipeline remains TABULAR-only behind a typed
-422 (UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT; rule 123) until the Phase 20
+were DEFERRED here because without a metric SDF they would poison the
+engineering buffers; Phase 19 resolves that with an explicit
+implicit-body contract (below) rather than by faking an SDF. The legacy
+design pipeline remains TABULAR-only behind a typed 422
+(UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT; rule 123) until the Phase 20
 generalized layout (Parametric Layout Family Search).
 
 Frontend: the Scenario panel gained Preset / Seed / fault-count controls
@@ -511,3 +513,88 @@ split, committed Phase-17 baseline, a machine-readable comparison and a
 Field Slice stays an explicit default-OFF layer, now masked by the backend;
 the Parameters panel shows "Field sampling · numerical spacing" instead of
 "Block".
+
+### Phase 19 — Implicit Geological Orebody (WARPED_VEIN)
+
+The smooth ellipsoid stays as the analytic geometric reference; the
+realistic-looking non-tabular demonstration is now a deterministic,
+geologically plausible SYNTHETIC irregular body that is a TRUE
+authoritative solid:
+
+    resolved ScenarioCreate.orebody.warpedVein   (shapeModelVersion = 1)
+        ↓ smooth low-order morphology fields on the strike/dip frame
+    authoritative implicit function φ(u, v, w)      contains := φ <= 0
+        ├── conservative analytic bounding box       (constructor-time)
+        ├── deterministic numerical volume           (2-D midpoint quadrature)
+        ├── DERIVED approximate signed clearance     (lazy lattice + EDT)
+        └── DERIVED render mesh                      (lazy marching cubes)
+
+Honest contract split (`world/orebody.py`, rule 134): `AnalyticOrebody`
+(TABULAR, ELLIPSOID — `signed_distance` is the EXACT Euclidean SDF) and
+`ImplicitOrebody` (WARPED_VEIN — `level` = φ, `approximate_clearance`
+with explicit spacing / error metadata, never called an SDF). The
+generic `Orebody` interface is shape-neutral: `half_thickness` and
+`footwall_point` moved to `TabularOrebody`, and the legacy targets /
+levels / stope code is typed against that class, unchanged in
+behaviour (golden suite identical). `DesignCostEvaluator` accepts only
+`AnalyticOrebody` (`ExactDistanceRequiredError`); the service maps that
+to UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT (422, Phase 20 explanation) for
+targets AND cost evaluation, so an approximate clearance can never
+weaken the hard orebody buffers (rule 135).
+
+Shape model 1 (`world/warped_vein.py`, rule 139): weight-normalized
+harmonic modes (wavenumber ≤ 3 on the body extent) drive a laterally
+deviating centreline, an asymmetric superellipse planform with four
+independently modulated edges, a warped mid-surface and a pinch-and-swell
+thickness multiplier `1 + V·g` whose floor `1 − V ≥ pinchFloorRatio` holds
+by construction; terminations taper as `sqrt(1 − P^k)`, `k = 2/edgeTaper`.
+φ = ((w − w_mid)/(T/2·m))² + P^k − 1 is single-valued over the frame (no
+overhangs) and the planform is verified connected at realization.
+Volume is the deterministic 2-D quadrature of the exact w-extent `2h`
+(no Monte Carlo; converges to < 1e-4 between 1 m and 0.5 m; independent
+3-D lattice count and closed-mesh signed volume agree within 2 %).
+
+Derived geometry (rule 138) lives on its OWN lattice (`geometryResolution`
+in-plane, across-thickness spacing ≤ floor thickness / 3, padded, capped
+at 6 M cells with an explicit `OREBODY_GEOMETRY_BUDGET_EXCEEDED`), never
+on `fieldSampling`. Clearance = signed Euclidean distance transform of the
+lattice classification, trilinear query, sign forced to agree with
+`contains`. Mesh = scikit-image marching cubes (Lewiner; the only new
+dependency — a hand-written triangulator would be fragile for no
+benefit), welded, watertight, outward, vertices rounded to 1 mm for
+transport. Construction is ≈ 10 ms (cheap enough for the realizer's
+bounded retries); the derivatives are built lazily and cached.
+
+Realization (`RANDOM_WARPED_VEIN`, rule 136): the SAME orebody sub-stream
+(0x0B0D17, no new key) draws location / orientation / nominal
+dimensions, then every scalar control and every mode coefficient;
+candidates pass the identical world-fit AABB gate (rule 125) plus a
+morphology acceptance on cheap 2-D diagnostics (one connected planform,
+floor respected, pinch/swell range ≥ 0.15, warp ≥ 50 % of amplitude,
+edge asymmetry ≥ 5 %, geometry budget) and are rejected whole otherwise.
+Existing presets are bit-identical. The persisted document alone — with
+its `shapeModelVersion` (rule 137) — reproduces the solid; `schemaVersion`
+stays 2 because the block is additive and no v2 meaning changed.
+
+Frontend: preset "Randomized · irregular warped vein"; ellipsoid is
+labelled a geometric reference shape; the Advanced editor exposes warp
+amplitude, centreline deviation, outline irregularity, thickness
+variability, pinch floor and edge taper (plus a collapsed read-only view
+of the resolved modes) and never fabricates coefficients — WARPED_VEIN is
+reachable only through realization, and leaving it discards the
+morphology; readouts say "nominal thickness"; the layer shades the
+backend isosurface smooth (edge wireframe only for analytic bodies);
+`designSupported` stays false with the Phase 20 notice. A separate
+world-only golden suite (`python -m minegen.regression warped-vein`,
+12 seeds, baseline `golden/phase19_warped_vein.json`, smoke subset in CI)
+records bbox, volume, mesh counts, watertightness, clearance resolution,
+thickness range, morphology diagnostics and timings; WARPED_VEIN is never
+fed through the legacy decline pipeline to populate metrics. The existing
+22-case golden suite re-run after the phase
+(`golden/phase19_full.json`, comparison `golden/phase19_vs_phase18.md`)
+shows 0 HARD CONTRACT regressions and 0 metric changes against
+`phase18_after_migration` — the TABULAR pipeline and the ELLIPSOID typed
+rejection are unchanged. This is a
+synthetic morphology model — not a measured orebody, not resource or
+reserve estimation, not kriging, not an imported block model, not a
+digital twin.

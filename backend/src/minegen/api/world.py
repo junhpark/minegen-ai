@@ -14,6 +14,7 @@ from minegen.services.world_service import (
     WorldNotGeneratedError,
     WorldService,
 )
+from minegen.world.warped_vein import WarpedVeinGeometryBudgetError
 
 router = APIRouter(prefix="/scenarios/{scenario_id}", tags=["world"])
 
@@ -56,6 +57,14 @@ def generate_world(scenario_id: str, svc: Service) -> dict[str, Any]:
         return svc.generate(scenario_id)
     except ScenarioNotFoundError as e:
         raise _guard(scenario_id, e) from e
+    except WarpedVeinGeometryBudgetError as e:
+        # Phase 19: an edited WARPED_VEIN whose derived geometry lattice
+        # exceeds the supported budget fails explicitly — never coarsened
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "OREBODY_GEOMETRY_BUDGET_EXCEEDED",
+            f"scenario '{scenario_id}': {e}",
+        ) from e
 
 
 @router.get("/world")

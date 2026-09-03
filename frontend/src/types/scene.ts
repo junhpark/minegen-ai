@@ -50,17 +50,46 @@ export interface TerrainPayload {
   zMax: number
 }
 
+/** Backend-authored morphology readout of a WARPED_VEIN (Phase 19):
+ * resolved controls plus 2-D diagnostics of the implicit solid. Display
+ * only — the frontend never derives any of it. */
+export interface OrebodyMorphologyPayload {
+  warpAmplitude: number
+  centerlineDeviation: number
+  outlineIrregularity: number
+  thicknessVariability: number
+  pinchFloorRatio: number
+  edgeTaper: number
+  geometryResolution: number
+  planformConnectedComponents: number
+  minInteriorThickness: number | null
+  maxInteriorThickness: number | null
+  [key: string]: number | null
+}
+
 export interface OrebodyPayload {
   type: string
   center: [number, number, number]
   u: [number, number, number]
   v: [number, number, number]
   w: [number, number, number]
-  halfExtents: [number, number, number]
+  /** TABULAR only */
+  halfExtents?: [number, number, number]
+  /** ELLIPSOID only */
+  semiAxes?: [number, number, number]
+  /** WARPED_VEIN only: nominal L/2, H/2, T/2 (the morphology modulates them) */
+  nominalHalfExtents?: [number, number, number]
   /** geometric solid volume — never a resource or reserve figure */
   volumeM3: number
+  /** EXACT_METRIC_SDF (analytic) or DERIVED_APPROXIMATE_CLEARANCE (implicit) */
+  distanceContract: string
+  shapeModelVersion?: number
+  morphology?: OrebodyMorphologyPayload
   bboxMin: [number, number, number]
   bboxMax: [number, number, number]
+  /** backend-authored DERIVED render mesh — consumed as-is, never membership */
+  meshVertices: number
+  meshTriangles: number
   positions: number[]
   indices: number[]
 }

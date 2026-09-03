@@ -1,6 +1,8 @@
 // Mirrors backend/src/minegen/core/enums.py. Add values, never rename.
 
-export const OREBODY_TYPES = ['TABULAR', 'ELLIPSOID', 'PIPE', 'LENS'] as const
+/** WARPED_VEIN (Phase 19) is the deterministic synthetic irregular implicit
+ * body; PIPE and LENS stay reserved for their own future semantics. */
+export const OREBODY_TYPES = ['TABULAR', 'ELLIPSOID', 'PIPE', 'LENS', 'WARPED_VEIN'] as const
 export type OrebodyType = (typeof OREBODY_TYPES)[number]
 
 export const NODE_TYPES = [
