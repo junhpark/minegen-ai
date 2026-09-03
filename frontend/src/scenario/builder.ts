@@ -18,7 +18,9 @@ import type {
   ScenarioCreate,
   ScenarioPreset,
   ScenarioRealizeRequest,
+  WarpedVeinConfig,
 } from '@/types/api'
+import type { OrebodyType } from '@/types/enums'
 
 export interface BuilderState {
   preset: ScenarioPreset
@@ -42,32 +44,119 @@ export function realizeRequest(state: BuilderState): ScenarioRealizeRequest {
   }
 }
 
-/** Compact human summary of a realized scenario for the preview card. */
+/** Human label of a realization preset. ELLIPSOID is presented as the
+ * simple analytic geometric reference; the Phase 19 warped vein is the
+ * irregular synthetic-morphology demonstration. */
+export function presetLabel(preset: ScenarioPreset): string {
+  switch (preset) {
+    case 'BASELINE':
+      return 'Baseline (fixed reference mine)'
+    case 'RANDOM_TABULAR':
+      return 'Randomized · tabular orebody'
+    case 'RANDOM_ELLIPSOID':
+      return 'Randomized · ellipsoid (geometric reference shape)'
+    case 'RANDOM_WARPED_VEIN':
+      return 'Randomized · irregular warped vein'
+  }
+}
+
+/** Morphology one-liner for a WARPED_VEIN: warp / thickness variability /
+ * pinch floor, echoed from the resolved backend controls. */
+export function morphologySummary(vein: WarpedVeinConfig): string {
+  return (
+    `warp ±${vein.warpAmplitude.toFixed(0)} m · thickness ±${(vein.thicknessVariability * 100).toFixed(0)} % · ` +
+    `pinch floor ${(vein.pinchFloorRatio * 100).toFixed(0)} %`
+  )
+}
+
+/** Compact human summary of a realized scenario for the preview card. For
+ * a WARPED_VEIN the dimensions are NOMINAL — the thickness is never
+ * constant anywhere — so the wording says so. */
 export function realizedSummary(sc: ScenarioCreate): string[] {
   const ob = sc.orebody
+  const size = `${ob.length.toFixed(0)}×${ob.height.toFixed(0)}`
+  if (ob.orebodyType === 'WARPED_VEIN' && ob.warpedVein) {
+    return [
+      `WARPED_VEIN orebody · nominal ${size} m · nominal thickness ${ob.thickness.toFixed(1)} m`,
+      morphologySummary(ob.warpedVein),
+      `center E ${ob.center.x.toFixed(0)} / N ${ob.center.y.toFixed(0)} / RL ${ob.center.z.toFixed(0)} m`,
+      `strike ${ob.strikeDeg.toFixed(0)}° · dip ${ob.dipDeg.toFixed(0)}° · grade ${ob.meanGrade.toFixed(1)} g/t`,
+      `faults ${sc.geology.faults.length}`,
+    ]
+  }
   return [
-    `${ob.orebodyType} orebody · ${ob.length.toFixed(0)}×${ob.height.toFixed(0)}×${ob.thickness.toFixed(1)} m`,
+    `${ob.orebodyType} orebody · ${size}×${ob.thickness.toFixed(1)} m`,
     `center E ${ob.center.x.toFixed(0)} / N ${ob.center.y.toFixed(0)} / RL ${ob.center.z.toFixed(0)} m`,
     `strike ${ob.strikeDeg.toFixed(0)}° · dip ${ob.dipDeg.toFixed(0)}° · grade ${ob.meanGrade.toFixed(1)} g/t`,
     `faults ${sc.geology.faults.length}`,
   ]
 }
 
-/** Phase 17 gate (mirror of the backend typed failure): the legacy design
- * pipeline supports TABULAR only; other types are view/world-only until
- * Phase 18. */
+/** Legacy-layout gate (mirror of the backend typed failure
+ * UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT): the Phase 03–18 design pipeline
+ * supports TABULAR only; ELLIPSOID and WARPED_VEIN are world/visualization
+ * only until Phase 20 (rule 140). */
 export function designSupported(scenario: Pick<Scenario, 'orebody'> | null): boolean {
   return scenario === null || scenario.orebody.orebodyType === 'TABULAR'
 }
 
 export const DESIGN_UNSUPPORTED_NOTICE =
-  'This orebody type is not supported by the legacy decline/access layout yet. ' +
-  'World generation and visualization work; generalized layout arrives in Phase 18.'
+  'This orebody type is not supported by the legacy decline/access layout. ' +
+  'World generation and visualization work; generalized layout arrives in ' +
+  'Phase 20 — Parametric Layout Family Search.'
 
-/** Orebody geometries with a real backend implementation. Reserved enum
- * members (PIPE, LENS) are deliberately NOT offered. */
+/** Orebody geometries a user may switch a draft INTO by hand. Reserved enum
+ * members (PIPE, LENS) are deliberately NOT offered, and neither is
+ * WARPED_VEIN: its morphology is backend-realized coefficient state the
+ * client must never fabricate (rule 124/136) — it is reachable only through
+ * the RANDOM_WARPED_VEIN preset. */
 export const EDITABLE_OREBODY_TYPES = ['TABULAR', 'ELLIPSOID'] as const
 export type EditableOrebodyType = (typeof EDITABLE_OREBODY_TYPES)[number]
+
+/** Type options offered for a draft: the analytic ones always, plus
+ * WARPED_VEIN only while the draft still carries its resolved morphology. */
+export function orebodyTypeOptions(draft: ScenarioCreate): readonly OrebodyType[] {
+  return draft.orebody.orebodyType === 'WARPED_VEIN' && draft.orebody.warpedVein
+    ? ['WARPED_VEIN', ...EDITABLE_OREBODY_TYPES]
+    : EDITABLE_OREBODY_TYPES
+}
+
+/** Switch the draft's orebody type. Leaving WARPED_VEIN discards its
+ * resolved morphology (the backend forbids a dormant one on an analytic
+ * type); entering WARPED_VEIN is only possible when the draft already
+ * carries one — never fabricated here. */
+export function editOrebodyType(draft: ScenarioCreate, type: OrebodyType): ScenarioCreate {
+  if (type === 'WARPED_VEIN') {
+    return draft.orebody.warpedVein
+      ? { ...draft, orebody: { ...draft.orebody, orebodyType: type } }
+      : draft
+  }
+  if (!EDITABLE_OREBODY_TYPES.includes(type as EditableOrebodyType)) return draft
+  return { ...draft, orebody: { ...draft.orebody, orebodyType: type, warpedVein: null } }
+}
+
+/** Scalar edit of the resolved WARPED_VEIN morphology controls. The mode
+ * coefficients are never touched here; only the explicit user-facing
+ * controls the backend interprets. */
+export function editWarpedVein(
+  draft: ScenarioCreate,
+  patch: Partial<
+    Pick<
+      WarpedVeinConfig,
+      | 'warpAmplitude'
+      | 'centerlineDeviation'
+      | 'outlineIrregularity'
+      | 'thicknessVariability'
+      | 'pinchFloorRatio'
+      | 'edgeTaper'
+      | 'geometryResolution'
+    >
+  >,
+): ScenarioCreate {
+  const vein = draft.orebody.warpedVein
+  if (draft.orebody.orebodyType !== 'WARPED_VEIN' || !vein) return draft
+  return { ...draft, orebody: { ...draft.orebody, warpedVein: { ...vein, ...clean(patch) } } }
+}
 
 export const MAX_FAULTS = 6
 

@@ -1,13 +1,15 @@
 import type { ScenarioCreate } from '@/types/api'
+import type { OrebodyType } from '@/types/enums'
 import {
   addFault,
   editFault,
   editOrebody,
+  editOrebodyType,
   editRockQuality,
-  EDITABLE_OREBODY_TYPES,
+  editWarpedVein,
   MAX_FAULTS,
+  orebodyTypeOptions,
   removeFault,
-  type EditableOrebodyType,
 } from './builder'
 
 /**
@@ -63,6 +65,8 @@ export function AdvancedScenarioEditor({
 }) {
   const ob = draft.orebody
   const rq = draft.geology.rockQuality
+  const vein = ob.orebodyType === 'WARPED_VEIN' ? ob.warpedVein : null
+  const nominal = vein ? 'Nominal ' : ''
   return (
     <div className="mt-2 rounded-sm border border-rock-700 bg-rock-900/40 p-2">
       <Group title="Orebody">
@@ -70,18 +74,22 @@ export function AdvancedScenarioEditor({
           <span className="mb-0.5 block text-[10px] text-mute">Type</span>
           <select
             value={ob.orebodyType}
-            onChange={(e) =>
-              onChange(editOrebody(draft, { orebodyType: e.target.value as EditableOrebodyType }))
-            }
+            onChange={(e) => onChange(editOrebodyType(draft, e.target.value as OrebodyType))}
             className={FIELD}
           >
-            {EDITABLE_OREBODY_TYPES.map((t) => (
+            {orebodyTypeOptions(draft).map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
             ))}
           </select>
         </label>
+        {!vein ? (
+          <p className="mb-2 text-[10px] text-mute">
+            An irregular WARPED_VEIN is realized by the backend from the “irregular warped vein”
+            preset; its morphology is never generated here.
+          </p>
+        ) : null}
         <div className="mb-2 grid grid-cols-3 gap-1.5">
           <Num
             label="Center E"
@@ -111,24 +119,96 @@ export function AdvancedScenarioEditor({
             onChange={(dipDeg) => onChange(editOrebody(draft, { dipDeg }))}
           />
           <Num
-            label="Length m"
+            label={`${nominal}length m`}
             value={ob.length}
             onChange={(length) => onChange(editOrebody(draft, { length }))}
           />
           <Num
-            label="Height m"
+            label={`${nominal}height m`}
             value={ob.height}
             onChange={(height) => onChange(editOrebody(draft, { height }))}
           />
           <Num
-            label="Thickness m"
+            label={`${nominal}thickness m`}
             value={ob.thickness}
             step={0.5}
             onChange={(thickness) => onChange(editOrebody(draft, { thickness }))}
           />
         </div>
-        <p className="mt-1 text-[10px] text-mute">Height is the down-dip extent, not vertical.</p>
+        <p className="mt-1 text-[10px] text-mute">
+          Height is the down-dip extent, not vertical.
+          {vein ? ' Dimensions are nominal: the morphology below modulates them.' : ''}
+        </p>
       </Group>
+
+      {vein ? (
+        <Group title="Irregular morphology (synthetic, backend-resolved)">
+          <div className="grid grid-cols-3 gap-1.5">
+            <Num
+              label="Warp amp. m"
+              value={vein.warpAmplitude}
+              onChange={(warpAmplitude) => onChange(editWarpedVein(draft, { warpAmplitude }))}
+            />
+            <Num
+              label="Centre dev. m"
+              value={vein.centerlineDeviation}
+              onChange={(centerlineDeviation) =>
+                onChange(editWarpedVein(draft, { centerlineDeviation }))
+              }
+            />
+            <Num
+              label="Outline irreg."
+              value={vein.outlineIrregularity}
+              step={0.05}
+              onChange={(outlineIrregularity) =>
+                onChange(editWarpedVein(draft, { outlineIrregularity }))
+              }
+            />
+            <Num
+              label="Thickness var."
+              value={vein.thicknessVariability}
+              step={0.05}
+              onChange={(thicknessVariability) =>
+                onChange(editWarpedVein(draft, { thicknessVariability }))
+              }
+            />
+            <Num
+              label="Pinch floor"
+              value={vein.pinchFloorRatio}
+              step={0.05}
+              onChange={(pinchFloorRatio) => onChange(editWarpedVein(draft, { pinchFloorRatio }))}
+            />
+            <Num
+              label="Edge taper"
+              value={vein.edgeTaper}
+              step={0.05}
+              onChange={(edgeTaper) => onChange(editWarpedVein(draft, { edgeTaper }))}
+            />
+          </div>
+          <p className="mt-1 text-[10px] text-mute">
+            Thickness variability must stay ≤ 1 − pinch floor. Geologically plausible synthetic
+            morphology — not a measured or estimated orebody.
+          </p>
+          <details className="mt-1">
+            <summary className="cursor-pointer text-[10px] text-chalk-dim">
+              Resolved morphology modes (expert, read-only) · shape model v{vein.shapeModelVersion}
+            </summary>
+            <pre className="readout mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-[9px] text-mute">
+              {JSON.stringify(
+                {
+                  warpModes: vein.warpModes,
+                  deviationModes: vein.deviationModes,
+                  outlineModes: vein.outlineModes,
+                  thicknessModes: vein.thicknessModes,
+                  geometryResolution: vein.geometryResolution,
+                },
+                null,
+                1,
+              )}
+            </pre>
+          </details>
+        </Group>
+      ) : null}
 
       <Group title="Grade">
         <div className="grid grid-cols-3 gap-1.5">

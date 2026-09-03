@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { ScenarioCreate } from '@/types/api'
-import { editOrebody, realizeRequest } from './builder'
+import { editOrebody, editWarpedVein, realizeRequest } from './builder'
 
 function backendRealization(seed: number): ScenarioCreate {
   return {
@@ -95,5 +95,56 @@ describe('scenario panel draft flow', () => {
       seed: 777,
       faultCount: 4,
     })
+  })
+})
+
+function backendVeinRealization(seed: number): ScenarioCreate {
+  const base = backendRealization(seed)
+  return {
+    ...base,
+    orebody: {
+      ...base.orebody,
+      orebodyType: 'WARPED_VEIN',
+      warpedVein: {
+        shapeModelVersion: 1,
+        warpAmplitude: 20,
+        centerlineDeviation: 40,
+        outlineIrregularity: 0.25,
+        thicknessVariability: 0.4,
+        pinchFloorRatio: 0.5,
+        edgeTaper: 0.5,
+        geometryResolution: 5,
+        warpModes: [{ ku: 1, kv: 0, phaseU: 0, phaseV: 0, weight: 1 }],
+        deviationModes: [{ ku: 0, kv: 1, phaseU: 0, phaseV: 0, weight: 1 }],
+        outlineModes: [{ ku: 1, kv: 0, phaseU: 0, phaseV: 0, weight: 1 }],
+        thicknessModes: [{ ku: 1, kv: 1, phaseU: 0, phaseV: 0, weight: 1 }],
+      },
+    },
+  }
+}
+
+describe('scenario panel draft flow — Phase 19 warped vein', () => {
+  it('realization creates an editable WARPED_VEIN draft whose edits reach Create', () => {
+    const realize = vi.fn(backendVeinRealization)
+    const panel = makePanel(realize)
+    panel.randomize()
+    expect(panel.draft?.orebody.orebodyType).toBe('WARPED_VEIN')
+    expect(panel.draft?.orebody.warpedVein?.shapeModelVersion).toBe(1)
+    const edited = editWarpedVein(panel.draft!, { warpAmplitude: 33 })
+    expect(edited.orebody.warpedVein?.warpAmplitude).toBe(33)
+    expect(edited.orebody.warpedVein?.warpModes).toEqual(
+      backendVeinRealization(42).orebody.warpedVein!.warpModes,
+    )
+    expect(realize).toHaveBeenCalledTimes(1)
+  })
+
+  it('changing the seed discards the realized morphology instead of re-running it silently', () => {
+    const realize = vi.fn(backendVeinRealization)
+    const panel = makePanel(realize)
+    panel.randomize()
+    panel.setSeed(8)
+    expect(panel.draft).toBeNull()
+    expect(panel.create().seed).toBe(8)
+    expect(realize).toHaveBeenCalledTimes(2)
   })
 })

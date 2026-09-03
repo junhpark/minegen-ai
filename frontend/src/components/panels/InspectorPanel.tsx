@@ -122,6 +122,14 @@ export function InspectorPanel() {
             </dd>
             <dt className="break-words text-mute">Orebody volume</dt>
             <dd className="break-words">{(st.orebody.volumeM3 / 1e6).toFixed(2)} Mm³ geometric</dd>
+            {/* Phase 19 (rule 134): analytic bodies carry an exact SDF, the
+                implicit warped vein only a derived approximate clearance */}
+            <dt className="break-words text-mute">Distance</dt>
+            <dd className="break-words">
+              {st.orebody.distanceContract === 'DERIVED_APPROXIMATE_CLEARANCE'
+                ? 'approximate clearance (implicit solid)'
+                : 'exact analytic SDF'}
+            </dd>
             <dt className="break-words text-mute">Ore z</dt>
             <dd className="break-words">
               {st.orebody.bboxMin[2].toFixed(0)} … {st.orebody.bboxMax[2].toFixed(0)} m

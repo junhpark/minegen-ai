@@ -5,6 +5,8 @@ import { AdvancedScenarioEditor } from '@/scenario/AdvancedScenarioEditor'
 import {
   DEFAULT_BUILDER,
   faultCountEnabled,
+  morphologySummary,
+  presetLabel,
   realizeRequest,
   realizedSummary,
 } from '@/scenario/builder'
@@ -130,11 +132,7 @@ export function ScenarioPanel() {
           >
             {SCENARIO_PRESETS.map((p) => (
               <option key={p} value={p}>
-                {p === 'BASELINE'
-                  ? 'Baseline (fixed reference mine)'
-                  : p === 'RANDOM_TABULAR'
-                    ? 'Randomized · tabular orebody'
-                    : 'Randomized · ellipsoid orebody'}
+                {presetLabel(p)}
               </option>
             ))}
           </select>
@@ -281,8 +279,29 @@ export function ParametersPanel({ scenario }: { scenario: Scenario | null }) {
           <dd className="break-words">
             {scenario.orebody.strikeDeg}° / {scenario.orebody.dipDeg}°
           </dd>
-          <dt className="break-words text-mute">Thickness</dt>
-          <dd className="break-words">{fmtMeters(scenario.orebody.thickness, 0)}</dd>
+          {/* Phase 19: a WARPED_VEIN has no constant thickness — its
+              dimensions are NOMINAL and the resolved morphology modulates
+              them, so the readout must not imply otherwise */}
+          {scenario.orebody.orebodyType === 'WARPED_VEIN' && scenario.orebody.warpedVein ? (
+            <>
+              <dt className="break-words text-mute">Nominal size</dt>
+              <dd className="break-words">
+                {fmtMeters(scenario.orebody.length, 0)} × {fmtMeters(scenario.orebody.height, 0)}
+              </dd>
+              <dt className="break-words text-mute">Nominal thickness</dt>
+              <dd className="break-words">{fmtMeters(scenario.orebody.thickness, 0)}</dd>
+              <dt className="break-words text-mute">
+                Morphology
+                <span className="block text-[10px] leading-tight">synthetic, irregular</span>
+              </dt>
+              <dd className="break-words">{morphologySummary(scenario.orebody.warpedVein)}</dd>
+            </>
+          ) : (
+            <>
+              <dt className="break-words text-mute">Thickness</dt>
+              <dd className="break-words">{fmtMeters(scenario.orebody.thickness, 0)}</dd>
+            </>
+          )}
           {/* the synthetic-RMR disclaimer is kept in full on its own line;
               it is never abbreviated to a misleading "RMR" */}
           <dt className="break-words text-mute">

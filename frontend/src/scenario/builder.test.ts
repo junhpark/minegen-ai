@@ -7,10 +7,15 @@ import {
   designSupported,
   editFault,
   editOrebody,
+  editOrebodyType,
   editRockQuality,
+  editWarpedVein,
   EDITABLE_OREBODY_TYPES,
   faultCountEnabled,
   MAX_FAULTS,
+  morphologySummary,
+  orebodyTypeOptions,
+  presetLabel,
   realizedSummary,
   realizeRequest,
   removeFault,
@@ -58,7 +63,10 @@ describe('scenario builder model (Phase 17, rule 124)', () => {
     expect(designSupported(null)).toBe(true) // nothing loaded yet
     expect(designSupported({ orebody: { orebodyType: 'TABULAR' } } as never)).toBe(true)
     expect(designSupported({ orebody: { orebodyType: 'ELLIPSOID' } } as never)).toBe(false)
-    expect(DESIGN_UNSUPPORTED_NOTICE).toContain('Phase 18')
+    expect(designSupported({ orebody: { orebodyType: 'WARPED_VEIN' } } as never)).toBe(false)
+    expect(DESIGN_UNSUPPORTED_NOTICE).toContain('Phase 20')
+    expect(DESIGN_UNSUPPORTED_NOTICE).toContain('Parametric Layout Family Search')
+    expect(DESIGN_UNSUPPORTED_NOTICE).not.toContain('Phase 18')
   })
 })
 
@@ -155,5 +163,106 @@ describe('explicit draft editing (Phase 17 acceptance, rule 124)', () => {
     const edited = editOrebody(realizedDraft(), { thickness: 33, orebodyType: 'ELLIPSOID' })
     expect(realizedSummary(edited)[0]).toContain('ELLIPSOID')
     expect(realizedSummary(edited)[0]).toContain('33.0 m')
+  })
+})
+
+/** stand-in for a backend-realized WARPED_VEIN document (resolved modes) */
+function realizedVeinDraft(): ScenarioCreate {
+  const base = realizedDraft()
+  return {
+    ...base,
+    name: 'Random Warped Vein mine',
+    orebody: {
+      ...base.orebody,
+      orebodyType: 'WARPED_VEIN',
+      length: 520,
+      height: 310,
+      thickness: 16,
+      warpedVein: {
+        shapeModelVersion: 1,
+        warpAmplitude: 24,
+        centerlineDeviation: 50,
+        outlineIrregularity: 0.3,
+        thicknessVariability: 0.4,
+        pinchFloorRatio: 0.45,
+        edgeTaper: 0.5,
+        geometryResolution: 5,
+        warpModes: [{ ku: 1, kv: 0, phaseU: 0.3, phaseV: 0, weight: 0.8 }],
+        deviationModes: [{ ku: 0, kv: 1, phaseU: 0, phaseV: 0.4, weight: 0.9 }],
+        outlineModes: [{ ku: 1, kv: 0, phaseU: 0.7, phaseV: 0, weight: 0.6 }],
+        thicknessModes: [{ ku: 1, kv: 1, phaseU: 1, phaseV: 0, weight: 0.5 }],
+      },
+    },
+  }
+}
+
+describe('Phase 19 — RANDOM_WARPED_VEIN preset and draft (rules 124/136/140)', () => {
+  it('offers the preset with the irregular-vein label and keeps ellipsoid a reference shape', () => {
+    expect(realizeRequest({ preset: 'RANDOM_WARPED_VEIN', seed: 9, faultCount: 2 })).toEqual({
+      preset: 'RANDOM_WARPED_VEIN',
+      seed: 9,
+      faultCount: 2,
+    })
+    expect(faultCountEnabled('RANDOM_WARPED_VEIN')).toBe(true)
+    expect(presetLabel('RANDOM_WARPED_VEIN')).toBe('Randomized · irregular warped vein')
+    expect(presetLabel('RANDOM_ELLIPSOID')).toContain('geometric reference')
+    expect(presetLabel('BASELINE')).toContain('Baseline')
+    expect(DEFAULT_BUILDER.preset).toBe('BASELINE') // WARPED_VEIN is NOT the default yet
+  })
+
+  it('summarizes a warped vein with nominal wording and the morphology readout', () => {
+    const lines = realizedSummary(realizedVeinDraft())
+    expect(lines[0]).toBe('WARPED_VEIN orebody · nominal 520×310 m · nominal thickness 16.0 m')
+    expect(lines[1]).toBe('warp ±24 m · thickness ±40 % · pinch floor 45 %')
+    expect(morphologySummary(realizedVeinDraft().orebody.warpedVein!)).toBe(lines[1])
+    expect(lines.join(' ')).not.toMatch(/\bThickness\b/)
+  })
+
+  it('advanced irregularity controls update the final create payload', () => {
+    const draft = realizedVeinDraft()
+    const next = editWarpedVein(draft, {
+      warpAmplitude: 31,
+      thicknessVariability: 0.3,
+      pinchFloorRatio: 0.5,
+      edgeTaper: Number.NaN, // ignored
+    })
+    const vein = next.orebody.warpedVein!
+    expect(vein.warpAmplitude).toBe(31)
+    expect(vein.thicknessVariability).toBe(0.3)
+    expect(vein.pinchFloorRatio).toBe(0.5)
+    expect(vein.edgeTaper).toBe(0.5)
+    expect(vein.shapeModelVersion).toBe(1)
+    expect(vein.warpModes).toEqual(draft.orebody.warpedVein!.warpModes) // coefficients untouched
+    expect(draft.orebody.warpedVein!.warpAmplitude).toBe(24) // immutable
+    const plain = realizedDraft()
+    expect(editWarpedVein(plain, { warpAmplitude: 1 })).toBe(plain) // no morphology: no-op
+  })
+
+  it('never fabricates missing morphology coefficients on the client', () => {
+    const tabular = realizedDraft()
+    expect(orebodyTypeOptions(tabular)).toEqual(['TABULAR', 'ELLIPSOID'])
+    expect(EDITABLE_OREBODY_TYPES).not.toContain('WARPED_VEIN')
+    // switching a plain draft into WARPED_VEIN is refused (no coefficients to invent)
+    expect(editOrebodyType(tabular, 'WARPED_VEIN')).toBe(tabular)
+    expect(editOrebodyType(tabular, 'PIPE')).toBe(tabular)
+    expect(editWarpedVein(tabular, { warpAmplitude: 5 })).toBe(tabular)
+    // a realized vein may leave (dropping the morphology) and, while it still
+    // carries it, is offered as an option
+    const vein = realizedVeinDraft()
+    expect(orebodyTypeOptions(vein)).toEqual(['WARPED_VEIN', 'TABULAR', 'ELLIPSOID'])
+    const left = editOrebodyType(vein, 'TABULAR')
+    expect(left.orebody.orebodyType).toBe('TABULAR')
+    expect(left.orebody.warpedVein).toBeNull()
+    expect(orebodyTypeOptions(left)).toEqual(['TABULAR', 'ELLIPSOID'])
+    expect(editOrebodyType(left, 'WARPED_VEIN')).toBe(left) // gone for good — re-realize
+  })
+
+  it('the client has no randomness and no morphology math', () => {
+    const src = JSON.stringify(Object.keys(realizedVeinDraft().orebody.warpedVein!))
+    expect(src).toContain('warpModes')
+    // the summary only echoes numbers; nothing is computed from the modes
+    expect(morphologySummary({ ...realizedVeinDraft().orebody.warpedVein!, warpModes: [] })).toBe(
+      'warp ±24 m · thickness ±40 % · pinch floor 45 %',
+    )
   })
 })

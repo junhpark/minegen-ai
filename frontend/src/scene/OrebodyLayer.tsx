@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import * as THREE from 'three'
 import { positionsToThree } from '@/geometry/coordinateTransform'
 import type { OrebodyPayload } from '@/types/scene'
+import { showOrebodyEdges } from './orebodyPresentation'
 
 export function OrebodyLayer({ orebody }: { orebody: OrebodyPayload }) {
   const geometry = useMemo(() => {
@@ -11,6 +12,7 @@ export function OrebodyLayer({ orebody }: { orebody: OrebodyPayload }) {
     g.computeVertexNormals()
     return g
   }, [orebody])
+  const edges = showOrebodyEdges(orebody.type)
 
   return (
     <group>
@@ -24,10 +26,12 @@ export function OrebodyLayer({ orebody }: { orebody: OrebodyPayload }) {
           roughness={0.6}
         />
       </mesh>
-      <lineSegments>
-        <edgesGeometry args={[geometry]} />
-        <lineBasicMaterial color="#4fb3a5" transparent opacity={0.9} />
-      </lineSegments>
+      {edges ? (
+        <lineSegments>
+          <edgesGeometry args={[geometry]} />
+          <lineBasicMaterial color="#4fb3a5" transparent opacity={0.9} />
+        </lineSegments>
+      ) : null}
     </group>
   )
 }
