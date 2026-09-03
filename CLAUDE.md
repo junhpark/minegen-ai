@@ -1080,3 +1080,74 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      Phase 20B–20D. The frontend edits only explicit layout parameters and
      performs no layout engineering (no client-side enumeration, scoring or
      geometry).
+
+153. A main-ramp RL crossing is a RAMP LEVEL REFERENCE, never a level entry
+     (Phase 20B). The physical route is PORTAL → RAMP → RAMP_JUNCTION
+     (turnout) → LEVEL_ACCESS → LEVEL_ENTRY → level development → production
+     access. `RAMP_LEVEL_REFERENCE == LEVEL_ENTRY` is never assumed; the
+     Phase 20A crossing / footprint-reach predicate survives only as the
+     stage-2 ACCESS-POTENTIAL SCREEN (`withinReach`), never as "served".
+154. LEVEL_ENTRY is owned by the terminal of a validated Level Access. The
+     level drift is anchored there (`entrySource = LEVEL_ACCESS`); a
+     PARAMETRIC_V2 ramp whose segments end at turnouts is refused by the
+     level builder without the level-access artifact
+     (LEVEL_ACCESSES_REQUIRED). LEGACY keeps its Phase 05 segment ends as
+     entries behind the same builder (`entrySource = LEGACY_RAMP_SEGMENT`).
+155. Level Access is separate geometry from the Effective Ramp. The main
+     ramp is split EXACTLY at its ramp junctions (plus the `RAMP_END` tail);
+     access branches are never ramp segments and never inflate ramp totals.
+     Artifact ownership: `layout_v2_selected.json` (main ramp),
+     `level_accesses.json` (junctions + branches + anchors, written with the
+     selection under the same revision), `levels.json` (level / production
+     development). No polyline is duplicated across artifacts.
+156. Final "level served" means explicit physical access: a valid ramp
+     junction, a validated branch welded to the ramp (≤ 1e-6 m) reaching the
+     authoritative level-development anchor, hard constraints passed, and a
+     connected network path from the portal to the level entry. A layout-v2
+     candidate is FEASIBLE only when EVERY serviceable required level has a
+     valid access (LEVEL_ACCESS_INFEASIBLE otherwise, with per-level typed
+     reasons). Development score = main ramp + total access length; access
+     failures are never score penalties.
+157. Level-access planning is finite and deterministic: junction candidates
+     on a `junctionSearchSpacing` chainage lattice inside the
+     `junctionWindowAbove/Below` elevation window; a G1 Dubins CSC connector
+     (R = minTurnRadius) from the junction pose to the anchor pose with a
+     chord-exact constant gradient; selection = min (length, junction
+     chainage, terminal sense); `minimumRampJunctionSpacing` is a hard
+     rule (JUNCTION_SPACING_CONFLICT). Every candidate branch is judged on
+     the DELIVERED polyline (gradient, circumradius, world, cover,
+     restricted zones, clearance under the evaluator's policy, excavation
+     envelope). Nothing is clamped; an impossible access is typed.
+158. Level-development anchors are backend engineering geometry: the
+     footwall backbone at `anchorStandoff` from the footwall edge (exact
+     rule 43 line for TABULAR; the numerical level section's principal axis
+     and footwall-side extent for implicit bodies), entry placed by the
+     explicit `entryPolicy` (NEAREST_TO_RAMP), terminal heading along the
+     backbone. Under a CONSERVATIVE clearance policy the stand-off is raised
+     so the entry itself satisfies `required + errorBound`. The frontend
+     never reconstructs access or anchor geometry.
+159. Generic level access never encodes LONGHOLE production geometry. The
+     level builder always develops the generic backbone drift; the longhole
+     crosscut station lattice exists only for LONGHOLE_OPEN_STOPING.
+     CUT_AND_FILL (and every other reserved method) gets ramp junctions,
+     level accesses and the backbone drift, and reports
+     `productionDevelopment.status = UNSUPPORTED_METHOD` for its production
+     portion — never a silent longhole substitute.
+160. MineNetwork preserves physical truck connectivity: RAMP edges end at
+     RAMP_JUNCTION / RAMP_END nodes, LEVEL_ACCESS edges (owned by
+     `level_accesses.json`) join a RAMP_JUNCTION to its LEVEL_ENTRY, and
+     DRIFT / CROSSCUT never touch a ramp node. Scheduling roots each level's
+     development at the access task (which depends on the ramp task reaching
+     its junction); infrastructure and timeline resolve LEVEL_ACCESS
+     geometry through its owning artifact. No frontend shortcut exists.
+161. Plan radius on a delivered centerline is the three-point circumradius
+     `|p_{i+1} − p_{i−1}| / (2·sin δ_i)` (exact for any sampling of a circular
+     arc; ∞ for collinear triples; RADIUS_TOLERANCE 0.05 m covers only
+     floating-point noise). A true R_min hairpin sampled at 5 m is accepted.
+162. Level-access lifecycle: `level_accesses.json` is invalidated with the
+     layout selection (catalogue regeneration, re-selection, scenario /
+     world change) and is a fingerprint input of levels, network, timeline,
+     communication and sensors; switching the ramp source keeps it (it
+     belongs to the selection). Geology is never invalidated by a level
+     access. Approximate WARPED_VEIN clearance stays explicitly conservative
+     and the legacy pipeline stays behind its compatibility path.

@@ -27,7 +27,7 @@ demo (D0) is **deferred** and is no longer the next phase.
 | 18 | Spatial Field Core | remove BlockModel/SMU semantics, batch field API, replace longhole grade proxy, golden-scenario harness — done |
 | 19 | Implicit Geological Orebody | WARPED_VEIN: authoritative implicit solid (φ), variable thickness, pinch & swell, warped mid-surface, asymmetric outline → derived approximate clearance → derived marching-cubes mesh; legacy layout stays TABULAR-only — done |
 | 20A | Parametric Layout Family Search — families & Effective Ramp | SPIRAL / LONGITUDINAL / SWITCHBACK finite grids, numerical level service, delivered-centerline validation, EXACT / CONSERVATIVE clearance, hierarchical search + 3-group ranking, source-neutral Effective Ramp (LEGACY \| LAYOUT_V2) driving tunnel → levels → network → timeline → walkthrough for TABULAR; WARPED_VEIN candidates / ranking / rendering — done (Phase 20 NOT complete) |
-| 20B | Generalized level development | drifts / crosscuts / LEVEL_ENTRY from layout-v2 level connections for every orebody type; WARPED_VEIN walkthrough |
+| 20B | Ramp junctions, level access drives, method-aware level development | RAMP_JUNCTION → LEVEL_ACCESS → LEVEL_ENTRY topology, level-development anchors, finite deterministic access planning with hard validation, access length in ranking, `level_accesses.json`, method split (LONGHOLE lattice vs generic backbone; CUT_AND_FILL typed boundary), network / timeline / infrastructure connectivity, Phase 20A circumradius closeout — done. Drifts / crosscuts for implicit bodies and the WARPED_VEIN walkthrough stay deferred |
 | 20C | Local bounded refinement | bounded local A* / repair inside the family corridor, FIGURE_EIGHT / HYBRID families |
 | 20D | Rulebook constraints & layout comparison | explicit rulebook compliance reporting, multi-candidate comparison; legacy A* kept as baseline |
 | 21A | Longhole migration | prove the new MiningMethodPlan abstraction with already-validated geometry |
@@ -42,8 +42,8 @@ Deferred deployment item (not scheduled):
 | --- | --- | --- |
 | D0 | Hugging Face public demo | single Docker Space, session isolation, TTL, prebuilt demo scenario |
 
-Phases 01–20A are described in `docs/architecture.md`; the invariants they
-established are `CLAUDE.md` rules 1–152.
+Phases 01–20B are described in `docs/architecture.md`; the invariants they
+established are `CLAUDE.md` rules 1–162.
 
 ## How this list is used
 

@@ -596,3 +596,32 @@ in ≈ 9 s; geometry-stress (15 m levels, R_min 20 m) 3 feasible; WARPED_VEIN
 seed 307 honestly returns NO_FEASIBLE_CANDIDATE (all 68 typed). Effective
 Ramp materialization inserts the exact level-crossing vertices and splits
 there; boundary tangents are shared chord directions.
+
+## Phase 20B — ramp junctions and level accesses (`layout/access.py`, rules 153–160)
+
+Anchor: backbone point `E + n·standoff + t·axis` with `t` = the projection
+of the ramp's level reference clamped to `[lo + 5 m, hi − 5 m]`; TABULAR
+uses `footwall_candidate_position(orebody, 0, z, standoff)` and `u`,
+implicit bodies the section covariance eigenvector and the footwall-side
+extent along its normal.
+
+Junction lattice: chainages `k·10 m` with `z_ramp − z_L ∈ [−10, +45] m` and
+horizontal distance to the anchor ≤ 300 m. Connector: Dubins CSC with
+R = R_min from the junction pose (ramp heading) to the anchor pose
+(backbone heading, both senses); `α = θ0 − φ`, `β = θ1 − φ`, `d = |Δxy|/R`
+in the Shkel–Lumelsky normalization; the shortest admissible word is
+sampled every 2 m with points exactly on their circles; z is linear in
+delivered chord length (constant edge gradient `Δz / Σchord`).
+
+Acceptance on the delivered branch: `|g| ≤ g_max + 1e-9`, circumradius
+≥ R_min − 0.05 m, 15 m ≤ L ≤ 300 m, `evaluate_and_validate` with cover
+established (world, terrain, cover, restricted, orebody buffer under the
+policy), clearance ≥ required, profile boundary points through
+`envelope_masks` (0 hard, 0 above terrain), junction spacing ≥ 40 m.
+Selection `(length3d, junction chainage, sense)`.
+
+Measured (TABULAR reference, defaults): 68 candidates, 6 feasible, winner
+`SWITCHBACK-k2-p+0-CCW-g0.120` with 13/13 accesses, total access 211 m
+(worst 17 m); the spiral `SPIRAL-n1-CCW-e+0-g0.120` needs 1 171 m of access
+(≈ 95 m per level) and drops from 2nd to 3rd; per-candidate access planning
+costs 0.5–0.75 s (≈ 80 connectors per level), stage-4 total ≈ 4 s.

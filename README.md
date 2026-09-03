@@ -158,6 +158,41 @@ Every phase must pass all of these before it is considered complete:
    network → 4D unchanged; the warped-vein mesh (≈ 10–25 k vertices) orbits
    smoothly in the browser.
 
+## Phase 20B manual acceptance (ramp junctions & level accesses)
+
+Scenario 1 — TABULAR / LONGHOLE
+
+1. Baseline scenario → Generate world → Layout v2 → **Generate candidates**.
+   The winning candidate row reads "N/N accessible · ramp … m · access … m";
+   its detail lists every level as "junction @… m · access … m".
+2. **Select** the winner: the layer "Ramp junctions & level accesses" shows
+   amber branches leaving the ramp at amber spheres (turnouts) and ending
+   at mint cubes labelled "Lxx entry". The main ramp does NOT touch the
+   drift line; each level has a visible branch.
+3. **Activate** → Design panel: Generate tunnel mesh → levels → network →
+   stopes → timeline. Levels report "entry source LEVEL_ACCESS"; the
+   network shows RAMP_JUNCTION nodes on the ramp, LEVEL_ACCESS chords to
+   LEVEL_ENTRY nodes, and drifts start at the entries. Visually trace
+   ramp → turnout → branch → entry → drift → crosscut.
+4. 4D playback: a level's drift starts only after its access branch, which
+   starts only after the ramp reaches its turnout.
+
+Scenario 2 — WARPED_VEIN
+
+1. Randomized · irregular warped vein → Generate world → Generate
+   candidates → Select: branches follow the per-level numerical sections
+   (different headings per level), the clearance label stays
+   "CONSERVATIVE (−… m)". Levels / tunnel still answer the typed
+   implicit-orebody boundary.
+
+Scenario 3 — CUT_AND_FILL
+
+1. Baseline scenario with mining method CUT_AND_FILL → Generate candidates
+   → Activate → Generate levels: drifts only (generic backbone), no
+   crosscut lattice, levels report productionDevelopment
+   UNSUPPORTED_METHOD with the CUT_AND_FILL reason; stopes stay the typed
+   UNSUPPORTED_METHOD failure.
+
 ## Phase 20A manual acceptance (layout-v2 & Effective Ramp)
 
 1. Baseline TABULAR scenario → Generate world. In **Layout v2 — parametric

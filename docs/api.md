@@ -84,6 +84,11 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  …/design/layout-v2/selected                 409 LAYOUT_V2_NOT_SELECTED if missing
     POST …/design/layout-v2/activate {candidateId}   select + set active source LAYOUT_V2
                                                      → {rampSource, selected}
+    GET  …/design/level-accesses                     Phase 20B: ramp junctions + level-access
+                                                     branches + development anchors of the selected
+                                                     candidate (derived/level_accesses.json, written
+                                                     with the selection; rule 157)
+                                                     409 LEVEL_ACCESSES_NOT_GENERATED if missing
     GET  …/design/ramp-source                        {activeSource, owningArtifact, available, …}
     PUT  …/design/ramp-source {activeSource}         LEGACY | LAYOUT_V2 (409 LAYOUT_V2_NOT_SELECTED
                                                      without a selection); a change deletes every

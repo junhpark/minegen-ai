@@ -671,3 +671,82 @@ artifact. Golden: `python -m minegen.regression layout-v2` (4 cases,
 baseline `golden/phase20a_layout_v2.json`, smoke in CI) alongside the
 untouched legacy suite (`golden/phase20a_full.json`, comparison
 `golden/phase20a_vs_phase19.md`).
+
+### Phase 20B — Ramp Junctions, Level Access Drives, Mining-Method-Aware Level Development
+
+Phase 20A's downstream treated the main ramp's crossing of a level RL as
+the level entry — a whole-mine simplification that is not a truck-access
+topology. Phase 20B replaces it with the physical route
+
+    PORTAL → RAMP → RAMP_JUNCTION (turnout) → LEVEL_ACCESS → LEVEL_ENTRY
+           → level / footwall drift → JUNCTION → CROSSCUT → STOPE_ACCESS
+
+and distinguishes five concepts (rules 153–160): the MAIN RAMP (Effective
+Ramp), the RAMP LEVEL REFERENCE (an RL crossing — diagnostics and the
+stage-2 access-potential screen only), the RAMP JUNCTION (a turnout that
+becomes a topology node), the LEVEL ACCESS (a validated branch drive with
+its own centerline) and the LEVEL ENTRY (the branch terminal where the
+level development starts).
+
+`layout/access.py` owns the engineering:
+
+* `LevelDevelopmentAnchor` — the development location a branch must reach:
+  the footwall backbone at `anchorStandoff` from the footwall edge (exact
+  rule 43 line for TABULAR, the numerical level section's principal axis
+  and footwall-side extent for implicit bodies), the entry placed by the
+  explicit NEAREST_TO_RAMP policy (backbone point closest to the ramp's
+  level reference, clamped inside the extent), the terminal heading along
+  the backbone toward its centre, the mining method and diagnostics. Under
+  a CONSERVATIVE clearance policy the stand-off is raised to
+  `required + errorBound + 1 m` so the entry itself is clear.
+* `plan_level_accesses` — per serviceable level: a finite lattice of ramp
+  junction candidates every `junctionSearchSpacing` (10 m) whose ramp
+  elevation lies within `junctionWindowAbove` (45 m) / `junctionWindowBelow`
+  (10 m) of the level and within `maximumAccessLength` of the anchor; for
+  each candidate and both terminal senses a G1 Dubins CSC connector
+  (LSL/RSR/LSR/RSL, R = minTurnRadius, exact endpoints, z linear in
+  delivered chord length so every edge carries one gradient); rejection
+  reasons NO_JUNCTION_IN_WINDOW, GRADE_LIMIT, TURN_RADIUS, ACCESS_TOO_SHORT /
+  LONG, WORLD_BOUNDS, SURFACE_COVER, RESTRICTED_ZONE, OREBODY_CLEARANCE,
+  ENVELOPE_INVALID (profile boundary points through `envelope_masks`),
+  JUNCTION_SPACING_CONFLICT (`minimumRampJunctionSpacing`, 40 m);
+  deterministic selection = min (length, junction chainage, sense). No
+  clamping, no optimizer, no randomness.
+* Search integration (`layout/search.py`): stage 4 plans accesses for every
+  validated shortlisted main ramp; a level without a valid access makes the
+  candidate INFEASIBLE (LEVEL_ACCESS_INFEASIBLE); Development score counts
+  `mainRampLength + levelAccessLength`; `accessibleLevels`, the access
+  summary (total / worst / max gradient / min radius / failures) and the
+  per-level accesses are reported. `materialize_effective_ramp` splits the
+  main ramp at the ramp junctions (+ `RAMP_END` tail, `segmentId`,
+  `rampJunction`, `terminalKind`); `materialize_level_accesses` writes the
+  sibling artifact.
+
+Artifacts and downstream (rules 155, 160, 162): `layout_v2_selected.json`
+(main ramp) and `level_accesses.json` (junctions, branches, anchors) are
+written together by the selection under one revision; `levels.json` takes
+its LEVEL_ENTRY positions from the accesses (`entrySource = LEVEL_ACCESS`,
+LEVEL_ACCESSES_REQUIRED otherwise) and reports
+`productionDevelopment` — LONGHOLE keeps the station / crosscut lattice,
+every reserved method (CUT_AND_FILL first) gets the generic backbone drift
+and an explicit UNSUPPORTED_METHOD production status. MineNetwork emits
+RAMP_JUNCTION / RAMP_END nodes and LEVEL_ACCESS edges (geometryRef →
+`level_accesses.json`); scheduling adds DEVELOP_LEVEL_ACCESS tasks that
+depend on the ramp task reaching their junction and root each level there;
+the infrastructure domain resolves LEVEL_ACCESS geometry through its
+owner. The LEGACY Phase 05 path is unchanged (segment ends stay entries).
+
+Phase 20A closeout: the plan-radius estimator is now the three-point
+circumradius `|p_{i+1} − p_{i−1}| / (2 sin δ_i)` (exact for any sampling
+of a circular arc), so a true R_min hairpin sampled at 5 m is accepted
+(rule 161).
+
+Frontend: `LevelAccessLayer` (branches, junction spheres, entry cubes with
+labels), RAMP_JUNCTION / RAMP_END / LEVEL_ACCESS in the network and 4D
+layers, ramp segment labels "turnout" / "ramp end", `LayoutPanel` access
+summaries (accessible levels, total / worst access, max gradient, min
+radius, per-level junction chainage or failure), `rampSegmentId` identity
+for the walkthrough / minimap. Golden: `golden/phase20b_layout_v2.json`
+(6 cases incl. ACCESS-INFEASIBLE and CUT_AND_FILL) records junction
+chainages, entries, access lengths / gradients / radii and typed failures;
+`golden/phase20b_full.json` re-runs the legacy suite.
