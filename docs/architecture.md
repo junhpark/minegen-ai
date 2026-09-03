@@ -589,7 +589,12 @@ world-only golden suite (`python -m minegen.regression warped-vein`,
 12 seeds, baseline `golden/phase19_warped_vein.json`, smoke subset in CI)
 records bbox, volume, mesh counts, watertightness, clearance resolution,
 thickness range, morphology diagnostics and timings; WARPED_VEIN is never
-fed through the legacy decline pipeline to populate metrics. This is a
+fed through the legacy decline pipeline to populate metrics. The existing
+22-case golden suite re-run after the phase
+(`golden/phase19_full.json`, comparison `golden/phase19_vs_phase18.md`)
+shows 0 HARD CONTRACT regressions and 0 metric changes against
+`phase18_after_migration` — the TABULAR pipeline and the ELLIPSOID typed
+rejection are unchanged. This is a
 synthetic morphology model — not a measured orebody, not resource or
 reserve estimation, not kriging, not an imported block model, not a
 digital twin.
