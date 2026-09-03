@@ -18,6 +18,13 @@ Deterministic analytic geometry, no path search:
   the first footwall contact. Their context permits the ore contact while
   retaining world/terrain/restricted-zone hard constraints (rule 72).
 
+* A mining method without an implemented production lattice (CUT_AND_FILL
+  and every other reserved method) develops the GENERIC footwall backbone
+  drift over the orebody strike extent minus a fixed end clearance
+  (``GENERIC_BACKBONE_END_CLEARANCE``). ``stope_length`` / ``minimum_pillar``
+  are LONGHOLE production parameters and never influence the generic
+  backbone extent (rule 159).
+
 The drift is emitted as PIECES split at every station/entry breakpoint, so
 each Phase 08 MineNetwork DRIFT edge maps 1:1 onto a development in this
 artifact (rule 73) and every graph edge owns exactly one centerline span.
@@ -53,6 +60,11 @@ FloatArray = npt.NDArray[np.float64]
 WELD_TOLERANCE = 1e-6  # m
 TERMINAL_SDF_TOLERANCE = 1e-6  # m — crosscut end sits ON the footwall contact
 SAMPLE_SPACING = 2.0  # m — polyline sampling (endpoints always exact)
+#: generic backbone end clearance from the orebody strike extent (m). Shared
+#: with the level-access anchor placement; independent of every production
+#: parameter (rule 159). Bounded by a quarter of the strike span so a tiny
+#: body still gets a positive-length backbone.
+GENERIC_BACKBONE_END_CLEARANCE = 5.0
 CONSUMABLE_SMOOTHED_STATUSES = ("SUCCESS", "SUCCESS_WITH_FALLBACK")
 
 
@@ -159,6 +171,15 @@ class LevelDevelopmentBuilder:
         margin = self.scenario.mining.stope_length / 2.0 + self.scenario.mining.minimum_pillar
         k_max = math.floor((orebody.half_length - margin) / pitch + 1e-9)
         return [k * pitch for k in range(-k_max, k_max + 1)]
+
+    @staticmethod
+    def generic_backbone_extent(orebody: TabularOrebody) -> tuple[float, float]:
+        """Along-strike ``[u0, u1]`` of the generic backbone drift: the orebody
+        strike extent minus a fixed end clearance. No production parameter
+        (``stope_length``, ``minimum_pillar``) enters here (rule 159)."""
+        half = float(orebody.half_length)
+        clearance = min(GENERIC_BACKBONE_END_CLEARANCE, 0.25 * (2.0 * half))
+        return (-half + clearance, half - clearance)
 
     # -- envelope helper ---------------------------------------------------- #
 
@@ -304,15 +325,9 @@ class LevelDevelopmentBuilder:
 
             # breakpoints: stations ∪ entry (merged within weld tolerance). A
             # method without a production lattice develops the generic
-            # backbone drift over the strike extent (rule 159).
-            end_margin = (
-                self.scenario.mining.stope_length / 2.0 + self.scenario.mining.minimum_pillar
-            )
-            breakpoints = (
-                sorted(stations)
-                if longhole
-                else [-ob.half_length + end_margin, ob.half_length - end_margin]
-            )
+            # backbone drift over the strike extent minus a fixed end
+            # clearance — never a stope / pillar margin (rule 159).
+            breakpoints = sorted(stations) if longhole else list(self.generic_backbone_extent(ob))
             if not any(abs(u_entry - s) <= WELD_TOLERANCE for s in breakpoints):
                 breakpoints = sorted([*breakpoints, u_entry])
             level_valid = True

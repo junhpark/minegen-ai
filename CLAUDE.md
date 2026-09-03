@@ -1132,7 +1132,11 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      CUT_AND_FILL (and every other reserved method) gets ramp junctions,
      level accesses and the backbone drift, and reports
      `productionDevelopment.status = UNSUPPORTED_METHOD` for its production
-     portion — never a silent longhole substitute.
+     portion — never a silent longhole substitute. The generic backbone
+     extent is the orebody strike extent minus a fixed end clearance
+     (`GENERIC_BACKBONE_END_CLEARANCE`, shared with the anchor placement);
+     `stope_length` / `minimum_pillar` are LONGHOLE production parameters
+     and never change generic level development.
 160. MineNetwork preserves physical truck connectivity: RAMP edges end at
      RAMP_JUNCTION / RAMP_END nodes, LEVEL_ACCESS edges (owned by
      `level_accesses.json`) join a RAMP_JUNCTION to its LEVEL_ENTRY, and

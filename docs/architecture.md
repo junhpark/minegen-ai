@@ -729,7 +729,9 @@ its LEVEL_ENTRY positions from the accesses (`entrySource = LEVEL_ACCESS`,
 LEVEL_ACCESSES_REQUIRED otherwise) and reports
 `productionDevelopment` — LONGHOLE keeps the station / crosscut lattice,
 every reserved method (CUT_AND_FILL first) gets the generic backbone drift
-and an explicit UNSUPPORTED_METHOD production status. MineNetwork emits
+(strike extent minus the fixed `GENERIC_BACKBONE_END_CLEARANCE`; independent
+of `stope_length` / `minimum_pillar`) and an explicit UNSUPPORTED_METHOD
+production status. MineNetwork emits
 RAMP_JUNCTION / RAMP_END nodes and LEVEL_ACCESS edges (geometryRef →
 `level_accesses.json`); scheduling adds DEVELOP_LEVEL_ACCESS tasks that
 depend on the ramp task reaching their junction and root each level there;

@@ -383,3 +383,71 @@ def test_cut_and_fill_gets_generic_level_access_and_backbone_but_no_longhole_lat
     assert net.metrics is not None and net.metrics.level_access_edge_count == len(
         accesses["accesses"]
     )
+
+
+def test_cut_and_fill_generic_backbone_is_independent_of_longhole_parameters(
+    tabular: tuple[Scenario, SyntheticWorld],
+) -> None:
+    """Rule 159 regression: ``stope_length`` / ``minimum_pillar`` are LONGHOLE
+    production parameters. Changing them must not move the CUT_AND_FILL
+    generic backbone drift (same pieces, same extent, same length), while the
+    production portion stays UNSUPPORTED_METHOD with zero crosscuts."""
+    sc, world = tabular
+
+    def scenario_with(stope_length: float, minimum_pillar: float) -> Scenario:
+        return sc.model_copy(
+            update={
+                "mining": sc.mining.model_copy(
+                    update={
+                        "method": MiningMethodType.CUT_AND_FILL,
+                        "stope_length": stope_length,
+                        "minimum_pillar": minimum_pillar,
+                    }
+                )
+            }
+        )
+
+    def generic_levels(caf: Scenario):  # type: ignore[no-untyped-def]
+        s = LayoutV2Search(caf, world)
+        res = s.run()
+        w = _winner(s, res)
+        ramp = materialize_effective_ramp(res, w, s.evaluator, "r")
+        accesses = materialize_level_accesses(res, w, "r", "CUT_AND_FILL")
+        payload = _levels_builder(caf, world).build(
+            ramp, "r", entries=entries_from_level_accesses(accesses)
+        )
+        assert payload.status == "SUCCESS", payload.failure_reason
+        assert payload.production_development is not None
+        assert payload.production_development.status == "UNSUPPORTED_METHOD"
+        assert payload.metrics is not None and payload.metrics.crosscut_count == 0
+        return payload
+
+    a = generic_levels(scenario_with(20.0, 5.0))
+    b = generic_levels(scenario_with(50.0, 15.0))
+    assert [d.id for d in a.developments] == [d.id for d in b.developments]
+    for da, db in zip(a.developments, b.developments, strict=True):
+        assert da.kind.value == "DRIFT" and db.kind.value == "DRIFT"
+        assert math.isclose(da.from_u, db.from_u, abs_tol=1e-9)
+        assert math.isclose(da.to_u, db.to_u, abs_tol=1e-9)
+        assert math.isclose(da.length3d, db.length3d, abs_tol=1e-9)
+        np.testing.assert_allclose(da.centerline.points, db.centerline.points, atol=1e-9)
+    assert a.metrics is not None and b.metrics is not None
+    assert math.isclose(a.metrics.total_drift_length3d, b.metrics.total_drift_length3d)
+    # the generic extent is the strike extent minus the fixed end clearance —
+    # never ``stope_length/2 + minimum_pillar``
+    ob = world.orebody
+    lo, hi = LevelDevelopmentBuilder.generic_backbone_extent(ob)  # type: ignore[arg-type]
+    assert math.isclose(lo, -ob.half_length + 5.0) and math.isclose(hi, ob.half_length - 5.0)  # type: ignore[attr-defined]
+    for d in a.developments:
+        assert lo - 1e-9 <= d.from_u <= d.to_u <= hi + 1e-9
+    assert min(d.from_u for d in a.developments) == pytest.approx(lo)
+    assert max(d.to_u for d in a.developments) == pytest.approx(hi)
+    # LONGHOLE remains parameter-dependent: its lattice is production geometry
+    longhole = sc.model_copy(
+        update={
+            "mining": sc.mining.model_copy(update={"stope_length": 20.0, "minimum_pillar": 5.0})
+        }
+    )
+    stations_20 = _levels_builder(longhole, world).station_us(ob)  # type: ignore[arg-type]
+    stations_30 = _levels_builder(sc, world).station_us(ob)  # type: ignore[arg-type]
+    assert stations_20 != stations_30

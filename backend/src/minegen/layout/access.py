@@ -50,6 +50,7 @@ from minegen.layout.geometry import (
     unwrap_delta,
 )
 from minegen.layout.levels import LevelSections, RequiredLevel
+from minegen.levels.builder import GENERIC_BACKBONE_END_CLEARANCE
 from minegen.world.orebody import Orebody, TabularOrebody
 
 FloatArray = npt.NDArray[np.float64]
@@ -57,8 +58,9 @@ FloatArray = npt.NDArray[np.float64]
 RADIUS_TOLERANCE = 0.05  # m, floating-point noise on the delivered circumradius
 GRADIENT_TOLERANCE = 1e-9
 WELD_TOLERANCE = 1e-6  # m
-#: keep the entry inside the backbone extent by this much (m)
-BACKBONE_END_MARGIN = 5.0
+#: keep the entry inside the backbone extent by this much (m) — the same
+#: fixed clearance the generic backbone drift uses (rule 159)
+BACKBONE_END_MARGIN = GENERIC_BACKBONE_END_CLEARANCE
 #: minimum clear length below which a connector is degenerate
 MIN_CONNECTOR_LENGTH = 1.0
 
