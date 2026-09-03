@@ -237,6 +237,41 @@ export interface ScenarioCreate {
   mining: MiningConfig
   schedule: ScheduleConfig
   infrastructure: InfrastructureConfig
+  /** Phase 20A layout-v2 search configuration (declared finite grids and the
+   * three user-facing score group weights). Optional on the client so older
+   * documents round-trip; the backend fills defaults. */
+  layout?: LayoutV2Config
+}
+
+export interface LayoutScoreWeights {
+  development: number
+  geology: number
+  geometry: number
+}
+
+export interface LayoutV2Config {
+  targetGradients: number[]
+  accessReach: number
+  footwallStandoff: number | null
+  sampleSpacing: number
+  sectionSamplingSpacing: number
+  levelIntervalTolerance: number
+  shortlistSize: number
+  minStraightLength: number
+  approachMinGradientFraction: number
+  worldMargin: number
+  longitudinalExtension: number
+  spiral: { turnsPerLevel: number[]; turnSenses: ('CW' | 'CCW')[]; entryOrientationsDeg: number[] }
+  longitudinal: {
+    orientations: ('STRIKE_POSITIVE' | 'STRIKE_NEGATIVE')[]
+    sides: ('FOOTWALL' | 'HANGING_WALL')[]
+  }
+  switchback: {
+    legsPerLevel: number[]
+    principalOrientationsDeg: number[]
+    initialTurnSenses: ('CW' | 'CCW')[]
+  }
+  weights: LayoutScoreWeights
 }
 
 export interface Scenario extends ScenarioCreate {

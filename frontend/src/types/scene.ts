@@ -293,23 +293,54 @@ export interface SmoothedSegmentReport {
   corridorViolations: number
   repairs: number
   valid: boolean
-  effectiveSource: 'SMOOTHED' | 'RAW_FALLBACK'
+  effectiveSource: EffectiveSource
   fallbackReason: string | null
+}
+
+/** Per-segment provenance of an Effective Ramp segment (Phase 20A, rule 149):
+ * the two legacy Phase 05 outcomes plus the parametric layout-v2 source. */
+export type EffectiveSource = 'SMOOTHED' | 'RAW_FALLBACK' | 'PARAMETRIC_V2'
+export type RampSourceKind = 'LEGACY_SMOOTHED' | 'LEGACY_RAW_FALLBACK' | 'PARAMETRIC_V2'
+export type RampSource = 'LEGACY' | 'LAYOUT_V2'
+
+/** Backend-authored level connection of a layout-v2 ramp segment (§6). */
+export interface LevelConnection {
+  levelId: string
+  elevation: number
+  position: [number, number, number]
+  chainage: number
+  accessDistance: number | null
 }
 
 export interface SmoothedSegmentPayload {
   levelId: string
   candidateId: string
   smoothed: { points: number[]; pointCount: number } | null
-  effectiveSource: 'SMOOTHED' | 'RAW_FALLBACK'
+  effectiveSource: EffectiveSource
   effectiveCenterline: { points: number[]; pointCount: number }
   boundaryTangents: { start: [number, number, number]; end: [number, number, number] }
   report: SmoothedSegmentReport
+  levelConnection?: LevelConnection
 }
 
+/**
+ * Effective Ramp contract (Phase 20A, rules 149–150). The Phase 05 shape is
+ * the payload body; the provenance fields say which source produced it. The
+ * scene's `smoothedDecline` is always the ACTIVE effective ramp.
+ */
 export interface SmoothedDeclinePayload {
   status: 'SUCCESS' | 'SUCCESS_WITH_FALLBACK' | 'FAILED'
   failureReason: string | null
+  sourceKind?: RampSourceKind
+  owningArtifact?: string
+  sourceRevision?: string | null
+  activeSource?: RampSource
+  candidateId?: string | null
+  family?: RampFamily | null
+  levelConnections?: LevelConnection[]
+  layoutRevision?: string
+  clearance?: LayoutClearanceReport | null
+  scores?: LayoutScores | null
   segments: SmoothedSegmentPayload[]
   totals: {
     segments: number
@@ -328,8 +359,125 @@ export interface SmoothedDeclinePayload {
 
 export interface TunnelSegmentSummary {
   segmentId: string
-  effectiveSource: 'SMOOTHED' | 'RAW_FALLBACK'
+  effectiveSource: EffectiveSource
   ringIntervals: number
+}
+
+// --------------------------------------------------------------------------- //
+// Phase 20A — layout-v2 catalogue (display-only mirrors of the backend contract)
+// --------------------------------------------------------------------------- //
+
+export type RampFamily = 'SPIRAL' | 'LONGITUDINAL' | 'SWITCHBACK'
+export type LayoutCandidateStatus = 'FEASIBLE' | 'INFEASIBLE' | 'NOT_VALIDATED'
+
+export interface LayoutLevelServiceRecord {
+  levelId: string
+  elevation: number
+  served: boolean
+  connectionPosition: [number, number, number] | null
+  connectionChainage: number | null
+  accessDistance: number | null
+  unservedReason: string | null
+}
+
+export interface LayoutClearanceReport {
+  clearanceBasis: 'EXACT' | 'CONSERVATIVE'
+  requiredClearance: number
+  conservativeMinimumClearance: number
+  approximateMinimumClearance: number | null
+  clearanceErrorBound: number | null
+  satisfied: boolean
+}
+
+export interface LayoutScores {
+  development: number
+  geology: number
+  geometry: number
+  total: number
+  components: Record<string, number>
+}
+
+export interface LayoutCandidateDiagnostics {
+  pointCount: number
+  length3d: number
+  horizontalLength: number
+  verticalDrop: number
+  maxAbsGradient: number
+  meanAbsGradient: number
+  minPlanRadius: number | null
+  turningLength: number
+  cumulativeHeadingChangeDeg: number
+  signedHeadingChangeDeg: number
+  headingReversalCount: number
+  hairpinRunCount: number
+  dominantAzimuthsDeg: number[]
+  turnDirectionConsistency: number
+  maxLocalTurnDeg: number
+  monotonicDescent: boolean
+}
+
+export interface LayoutCandidateSummary {
+  candidateId: string
+  family: RampFamily
+  parameters: Record<string, unknown>
+  status: LayoutCandidateStatus
+  stageReached: string
+  failureReasons: string[]
+  failureDetail: string | null
+  shortlisted: boolean
+  rank: number | null
+  servedLevels: number
+  requiredLevels: number
+  levelService: LayoutLevelServiceRecord[]
+  diagnostics: LayoutCandidateDiagnostics | null
+  scores: LayoutScores | null
+  clearance: LayoutClearanceReport | null
+  cheapProxy: number | null
+  /** shipped only by GET …/design/layout-v2 for shortlisted candidates */
+  centerline?: { points: number[]; pointCount: number } | null
+}
+
+export interface LayoutV2Catalogue {
+  layoutVersion: number
+  status: 'SUCCESS' | 'NO_FEASIBLE_CANDIDATE'
+  portal: [number, number, number]
+  portalGenerated: boolean
+  requiredLevels: {
+    levelId: string
+    index: number
+    elevation: number
+    hasOrebodySection: boolean
+  }[]
+  serviceableLevelCount: number
+  candidateCount: number
+  feasibleCount: number
+  shortlist: string[]
+  ranking: string[]
+  winnerId: string | null
+  clearanceBasis: 'EXACT' | 'CONSERVATIVE'
+  clearanceErrorBound: number
+  requiredClearance: number
+  accessReach: number
+  footwallStandoff: number
+  performance: Record<string, number>
+  searchConfig: Record<string, unknown>
+  candidates: LayoutCandidateSummary[]
+}
+
+/** GET …/design/ramp-source (rule 150): the explicit backend-owned source. */
+export interface RampSourceSummary {
+  activeSource: RampSource
+  owningArtifact: string
+  available: boolean
+  legacyAvailable: boolean
+  layoutV2Available: boolean
+  layoutV2Selected: boolean
+  sourceKind: RampSourceKind | null
+  sourceRevision: string | null
+  candidateId: string | null
+  family: RampFamily | null
+  status: string | null
+  segmentCount: number
 }
 
 export interface NetworkNode {
@@ -664,7 +812,7 @@ export interface NetworkEdge {
   meanGradientSigned: number
   maxAbsGradient: number
   crossSection: { width: number; height: number; analyticArea: number }
-  effectiveSource: 'SMOOTHED' | 'RAW_FALLBACK' | 'ANALYTIC'
+  effectiveSource: EffectiveSource | 'ANALYTIC'
   fieldCost: number
   geometryRef: { artifact: string; segmentIndex: number }
   simulation: SimulationSlots
@@ -776,7 +924,7 @@ export interface JobRecord {
   progress: Partial<JobProgress>
   error: { code: string; message: string } | null
   version: number
-  result?: DeclinePayload | SmoothedDeclinePayload | TunnelMeshReport | null
+  result?: DeclinePayload | SmoothedDeclinePayload | TunnelMeshReport | LayoutV2Catalogue | null
 }
 
 export interface JobSubmission {
@@ -804,7 +952,16 @@ export interface WorldScene {
   stats: WorldStats
   accessTargets: AccessTargetsPayload | null
   decline: DeclinePayload | null
+  /** the ACTIVE Effective Ramp (rules 149–150): the legacy Phase 05 artifact
+   * (adapter view) or the selected layout-v2 candidate, never both */
   smoothedDecline: SmoothedDeclinePayload | null
+  /** the raw legacy Phase 05 artifact, for the legacy pipeline readout */
+  legacySmoothedDecline: SmoothedDeclinePayload | null
+  rampSource: RampSourceSummary
+  /** layout-v2 catalogue without candidate geometry */
+  layoutV2: LayoutV2Catalogue | null
+  /** the selected (materialized) layout-v2 effective ramp, active or not */
+  layoutV2Selected: SmoothedDeclinePayload | null
   tunnelMesh: TunnelMeshReport | null
   levels: LevelsPayload | null
   network: NetworkPayload | null

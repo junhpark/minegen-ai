@@ -5,12 +5,13 @@ import type { WorldScene } from '@/types/scene'
 /** Asynchronous design jobs owned by the ACTIVE scenario (Phase 17.1 §1).
  * They live in the store, not in component state, so a scenario change
  * cancels them structurally instead of relying on a component unmount. */
-export type DesignJobKind = 'decline' | 'smooth' | 'tunnel'
+export type DesignJobKind = 'decline' | 'smooth' | 'tunnel' | 'layout'
 
 const NO_JOBS: Record<DesignJobKind, string | null> = {
   decline: null,
   smooth: null,
   tunnel: null,
+  layout: null,
 }
 
 export interface ScenarioState {

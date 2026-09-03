@@ -5,11 +5,12 @@ import { api, ApiError } from '@/api/client'
 import { PanelSection } from '@/components/layout/PanelSection'
 import { DESIGN_UNSUPPORTED_NOTICE, designSupported } from '@/scenario/builder'
 import {
+  afterLegacySmoothRegen,
+  afterLegacyUpstreamRegen,
   afterLevelsRegen,
   afterNetworkRegen,
   afterStopesRegen,
   afterTimelineRegen,
-  afterUpstreamRegen,
 } from '@/scene/invalidation'
 import { useScenarioStore, type DesignJobKind } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
@@ -39,7 +40,11 @@ export function DesignPanel() {
   const setLayerVisible = useViewerStore((s) => s.setLayerVisible)
   const targets = scene?.accessTargets ?? null
   const decline = scene?.decline ?? null
+  // Phase 20A: `smoothedDecline` is the ACTIVE effective ramp (legacy or
+  // layout-v2); the legacy Phase 05 readout uses the raw legacy artifact
   const smoothed = scene?.smoothedDecline ?? null
+  const legacySmoothed = scene?.legacySmoothedDecline ?? null
+  const rampSource = scene?.rampSource.activeSource ?? 'LEGACY'
   const tunnel = scene?.tunnelMesh ?? null
 
   const generate = useMutation({
@@ -49,11 +54,9 @@ export function DesignPanel() {
       const t = await api.generateTargets(scene.scenarioId)
       // rule 64: regenerated targets invalidate the decline AND its smoothing
       applyScene(started, (current) => ({
-        ...afterUpstreamRegen(current),
+        ...afterLegacyUpstreamRegen(current),
         accessTargets: t,
         decline: null,
-        smoothedDecline: null,
-        tunnelMesh: null,
       }))
       setLayerVisible('accessTargets', true)
     },
@@ -80,10 +83,8 @@ export function DesignPanel() {
         current.decline === rec.result
           ? current
           : {
-              ...afterUpstreamRegen(current),
+              ...afterLegacyUpstreamRegen(current),
               decline: rec.result as DeclinePayload,
-              smoothedDecline: null,
-              tunnelMesh: null,
             },
       )
       setLayerVisible('rawSearchPath', true)
@@ -105,14 +106,11 @@ export function DesignPanel() {
     const rec = smoothJob.data
     if (rec?.status === 'SUCCEEDED' && rec.result) {
       // rule 74: a new smoothed artifact invalidates tunnel + levels + network
+      // — only while LEGACY is the active ramp source (rule 151)
       applyScene(epoch, (current) =>
-        current.smoothedDecline === rec.result
+        current.legacySmoothedDecline === rec.result
           ? current
-          : {
-              ...afterUpstreamRegen(current),
-              smoothedDecline: rec.result as SmoothedDeclinePayload,
-              tunnelMesh: null,
-            },
+          : afterLegacySmoothRegen(current, rec.result as SmoothedDeclinePayload),
       )
       setLayerVisible('smoothedDecline', true)
     }
@@ -346,45 +344,52 @@ export function DesignPanel() {
       >
         {smoothDecline.isPending || smoothRunning
           ? 'Smoothing decline…'
-          : smoothed
+          : legacySmoothed
             ? 'Re-smooth decline'
             : 'Smooth decline (Phase 05)'}
       </button>
       {smoothJob.data && (smoothRunning || smoothJob.data.status === 'FAILED') ? (
         <JobProgress job={smoothJob.data} />
       ) : null}
-      {smoothed ? (
+      {rampSource === 'LAYOUT_V2' ? (
+        <p className="mt-2 text-[11px] text-mute">
+          Active ramp source: Layout v2
+          {smoothed?.candidateId ? ` (${smoothed.candidateId})` : ''}. The legacy smoothed decline
+          is kept but not consumed downstream.
+        </p>
+      ) : null}
+      {legacySmoothed ? (
         <div className="readout mt-2 text-[11px]">
           <div className="flex justify-between text-chalk-dim">
-            <span className={smoothed.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
-              {smoothed.status}
+            <span className={legacySmoothed.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+              {legacySmoothed.status}
             </span>
             <span>
-              {smoothed.totals.segments} segments ·{' '}
-              <span className="text-lamp">{smoothed.totals.smoothedSegments} smoothed</span> ·{' '}
-              <span className={smoothed.totals.fallbackSegments > 0 ? 'text-danger' : ''}>
-                {smoothed.totals.fallbackSegments} fallback
+              {legacySmoothed.totals.segments} segments ·{' '}
+              <span className="text-lamp">{legacySmoothed.totals.smoothedSegments} smoothed</span> ·{' '}
+              <span className={legacySmoothed.totals.fallbackSegments > 0 ? 'text-danger' : ''}>
+                {legacySmoothed.totals.fallbackSegments} fallback
               </span>
             </span>
           </div>
           <div className="mt-1 flex justify-between text-mute">
-            <span>{smoothed.totals.effectiveLength.toFixed(0)} m effective</span>
+            <span>{legacySmoothed.totals.effectiveLength.toFixed(0)} m effective</span>
             <span>
               cost{' '}
-              {smoothed.totals.fieldCostDeltaPct === null
+              {legacySmoothed.totals.fieldCostDeltaPct === null
                 ? '—'
-                : `${smoothed.totals.fieldCostDeltaPct.toFixed(2)}%`}
+                : `${legacySmoothed.totals.fieldCostDeltaPct.toFixed(2)}%`}
             </span>
             <span>
               min R{' '}
-              {smoothed.totals.minimumPlanRadius === null
+              {legacySmoothed.totals.minimumPlanRadius === null
                 ? '—'
-                : smoothed.totals.minimumPlanRadius.toFixed(2)}{' '}
+                : legacySmoothed.totals.minimumPlanRadius.toFixed(2)}{' '}
               m
             </span>
           </div>
           <ul className="mt-1 max-h-40 overflow-y-auto">
-            {smoothed.segments.map((s) => (
+            {legacySmoothed.segments.map((s) => (
               <li key={s.levelId} className="flex justify-between py-0.5 text-chalk-dim">
                 <span>
                   {s.levelId}{' '}

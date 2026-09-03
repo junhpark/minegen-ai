@@ -1,6 +1,7 @@
 import { ScenarioPanel } from '@/components/panels/ScenarioPanel'
 import { LayerPanel } from '@/components/panels/LayerPanel'
 import { DesignPanel } from '@/components/panels/DesignPanel'
+import { LayoutPanel } from '@/components/panels/LayoutPanel'
 import { CommunicationPanel } from '@/components/panels/CommunicationPanel'
 import { SensorPanel } from '@/components/panels/SensorPanel'
 import { useViewerStore } from '@/stores/viewerStore'
@@ -18,7 +19,10 @@ export function LeftPanel() {
           <SensorPanel />
         </>
       ) : (
-        <DesignPanel />
+        <>
+          <LayoutPanel />
+          <DesignPanel />
+        </>
       )}
       <LayerPanel />
     </aside>

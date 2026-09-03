@@ -36,7 +36,8 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
     rows: [
       // §2: default OFF, and suppressed outright in 4D / TIMELINE_SNAPSHOT
       { id: 'rawSearchPath', label: 'Raw search path', phase: 4 },
-      { id: 'smoothedDecline', label: 'Smoothed / effective decline', phase: 5 },
+      { id: 'smoothedDecline', label: 'Effective ramp (active source)', phase: 5 },
+      { id: 'layoutV2', label: 'Layout v2 selected candidate', phase: 20 },
       { id: 'tunnelMesh', label: 'Tunnel mesh', phase: 6 },
       { id: 'ramp', label: 'Ramp', phase: 6 },
       { id: 'levels', label: 'Levels', phase: 8 },
