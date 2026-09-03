@@ -36,7 +36,6 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -45,23 +44,49 @@ import numpy.typing as npt
 
 from minegen.core.enums import ScenarioPreset
 from minegen.core.models import Scenario
+from minegen.design.exposure import (
+    DIAGNOSTIC_POOR_ROCK_THRESHOLD as _DIAGNOSTIC_POOR_ROCK_THRESHOLD,
+)
+from minegen.design.exposure import POLYLINE_SAMPLE_SPACING as _POLYLINE_SAMPLE_SPACING
+from minegen.design.exposure import (
+    DevelopmentExposure,
+    measure_exposure,
+    resample_polyline,
+)
 from minegen.services.design_service import DesignService, UnsupportedOrebodyError
 from minegen.services.scenario_realizer import realize_scenario
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
-from minegen.world.geology import FaultPlane
 
 FloatArray = npt.NDArray[np.float64]
 
 HARNESS_VERSION = 1
 
+__all__ = [
+    "DIAGNOSTIC_POOR_ROCK_THRESHOLD",
+    "FULL_SUITE",
+    "POLYLINE_SAMPLE_SPACING",
+    "SMOKE_KEYS",
+    "DevelopmentExposure",
+    "GoldenCase",
+    "case_by_key",
+    "compare_reports",
+    "format_comparison",
+    "load_report",
+    "measure_exposure",
+    "resample_polyline",
+    "run_case",
+    "run_suite",
+    "suite",
+    "write_report",
+]
+
 #: SYNTHETIC diagnostic threshold on the 0–100 synthetic rock-quality field
 #: used ONLY to report "development length in poor rock". It is not an RMR
 #: class boundary, not a support-design threshold and not a regulatory limit.
-DIAGNOSTIC_POOR_ROCK_THRESHOLD = 40.0
-
-#: resampling step for along-development integrals (m)
-POLYLINE_SAMPLE_SPACING = 2.0
+#: (Definitions live in ``design/exposure.py`` since Phase 20A; re-exported.)
+DIAGNOSTIC_POOR_ROCK_THRESHOLD = _DIAGNOSTIC_POOR_ROCK_THRESHOLD
+POLYLINE_SAMPLE_SPACING = _POLYLINE_SAMPLE_SPACING
 
 STAGES = (
     "world",
@@ -149,68 +174,6 @@ def case_by_key(key: str) -> GoldenCase:
 
 def _polyline(points: list[float]) -> FloatArray:
     return np.asarray(points, dtype=np.float64).reshape(-1, 3)
-
-
-def resample_polyline(pts: FloatArray, spacing: float) -> tuple[FloatArray, FloatArray]:
-    """Midpoints and lengths of sub-segments no longer than ``spacing``."""
-    if pts.shape[0] < 2:
-        return np.zeros((0, 3)), np.zeros(0)
-    mids: list[FloatArray] = []
-    lens: list[FloatArray] = []
-    for a, b in pairwise(pts):
-        seg = float(np.linalg.norm(b - a))
-        if seg <= 0.0:
-            continue
-        n = max(1, math.ceil(seg / spacing))
-        t = (np.arange(n, dtype=np.float64) + 0.5) / n
-        mids.append(a[None, :] + t[:, None] * (b - a)[None, :])
-        lens.append(np.full(n, seg / n))
-    if not mids:
-        return np.zeros((0, 3)), np.zeros(0)
-    return np.vstack(mids), np.concatenate(lens)
-
-
-@dataclass
-class DevelopmentExposure:
-    fault_crossings: int = 0
-    length_fault_core: float = 0.0
-    length_fault_damage: float = 0.0
-    length_poor_rock: float = 0.0
-    total_length: float = 0.0
-
-
-def measure_exposure(
-    polylines: list[FloatArray],
-    faults: list[FaultPlane],
-    rock_quality: Callable[[FloatArray], FloatArray],
-    poor_threshold: float = DIAGNOSTIC_POOR_ROCK_THRESHOLD,
-) -> DevelopmentExposure:
-    """Fault crossings (sign changes of each fault's signed distance at the
-    development vertices) and length-weighted zone / poor-rock exposure on a
-    ≤ 2 m resampling. ``length_fault_damage`` EXCLUDES the core."""
-    out = DevelopmentExposure()
-    for pts in polylines:
-        if pts.shape[0] < 2:
-            continue
-        for f in faults:
-            d = f.signed_distance(pts)
-            out.fault_crossings += int(np.sum(d[:-1] * d[1:] < 0.0))
-        mids, lens = resample_polyline(pts, POLYLINE_SAMPLE_SPACING)
-        if mids.shape[0] == 0:
-            continue
-        out.total_length += float(lens.sum())
-        core = np.zeros(mids.shape[0], dtype=bool)
-        damage = np.zeros(mids.shape[0], dtype=bool)
-        for f in faults:
-            ad = np.abs(f.signed_distance(mids))
-            core |= ad <= f.config.core_half_width
-            damage |= ad <= f.config.influence_half_width
-        damage &= ~core
-        out.length_fault_core += float(lens[core].sum())
-        out.length_fault_damage += float(lens[damage].sum())
-        rq = np.asarray(rock_quality(mids), dtype=np.float64)
-        out.length_poor_rock += float(lens[rq < poor_threshold].sum())
-    return out
 
 
 # --------------------------------------------------------------------------- #

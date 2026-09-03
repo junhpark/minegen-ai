@@ -417,9 +417,13 @@ class WarpedVeinDerivedGeometry:
         }
 
     def clearance(self, local: FloatArray) -> FloatArray:
-        """Trilinear clearance at local points ``(N, 3)``; outside the
-        lattice the distance to the lattice box is added (the box contains
-        the solid, so the true clearance is at least that)."""
+        """Trilinear clearance at local points ``(N, 3)``. Outside the
+        lattice box the point is clamped to the box (``q``) and the result is
+        ``sqrt(clearance(q)² + ‖p − q‖²)``: ``p − q`` is normal to the box
+        faces and every solid point lies on the far side of them, so this
+        never exceeds the true clearance (a plain sum would over-estimate it
+        by the triangle inequality) while staying exact when the nearest
+        solid point lies straight below ``q``."""
         p = np.asarray(local, dtype=np.float64).reshape(-1, 3)
         lat = self.lattice
         frac = (p - lat.origin) / lat.spacing
@@ -429,7 +433,7 @@ class WarpedVeinDerivedGeometry:
             self.clearance_values, clamped.T, order=1, mode="nearest"
         ).astype(np.float64)
         outside_box = np.linalg.norm((frac - clamped) * lat.spacing, axis=1)
-        return np.asarray(values + outside_box)
+        return np.asarray(np.hypot(np.maximum(values, 0.0), outside_box) + np.minimum(values, 0.0))
 
     @cached_property
     def mesh_local(self) -> tuple[FloatArray, IntArray]:
