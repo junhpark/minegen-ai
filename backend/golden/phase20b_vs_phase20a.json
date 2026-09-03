@@ -1,0 +1,131 @@
+{
+  "baselineLabel": "phase20a_full",
+  "currentLabel": "phase20b_full",
+  "missingCases": [],
+  "newCases": [],
+  "contractRegressions": [],
+  "metricChanges": [],
+  "runtimeAdvisory": {
+    "baselineTotalSeconds": 14478.113369237999,
+    "currentTotalSeconds": 14818.433554282998,
+    "perCase": [
+      {
+        "key": "BASELINE-1234",
+        "baseline": 312.5451297130003,
+        "current": 321.91980088599985
+      },
+      {
+        "key": "BASELINE-2026",
+        "baseline": 2048.3774518770006,
+        "current": 2034.5604534469999
+      },
+      {
+        "key": "BASELINE-42",
+        "baseline": 131.67746366699976,
+        "current": 132.80856906600002
+      },
+      {
+        "key": "BASELINE-7",
+        "baseline": 382.5518679930001,
+        "current": 395.809478786
+      },
+      {
+        "key": "BASELINE-99",
+        "baseline": 487.51953284199953,
+        "current": 513.719870637
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-201",
+        "baseline": 1.216720829001133,
+        "current": 1.0765824670015718
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-202",
+        "baseline": 1.1639850410028885,
+        "current": 1.060855273000925
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-203",
+        "baseline": 1.1472050829979707,
+        "current": 1.0247000220006157
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-204",
+        "baseline": 1.0054540659984923,
+        "current": 1.061925093003083
+      },
+      {
+        "key": "RANDOM_ELLIPSOID-205",
+        "baseline": 1.0559177049981372,
+        "current": 1.035915725002269
+      },
+      {
+        "key": "RANDOM_TABULAR-101",
+        "baseline": 0.7690042510002968,
+        "current": 0.8023419069995725
+      },
+      {
+        "key": "RANDOM_TABULAR-102",
+        "baseline": 1896.9927761149993,
+        "current": 1980.5908387119998
+      },
+      {
+        "key": "RANDOM_TABULAR-103",
+        "baseline": 2618.002737727,
+        "current": 2688.340638429
+      },
+      {
+        "key": "RANDOM_TABULAR-104",
+        "baseline": 646.957114167999,
+        "current": 608.3790124980005
+      },
+      {
+        "key": "RANDOM_TABULAR-105",
+        "baseline": 1.2745344969989674,
+        "current": 1.2694104059992242
+      },
+      {
+        "key": "RANDOM_TABULAR-106",
+        "baseline": 1.0883387260000745,
+        "current": 1.041130575000352
+      },
+      {
+        "key": "RANDOM_TABULAR-107",
+        "baseline": 134.525466993,
+        "current": 140.32512511799905
+      },
+      {
+        "key": "RANDOM_TABULAR-108",
+        "baseline": 839.1547983980017,
+        "current": 803.4518968250013
+      },
+      {
+        "key": "RANDOM_TABULAR-109",
+        "baseline": 474.1318406120008,
+        "current": 484.1319553230005
+      },
+      {
+        "key": "RANDOM_TABULAR-110",
+        "baseline": 2040.9100089620006,
+        "current": 2093.662047542999
+      },
+      {
+        "key": "RANDOM_TABULAR-111",
+        "baseline": 2293.958872834999,
+        "current": 2445.0960100390002
+      },
+      {
+        "key": "RANDOM_TABULAR-112",
+        "baseline": 161.8697805619995,
+        "current": 167.05796067899792
+      }
+    ]
+  },
+  "summary": {
+    "comparedCases": 22,
+    "contractRegressions": 0,
+    "metricChanges": 0,
+    "unexpectedMetricChanges": 0,
+    "expectedMetricChanges": 0
+  }
+}
