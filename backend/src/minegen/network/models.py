@@ -77,7 +77,7 @@ class NetworkEdge(ApiModel):
     mean_gradient_signed: float  # Δz / horizontal length; negative = descending
     max_abs_gradient: float  # always ≥ 0
     cross_section: CrossSection
-    effective_source: Literal["SMOOTHED", "RAW_FALLBACK", "ANALYTIC"]
+    effective_source: Literal["SMOOTHED", "RAW_FALLBACK", "ANALYTIC", "PARAMETRIC_V2"]
     field_cost: float
     geometry_ref: GeometryRef
     simulation: SimulationSlots

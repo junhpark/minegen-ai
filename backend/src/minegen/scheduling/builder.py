@@ -30,6 +30,7 @@ from typing import Any
 
 import numpy as np
 
+from minegen.core.artifacts import RAMP_OWNING_ARTIFACTS
 from minegen.core.enums import ObjectState, TaskType
 from minegen.core.models import Scenario
 from minegen.network.models import GeometryRef
@@ -106,7 +107,7 @@ def solve_earliest_start(tasks: dict[str, TimelineTask]) -> str | None:
     return None
 
 
-_OWNING_ARTIFACTS = ("decline_smoothed.json", "levels.json")
+_OWNING_ARTIFACTS = (*RAMP_OWNING_ARTIFACTS, "levels.json")
 
 
 def _resolve_centerline(
@@ -125,7 +126,7 @@ def _resolve_centerline(
     raw_index = ref.get("segmentIndex")
     if not isinstance(raw_index, int) or isinstance(raw_index, bool) or raw_index < 0:
         return None, f"segmentIndex {raw_index!r} is not a non-negative integer"
-    if artifact == "decline_smoothed.json":
+    if artifact in RAMP_OWNING_ARTIFACTS:
         owners = smoothed_payload.get("segments")
         container = "effectiveCenterline"
     else:
