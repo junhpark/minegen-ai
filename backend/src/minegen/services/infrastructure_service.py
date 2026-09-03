@@ -57,6 +57,7 @@ class InfrastructureService:
         fingerprint = self.communication_fingerprint(scenario_id)
         network_payload = self.design.network(scenario_id)  # NetworkNotFoundError -> 409
         smoothed_payload = self.design.effective_ramp(scenario_id)  # 409 if not available
+        accesses_payload = self.design.active_level_accesses(scenario_id)
         levels_payload = self.design.levels(scenario_id)  # LevelsNotGeneratedError
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
@@ -68,6 +69,7 @@ class InfrastructureService:
             smoothed_payload,
             levels_payload.model_dump(mode="json", by_alias=True),
             source_revision,
+            accesses_payload=accesses_payload,
         )
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):
@@ -101,6 +103,7 @@ class InfrastructureService:
         fingerprint = self.sensors_fingerprint(scenario_id)
         network_payload = self.design.network(scenario_id)
         smoothed_payload = self.design.effective_ramp(scenario_id)
+        accesses_payload = self.design.active_level_accesses(scenario_id)
         levels_payload = self.design.levels(scenario_id)
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
@@ -112,6 +115,7 @@ class InfrastructureService:
             smoothed_payload,
             levels_payload.model_dump(mode="json", by_alias=True),
             source_revision,
+            accesses_payload=accesses_payload,
         )
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):

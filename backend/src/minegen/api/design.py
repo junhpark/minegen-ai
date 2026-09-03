@@ -19,6 +19,7 @@ from minegen.services.design_service import (
     LayoutCandidateNotFoundError,
     LayoutV2NotGeneratedError,
     LayoutV2NotSelectedError,
+    LevelAccessesNotGeneratedError,
     LevelsNotGeneratedError,
     NetworkNotFoundError,
     SmoothedNotGeneratedError,
@@ -147,6 +148,13 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             f"scenario '{scenario_id}' has no selected layout-v2 candidate; "
             "POST …/design/layout-v2/select first",
         )
+    if isinstance(exc, LevelAccessesNotGeneratedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "LEVEL_ACCESSES_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no level-access artifact; select a layout-v2 "
+            "candidate first (POST …/design/layout-v2/select)",
+        )
     if isinstance(exc, LayoutCandidateNotFoundError):
         return _error(404, "LAYOUT_V2_CANDIDATE_NOT_FOUND", str(exc))
     if isinstance(exc, LayoutCandidateInfeasibleError):
@@ -233,6 +241,16 @@ def select_layout_candidate(
 def get_layout_selected(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.layout_selected(scenario_id)
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.get("/level-accesses")
+def get_level_accesses(scenario_id: str, svc: Service) -> dict[str, Any]:
+    """Phase 20B: ramp junctions + level-access branches of the selected
+    layout-v2 candidate (``derived/level_accesses.json``, rule 157)."""
+    try:
+        return svc.level_accesses(scenario_id)
     except Exception as exc:
         raise _guard(scenario_id, exc) from exc
 

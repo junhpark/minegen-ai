@@ -75,6 +75,7 @@ class SensorBuilder:
         smoothed_payload: dict[str, Any],
         levels_payload: dict[str, Any],
         source_revision: str,
+        accesses_payload: dict[str, Any] | None = None,
     ) -> SensorPayload:
         cfg = self.config
         # -- supported asset gate (§2): never silently substitute ------------ #
@@ -87,7 +88,7 @@ class SensorBuilder:
         # -- shared infrastructure network domain (rule 93) ------------------- #
         try:
             domain = InfrastructureNetworkDomain.build(
-                network_payload, smoothed_payload, levels_payload
+                network_payload, smoothed_payload, levels_payload, accesses_payload
             )
         except UnsupportedEdgeTypeError as exc:
             return _failed(

@@ -470,10 +470,10 @@ def build_render_mesh(
 
     prims = [
         RenderPrimitive(
-            name=str(meta["levelId"]),
+            name=str(meta.get("segmentId") or meta.get("levelId")),
             extras={
                 "role": "SEGMENT",
-                "segmentId": meta["levelId"],
+                "segmentId": (meta.get("segmentId") or meta.get("levelId")),
                 "effectiveSource": meta["effectiveSource"],
             },
             indices=np.asarray(seg_tris[s], dtype=np.uint32).ravel(),
@@ -602,7 +602,12 @@ class TunnelMeshBuilder:
             )
 
         segments_meta = [
-            {"levelId": s["levelId"], "effectiveSource": s["effectiveSource"]} for s in segments
+            {
+                "levelId": s.get("levelId"),
+                "segmentId": s.get("segmentId") or s.get("levelId"),
+                "effectiveSource": s["effectiveSource"],
+            }
+            for s in segments
         ]
         report: dict[str, Any] = {
             "length3d": length_3d,
@@ -633,7 +638,7 @@ class TunnelMeshBuilder:
             "selfIntersectionCheck": "NOT_IMPLEMENTED",  # technical debt (rule 66 note)
             "segments": [
                 {
-                    "segmentId": meta["levelId"],
+                    "segmentId": (meta.get("segmentId") or meta.get("levelId")),
                     "effectiveSource": meta["effectiveSource"],
                     "ringIntervals": int((chain.segment_of_interval == s).sum()),
                 }

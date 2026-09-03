@@ -18,6 +18,7 @@ from minegen.core.artifacts import (
     LAYOUT_V2_ARTIFACT,
     LAYOUT_V2_SELECTED_ARTIFACT,
     LEGACY_RAMP_ARTIFACT,
+    LEVEL_ACCESSES_ARTIFACT,
     RAMP_SOURCE_FILE,
 )
 from minegen.core.enums import DistanceContract, OrebodyType
@@ -39,8 +40,9 @@ from minegen.layout.search import (
     LayoutSearchResult,
     LayoutV2Search,
     materialize_effective_ramp,
+    materialize_level_accesses,
 )
-from minegen.levels.builder import LevelDevelopmentBuilder
+from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
 from minegen.levels.models import LevelsPayload
 from minegen.mining.methods.base import strategy_for, unsupported_method_payload
 from minegen.mining.models import StopesPayload
@@ -114,6 +116,10 @@ class LayoutV2NotGeneratedError(LookupError):
 class LayoutV2NotSelectedError(LookupError):
     """layout_v2_selected.json does not exist (no candidate selected), or
     LAYOUT_V2 is the active ramp source without a selection."""
+
+
+class LevelAccessesNotGeneratedError(LookupError):
+    """level_accesses.json does not exist for the scenario (Phase 20B)."""
 
 
 class LayoutCandidateNotFoundError(LookupError):
@@ -387,6 +393,9 @@ class DesignService:
     def layout_selected_path(self, scenario_id: str) -> Path:
         return self.store.derived_dir(scenario_id) / LAYOUT_V2_SELECTED_ARTIFACT
 
+    def level_accesses_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / LEVEL_ACCESSES_ARTIFACT
+
     def ramp_source_path(self, scenario_id: str) -> Path:
         return self.store.derived_dir(scenario_id) / RAMP_SOURCE_FILE
 
@@ -398,6 +407,7 @@ class DesignService:
         return [
             Path(self.smoothed_path(scenario_id)),
             self.layout_selected_path(scenario_id),
+            self.level_accesses_path(scenario_id),
             self.ramp_source_path(scenario_id),
         ]
 
@@ -408,9 +418,10 @@ class DesignService:
         return InputFingerprint.capture(self._layout_input_paths(scenario_id))
 
     def _delete_layout_selection(self, scenario_id: str) -> None:
-        path = self.layout_selected_path(scenario_id)
-        if path.exists():
-            path.unlink()
+        # rule 157: the level-access artifact is owned by the selection
+        for path in (self.layout_selected_path(scenario_id), self.level_accesses_path(scenario_id)):
+            if path.exists():
+                path.unlink()
 
     def _delete_ramp_downstream(self, scenario_id: str) -> None:
         """Everything derived from the Effective Ramp (rule 151): tunnel,
@@ -510,7 +521,14 @@ class DesignService:
         payload = materialize_effective_ramp(result, cand, search.evaluator, revision)
         payload["layoutRevision"] = layout_rev
         payload["owningArtifact"] = LAYOUT_V2_SELECTED_ARTIFACT
+        # rule 157: the ramp junctions + level accesses of the SAME candidate,
+        # same revision, persisted together with the main ramp
+        accesses = materialize_level_accesses(
+            result, cand, revision, self.store.get(scenario_id).mining.method.value
+        )
+        accesses["layoutRevision"] = layout_rev
         serialized = json.dumps(payload)
+        serialized_accesses = json.dumps(accesses)
         with self.store.lock(scenario_id):
             current = InputFingerprint.capture(
                 [*self._layout_input_paths(scenario_id), self.layout_path(scenario_id)]
@@ -519,6 +537,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.layout_selected_path(scenario_id)
             path.write_text(serialized, encoding="utf-8")
+            self.level_accesses_path(scenario_id).write_text(serialized_accesses, encoding="utf-8")
             self._delete_ramp_downstream_if_active(scenario_id, "LAYOUT_V2")
         return payload
 
@@ -535,6 +554,22 @@ class DesignService:
         if data is None:
             raise LayoutV2NotSelectedError(scenario_id)
         return data
+
+    def level_accesses(self, scenario_id: str) -> dict[str, Any]:
+        self.store.get(scenario_id)
+        path = self.level_accesses_path(scenario_id)
+        if not path.is_file():
+            raise LevelAccessesNotGeneratedError(scenario_id)
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
+
+    def active_level_accesses(self, scenario_id: str) -> dict[str, Any] | None:
+        """The level-access artifact of the ACTIVE ramp: required (and
+        present by construction of the selection) for LAYOUT_V2, ``None``
+        for LEGACY (Phase 05 segment ends are the level entries)."""
+        if read_ramp_source(self.store.derived_dir(scenario_id)) != "LAYOUT_V2":
+            return None
+        return self.level_accesses(scenario_id)
 
     def ramp_source(self, scenario_id: str) -> dict[str, Any]:
         self.store.get(scenario_id)
@@ -602,6 +637,7 @@ class DesignService:
         invalidates the MineNetwork but never the tunnel mesh (rule 74)."""
         fingerprint = self.levels_fingerprint(scenario_id)
         smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
+        accesses_payload = self.active_level_accesses(scenario_id)
         scenario, world, drift_ev = self.evaluator(scenario_id)
         crosscut_ev = DesignCostEvaluator(
             world, scenario.design, DesignContext.crosscut(scenario.design)
@@ -610,7 +646,10 @@ class DesignService:
             json.dumps(fingerprint.entries, sort_keys=True).encode()
         ).hexdigest()[:16]
         builder = LevelDevelopmentBuilder(scenario, world.orebody, drift_ev, crosscut_ev)
-        payload = builder.build(smoothed_payload, source_revision)
+        entries = (
+            entries_from_level_accesses(accesses_payload) if accesses_payload is not None else None
+        )
+        payload = builder.build(smoothed_payload, source_revision, entries=entries)
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):
             if self.levels_fingerprint(scenario_id) != fingerprint:
@@ -740,6 +779,7 @@ class DesignService:
         network_payload = self.network(scenario_id)  # NetworkNotFoundError if absent
         stopes_payload = self.stopes(scenario_id)  # 409 if absent
         smoothed_payload = self.effective_ramp(scenario_id)
+        accesses_payload = self.active_level_accesses(scenario_id)
         levels_payload = self.levels(scenario_id)
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
@@ -752,6 +792,7 @@ class DesignService:
             smoothed_payload,
             levels_payload.model_dump(mode="json", by_alias=True),
             source_revision,
+            accesses_payload=accesses_payload,
         )
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):
@@ -799,6 +840,7 @@ class DesignService:
         invalidates the other (rule 68)."""
         fingerprint = self.network_fingerprint(scenario_id)
         smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
+        accesses_payload = self.active_level_accesses(scenario_id)
         levels_payload = self.levels(scenario_id)  # 409 if not generated (rule 74)
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
@@ -810,6 +852,7 @@ class DesignService:
             source_revision,
             levels_payload=levels_payload.model_dump(mode="json", by_alias=True),
             geometry_artifact=str(smoothed_payload.get("owningArtifact", LEGACY_RAMP_ARTIFACT)),
+            accesses_payload=accesses_payload,
         )
         # deterministic serialization of the TYPED contract (rule 69): field
         # order is the model definition order, values are JSON-mode primitives
