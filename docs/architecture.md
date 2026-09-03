@@ -598,3 +598,76 @@ rejection are unchanged. This is a
 synthetic morphology model — not a measured orebody, not resource or
 reserve estimation, not kriging, not an imported block model, not a
 digital twin.
+
+### Phase 20A — Parametric Whole-Mine Layout & Access Network v2 (families + Effective Ramp)
+
+Phase 20 is split: 20A (this phase) delivers the parametric ramp-family
+search and the source-neutral Effective Ramp; 20B–20D (generalized level
+development, local bounded refinement, rulebook comparison) follow. The
+legacy chained Hybrid-A* pipeline is untouched and stays the default.
+
+    scenario.layout (typed finite grids, 3 group weights)   ← rules 142/148
+        ↓ enumerate_candidates  (SPIRAL 36 · LONGITUDINAL 8 · SWITCHBACK 24 = 68)
+    families.py  closed-form primitives from the authoritative portal
+        SPIRAL        R = ΔZ/(2π·g·n), drifting helix along the footwall track
+        LONGITUDINAL  one-direction along-strike descent, corridor clipped to the world
+        SWITCHBACK    stacked antiparallel legs, L = ΔZ/(k·g) − π·R_min, constant hairpin sense
+        ↓ delivered polyline (sampleSpacing 2 m)             ← rule 144
+    geometry.py   per-edge gradient, chord plan radius, unwrapped heading,
+                  family signatures, exact level crossings          ← rule 145
+    levels.py     required levels = generate_level_elevations (rule 141);
+                  in-plane footprint sections on `contains` + KD-tree + bisection
+                  (upper-bound access distance)                     ← rule 144
+    search.py     STAGE 1 enumerate → 2 cheap (grade, radius, bounds, monotone,
+                  level service) → 3 shortlist (12) → 4 detailed
+                  (shared DesignCostEvaluator sample validator + clearance policy
+                  + exposure + 3-group scores) → 5 ranking            ← rules 147/148
+        ↓ layout_v2.json (catalogue) · layout_v2_selected.json (materialized winner)
+    services/effective_ramp.py   ramp_source.json → LEGACY | LAYOUT_V2   ← rules 149–151
+        ↓ ONE Effective Ramp (Phase 05 shape + sourceKind/owningArtifact/sourceRevision)
+    tunnel → levels → network → timeline → communication / sensors → walkthrough
+
+Clearance policy (`design/cost_field.py`, rule 146): `ExactClearance`
+(analytic SDF; the legacy constructor path is byte-identical) and
+`ConservativeClearance` for implicit bodies, `safe = approximate −
+1.5·‖lattice spacing‖` (10.77 m for the default WARPED_VEIN lattice; the
+measured over-estimate of the Phase 19 approximation against the derived
+mesh is ≤ 3.6 m after the far-field fix in `warped_vein.py`: outside the
+lattice the clearance is now `hypot(edge value, box distance)`, a lower
+bound, where the previous additive form over-estimated by up to 67 m).
+WARPED_VEIN therefore runs the whole layout-v2 search (candidates, level
+service on the authoritative solid, conservative clearance, ranking,
+winner, rendering) while the legacy pipeline still answers
+UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT; its drifts / crosscuts / walkthrough
+are Phase 20B.
+
+Level service (directive §6): a candidate serves level L iff its delivered
+centerline crosses z = zL (segment interpolation, no tolerance) and the
+horizontal distance from the crossing to the orebody footprint at zL is
+≤ `accessReach` (60 m) and the crossing is an accepted sample of the
+detailed validation; unserved levels carry NO_RL_CROSSING /
+NO_OREBODY_SECTION_AT_LEVEL / ACCESS_REACH_EXCEEDED /
+CONNECTION_POINT_INVALID. The generic level generator works from the
+bounding box, so an implicit body can own required levels without a
+section (reported `hasOrebodySection = false`, excluded from the
+serviceable set) — a documented discrepancy, not a second generator.
+
+Effective Ramp (rules 149–150): downstream builders take the ramp payload
+plus its owning artifact; `MineNetworkBuilder.build(..., geometry_artifact)`
+writes RAMP `geometryRef.artifact` as `decline_smoothed.json` or
+`layout_v2_selected.json`, and scheduling / infrastructure resolve either.
+`WorldService.scene()` ships `smoothedDecline` = the ACTIVE ramp (legacy
+adapter view or the selected candidate), `legacySmoothedDecline`,
+`rampSource`, a slim `layoutV2` catalogue and `layoutV2Selected`. Every
+downstream fingerprint includes `decline_smoothed.json`,
+`layout_v2_selected.json` and `ramp_source.json`, so selecting, activating
+or switching is a new input revision (rule 151). Frontend: `LayoutPanel`
+(source radio, candidate job, ranked list with Development / Geology /
+Geometry totals, Select / Activate), `SmoothedDeclineLayer` colours
+PARAMETRIC_V2 segments amber with `L01…` connection labels,
+`LayoutSelectedLayer` previews a selected-but-inactive candidate,
+`temporalPlan.rampOwningArtifact` resolves RAMP refs through the owning
+artifact. Golden: `python -m minegen.regression layout-v2` (4 cases,
+baseline `golden/phase20a_layout_v2.json`, smoke in CI) alongside the
+untouched legacy suite (`golden/phase20a_full.json`, comparison
+`golden/phase20a_vs_phase19.md`).

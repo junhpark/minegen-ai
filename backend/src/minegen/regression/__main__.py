@@ -5,6 +5,8 @@
         --expect gradeProxy --out golden/phase18_vs_phase17
     python -m minegen.regression warped-vein --suite full --label phase19_warped_vein --out golden
     python -m minegen.regression warped-vein-compare golden/a.json golden/b.json
+    python -m minegen.regression layout-v2 --suite full --label phase20a_layout_v2 --out golden
+    python -m minegen.regression layout-v2-compare golden/a.json golden/b.json
 
 ``run`` writes ``<out>/<label>.json`` and ``.csv``; ``compare`` writes
 ``<out>.json`` and ``<out>.md`` and exits non-zero on any HARD CONTRACT
@@ -19,7 +21,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from minegen.regression import warped_vein
+from minegen.regression import layout_v2, warped_vein
 from minegen.regression.golden import (
     compare_reports,
     format_comparison,
@@ -66,7 +68,39 @@ def main(argv: list[str] | None = None) -> int:
     wvc_p.add_argument("baseline", type=Path)
     wvc_p.add_argument("current", type=Path)
 
+    lv_p = sub.add_parser("layout-v2", help="Phase 20A layout-v2 parametric search suite")
+    lv_p.add_argument("--suite", choices=["full", "smoke"], default="full")
+    lv_p.add_argument("--label", required=True)
+    lv_p.add_argument("--out", type=Path, default=Path("golden"))
+
+    lvc_p = sub.add_parser("layout-v2-compare", help="compare two layout-v2 reports")
+    lvc_p.add_argument("baseline", type=Path)
+    lvc_p.add_argument("current", type=Path)
+
     args = parser.parse_args(argv)
+    if args.command == "layout-v2":
+        lv_cases = layout_v2.suite(args.suite)
+        print(f"layout-v2 suite={args.suite} cases={len(lv_cases)}")
+        lv_report = layout_v2.run_suite(lv_cases, args.label)
+        lv_report["gitHead"] = _git_head()
+        for rec in lv_report["cases"]:
+            c, m, r = rec["contract"], rec["metrics"], rec["runtime"]
+            print(
+                f"  {rec['key']}: {c.get('orebodyType')} clearance={c.get('clearanceBasis')} "
+                f"levels={c.get('serviceableLevelCount')}/{c.get('requiredLevelCount')} "
+                f"feasible={c.get('feasibleCount')}/{c.get('candidateCount')} "
+                f"winner={c.get('winnerId')} L={m.get('winnerLength3d')} "
+                f"({r.get('total', 0):.2f} s)"
+            )
+        json_path, csv_path = layout_v2.write_report(lv_report, args.out, args.label)
+        print(f"wrote {json_path} and {csv_path} ({lv_report['totalRuntimeSeconds']:.1f} s)")
+        return 0
+    if args.command == "layout-v2-compare":
+        cmp_lv = layout_v2.compare_reports(
+            layout_v2.load_report(args.baseline), layout_v2.load_report(args.current)
+        )
+        print(json.dumps(cmp_lv, indent=2))
+        return 1 if cmp_lv["contractRegressions"] else 0
     if args.command == "warped-vein":
         wv_cases = warped_vein.suite(args.suite)
         print(f"warped-vein suite={args.suite} cases={len(wv_cases)}")

@@ -69,6 +69,34 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  …/design/tunnel/mesh.glb                    binary glTF, model/gltf-binary,
                                                      immutable cache headers; use the report's
                                                      cache-busted meshUrl (?v=<sha16>)
+    POST …/design/layout-v2                          Phase 20A parametric family search
+                                                     (kind LAYOUT_V2) → 202 {jobId, …}; ?sync=true
+                                                     runs inline. Every orebody type (EXACT or
+                                                     CONSERVATIVE clearance). Persists
+                                                     derived/layout_v2.json; deletes a stale
+                                                     selection and, if LAYOUT_V2 is active, the
+                                                     ramp-derived chain (rule 151)
+    GET  …/design/layout-v2                          catalogue · 409 LAYOUT_V2_NOT_GENERATED
+    POST …/design/layout-v2/select {candidateId}     materialize a FEASIBLE candidate as
+                                                     derived/layout_v2_selected.json (source unchanged)
+                                                     404 LAYOUT_V2_CANDIDATE_NOT_FOUND ·
+                                                     422 LAYOUT_V2_CANDIDATE_INFEASIBLE
+    GET  …/design/layout-v2/selected                 409 LAYOUT_V2_NOT_SELECTED if missing
+    POST …/design/layout-v2/activate {candidateId}   select + set active source LAYOUT_V2
+                                                     → {rampSource, selected}
+    GET  …/design/ramp-source                        {activeSource, owningArtifact, available, …}
+    PUT  …/design/ramp-source {activeSource}         LEGACY | LAYOUT_V2 (409 LAYOUT_V2_NOT_SELECTED
+                                                     without a selection); a change deletes every
+                                                     ramp-derived artifact, never geology
+    GET  …/design/ramp                               the ACTIVE Effective Ramp (rule 149):
+                                                     sourceKind LEGACY_SMOOTHED |
+                                                     LEGACY_RAW_FALLBACK | PARAMETRIC_V2,
+                                                     owningArtifact, sourceRevision, segments[]
+                                                     409 SMOOTHED_NOT_GENERATED (LEGACY) /
+                                                     LAYOUT_V2_NOT_SELECTED (LAYOUT_V2)
+    (tunnel, levels, network, timeline, communication and sensors all consume
+     the ACTIVE Effective Ramp; the scene's smoothedDecline is that ramp and
+     legacySmoothedDecline / rampSource / layoutV2 / layoutV2Selected are added)
     GET  /api/v1/jobs?scenario_id=                    job records (newest first, no result)
     (jobs fail with error.code JOB_INPUTS_CHANGED — nothing persisted — when
      scenario/world/targets were mutated while the job ran; rule 60)
