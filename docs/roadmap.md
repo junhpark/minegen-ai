@@ -25,7 +25,7 @@ demo (D0) is **deferred** and is no longer the next phase.
 | --- | --- | --- |
 | 17.1 | Scenario / viewer stabilisation | scenario isolation, 4D raw-path suppression, Field Slice toggle, Parameters UI — done |
 | 18 | Spatial Field Core | remove BlockModel/SMU semantics, batch field API, replace longhole grade proxy, golden-scenario harness — done |
-| 19 | Implicit Geological Orebody | warped vein, variable thickness, pinch & swell; authoritative implicit solid → derived clearance field → derived mesh |
+| 19 | Implicit Geological Orebody | WARPED_VEIN: authoritative implicit solid (φ), variable thickness, pinch & swell, warped mid-surface, asymmetric outline → derived approximate clearance → derived marching-cubes mesh; legacy layout stays TABULAR-only — done |
 | 20 | Parametric Layout Family Search | deterministic layout families, bounded local A*, rulebook constraints, legacy A* kept as baseline |
 | 21A | Longhole migration | prove the new MiningMethodPlan abstraction with already-validated geometry |
 | 21B | Cut & Fill | lift / cut / backfill 4D mining method |
@@ -39,8 +39,8 @@ Deferred deployment item (not scheduled):
 | --- | --- | --- |
 | D0 | Hugging Face public demo | single Docker Space, session isolation, TTL, prebuilt demo scenario |
 
-Phases 01–18 are described in `docs/architecture.md`; the invariants they
-established are `CLAUDE.md` rules 1–132.
+Phases 01–19 are described in `docs/architecture.md`; the invariants they
+established are `CLAUDE.md` rules 1–140.
 
 ## How this list is used
 

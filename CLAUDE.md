@@ -858,6 +858,66 @@ phase is considered complete.
      deterministic sub-stream — never clamped, never clipped — and
      exhaustion is a typed SCENARIO_REALIZATION_INVALID failure.
 
+133. Implicit membership authority (Phase 19). For an implicit orebody
+     (WARPED_VEIN) the smooth implicit function φ defines the solid:
+     `contains(x) := φ(x) <= 0` and nothing else. The derived render mesh,
+     the derived clearance field, the numerical field lattice and grade
+     values never define, refine or override membership.
+134. Distance honesty. `EXACT_METRIC_SDF` (TABULAR, ELLIPSOID —
+     `AnalyticOrebody.signed_distance`, exact Euclidean) and
+     `DERIVED_APPROXIMATE_CLEARANCE` (WARPED_VEIN —
+     `ImplicitOrebody.approximate_clearance`, lattice EDT + trilinear,
+     explicit spacing / error metadata) are distinct contracts declared by
+     `Orebody.distance_contract`. φ is never called or used as an SDF; an
+     approximate clearance is never labelled exact; its sign is forced to
+     agree with `contains` and membership wins on disagreement.
+135. No approximate hard buffer. The legacy Phase 03–18 design pipeline
+     (hard orebody exclusion buffers, access targets, levels, stopes)
+     accepts only `AnalyticOrebody`; `DesignCostEvaluator` raises
+     `ExactDistanceRequiredError` and the service returns
+     UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT (422) for any other contract.
+     WARPED_VEIN → approximate clearance → Hybrid-A* is forbidden.
+136. Resolved morphology. Every stochastic shape control AND every mode
+     coefficient of a WARPED_VEIN is drawn in `scenario_realizer.py`
+     (orebody sub-stream 0x0B0D17, no new key) and persisted resolved in
+     `orebody.warpedVein`; `build_orebody` / `generate_world` contain zero
+     hidden shape randomness. Invalid candidates are rejected whole and
+     retried deterministically; exhaustion is SCENARIO_REALIZATION_INVALID.
+     The frontend never generates coefficients: WARPED_VEIN is entered only
+     through the RANDOM_WARPED_VEIN preset and leaving it discards the
+     morphology.
+137. Shape-model versioning. `orebody.warpedVein.shapeModelVersion` pins
+     the mathematical interpretation of the persisted coefficients
+     (currently 1 = `world/warped_vein.py` shape model 1). A basis,
+     normalization or formula change gets a NEW version; unsupported
+     versions are rejected explicitly (422) and never reinterpreted. The
+     global Scenario `schemaVersion` stays 2 (the block is additive).
+138. Derived mesh. The orebody render mesh is a deterministic derivative
+     of the same implicit solid (marching cubes on the derived geometry
+     lattice, welded, watertight, outward, inside the conservative
+     bounding box, vertices on φ = 0 within lattice resolution). It is
+     never an independent visual deformation and never authored on the
+     client. `contains`, `volume` (deterministic 2-D quadrature of the
+     morphology, documented tolerance), `bounding_box` (conservative
+     analytic envelope) and `mesh` describe ONE solid (rule 120).
+139. Geological smoothness. Synthetic irregularity is low-frequency
+     (harmonic modes with wavenumber ≤ 3 on the body extent, bounded
+     amplitudes), one connected principal planform, single-valued over
+     the strike/dip frame (no overhangs), tapered terminations, a
+     guaranteed interior thickness floor (`V ≤ 1 − pinchFloorRatio`, no
+     clamping) and a verified pinch/swell, warp and asymmetry range at
+     realization. No mesh noise, no voxel morphology, no disconnected
+     blobs. It is "geologically plausible synthetic morphology" — never a
+     measured, estimated, kriged or imported orebody. Derived geometry uses
+     its own lattice (`geometryResolution`, budget-capped, explicit
+     failure), never `fieldSampling`.
+140. Legacy design boundary. WARPED_VEIN is world / visualization / field
+     slice / persistence only until the Phase 20 generalized layout. Design
+     entry points fail typed with the Phase 20 explanation; the grade slice
+     mask stays OREBODY_INTERSECTION_BELOW_TERRAIN decided by `contains`
+     with a conservative bounding-box prefilter (never the approximate
+     clearance as an exact bound).
+
 ## Roadmap
 
 Product name and direction, and the phases after 17.1 (D0, 18–23), live in

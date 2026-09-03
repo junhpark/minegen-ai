@@ -1,0 +1,886 @@
+{
+  "caseCount": 12,
+  "cases": [
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          139,
+          96,
+          69
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 43170,
+        "meshVertices": 21587,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-301",
+      "metrics": {
+        "bboxMax": [
+          410.6536109095734,
+          364.98631368407575,
+          193.05710872615703
+        ],
+        "bboxMin": [
+          -83.17440678856502,
+          -307.08044780146486,
+          -267.16727913187873
+        ],
+        "centerlineDeviation": 34.16914032198315,
+        "centerlineShiftRange": 13.500328892266367,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 885473.5285485148,
+        "dipEdgeAsymmetry": 0.06059965126094421,
+        "edgeTaper": 0.40010415185391307,
+        "geometryArrayBytes": 7883976,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 17.0130656360458,
+        "meshSignedVolumeM3": 2032986.6477560718,
+        "meshVolumeRelError": 0.0046163597574706535,
+        "midSurfaceRange": 30.463499971962833,
+        "minInteriorThickness": 9.99213029535864,
+        "nominalHeight": 360.4367731055148,
+        "nominalLength": 477.24636932980843,
+        "nominalThickness": 14.298949217841729,
+        "orebodyPayloadBytes": 1410321,
+        "outlineIrregularity": 0.26023505089241206,
+        "pinchFloorRatio": 0.3511152906459118,
+        "planformAreaM2": 167776.0,
+        "probeInsideFraction": 0.013456,
+        "scenePayloadBytes": 2012220,
+        "strikeEdgeAsymmetry": 0.12144689628676655,
+        "thicknessVariability": 0.46564961551460105,
+        "volumeM3": 2042415.170959336,
+        "warpAmplitude": 29.296604656864044
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.17480481799998415,
+        "containsProbe": 0.5646696189999147,
+        "mesh": 0.03788943900008235,
+        "realize": 0.008987435999870286,
+        "scene": 0.14486952600009317,
+        "total": 1.6624284949998582,
+        "world": 0.48506360200008203
+      },
+      "seed": 301
+    },
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          151,
+          72,
+          46
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 26232,
+        "meshVertices": 13118,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-302",
+      "metrics": {
+        "bboxMax": [
+          441.0830356468156,
+          242.16232122601187,
+          70.11192580861508
+        ],
+        "bboxMin": [
+          -186.8382444609888,
+          -478.04095653165666,
+          -232.82860460321177
+        ],
+        "centerlineDeviation": 50.81430803047388,
+        "centerlineShiftRange": 83.83667277483538,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 874671.9400751565,
+        "dipEdgeAsymmetry": 0.3245037458056069,
+        "edgeTaper": 0.749804402822499,
+        "geometryArrayBytes": 4315728,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 20.916268696327954,
+        "meshSignedVolumeM3": 1423138.8815552064,
+        "meshVolumeRelError": 0.0039820955100198134,
+        "midSurfaceRange": 17.12544312513151,
+        "minInteriorThickness": 11.65973855080767,
+        "nominalHeight": 244.25538545039691,
+        "nominalLength": 458.23399469953563,
+        "nominalThickness": 19.74887541343949,
+        "orebodyPayloadBytes": 839291,
+        "outlineIrregularity": 0.3684371322569164,
+        "pinchFloorRatio": 0.4545181505096715,
+        "planformAreaM2": 98656.0,
+        "probeInsideFraction": 0.010448,
+        "scenePayloadBytes": 1441260,
+        "strikeEdgeAsymmetry": 0.14191324771529426,
+        "thicknessVariability": 0.25546023598348006,
+        "volumeM3": 1428828.613561859,
+        "warpAmplitude": 12.893719240872366
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.07871142900012273,
+        "containsProbe": 0.5716428950001955,
+        "mesh": 0.020616169999811973,
+        "realize": 0.005660661000092659,
+        "scene": 0.12569933100007802,
+        "total": 1.1774519730001884,
+        "world": 0.18401378799990198
+      },
+      "seed": 302
+    },
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          200,
+          94,
+          47
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 38708,
+        "meshVertices": 19356,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-303",
+      "metrics": {
+        "bboxMax": [
+          496.03093268132517,
+          371.0468377615665,
+          180.87804621315385
+        ],
+        "bboxMin": [
+          -474.27696214237193,
+          -382.53008285463875,
+          -224.21951444167237
+        ],
+        "centerlineDeviation": 57.301057253277946,
+        "centerlineShiftRange": 45.08139917194937,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 977548.3861863425,
+        "dipEdgeAsymmetry": 3.563907230790131e-16,
+        "edgeTaper": 0.44482968753984853,
+        "geometryArrayBytes": 7533344,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 16.678209514700644,
+        "meshSignedVolumeM3": 1926379.1659329503,
+        "meshVolumeRelError": 0.005292447579322655,
+        "midSurfaceRange": 14.267223316752865,
+        "minInteriorThickness": 9.34788492053368,
+        "nominalHeight": 318.9949411124578,
+        "nominalLength": 618.2387360064072,
+        "nominalThickness": 14.262275459153303,
+        "orebodyPayloadBytes": 1260718,
+        "outlineIrregularity": 0.3888343132297561,
+        "pinchFloorRatio": 0.45165022821131773,
+        "planformAreaM2": 166128.0,
+        "probeInsideFraction": 0.006492,
+        "scenePayloadBytes": 1861202,
+        "strikeEdgeAsymmetry": 0.43936533032268527,
+        "thicknessVariability": 0.4214698216902826,
+        "volumeM3": 1936628.6716583152,
+        "warpAmplitude": 16.09363068000341
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.14486325799998667,
+        "containsProbe": 0.5114836330001253,
+        "mesh": 0.02664524000010715,
+        "realize": 0.006398679000085394,
+        "scene": 0.16416521799988004,
+        "total": 1.2462320080001064,
+        "world": 0.16835689900017314
+      },
+      "seed": 303
+    },
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          172,
+          94,
+          47
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 43722,
+        "meshVertices": 21863,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-304",
+      "metrics": {
+        "bboxMax": [
+          396.07941591146323,
+          231.48290525310696,
+          79.0937002663253
+        ],
+        "bboxMin": [
+          -462.03210410965926,
+          -163.0360725966448,
+          -298.0332197141205
+        ],
+        "centerlineDeviation": 50.08680775353323,
+        "centerlineShiftRange": 81.55340673226362,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 1004199.4516452241,
+        "dipEdgeAsymmetry": 0.12127507715801356,
+        "edgeTaper": 0.4953799667760465,
+        "geometryArrayBytes": 6603880,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 19.527946018627063,
+        "meshSignedVolumeM3": 2464224.2478465983,
+        "meshVolumeRelError": 0.003434407525370899,
+        "midSurfaceRange": 22.420507481199337,
+        "minInteriorThickness": 13.603127086187161,
+        "nominalHeight": 324.9800069297384,
+        "nominalLength": 538.6393759361061,
+        "nominalThickness": 18.903171963149216,
+        "orebodyPayloadBytes": 1435737,
+        "outlineIrregularity": 0.35751163786371876,
+        "pinchFloorRatio": 0.4342973082434658,
+        "planformAreaM2": 168704.0,
+        "probeInsideFraction": 0.01934,
+        "scenePayloadBytes": 2034093,
+        "strikeEdgeAsymmetry": 0.21641357648019954,
+        "thicknessVariability": 0.25112309031020164,
+        "volumeM3": 2472716.5642228746,
+        "warpAmplitude": 13.883482748014792
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.14018368300003203,
+        "containsProbe": 0.4979090549998091,
+        "mesh": 0.034437681999861525,
+        "realize": 0.006072509999967224,
+        "scene": 0.18030537300001015,
+        "total": 1.3075835229999484,
+        "world": 0.1852368380000371
+      },
+      "seed": 304
+    },
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          154,
+          78,
+          66
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 47712,
+        "meshVertices": 23858,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-305",
+      "metrics": {
+        "bboxMax": [
+          399.9759214843775,
+          400.63346730411047,
+          64.4739308060071
+        ],
+        "bboxMin": [
+          -289.4319461211695,
+          -357.8025496065553,
+          -263.50535370958886
+        ],
+        "centerlineDeviation": 61.00317962115654,
+        "centerlineShiftRange": 39.96928645707552,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 894687.3488487668,
+        "dipEdgeAsymmetry": 0.05158221583206035,
+        "edgeTaper": 0.3036074354320115,
+        "geometryArrayBytes": 6914928,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 29.989526396474904,
+        "meshSignedVolumeM3": 3071263.3699345333,
+        "meshVolumeRelError": 0.002578021432920663,
+        "midSurfaceRange": 27.77751398320021,
+        "minInteriorThickness": 15.681542222491366,
+        "nominalHeight": 312.23364035484894,
+        "nominalLength": 532.1633604340576,
+        "nominalThickness": 24.18438867489172,
+        "orebodyPayloadBytes": 1574670,
+        "outlineIrregularity": 0.16280893207213343,
+        "pinchFloorRatio": 0.4770201160089699,
+        "planformAreaM2": 156384.0,
+        "probeInsideFraction": 0.018084,
+        "scenePayloadBytes": 2176635,
+        "strikeEdgeAsymmetry": 0.12349257061207235,
+        "thicknessVariability": 0.46408158345615935,
+        "volumeM3": 3079201.617701251,
+        "warpAmplitude": 19.902986974872558
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.1475700630001029,
+        "containsProbe": 0.5588544429999729,
+        "mesh": 0.03552192000006471,
+        "realize": 0.00569987900007618,
+        "scene": 0.13161314900003163,
+        "total": 1.3718702660000872,
+        "world": 0.2272277730000951
+      },
+      "seed": 305
+    },
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          148,
+          77,
+          59
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 36842,
+        "meshVertices": 18423,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-306",
+      "metrics": {
+        "bboxMax": [
+          78.74085350431727,
+          462.85251432589973,
+          75.75962232876051
+        ],
+        "bboxMin": [
+          -164.90224763596655,
+          -264.3084901980393,
+          -282.5152647323648
+        ],
+        "centerlineDeviation": 55.021672836919045,
+        "centerlineShiftRange": 76.13192012646884,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 957449.8670534724,
+        "dipEdgeAsymmetry": 0.15137080079107249,
+        "edgeTaper": 0.6746715822174947,
+        "geometryArrayBytes": 5821064,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 21.842219541069376,
+        "meshSignedVolumeM3": 1932315.8172509207,
+        "meshVolumeRelError": 0.0036657559660675165,
+        "midSurfaceRange": 27.660802156832162,
+        "minInteriorThickness": 11.716684155695724,
+        "nominalHeight": 286.72636032094385,
+        "nominalLength": 484.2722476959345,
+        "nominalThickness": 18.74141657622203,
+        "orebodyPayloadBytes": 1200113,
+        "outlineIrregularity": 0.2490318572133323,
+        "pinchFloorRatio": 0.48748251895433325,
+        "planformAreaM2": 129040.0,
+        "probeInsideFraction": 0.030838,
+        "scenePayloadBytes": 1798262,
+        "strikeEdgeAsymmetry": 0.10236493002098745,
+        "thicknessVariability": 0.4743880386688111,
+        "volumeM3": 1939425.277030939,
+        "warpAmplitude": 19.600929272103958
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.12687797500007036,
+        "containsProbe": 0.5222205540001141,
+        "mesh": 0.03011080300007052,
+        "realize": 0.005335273999889978,
+        "scene": 0.1282407459998467,
+        "total": 1.2583924289999686,
+        "world": 0.21393283499992322
+      },
+      "seed": 306
+    },
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          115,
+          57,
+          33
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 19828,
+        "meshVertices": 9916,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-307",
+      "metrics": {
+        "bboxMax": [
+          254.41441466737479,
+          145.9326836032586,
+          76.83831208467151
+        ],
+        "bboxMin": [
+          -135.0109794603846,
+          -345.3937269600061,
+          -182.15837028330478
+        ],
+        "centerlineDeviation": 42.291920748645886,
+        "centerlineShiftRange": 42.132476044055075,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 907254.1252770625,
+        "dipEdgeAsymmetry": 0.13164561757743776,
+        "edgeTaper": 0.6086611097343213,
+        "geometryArrayBytes": 1968504,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 9.841128847478526,
+        "meshSignedVolumeM3": 535506.6781760778,
+        "meshVolumeRelError": 0.015687968501866167,
+        "midSurfaceRange": 13.191559008570433,
+        "minInteriorThickness": 4.269219750721258,
+        "nominalHeight": 218.66754567531626,
+        "nominalLength": 391.35662266941233,
+        "nominalThickness": 8.90481894818751,
+        "orebodyPayloadBytes": 614035,
+        "outlineIrregularity": 0.1773448805808081,
+        "pinchFloorRatio": 0.36633507978510704,
+        "planformAreaM2": 83152.0,
+        "probeInsideFraction": 0.010934,
+        "scenePayloadBytes": 1212212,
+        "strikeEdgeAsymmetry": 0.0945850180940982,
+        "thicknessVariability": 0.49527553614842984,
+        "volumeM3": 544041.585432041,
+        "warpAmplitude": 10.310461787118372
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.03217073900009382,
+        "containsProbe": 0.5511135040001136,
+        "mesh": 0.01313967800001592,
+        "realize": 0.003982081000003745,
+        "scene": 0.0711312230000658,
+        "total": 1.0241385249998984,
+        "world": 0.1962705079999978
+      },
+      "seed": 307
+    },
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          162,
+          79,
+          46
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 33424,
+        "meshVertices": 16714,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-308",
+      "metrics": {
+        "bboxMax": [
+          393.86997762235916,
+          280.89764427433835,
+          105.31818240570392
+        ],
+        "bboxMin": [
+          -396.1376577567732,
+          -160.11325808529995,
+          -259.2686992585849
+        ],
+        "centerlineDeviation": 49.97881975928638,
+        "centerlineShiftRange": 14.777311647942716,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 878840.2157997768,
+        "dipEdgeAsymmetry": 0.13939658631818116,
+        "edgeTaper": 0.5162025346148497,
+        "geometryArrayBytes": 5110800,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 21.901792709445722,
+        "meshSignedVolumeM3": 2091058.4797822367,
+        "meshVolumeRelError": 0.0033001822792626933,
+        "midSurfaceRange": 8.235517728744101,
+        "minInteriorThickness": 11.337743272019175,
+        "nominalHeight": 280.43972286841733,
+        "nominalLength": 521.9819326377544,
+        "nominalThickness": 21.620073851532446,
+        "orebodyPayloadBytes": 1078092,
+        "outlineIrregularity": 0.3113589002508876,
+        "pinchFloorRatio": 0.4814497471806788,
+        "planformAreaM2": 133424.0,
+        "probeInsideFraction": 0.01667,
+        "scenePayloadBytes": 1680937,
+        "strikeEdgeAsymmetry": 0.2332500400684993,
+        "thicknessVariability": 0.45744079761035444,
+        "volumeM3": 2097982.2034723447,
+        "warpAmplitude": 9.268878555433648
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.10716816600006496,
+        "containsProbe": 0.5689316340001369,
+        "mesh": 0.02441780600020138,
+        "realize": 0.00884912800006532,
+        "scene": 0.12931144300000597,
+        "total": 1.2477258930000517,
+        "world": 0.1835876800000733
+      },
+      "seed": 308
+    },
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          125,
+          62,
+          45
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 19224,
+        "meshVertices": 9614,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-309",
+      "metrics": {
+        "bboxMax": [
+          406.9744844541033,
+          257.1673910574096,
+          13.347545937188045
+        ],
+        "bboxMin": [
+          -98.15776019395562,
+          -353.5323609092623,
+          -243.81656159285006
+        ],
+        "centerlineDeviation": 39.34549273589896,
+        "centerlineShiftRange": 62.937295512101876,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 922348.6751595339,
+        "dipEdgeAsymmetry": 0.2668619622310777,
+        "edgeTaper": 0.6512156343287223,
+        "geometryArrayBytes": 3020736,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 10.53195961458251,
+        "meshSignedVolumeM3": 575487.7117328448,
+        "meshVolumeRelError": 0.014138059183098144,
+        "midSurfaceRange": 11.66355683059395,
+        "minInteriorThickness": 5.500799034329758,
+        "nominalHeight": 218.43797307478422,
+        "nominalLength": 400.33015198699206,
+        "nominalThickness": 9.207800903571766,
+        "orebodyPayloadBytes": 601119,
+        "outlineIrregularity": 0.2937077562417846,
+        "pinchFloorRatio": 0.42069449309335194,
+        "planformAreaM2": 83200.0,
+        "probeInsideFraction": 0.007572,
+        "scenePayloadBytes": 1199593,
+        "strikeEdgeAsymmetry": 0.058324410718749824,
+        "thicknessVariability": 0.41563346268706347,
+        "volumeM3": 583740.6718997449,
+        "warpAmplitude": 18.321196482972784
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.04578753400005553,
+        "containsProbe": 0.5420943440001338,
+        "mesh": 0.012612585000169929,
+        "realize": 0.004226165000090987,
+        "scene": 0.07695698099996662,
+        "total": 1.070358011000053,
+        "world": 0.24626439500002562
+      },
+      "seed": 309
+    },
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          123,
+          96,
+          60
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 30388,
+        "meshVertices": 15196,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-310",
+      "metrics": {
+        "bboxMax": [
+          251.5860669540599,
+          308.50442989691146,
+          129.62408336920845
+        ],
+        "bboxMin": [
+          -421.5191984110719,
+          -355.66670225587654,
+          -246.8524636303694
+        ],
+        "centerlineDeviation": 58.24627149415699,
+        "centerlineShiftRange": 89.13796766751415,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 1027926.7974678931,
+        "dipEdgeAsymmetry": 0.06256044685269778,
+        "edgeTaper": 0.5586932027910028,
+        "geometryArrayBytes": 6032544,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 17.951706771565757,
+        "meshSignedVolumeM3": 1697563.733951079,
+        "meshVolumeRelError": 0.004413052660146178,
+        "midSurfaceRange": 11.098339194419577,
+        "minInteriorThickness": 10.842098210205258,
+        "nominalHeight": 379.76981060298937,
+        "nominalLength": 394.60540874422,
+        "nominalThickness": 18.069404707147974,
+        "orebodyPayloadBytes": 978768,
+        "outlineIrregularity": 0.19177907940873204,
+        "pinchFloorRatio": 0.4766341773923132,
+        "planformAreaM2": 133392.0,
+        "probeInsideFraction": 0.010044,
+        "scenePayloadBytes": 1582630,
+        "strikeEdgeAsymmetry": 0.10428977304965657,
+        "thicknessVariability": 0.4751820121172947,
+        "volumeM3": 1705088.3787567357,
+        "warpAmplitude": 20.598958187211178
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.14176523600008295,
+        "containsProbe": 0.48641595999993115,
+        "mesh": 0.02630973400005132,
+        "realize": 0.004902549999997063,
+        "scene": 0.13121994600010112,
+        "total": 1.187462251999932,
+        "world": 0.17488157200000387
+      },
+      "seed": 310
+    },
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          136,
+          100,
+          73
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 45420,
+        "meshVertices": 22712,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-311",
+      "metrics": {
+        "bboxMax": [
+          226.44515125348565,
+          272.09102487705337,
+          126.05732377732569
+        ],
+        "bboxMin": [
+          -171.04915262657627,
+          -400.8266414909113,
+          -297.12509305598263
+        ],
+        "centerlineDeviation": 57.01371584157394,
+        "centerlineShiftRange": 80.99966948041862,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 890573.5056483066,
+        "dipEdgeAsymmetry": 0.08409112038101134,
+        "edgeTaper": 0.42078331851282696,
+        "geometryArrayBytes": 8487488,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 23.6830153992376,
+        "meshSignedVolumeM3": 2283145.481131911,
+        "meshVolumeRelError": 0.0035624191017790854,
+        "midSurfaceRange": 30.586898225304797,
+        "minInteriorThickness": 11.759549727253207,
+        "nominalHeight": 367.58576050583247,
+        "nominalLength": 418.8851437693356,
+        "nominalThickness": 19.305228388944876,
+        "orebodyPayloadBytes": 1490884,
+        "outlineIrregularity": 0.2865071798579344,
+        "pinchFloorRatio": 0.32189678671560096,
+        "planformAreaM2": 153664.0,
+        "probeInsideFraction": 0.020094,
+        "scenePayloadBytes": 2091883,
+        "strikeEdgeAsymmetry": 0.04688052444873669,
+        "thicknessVariability": 0.46622567757448874,
+        "volumeM3": 2291308.0808070386,
+        "warpAmplitude": 28.08148735271642
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.18341875000010077,
+        "containsProbe": 0.5614359700000477,
+        "mesh": 0.0342751179998686,
+        "realize": 0.006510120000029929,
+        "scene": 0.15490452000017285,
+        "total": 1.4055879509999158,
+        "world": 0.20859209900004316
+      },
+      "seed": 311
+    },
+    {
+      "contract": {
+        "clearanceSignAgreesWithContains": true,
+        "latticeShape": [
+          119,
+          88,
+          52
+        ],
+        "meshInsideBbox": true,
+        "meshOutward": true,
+        "meshTriangles": 28388,
+        "meshVertices": 14196,
+        "meshWatertight": true,
+        "planformConnectedComponents": 1,
+        "realized": true,
+        "shapeModelVersion": 1
+      },
+      "faultCount": 1,
+      "key": "RANDOM_WARPED_VEIN-312",
+      "metrics": {
+        "bboxMax": [
+          279.5018527819486,
+          170.66111682673676,
+          161.27644035234462
+        ],
+        "bboxMin": [
+          -41.406282596057935,
+          -427.0512009127072,
+          -242.3936260393933
+        ],
+        "centerlineDeviation": 44.04455119770703,
+        "centerlineShiftRange": 7.895780515955843,
+        "clearanceMaxAbsErrorEstimateM": 7.180703308172536,
+        "containsPointsPerSecond": 1006639.4049519579,
+        "dipEdgeAsymmetry": 0.19469397140438488,
+        "edgeTaper": 0.712314261172662,
+        "geometryArrayBytes": 4697056,
+        "latticeSpacing": [
+          5.0,
+          5.0,
+          1.25
+        ],
+        "maxInteriorThickness": 24.091979750461533,
+        "meshSignedVolumeM3": 1744927.1806121897,
+        "meshVolumeRelError": 0.0030405220858595334,
+        "midSurfaceRange": 16.329875304750193,
+        "minInteriorThickness": 12.772379734116617,
+        "nominalHeight": 319.5238355492524,
+        "nominalLength": 369.99427297328435,
+        "nominalThickness": 20.164892168814475,
+        "orebodyPayloadBytes": 909457,
+        "outlineIrregularity": 0.29373303220633606,
+        "pinchFloorRatio": 0.47437237567781143,
+        "planformAreaM2": 108288.0,
+        "probeInsideFraction": 0.02237,
+        "scenePayloadBytes": 1509426,
+        "strikeEdgeAsymmetry": 0.17242415936809521,
+        "thicknessVariability": 0.3109292615177208,
+        "volumeM3": 1750248.8508990987,
+        "warpAmplitude": 16.088511675616456
+      },
+      "notes": [],
+      "runtime": {
+        "clearance": 0.09710557299990796,
+        "containsProbe": 0.4967021930001465,
+        "mesh": 0.021449781000001167,
+        "realize": 0.004766964000054941,
+        "scene": 0.11749397099993075,
+        "total": 1.115119586999981,
+        "world": 0.18369665299996996
+      },
+      "seed": 312
+    }
+  ],
+  "gitHead": "6aaf448931845de36bb85b5c4f8f64ffd33522fe",
+  "label": "phase19_warped_vein",
+  "semantics": "world-only geometry of the deterministic synthetic WARPED_VEIN implicit solid; geometric volumes only \u2014 never resources, reserves or ore tonnage",
+  "suiteVersion": 1,
+  "totalRuntimeSeconds": 15.091380180999977
+}

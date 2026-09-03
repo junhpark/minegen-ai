@@ -27,11 +27,46 @@ upsampled (``scipy.ndimage.zoom``), summed with amplitude ``0.5^k``, then
 normalized so ``mean = base_elevation`` and ``max − min = relief``.
 Bilinear sampling for the per-cell terrain-support fraction.
 
-### Orebody (``world/orebody.py``)
-Analytic slab in the strike/dip frame (rule 28); ``contains`` is an exact
-half-extent test. Source of truth: never reconstructed from voxels. Box mesh
-with outward CCW winding. ``footwall_point(u, v, offset)`` lies ``offset``
-past the footwall contact along ``+w`` (rule 29, used by Phase 03).
+### Orebody (``world/orebody.py``, ``world/warped_vein.py``)
+Three bodies in the strike/dip frame (rule 28), one honest contract split
+(rule 134):
+
+* TABULAR — analytic slab; ``contains`` is an exact half-extent test,
+  ``signed_distance`` the exact oriented-box SDF, box mesh with outward CCW
+  winding. ``TabularOrebody.footwall_point(u, v, offset)`` lies ``offset``
+  past the footwall contact along ``+w`` (rule 29, used by Phase 03; tabular-
+  only, no longer on the generic interface).
+* ELLIPSOID — analytic geometric reference; exact Euclidean SDF (largest-root
+  equation, deterministic bisection), analytic volume / rotated AABB, UV mesh.
+* WARPED_VEIN (Phase 19) — deterministic synthetic irregular IMPLICIT body:
+  ``contains := φ <= 0`` on the shape-model-1 function
+
+      s = u/(L/2), t = v/(H/2);  g_X(s,t) = Σ wᵢ cos(π kuᵢ s/2 + φuᵢ) cos(π kvᵢ t/2 + φvᵢ) / Σ|wᵢ|
+      u_c(t) = D·g_dev(0,t);  a±(t) = (L/2)(1 + I·g_out(±1,t));  b±(s) = (H/2)(1 + I·g_out(s,±1))
+      ξ = (u − u_c)/a_sign(t),  η = v/b_sign(s),  P = (ξ⁴ + η⁴)^{1/4}
+      w_mid = A·g_warp(s,t),  m = 1 + V·g_th(s,t)  (≥ 1 − V ≥ pinch floor),  k = 2/edgeTaper
+      φ(u,v,w) = ((w − w_mid)/(T/2·m))² + P^k − 1
+
+  i.e. ``|w − w_mid| < (T/2)·m·sqrt(1 − P^k)`` over the asymmetric planform
+  ``P < 1`` — warped mid-surface, lateral centreline deviation, four
+  independently modulated edges, pinch and swell, tapered terminations,
+  single-valued (no overhang), one connected planform (checked at
+  realization). Modes have wavenumber ≤ 3 on the body extent (rule 139).
+  Bounding box = conservative analytic envelope
+  ``|u| ≤ D + (L/2)(1+I), |v| ≤ (H/2)(1+I), |w| ≤ A + (T/2)(1+V)`` rotated to
+  world. Volume = deterministic 2-D midpoint quadrature (1 m) of the exact
+  w-extent ``2h``; tolerance 5e-3 documented, measured < 1e-4 vs 0.5 m.
+  Derived (lazy, rule 138) on its own lattice (``geometryResolution`` in
+  plane, ``min(res/4, floor thickness/3)`` across, padded 2 cells, ≤ 6 M
+  cells else ``WarpedVeinGeometryBudgetError``): ``approximate_clearance`` =
+  signed EDT of the lattice classification + trilinear query + box-distance
+  outside the lattice, sign forced to agree with ``contains`` (magnitude
+  capped at half a cell where they disagree); ``mesh`` = scikit-image
+  marching cubes (Lewiner, ``gradient_direction="descent"`` → outward),
+  welded (exact-duplicate merge, degenerate faces dropped), 1 mm rounding.
+  Measured (520 × 310 × 16 m nominal, 5 m / 1.25 m lattice, 858 k cells):
+  construct + bbox 9 ms, contains 0.67 M pts/s, clearance build 0.17 s,
+  mesh 0.03 s → 19 k vertices / 38 k triangles, ≈ 1.2 MB of scene JSON.
 
 ### Terrain boundary policy (``world/spatial_fields.py``)
 Each cell is sub-sampled ``2×2×2`` against the terrain (terrain sampled once
@@ -109,7 +144,10 @@ Continuous query ``evaluate_points(N×3)``; no dense volume.
     rock_penalty     w_rock · (100 − rq) / 100                      (w_rock = 2)
     fault_penalty    Σ_f analytic: core_penalty_f if |d_f| ≤ core_f;
                      damage_f · (infl_f − |d_f|)/(infl_f − core_f) in the damage zone
-    orebody_distance analytic oriented-box SDF (negative inside)
+    orebody_distance EXACT analytic SDF (negative inside) — the evaluator accepts
+                     only ``AnalyticOrebody`` (``ExactDistanceRequiredError``
+                     otherwise, rule 135): an implicit body's approximate
+                     clearance never drives the hard buffers
     orebody_penalty  w_ster · max(0, 1 − (sdf − buffer)/range)  (5, buffer 5, range 15)
     total            base(1) + rock + fault + orebody; +inf when invalid
 

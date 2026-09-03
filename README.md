@@ -29,7 +29,11 @@ platform. Research prototype / proof of concept.
 | 13    | First-person walkthrough                                     | done  |
 | 14    | Walkthrough interaction/inspection                           | done  |
 | 15    | 4D walkthrough (timeline snapshot)                           | done  |
-| 16    | Navigation modes / minimap / visual polish                   | current |
+| 16    | Navigation modes / minimap / visual polish                   | done  |
+| 17    | Deterministic scenario realization (presets, seeds, faults)  | done  |
+| 17.1  | Scenario isolation / viewer stabilisation                    | done  |
+| 18    | Spatial Field Core (no block/SMU semantics, golden harness)  | done  |
+| 19    | Implicit Geological Orebody (WARPED_VEIN implicit solid)     | done  |
 
 
 ## Layout
@@ -130,6 +134,29 @@ Every phase must pass all of these before it is considered complete:
    footwall offset, rock quality, fault penalty, cost/m and next-level
    heuristic, plus rejection reasons if any.
 4. Regenerate the world: targets disappear (derived state invalidated).
+
+## Phase 19 manual acceptance (WARPED_VEIN)
+
+1. Preset **Baseline**, **Randomized · tabular orebody** and **Randomized ·
+   ellipsoid (geometric reference shape)** behave exactly as before; the
+   ellipsoid renders as the simple analytic reference.
+2. Preset **Randomized · irregular warped vein** → Randomize → New synthetic
+   mine → Generate world: a non-planar, asymmetric, variable-thickness body
+   with smooth pinch-and-swell and tapered terminations (no wireframe, no
+   voxel steps, no spikes). The preview and Parameters panel say
+   "nominal thickness" and show warp / thickness variability / pinch floor.
+3. Different seeds give clearly different morphology; the same seed
+   reproduces the same body. Advanced → "Irregular morphology" edits reach
+   the created scenario; the Type select never offers WARPED_VEIN for a
+   plain draft (it must be realized).
+4. Field slice (default OFF) → grade follows the irregular mineralized
+   domain; rock-quality / fault slices still work.
+5. Access-target generation stays disabled with the Phase 20 notice;
+   `POST …/design/targets` and `…/design/cost/evaluate` answer
+   `422 UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT`.
+6. A TABULAR scenario still runs decline → tunnel → levels → stopes →
+   network → 4D unchanged; the warped-vein mesh (≈ 10–25 k vertices) orbits
+   smoothly in the browser.
 
 ## Phase 02 smoke test
 
