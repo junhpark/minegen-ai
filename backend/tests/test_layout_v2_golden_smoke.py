@@ -22,7 +22,7 @@ from minegen.regression.layout_v2 import (
 )
 
 GOLDEN_DIR = Path(__file__).resolve().parents[1] / "golden"
-BASELINE = GOLDEN_DIR / "phase20a_layout_v2.json"
+BASELINE = GOLDEN_DIR / "phase20b_layout_v2.json"
 
 
 def test_layout_v2_baseline_is_committed() -> None:
@@ -39,6 +39,25 @@ def test_layout_v2_baseline_is_committed() -> None:
     assert by_key["WARPED_VEIN-301"]["metrics"]["clearanceErrorBound"] > 0
     assert all(c["contract"]["candidateCount"] == 68 for c in report["cases"])
     assert "optimality" in report["semantics"]
+    # Phase 20B: every winner has an explicit access branch per level (§23)
+    ref = by_key["TABULAR-REFERENCE"]
+    assert ref["contract"]["winnerAccessibleLevels"] == ref["contract"]["serviceableLevelCount"]
+    assert ref["contract"]["winnerAccessFailures"] == {}
+    assert (
+        len(ref["metrics"]["winnerJunctionChainages"]) == ref["contract"]["serviceableLevelCount"]
+    )
+    assert ref["metrics"]["winnerTotalAccessLength"] > 0
+    assert ref["contract"]["miningMethod"] == "LONGHOLE_OPEN_STOPING"
+    assert by_key["ACCESS-INFEASIBLE"]["contract"]["status"] == "NO_FEASIBLE_CANDIDATE"
+    assert "LEVEL_ACCESS_INFEASIBLE" in {
+        r
+        for rs in by_key["ACCESS-INFEASIBLE"]["contract"]["candidateFailureReasons"].values()
+        for r in rs
+    }
+    caf = by_key["CUT_AND_FILL"]
+    assert caf["contract"]["miningMethod"] == "CUT_AND_FILL"
+    assert caf["contract"]["status"] == "SUCCESS"
+    assert caf["contract"]["winnerAccessibleLevels"] == caf["contract"]["serviceableLevelCount"]
 
 
 @pytest.mark.parametrize("key", SMOKE_KEYS)

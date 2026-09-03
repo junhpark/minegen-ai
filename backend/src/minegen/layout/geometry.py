@@ -7,7 +7,10 @@ measures what was actually delivered:
 * per-edge gradient (vertical / horizontal, MineGen convention),
 * heading (clockwise azimuth from +Y, ``docs/coordinate-system.md``),
 * unwrapped heading change, plan curvature radius at every interior vertex
-  (chord-based: exact for uniformly sampled circular arcs),
+  (three-point circumradius ``R = |p2 − p0| / (2·sin δ)`` with δ the turning
+  angle at the vertex: exact for ANY sampling of a circular arc, so a true
+  R = R_min turn is recovered at 5 m sample spacing just as at 1 m — the
+  previous mean-chord / Δheading estimate under-estimated finite steps),
 * family-signature diagnostics (rule 145): cumulative / signed heading
   change, reversal count, dominant azimuths, turn-direction consistency,
 * level crossings by segment interpolation (no elevation tolerance), and the
@@ -112,14 +115,12 @@ def analyze_centerline(points: FloatArray) -> CenterlineDiagnostics:
         grad = np.where(h > 1e-12, dz / np.maximum(h, 1e-12), 0.0)
     az = headings(pts)
     delta = unwrap_delta(az) if az.shape[0] > 1 else np.zeros(0)
-    # chord-based plan radius at interior vertices
     radii: list[float] = []
     turning_len = 0.0
     if delta.shape[0]:
         mean_len = 0.5 * (h[:-1] + h[1:])
         turning = np.abs(delta) > STRAIGHT_HEADING_EPS
-        r = np.full(delta.shape[0], np.inf)
-        r[turning] = mean_len[turning] / np.abs(delta[turning])
+        r = plan_radii(pts, delta)
         radii = [float(v) for v in r[turning]]
         turning_len = float(np.sum(mean_len[turning & (r < TURNING_RADIUS_LIMIT)]))
     cumulative = float(np.sum(np.abs(delta)))
@@ -171,6 +172,27 @@ def analyze_centerline(points: FloatArray) -> CenterlineDiagnostics:
         max_local_turn_deg=float(math.degrees(np.max(np.abs(delta)))) if delta.size else 0.0,
         monotonic_descent=bool(np.all(dz <= 1e-9)),
     )
+
+
+def plan_radii(points: FloatArray, delta: FloatArray | None = None) -> FloatArray:
+    """Plan-view circumradius at every interior vertex (Phase 20A closeout):
+    the circle through ``(p_{i−1}, p_i, p_{i+1})`` has radius
+    ``|p_{i+1} − p_{i−1}| / (2·sin δ_i)`` where δ_i is the heading change at
+    the vertex. Exact for every sampling of a circular arc; ``inf`` for
+    straight / collinear triples (|δ| ≤ STRAIGHT_HEADING_EPS, the only
+    tolerance, for floating-point noise), never NaN."""
+    pts = np.asarray(points, dtype=np.float64)
+    if delta is None:
+        az = headings(pts)
+        delta = unwrap_delta(az) if az.shape[0] > 1 else np.zeros(0)
+    if delta.shape[0] == 0:
+        return np.zeros(0)
+    chord = np.hypot(pts[2:, 0] - pts[:-2, 0], pts[2:, 1] - pts[:-2, 1])
+    turning = np.abs(delta) > STRAIGHT_HEADING_EPS
+    r = np.full(delta.shape[0], np.inf)
+    # a reversal (|δ| → π) has sin δ → 0 and a vanishing chord: R → 0
+    r[turning] = chord[turning] / np.maximum(2.0 * np.abs(np.sin(delta[turning])), 1e-300)
+    return np.asarray(r)
 
 
 @dataclass(frozen=True)

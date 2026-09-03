@@ -1,4 +1,4 @@
-"""Phase 20A — layout-v2 (parametric family search) golden suite.
+"""Phase 20A/20B — layout-v2 (parametric family search + level access) golden suite.
 
 Companion of the LEGACY golden harness (``golden.py``, which stays
 untouched): fixed deterministic scenarios are realized, their world is
@@ -33,7 +33,12 @@ from typing import Any
 
 from minegen.core.enums import ScenarioPreset
 from minegen.core.models import Scenario
-from minegen.layout.search import CandidateStatus, LayoutV2Search, materialize_effective_ramp
+from minegen.layout.search import (
+    CandidateStatus,
+    LayoutV2Search,
+    materialize_effective_ramp,
+    materialize_level_accesses,
+)
 from minegen.services.scenario_realizer import ScenarioRealizationError, realize_scenario
 from minegen.world.synthetic_world import generate_world
 
@@ -47,18 +52,21 @@ class LayoutCase:
     seed: int
     fault_count: int | None = None
     #: dotted-path overrides applied to the realized Scenario (deterministic,
-    #: documented per case) — e.g. {"mining.sublevel_interval": 15.0}
-    overrides: tuple[tuple[str, float], ...] = field(default_factory=tuple)
+    #: documented per case) — e.g. ("mining.sublevel_interval", 15.0) or
+    #: ("layout.access.maximum_access_length", 20.0)
+    overrides: tuple[tuple[str, Any], ...] = field(default_factory=tuple)
     note: str = ""
 
     def realize(self) -> Scenario:
         create = realize_scenario(self.preset, self.seed, self.fault_count)
-        sc = Scenario(**create.model_dump())
+        raw = create.model_dump()
         for path, value in self.overrides:
-            section, name = path.split(".", 1)
-            block = getattr(sc, section).model_copy(update={name: value})
-            sc = sc.model_copy(update={section: block})
-        return sc
+            node: dict[str, Any] = raw
+            *parents, leaf = path.split(".")
+            for key in parents:
+                node = node[key]
+            node[leaf] = value
+        return Scenario(**raw)
 
 
 #: mandatory cases (directive §47): the TABULAR reference mine, a fixed-seed
@@ -88,8 +96,32 @@ FULL_SUITE: tuple[LayoutCase, ...] = (
         1,
         note="implicit body where the search honestly finds no feasible candidate",
     ),
+    # Phase 20B mandatory cases (directive §23)
+    LayoutCase(
+        "ACCESS-INFEASIBLE",
+        ScenarioPreset.BASELINE,
+        42,
+        overrides=(
+            ("layout.access.maximum_access_length", 16.0),
+            ("layout.access.minimum_access_length", 15.0),
+        ),
+        note="deliberate access infeasibility: no branch can fit the 15-16 m length window",
+    ),
+    LayoutCase(
+        "CUT_AND_FILL",
+        ScenarioPreset.BASELINE,
+        42,
+        overrides=(("mining.method", "CUT_AND_FILL"),),
+        note="generic ramp junctions + level accesses for a reserved production method",
+    ),
 )
-SMOKE_KEYS: tuple[str, ...] = ("TABULAR-REFERENCE", "WARPED_VEIN-301", "GEOMETRY-STRESS")
+SMOKE_KEYS: tuple[str, ...] = (
+    "TABULAR-REFERENCE",
+    "WARPED_VEIN-301",
+    "GEOMETRY-STRESS",
+    "ACCESS-INFEASIBLE",
+    "CUT_AND_FILL",
+)
 
 
 def suite(name: str) -> list[LayoutCase]:
@@ -160,8 +192,11 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
     contract["candidateFailureReasons"] = {
         c.candidate_id: list(c.failure_reasons) for c in res.candidates if c.failure_reasons
     }
-    contract["servedLevels"] = {
-        c.candidate_id: c.served_count for c in res.candidates if c.level_service
+    contract["screenedLevels"] = {
+        c.candidate_id: c.screened_count for c in res.candidates if c.level_service
+    }
+    contract["accessibleLevels"] = {
+        c.candidate_id: c.accessible_count for c in res.candidates if c.accessible_count is not None
     }
     contract["familyCounts"] = {
         f: sum(1 for c in res.candidates if c.params.family.value == f)
@@ -193,11 +228,13 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
                 "stageReached": c.stage_reached,
                 "failureReasons": list(c.failure_reasons),
                 "rank": c.rank,
-                "servedLevels": c.served_count if c.level_service else None,
-                "levelConnections": [
+                "screenedLevels": c.screened_count if c.level_service else None,
+                "accessibleLevels": c.accessible_count,
+                "access": c.access_plan.summary() if c.access_plan else None,
+                "rampLevelReferences": [
                     {
                         "levelId": r.level_id,
-                        "served": r.served,
+                        "withinReach": r.within_reach,
                         "position": (
                             [_r(v) for v in r.connection_position]
                             if r.connection_position is not None
@@ -245,11 +282,33 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
         d = winner.diagnostics
         t0 = time.perf_counter()
         ramp = materialize_effective_ramp(res, winner, search.evaluator, "golden")
+        accesses = materialize_level_accesses(res, winner, "golden", sc.mining.method.value)
         runtime["materialize"] = time.perf_counter() - t0
+        plan = winner.access_plan
+        assert plan is not None
+        summary = plan.summary()
         contract["winnerFamily"] = winner.params.family.value
         contract["winnerSegments"] = len(ramp["segments"])
-        contract["winnerServedLevels"] = winner.served_count
+        contract["winnerAccessibleLevels"] = winner.accessible_count
         contract["winnerReversals"] = d.heading_reversal_count
+        contract["winnerJunctionLevels"] = [j["levelId"] for j in ramp["rampJunctions"]]
+        contract["winnerAccessConnectors"] = [a.connector_word for a in plan.accesses]
+        contract["winnerAccessFailures"] = summary["failures"]
+        contract["miningMethod"] = sc.mining.method.value
+        metrics["winnerTotalAccessLength"] = _r(summary["totalAccessLength"])
+        metrics["winnerWorstAccessLength"] = _r(summary["worstAccessLength"])
+        metrics["winnerMaxAccessGradient"] = _r(summary["maxAccessGradient"])
+        metrics["winnerMinAccessPlanRadius"] = _r(summary["minAccessPlanRadius"])
+        metrics["winnerJunctionChainages"] = [_r(j["chainage"]) for j in ramp["rampJunctions"]]
+        metrics["winnerJunctionPositions"] = [
+            [_r(v) for v in j["position"]] for j in ramp["rampJunctions"]
+        ]
+        metrics["winnerLevelEntries"] = [
+            [_r(v) for v in a["levelEntry"]] if a["levelEntry"] else None
+            for a in accesses["accesses"]
+        ]
+        metrics["winnerAccessLengths"] = [_r(a.length3d) for a in plan.accesses]
+        metrics["winnerAccessGradients"] = [_r(a.max_gradient) for a in plan.accesses]
         metrics["winnerLength3d"] = _r(d.length3d)
         metrics["winnerVerticalDrop"] = _r(d.vertical_drop)
         metrics["winnerMaxGradient"] = _r(d.max_abs_gradient)
@@ -266,11 +325,8 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
             sum(r.access_distance or 0.0 for r in winner.level_service)
             / max(len(winner.level_service), 1)
         )
-        metrics["winnerConnectionChainages"] = [
-            _r(lc["chainage"]) for lc in ramp["levelConnections"]
-        ]
-        metrics["winnerConnectionPositions"] = [
-            [_r(v) for v in lc["position"]] for lc in ramp["levelConnections"]
+        metrics["winnerReferenceChainages"] = [
+            _r(lc["chainage"]) for lc in ramp["rampLevelReferences"]
         ]
         metrics["winnerFaultCrossings"] = (winner.exposure or {}).get("faultCrossings")
         metrics["winnerLengthFaultCore"] = _r((winner.exposure or {}).get("lengthFaultCore"))
@@ -278,8 +334,12 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
     else:
         contract["winnerFamily"] = None
         contract["winnerSegments"] = 0
-        contract["winnerServedLevels"] = 0
+        contract["winnerAccessibleLevels"] = None
         contract["winnerReversals"] = None
+        contract["winnerJunctionLevels"] = []
+        contract["winnerAccessConnectors"] = []
+        contract["winnerAccessFailures"] = {}
+        contract["miningMethod"] = sc.mining.method.value
     runtime["total"] = time.perf_counter() - t_all
     return _record(case, contract, metrics, runtime, notes, candidates_out)
 
@@ -335,8 +395,9 @@ CONTRACT_COLUMNS = (
     "winnerId",
     "winnerFamily",
     "winnerSegments",
-    "winnerServedLevels",
+    "winnerAccessibleLevels",
     "winnerReversals",
+    "miningMethod",
 )
 #: exact-compared nested contract members (lists / dicts)
 CONTRACT_NESTED = (
@@ -345,10 +406,14 @@ CONTRACT_NESTED = (
     "candidateIds",
     "candidateStatuses",
     "candidateFailureReasons",
-    "servedLevels",
+    "screenedLevels",
+    "accessibleLevels",
     "familyCounts",
     "shortlist",
     "ranking",
+    "winnerJunctionLevels",
+    "winnerAccessConnectors",
+    "winnerAccessFailures",
 )
 METRIC_COLUMNS = (
     "clearanceErrorBound",
@@ -369,12 +434,20 @@ METRIC_COLUMNS = (
     "winnerFaultCrossings",
     "winnerLengthFaultCore",
     "winnerLengthPoorRock",
+    "winnerTotalAccessLength",
+    "winnerWorstAccessLength",
+    "winnerMaxAccessGradient",
+    "winnerMinAccessPlanRadius",
 )
 METRIC_NESTED = (
     "requiredLevelElevations",
     "portal",
-    "winnerConnectionChainages",
-    "winnerConnectionPositions",
+    "winnerReferenceChainages",
+    "winnerJunctionChainages",
+    "winnerJunctionPositions",
+    "winnerLevelEntries",
+    "winnerAccessLengths",
+    "winnerAccessGradients",
 )
 RUNTIME_COLUMNS = ("realize", "world", "search", "materialize", "total")
 

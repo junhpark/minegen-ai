@@ -41,15 +41,23 @@ from minegen.layout.families import (
     build_footwall_track,
     enumerate_candidates,
 )
-from minegen.layout.geometry import analyze_centerline, find_crossing, insert_vertices, split_at
+from minegen.layout.geometry import (
+    analyze_centerline,
+    find_crossing,
+    insert_vertices,
+    plan_radii,
+    split_at,
+)
 from minegen.layout.levels import LevelSections, RequiredLevel, required_levels
 from minegen.layout.search import (
     SOURCE_KIND_PARAMETRIC_V2,
     CandidateStatus,
     LayoutSearchResult,
     LayoutV2Search,
+    cheap_checks,
     level_service,
     materialize_effective_ramp,
+    materialize_level_accesses,
 )
 from minegen.services.scenario_realizer import realize_scenario
 from minegen.world.orebody import ImplicitOrebody
@@ -229,11 +237,12 @@ def test_level_service_records_every_unserved_reason(
     )
     assert [r.level_id for r in records] == ["L01", "L02", "L99"]
     r_top, r_second, r_fake = records
-    assert r_top.served and r_top.access_distance == 0.0 and r_top.unserved_reason is None
+    assert r_top.within_reach and r_top.access_distance == 0.0 and r_top.unserved_reason is None
     assert r_top.connection_position is not None and r_top.connection_position[2] == top.elevation
     assert crossings[0] is not None and r_top.connection_chainage == crossings[0].chainage
-    assert not r_second.served and r_second.unserved_reason == InfeasibleReason.NO_RL_CROSSING.value
-    assert not r_fake.served
+    assert not r_second.within_reach
+    assert r_second.unserved_reason == InfeasibleReason.NO_RL_CROSSING.value
+    assert not r_fake.within_reach
     assert r_fake.unserved_reason == InfeasibleReason.NO_OREBODY_SECTION_AT_LEVEL.value
     # far crossing: ACCESS_REACH_EXCEEDED with the measured distance
     far = np.array(
@@ -243,12 +252,12 @@ def test_level_service_records_every_unserved_reason(
         ]
     )
     far_records, _ = level_service(far, [top], sections, reach)
-    assert not far_records[0].served
+    assert not far_records[0].within_reach
     assert far_records[0].unserved_reason == InfeasibleReason.ACCESS_REACH_EXCEEDED.value
     assert far_records[0].access_distance is not None and far_records[0].access_distance > reach
-    # served exactly at the reach boundary (≤)
+    # within reach exactly at the boundary (≤)
     exact, _ = level_service(far, [top], sections, far_records[0].access_distance)
-    assert exact[0].served
+    assert exact[0].within_reach
 
 
 def test_access_distance_is_an_upper_bound_within_sampling_error(
@@ -467,8 +476,8 @@ def test_delivered_centerline_limits_hold_for_every_non_infeasible_candidate(
         assert c.points is not None
         assert np.all(np.abs(c.points[:, 0]) <= sc.world.size_x / 2)
         assert np.all(np.abs(c.points[:, 1]) <= sc.world.size_y / 2)
-        # every level served, once, exactly at its elevation
-        assert c.served_count == len(c.level_service) == len(res.serviceable_ids)
+        # every level passes the access-potential screen, exactly at its elevation
+        assert c.screened_count == len(c.level_service) == len(res.serviceable_ids)
         for rec in c.level_service:
             assert rec.connection_position is not None
             assert rec.connection_position[2] == rec.elevation
@@ -657,7 +666,7 @@ def test_warped_vein_is_accepted_by_layout_v2_but_not_by_the_legacy_pipeline(
     # the fixed seed 301 world has feasible parametric candidates and a winner
     assert res.winner_id is not None
     winner = res.candidate(res.winner_id)
-    assert winner is not None and winner.served_count == len(res.serviceable_ids)
+    assert winner is not None and winner.accessible_count == len(res.serviceable_ids)
 
 
 # --------------------------------------------------------------------------- #
@@ -768,57 +777,147 @@ def test_insert_and_split_preserve_geometry() -> None:
     assert math.isclose(total, float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1))))
 
 
-def test_effective_ramp_splits_exactly_at_level_connections(
+def test_effective_ramp_splits_exactly_at_ramp_junctions(
     tabular_search: tuple[LayoutV2Search, LayoutSearchResult],
 ) -> None:
+    """Phase 20B (rule 157): the main ramp is split at the planned ramp
+    junctions (turnouts), never at RL crossings; level accesses are sibling
+    geometry, never ramp segments."""
     search, res = tabular_search
     assert res.winner_id is not None
     winner = res.candidate(res.winner_id)
-    assert winner is not None
+    assert winner is not None and winner.access_plan is not None
+    plan = winner.access_plan
+    assert plan.feasible
     ramp = materialize_effective_ramp(res, winner, search.evaluator, "rev-test")
+    accesses = materialize_level_accesses(res, winner, "rev-test", "LONGHOLE_OPEN_STOPING")
     assert ramp["status"] == "SUCCESS"
     assert ramp["sourceKind"] == SOURCE_KIND_PARAMETRIC_V2
     assert ramp["sourceRevision"] == "rev-test"
     assert ramp["candidateId"] == winner.candidate_id
+    assert ramp["levelAccessArtifact"] == "level_accesses.json"
     np.testing.assert_allclose(ramp["portal"], res.portal)
     segs = ramp["segments"]
-    assert [s["levelId"] for s in segs] == res.serviceable_ids
-    assert len(ramp["levelConnections"]) == len(segs)
+    junction_segs = [s for s in segs if s["terminalKind"] == "RAMP_JUNCTION"]
+    tails = [s for s in segs if s["terminalKind"] == "RAMP_END"]
+    assert len(junction_segs) == len(res.serviceable_ids) == len(ramp["rampJunctions"])
+    assert len(tails) <= 1
+    assert [s["levelId"] for s in junction_segs] == res.serviceable_ids
+    assert all(s["levelId"] is None and s["segmentId"] == "RAMP_END" for s in tails)
     prev_end = None
     prev_tangent = None
     total = 0.0
-    for s, rec, lv in zip(segs, winner.level_service, res.serviceable_levels, strict=True):
+    by_level = {a.level_id: a for a in plan.accesses}
+    for s in segs:
         pts = np.asarray(s["effectiveCenterline"]["points"]).reshape(-1, 3)
         assert pts.shape[0] == s["effectiveCenterline"]["pointCount"] >= 2
         assert s["effectiveSource"] == SOURCE_KIND_PARAMETRIC_V2 and s["smoothed"] is None
-        # the segment ends exactly at the level connection point
-        assert pts[-1, 2] == lv.elevation
-        assert rec.connection_position is not None
-        np.testing.assert_allclose(pts[-1], rec.connection_position, atol=1e-9)
-        np.testing.assert_allclose(s["levelConnection"]["position"], rec.connection_position)
-        assert s["levelConnection"]["chainage"] == rec.connection_chainage
+        if s["rampJunction"] is not None:
+            acc = by_level[s["levelId"]]
+            assert acc.junction_position is not None
+            # the segment ends EXACTLY at the planned turnout of its level
+            np.testing.assert_allclose(pts[-1], acc.junction_position, atol=1e-9)
+            assert s["rampJunction"]["chainage"] == acc.junction_chainage
+            # ... which is NOT the level elevation (the ramp passes above it)
+            assert pts[-1, 2] != acc.elevation
         if prev_end is not None:
             np.testing.assert_array_equal(pts[0], prev_end)  # shared vertex
             np.testing.assert_allclose(s["boundaryTangents"]["start"], prev_tangent)
         prev_end = pts[-1]
         prev_tangent = s["boundaryTangents"]["end"]
         assert math.isclose(float(np.linalg.norm(s["boundaryTangents"]["end"])), 1.0)
-        assert (
-            s["report"]["valid"]
-            and s["report"]["maxGradient"] <= search.scenario.ramp.max_gradient + 1e-9
-        )
+        assert s["report"]["valid"]
+        assert s["report"]["maxGradient"] <= search.scenario.ramp.max_gradient + 1e-9
         total += s["report"]["rawLength"]
     assert prev_end is not None
     np.testing.assert_allclose(prev_end, winner.points[-1])  # type: ignore[index]
     assert math.isclose(ramp["totals"]["rawLength"], total)
+    # the ramp totals are the MAIN RAMP only: no access length inside (§19)
     assert math.isclose(ramp["totals"]["rawLength"], winner.diagnostics.length3d, rel_tol=1e-9)  # type: ignore[union-attr]
     assert ramp["totals"]["segments"] == len(segs)
     assert ramp["clearance"]["clearanceBasis"] == "EXACT"
+    assert ramp["access"]["totalAccessLength"] > 0
     json.dumps(ramp, allow_nan=False)
+    # RL crossings are recorded as references only, never as segment ends
+    ref_chainages = {r["chainage"] for r in ramp["rampLevelReferences"]}
+    assert not any(j["chainage"] in ref_chainages for j in ramp["rampJunctions"])
+    # level accesses: exact welds at both ends, hard limits on the delivered line
+    assert accesses["status"] == "SUCCESS" and len(accesses["accesses"]) == len(res.serviceable_ids)
+    for a, s in zip(accesses["accesses"], junction_segs, strict=True):
+        pts = np.asarray(a["centerline"]["points"]).reshape(-1, 3)
+        np.testing.assert_allclose(pts[0], s["rampJunction"]["position"], atol=1e-6)
+        anchor = a["anchor"]
+        np.testing.assert_allclose(pts[-1], anchor["position"], atol=1e-6)
+        assert pts[-1, 2] == a["elevation"] == anchor["elevation"]
+        assert a["length3d"] >= search.scenario.layout.access.minimum_access_length
+        assert a["maxGradient"] <= search.scenario.ramp.max_gradient + 1e-9
+        assert a["minPlanRadius"] is None or (
+            a["minPlanRadius"] >= search.scenario.ramp.min_turn_radius - 0.05
+        )
+        assert np.all(np.isfinite(pts))
+        assert np.all(np.linalg.norm(np.diff(pts, axis=0), axis=1) > 1e-6)
+        assert a["validation"]["junctionWeldError"] <= 1e-6
+        assert a["validation"]["entryWeldError"] <= 1e-6
+    json.dumps(accesses, allow_nan=False)
     # only FEASIBLE candidates can be materialized
     bad = next(c for c in res.candidates if c.status != CandidateStatus.FEASIBLE)
     with pytest.raises(ValueError, match="not FEASIBLE"):
         materialize_effective_ramp(res, bad, search.evaluator, "rev-test")
+
+
+def test_ramp_level_reference_is_not_the_level_entry(
+    tabular_search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
+    _, res = tabular_search
+    winner = res.candidate(res.winner_id or "")
+    assert winner is not None and winner.access_plan is not None
+    distinct = 0
+    for ref, acc in zip(winner.level_service, winner.access_plan.accesses, strict=True):
+        assert acc.ok and acc.points is not None and ref.connection_position is not None
+        entry = acc.points[-1]
+        junction = acc.junction_position
+        assert junction is not None
+        # the turnout is never the RL crossing and never the entry
+        assert float(np.linalg.norm(junction - ref.connection_position)) > 1.0
+        assert float(np.linalg.norm(junction - entry)) > 1.0
+        if float(np.linalg.norm(entry - ref.connection_position)) > 1.0:
+            distinct += 1
+    assert distinct >= 1
+
+
+def test_level_access_is_a_hard_requirement_and_scores_include_access_length(
+    tabular: tuple[Scenario, SyntheticWorld],
+) -> None:
+    sc, world = tabular
+    # an impossible access window: no junction candidate can ever exist
+    strict = sc.model_copy(
+        update={
+            "layout": sc.layout.model_copy(
+                update={
+                    "access": sc.layout.access.model_copy(
+                        update={"maximum_access_length": 16.0, "minimum_access_length": 15.0}
+                    )
+                }
+            )
+        }
+    )
+    res = LayoutV2Search(strict, world).run()
+    detailed = [c for c in res.candidates if c.stage_reached == "DETAILED"]
+    assert detailed
+    for c in detailed:
+        if c.access_plan is not None and not c.access_plan.feasible:
+            assert c.status == CandidateStatus.INFEASIBLE
+            assert InfeasibleReason.LEVEL_ACCESS_INFEASIBLE.value in c.failure_reasons
+            assert c.candidate_id not in res.ranking
+    base = LayoutV2Search(sc, world).run()
+    for cid in base.ranking:
+        c = base.candidate(cid)
+        assert c is not None and c.scores is not None and c.access_plan is not None
+        comp = c.scores.components
+        assert comp["levelAccessLength"] == c.access_plan.total_length > 0
+        # the length ratio counts main ramp + access development (rule 158)
+        share = comp["mainRampLength"] / (comp["mainRampLength"] + comp["levelAccessLength"])
+        assert comp["lengthRatio"] * share < comp["lengthRatio"]
 
 
 def test_effective_ramp_for_warped_vein_reports_conservative_clearance(
@@ -832,5 +931,71 @@ def test_effective_ramp_for_warped_vein_reports_conservative_clearance(
     assert ramp["clearance"]["clearanceBasis"] == "CONSERVATIVE"
     assert ramp["clearance"]["clearanceErrorBound"] == res.clearance_error_bound
     assert ramp["clearance"]["conservativeMinimumClearance"] >= res.required_clearance - 1e-9
-    assert len(ramp["segments"]) == len(res.serviceable_ids)
+    assert len(ramp["rampJunctions"]) == len(res.serviceable_ids)
+    accesses = materialize_level_accesses(res, winner, "rev-wv", "LONGHOLE_OPEN_STOPING")
+    # the level entry itself respects the conservative clearance (rule 146)
+    for a in accesses["accesses"]:
+        assert a["status"] == "OK"
+        assert a["validation"]["minimumOrebodyDistance"] >= res.required_clearance - 1e-9
+        assert a["anchor"]["diagnostics"]["backbone"] == "NUMERICAL_SECTION_PRINCIPAL_AXIS"
     json.dumps(ramp, allow_nan=False)
+    json.dumps(accesses, allow_nan=False)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20A closeout — plan-radius estimator (three-point circumradius)
+# --------------------------------------------------------------------------- #
+
+
+def _hairpin(radius: float, spacing: float, leg: float = 60.0) -> np.ndarray:
+    """Straight north, exact 180° clockwise arc of ``radius``, straight south,
+    sampled every ``spacing`` metres with a mild descent."""
+    n_leg = max(2, math.ceil(leg / spacing) + 1)
+    up = np.column_stack([np.zeros(n_leg), np.linspace(0.0, leg, n_leg)])
+    n_arc = max(2, math.ceil(math.pi * radius / spacing) + 1)
+    phi = np.linspace(0.0, math.pi, n_arc)[1:]
+    arc = np.column_stack([radius - radius * np.cos(phi), leg + radius * np.sin(phi)])
+    down = np.column_stack([np.full(n_leg - 1, 2.0 * radius), np.linspace(leg, 0.0, n_leg)[1:]])
+    xy = np.vstack([up, arc, down])
+    chord = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))])
+    return np.column_stack([xy, -0.05 * chord])
+
+
+@pytest.mark.parametrize("spacing", [1.0, 2.0, 5.0])
+def test_plan_radius_recovers_a_true_circle_at_every_sample_spacing(spacing: float) -> None:
+    r_true = 18.0
+    pts = _hairpin(r_true, spacing)
+    r = plan_radii(pts)
+    assert np.all(np.isfinite(r) | np.isinf(r))  # never NaN
+    turning = np.isfinite(r)
+    assert turning.sum() >= 3
+    # every arc vertex reports EXACTLY the true radius (no discretization bias)
+    np.testing.assert_allclose(r[turning].min(), r_true, rtol=1e-9)
+    d = analyze_centerline(pts)
+    assert d.min_plan_radius is not None
+    assert math.isclose(d.min_plan_radius, r_true, rel_tol=1e-9)
+    assert d.heading_reversal_count == 1
+
+
+def test_r_min_hairpin_at_5m_spacing_is_not_rejected(
+    tabular: tuple[Scenario, SyntheticWorld],
+) -> None:
+    sc, _ = tabular
+    pts = _hairpin(sc.ramp.min_turn_radius, 5.0)
+    diag = analyze_centerline(pts)
+    problems = cheap_checks(diag, pts, sc.ramp, sc.world.size_x / 2.0, sc.world.size_y / 2.0)
+    assert not any(p[0] is InfeasibleReason.TURN_RADIUS for p in problems), problems
+    # a genuinely too-tight turn is still rejected
+    tight = _hairpin(sc.ramp.min_turn_radius - 1.0, 5.0)
+    tight_problems = cheap_checks(
+        analyze_centerline(tight), tight, sc.ramp, sc.world.size_x / 2.0, sc.world.size_y / 2.0
+    )
+    assert any(p[0] is InfeasibleReason.TURN_RADIUS for p in tight_problems)
+
+
+def test_plan_radius_handles_straight_and_reversal_triples() -> None:
+    straight = np.array([[0.0, 0.0, 0.0], [10.0, 0.0, -1.0], [20.0, 0.0, -2.0]])
+    assert np.isinf(plan_radii(straight)).all()
+    back = np.array([[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    r = plan_radii(back)
+    assert r.shape == (1,) and np.isfinite(r[0]) and r[0] < 1e-6
