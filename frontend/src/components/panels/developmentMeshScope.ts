@@ -28,6 +28,20 @@ const NONE: DevelopmentMeshScope = { accessOnly: false, headline: null, detail: 
 
 export const ACCESS_ONLY_HEADLINE = 'ACCESS-ONLY · no level development geometry'
 
+/**
+ * The ONE levels failure that is a normal Phase 20B boundary rather than a
+ * defect. `LevelDevelopmentBuilder` also emits LEVEL_ACCESSES_REQUIRED, "no
+ * level entries to develop", "smoothed artifact has no effective segments",
+ * "orebody strike vector is not horizontal" and others — every one of those
+ * is a real failure and must never be worded as normal.
+ *
+ * The literal is pinned on both sides: `IMPLICIT_OREBODY_BOUNDARY` in
+ * backend/tests/test_layout_v2_api.py asserts the backend reason STARTS with
+ * it, so a backend rename breaks CI instead of silently degrading this panel
+ * to the generic wording (closeout v5 §2).
+ */
+export const IMPLICIT_OREBODY_BOUNDARY = 'LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY'
+
 export function developmentMeshScope(
   report: DevelopmentMeshReport | null,
   levels: LevelsPayload | null,
@@ -36,13 +50,19 @@ export function developmentMeshScope(
   // successful one. An older report without `sources` claims nothing.
   if (!report || report.status !== 'SUCCESS' || !report.sources) return NONE
   if (report.sources.levels) return NONE
+  // `accessOnly` and the headline hold for EVERY non-contributing levels
+  // artifact — the sweep really does carry no drift / crosscut geometry.
+  // Only the explanation distinguishes the typed boundary from a failure.
+  const failed = levels?.status === 'FAILED'
+  const typedBoundary = failed && (levels.failureReason ?? '').startsWith(IMPLICIT_OREBODY_BOUNDARY)
   return {
     accessOnly: true,
     headline: ACCESS_ONLY_HEADLINE,
-    detail:
-      levels && levels.status !== 'SUCCESS'
-        ? 'level development contributed nothing (typed boundary) — a normal state; ' +
-          'drift / crosscut geometry for this orebody is Phase 20D'
+    detail: typedBoundary
+      ? 'level development contributed nothing (typed boundary) — a normal state; ' +
+        'drift / crosscut geometry for this orebody is Phase 20D'
+      : failed
+        ? 'level development failed; the mesh contains level-access geometry only'
         : 'generate level development to add drift / crosscut geometry',
   }
 }

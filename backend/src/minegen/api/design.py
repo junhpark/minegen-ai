@@ -530,9 +530,15 @@ def generate_tunnel(
 ) -> dict[str, Any]:
     """Phase 06: gravity-aligned tunnel sweep of the Phase 05 effective
     centerline (rules 65–67). Async job kind ``MESH`` → 202; requires a
-    persisted smoothed decline (409 ``SMOOTHED_NOT_GENERATED`` otherwise)."""
+    persisted smoothed decline (409 ``SMOOTHED_NOT_GENERATED`` otherwise).
+
+    Closeout v5: the precondition is the ACTIVE ramp, NOT the exact-only
+    ``svc.evaluator``. Phase 06 sweeps an already validated centerline and
+    checks the resulting envelope under the world's own clearance policy, so
+    an implicit body gets a real tunnel mesh; ``effective_ramp`` already
+    raises the same scenario / world errors. Rule 135 still guards the LEGACY
+    Hybrid-A* routes above, which keep the exact-only precondition."""
     try:
-        svc.evaluator(scenario_id)
         svc.effective_ramp(scenario_id)  # precondition: the ACTIVE ramp exists
     except (
         ScenarioNotFoundError,
@@ -541,7 +547,6 @@ def generate_tunnel(
         DeclineNotGeneratedError,
         SmoothedNotGeneratedError,
         LayoutV2NotSelectedError,
-        UnsupportedOrebodyError,
     ) as e:
         raise _guard(scenario_id, e) from e
     if sync:

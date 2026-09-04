@@ -920,10 +920,24 @@ class DesignService:
         centerline (rules 65–67). The fingerprint covers all five upstream
         inputs; persistence follows the locked stale-input protocol
         (rule 60). The GLB is written only on SUCCESS; the report is always
-        persisted with an explicit status."""
+        persisted with an explicit status.
+
+        The sweep evaluator is built with the world's own clearance policy
+        (rule 146: EXACT for analytic bodies — the default constructor path
+        yields the very same ``ExactClearance``, so TABULAR is numerically
+        unchanged — CONSERVATIVE for implicit ones) rather than the
+        exact-only ``self.evaluator``. Phase 06 does not route a search
+        through the hard orebody buffer; it sweeps an ALREADY validated
+        centerline and checks the resulting envelope, and under a
+        CONSERVATIVE policy that envelope check is strictly stricter. Rule
+        135 still guards the legacy Hybrid-A* chain, which keeps refusing an
+        implicit body at ``/design/targets``."""
         fingerprint = self.tunnel_fingerprint(scenario_id)
         smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
-        scenario, _, ev = self.evaluator(scenario_id)
+        scenario, world = self.worlds.load(scenario_id)
+        ev = DesignCostEvaluator(
+            world, scenario.design, clearance=clearance_policy_for(world.orebody)
+        )
         builder = TunnelMeshBuilder(ev, scenario.ramp, scenario.tunnel_profile)
 
         def progress(i: int, n: int, label: str, stage: str) -> None:

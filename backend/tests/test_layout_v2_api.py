@@ -14,6 +14,13 @@ from minegen.services.design_service import DesignService
 from tests.test_smoothing_api import _decline, _prepare
 from tests.test_tunnel_api import _smooth
 
+#: The typed Phase 20B boundary a non-TABULAR orebody answers from
+#: ``LevelDevelopmentBuilder``. The frontend matches this literal as a PREFIX
+#: (frontend/src/components/panels/developmentMeshScope.ts) to tell the normal
+#: implicit-orebody boundary apart from a genuine level-development failure,
+#: so the string is pinned on BOTH sides (closeout v5 §2).
+IMPLICIT_OREBODY_BOUNDARY = "LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY"
+
 
 def _generate_layout(client: TestClient, sid: str) -> dict:  # type: ignore[type-arg]
     r = client.post(f"/api/v1/scenarios/{sid}/design/layout-v2", params={"sync": "true"})
@@ -447,7 +454,10 @@ def test_warped_vein_development_mesh_sweeps_the_access_branches_only(client: Te
     r = client.post(f"{base}/levels")
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "FAILED"
-    assert "LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY" in r.json()["failureReason"]
+    # pinned as a PREFIX: the frontend distinguishes this normal boundary from a
+    # real failure with `startsWith` (developmentMeshScope.ts), so a backend
+    # rename must break CI here rather than silently degrade the panel wording
+    assert r.json()["failureReason"].startswith(IMPLICIT_OREBODY_BOUNDARY)
     r = client.post(f"{base}/development-mesh", params={"sync": "true"})
     assert r.status_code == 200, r.text
     dev = r.json()
@@ -481,10 +491,45 @@ def test_warped_vein_levels_return_the_typed_phase20b_boundary(client: TestClien
     assert r.status_code == 200, r.text
     payload = r.json()
     assert payload["status"] == "FAILED"
-    assert "LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY" in payload["failureReason"]
+    assert payload["failureReason"].startswith(IMPLICIT_OREBODY_BOUNDARY)
     assert payload["developments"] == [] and payload["levels"] == []
     # the persisted artifact is readable and stays the same typed boundary
     got = client.get(f"{base}/levels")
     assert got.status_code == 200 and got.json()["status"] == "FAILED"
     # the LEGACY exact-only chain keeps its typed 422 refusal (rule 135)
+    assert client.post(f"{base}/targets").status_code == 422
+
+
+def test_warped_vein_ramp_tunnel_mesh_uses_the_world_clearance_policy(
+    client: TestClient,
+) -> None:
+    """Closeout v5: the Phase 06 ramp tunnel sweep is built with the world's
+    own clearance policy, so an implicit body gets a real ramp tunnel mesh
+    instead of the exact-only evaluator's 422.
+
+    Phase 06 routes no search through the hard orebody buffer — it sweeps an
+    ALREADY validated centerline and checks the resulting envelope, and a
+    CONSERVATIVE policy makes that check strictly stricter. Rule 135 still
+    guards the LEGACY Hybrid-A* chain, asserted at the end."""
+    r = client.post(
+        "/api/v1/scenarios/realize",
+        json={"preset": "RANDOM_WARPED_VEIN", "seed": 301, "faultCount": 1},
+    )
+    assert r.status_code == 200, r.text
+    sid = client.post("/api/v1/scenarios", json=r.json()).json()["id"]
+    assert client.post(f"/api/v1/scenarios/{sid}/world/generate").status_code == 200
+    base = f"/api/v1/scenarios/{sid}/design"
+    cat = _generate_layout(client, sid)
+    act = client.post(f"{base}/layout-v2/activate", json={"candidateId": _winner(cat)})
+    assert act.status_code == 200, act.text
+
+    r = client.post(f"{base}/tunnel", params={"sync": "true"})
+    assert r.status_code == 200, r.text
+    report = r.json()
+    assert report["status"] == "SUCCESS", report.get("failureReason")
+    assert report["triangleCount"] > 0 and report["length3d"] > 0
+    assert report["meshUrl"] and report["artifactRevision"]
+    assert client.get(f"{base}/tunnel/mesh.glb").status_code == 200
+
+    # the LEGACY exact-only chain is untouched by this (rule 135)
     assert client.post(f"{base}/targets").status_code == 422
