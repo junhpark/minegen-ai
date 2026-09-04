@@ -656,6 +656,30 @@ class LevelAccessConfig(ApiModel):
     anchor_standoff: PositiveFloat | None = None
     #: level entry placement on the development backbone
     entry_policy: Literal["NEAREST_TO_RAMP"] = "NEAREST_TO_RAMP"
+    #: PREFERRED access length (m, 3-D) — a mine-planning default, never a
+    #: statutory value or a mandatory minimum. ``None`` → the engineering
+    #: default ``max(minimum_access_length, 6 × tunnel_width)``; an explicit
+    #: value must lie inside [minimum_access_length, maximum_access_length]
+    #: (validated, never clamped). The planner picks, among the VALID
+    #: junction / connector candidates, the one closest to this length
+    #: (long branches penalized more) instead of the shortest one.
+    preferred_access_length: PositiveFloat | None = None
+
+    @model_validator(mode="after")
+    def _access_length_window(self) -> LevelAccessConfig:
+        if self.minimum_access_length > self.maximum_access_length:
+            raise ValueError(
+                "minimumAccessLength must be <= maximumAccessLength "
+                f"({self.minimum_access_length:g} > {self.maximum_access_length:g})"
+            )
+        p = self.preferred_access_length
+        if p is not None and not (self.minimum_access_length <= p <= self.maximum_access_length):
+            raise ValueError(
+                f"preferredAccessLength {p:g} must lie inside "
+                f"[minimumAccessLength {self.minimum_access_length:g}, "
+                f"maximumAccessLength {self.maximum_access_length:g}]"
+            )
+        return self
 
 
 class LayoutScoreWeights(ApiModel):

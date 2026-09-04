@@ -22,7 +22,7 @@ from minegen.regression.layout_v2 import (
 )
 
 GOLDEN_DIR = Path(__file__).resolve().parents[1] / "golden"
-BASELINE = GOLDEN_DIR / "phase20b_layout_v2.json"
+BASELINE = GOLDEN_DIR / "phase20b_closeout_layout_v2.json"
 
 
 def test_layout_v2_baseline_is_committed() -> None:
@@ -58,6 +58,29 @@ def test_layout_v2_baseline_is_committed() -> None:
     assert caf["contract"]["miningMethod"] == "CUT_AND_FILL"
     assert caf["contract"]["status"] == "SUCCESS"
     assert caf["contract"]["winnerAccessibleLevels"] == caf["contract"]["serviceableLevelCount"]
+    # closeout v3: preferred access length recorded; the reach screen is a
+    # heuristic — the irregular case has reach-exceeded levels yet SUCCESS
+    assert ref["contract"]["winnerPreferredAccessSource"] == "DEFAULT_6X_TUNNEL_WIDTH"
+    assert ref["metrics"]["winnerPreferredAccessLength"] == 30.0
+    assert all(
+        r["contract"]["cheapFeasibleCount"] >= len(r["contract"]["shortlist"])
+        for r in report["cases"]
+    )
+    irregular = by_key["IRREGULAR-REACH-EXCEEDED"]
+    assert irregular["contract"]["status"] == "SUCCESS"
+    assert irregular["contract"]["winnerReachExceededLevels"]
+    assert (
+        irregular["contract"]["winnerAccessibleLevels"]
+        == (irregular["contract"]["serviceableLevelCount"])
+    )
+    assert "LEVEL_SERVICE_INFEASIBLE" not in {
+        r
+        for cid, rs in irregular["contract"]["candidateFailureReasons"].items()
+        for r in rs
+        if not cid.startswith("LONGITUDINAL")
+    }
+    # the physically infeasible implicit body stays an explicit failure
+    assert by_key["WARPED_VEIN-307"]["contract"]["status"] == "NO_FEASIBLE_CANDIDATE"
 
 
 @pytest.mark.parametrize("key", SMOKE_KEYS)

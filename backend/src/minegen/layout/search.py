@@ -2,7 +2,13 @@
 
     STAGE 1  finite parametric enumeration            (families.enumerate_candidates)
     STAGE 2  cheap evaluation on the delivered centerline: gradient, plan
-             radius, world bounds, monotonic descent, level service
+             radius, world bounds, monotonic descent, vertical level
+             coverage (NO_RL_CROSSING is hard: the main ramp does not span
+             the level's elevation). The same-RL crossing → footprint
+             distance (``withinReach`` / ACCESS_REACH_EXCEEDED) is an
+             ACCESS-POTENTIAL HEURISTIC only (closeout v3 §3): it feeds the
+             stage-3 proxy and never rejects a candidate — the Phase 20B
+             level-access planner (stage 4) is the final service authority.
     STAGE 3  bounded shortlist (``shortlist_size``) by a cheap proxy
     STAGE 4  detailed engineering validation of the shortlist through the
              shared ``DesignCostEvaluator`` (terrain, cover with the rule 52
@@ -436,6 +442,38 @@ def cheap_checks(
     return problems
 
 
+#: stage-2 level-screen reasons that reject a candidate (closeout v3 §3.B).
+#: ACCESS_REACH_EXCEEDED is deliberately absent: it is a heuristic, not a
+#: physical infeasibility. NO_OREBODY_SECTION_AT_LEVEL never reaches the
+#: screen (the context carries serviceable levels only, rule 141).
+_HARD_SCREEN_REASONS = frozenset(
+    {
+        InfeasibleReason.NO_RL_CROSSING.value,
+        InfeasibleReason.NO_OREBODY_SECTION_AT_LEVEL.value,
+    }
+)
+
+
+def level_screen_problems(
+    records: list[LevelServiceRecord],
+) -> list[tuple[InfeasibleReason, str]]:
+    """Stage-2 decision on the level screen (closeout v3 §3.B): only a level
+    the main ramp does not vertically cover (NO_RL_CROSSING) rejects the
+    candidate. ACCESS_REACH_EXCEEDED alone never does — the record stays
+    inspectable (``withinReach = false``) and stage 4 plans the access."""
+    hard = [r for r in records if r.unserved_reason in _HARD_SCREEN_REASONS]
+    if not hard:
+        return []
+    reasons = sorted({r.unserved_reason or "" for r in hard})
+    return [
+        (
+            InfeasibleReason.LEVEL_SERVICE_INFEASIBLE,
+            f"{len(hard)} of {len(records)} required levels are not vertically covered "
+            f"by the main ramp ({', '.join(reasons)})",
+        )
+    ]
+
+
 def cheap_proxy(
     diag: CenterlineDiagnostics, records: list[LevelServiceRecord], ctx: LayoutContext
 ) -> float:
@@ -545,7 +583,13 @@ class LayoutV2Search:
             return max(base, required + float(self.policy.error_bound) + 1.0)
         return base
 
-    def run(self, on_progress: ProgressCallback = no_progress) -> LayoutSearchResult:
+    def run(
+        self, on_progress: ProgressCallback = no_progress, *, detailed_all: bool = False
+    ) -> LayoutSearchResult:
+        """``detailed_all`` is a DIAGNOSTIC switch (closeout v3 §3.E shortlist
+        starvation audit): every cheap-feasible candidate receives detailed
+        validation instead of the bounded shortlist. It is never exposed
+        through the scenario config or the API."""
         t0 = time.perf_counter()
         sc = self.scenario
         world = self.world
@@ -613,10 +657,12 @@ class LayoutV2Search:
         # -- STAGE 3: bounded shortlist --------------------------------------- #
         cheap_ok = [c for c in results if c.status == CandidateStatus.NOT_VALIDATED]
         cheap_ok.sort(key=lambda c: (c.cheap_proxy or math.inf, _family_rank(c), c.candidate_id))
-        shortlist = cheap_ok[: self.cfg.shortlist_size]
+        shortlist = cheap_ok if detailed_all else cheap_ok[: self.cfg.shortlist_size]
         for c in shortlist:
             c.shortlisted = True
         perf["shortlistSize"] = len(shortlist)
+        perf["cheapFeasibleCount"] = len(cheap_ok)
+        perf["exhaustiveDiagnostic"] = detailed_all
 
         # -- STAGE 4: detailed validation ------------------------------------- #
         for j, cand in enumerate(shortlist):
@@ -731,16 +777,12 @@ class LayoutV2Search:
         )
         cand.level_service = records
         cand.crossings = crossings
-        unserved = [r for r in records if not r.within_reach]
-        if unserved:
-            reasons = sorted({r.unserved_reason or "" for r in unserved})
-            problems.append(
-                (
-                    InfeasibleReason.LEVEL_SERVICE_INFEASIBLE,
-                    f"{len(unserved)} of {len(records)} required levels fail the "
-                    f"access-potential screen ({', '.join(reasons)})",
-                )
-            )
+        # closeout v3 §3: only a level the main ramp does NOT vertically cover
+        # (NO_RL_CROSSING — no junction lattice can exist for a ramp that never
+        # reaches the level) is a hard stage-2 failure. ACCESS_REACH_EXCEEDED is
+        # a soft access-potential heuristic: it stays visible per level and in
+        # the stage-3 proxy, and stage 4 plans the explicit access.
+        problems.extend(level_screen_problems(records))
         cand.cheap_proxy = cheap_proxy(diag, records, ctx)
         if problems:
             cand.status = CandidateStatus.INFEASIBLE

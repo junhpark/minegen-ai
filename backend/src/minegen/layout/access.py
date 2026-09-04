@@ -63,6 +63,38 @@ WELD_TOLERANCE = 1e-6  # m
 BACKBONE_END_MARGIN = GENERIC_BACKBONE_END_CLEARANCE
 #: minimum clear length below which a connector is degenerate
 MIN_CONNECTOR_LENGTH = 1.0
+#: default PREFERRED access length = this factor × tunnel width (planning
+#: default, closeout v3 §2: usable turnout development, room for future sump /
+#: services / ore-pass connections — never a statutory value)
+PREFERRED_ACCESS_WIDTH_FACTOR = 6.0
+#: extra cost per metre BEYOND the preferred length. A documented deterministic
+#: planning coefficient (closeout v3 §2.D) — provisional, tuned against manual
+#: acceptance, NOT a permanent engineering invariant and NOT a user weight.
+LONG_ACCESS_COEF = 0.5
+
+
+def effective_preferred_access_length(
+    cfg: LevelAccessConfig, ramp: RampConstraints
+) -> tuple[float, str]:
+    """Effective preferred branch length and its provenance:
+    ``EXPLICIT`` (validated inside [min, max] by the schema) or
+    ``DEFAULT_6X_TUNNEL_WIDTH`` = ``max(minimum_access_length,
+    PREFERRED_ACCESS_WIDTH_FACTOR × tunnel_width)``."""
+    if cfg.preferred_access_length is not None:
+        return float(cfg.preferred_access_length), "EXPLICIT"
+    return (
+        max(float(cfg.minimum_access_length), PREFERRED_ACCESS_WIDTH_FACTOR * ramp.tunnel_width),
+        "DEFAULT_6X_TUNNEL_WIDTH",
+    )
+
+
+def access_length_cost(
+    length: float, preferred: float, long_coef: float = LONG_ACCESS_COEF
+) -> float:
+    """Selection cost of a VALID branch: ``|L − P| + long_coef · max(0, L − P)``.
+    Hard limits (min / max length, gradient, radius, clearance, envelope) are
+    checked BEFORE this cost exists — it only orders valid candidates."""
+    return abs(length - preferred) + long_coef * max(0.0, length - preferred)
 
 
 class AccessFailure:
@@ -404,6 +436,10 @@ class LevelAccess:
     rejection_counts: dict[str, int] = field(default_factory=dict)
     failure_reason: str | None = None
     failure_detail: str | None = None
+    #: closeout v3 §2.G observability: why THIS branch was selected
+    preferred_length: float | None = None
+    length_deviation: float | None = None
+    selection_cost: float | None = None
 
     @property
     def ok(self) -> bool:
@@ -444,6 +480,9 @@ class LevelAccess:
             "rejectionCounts": dict(self.rejection_counts),
             "failureReason": self.failure_reason,
             "failureDetail": self.failure_detail,
+            "effectivePreferredAccessLength": self.preferred_length,
+            "lengthDeviationFromPreferred": self.length_deviation,
+            "selectionCost": self.selection_cost,
         }
         if include_points and self.points is not None:
             d["centerline"] = {
@@ -461,6 +500,9 @@ class LevelAccessPlan:
     max_gradient_limit: float
     min_turn_radius_limit: float
     required_clearance: float
+    preferred_length: float | None = None
+    preferred_source: str | None = None
+    long_access_coef: float = LONG_ACCESS_COEF
 
     @property
     def feasible(self) -> bool:
@@ -487,6 +529,15 @@ class LevelAccessPlan:
             "maxGradientLimit": self.max_gradient_limit,
             "minTurnRadiusLimit": self.min_turn_radius_limit,
             "requiredClearance": self.required_clearance,
+            "effectivePreferredAccessLength": self.preferred_length,
+            "preferredAccessSource": self.preferred_source,
+            "longAccessCoefficient": self.long_access_coef,
+            "meanAbsDeviationFromPreferred": (
+                float(np.mean([abs(a.length_deviation or 0.0) for a in ok])) if ok else None
+            ),
+            "maxAbsDeviationFromPreferred": (
+                max(abs(a.length_deviation or 0.0) for a in ok) if ok else None
+            ),
         }
 
     def to_dict(self, *, include_points: bool = True) -> dict[str, Any]:
@@ -557,11 +608,18 @@ def plan_level_accesses(
     evaluator: DesignCostEvaluator,
     shape: ProfileShape,
     required_clearance: float,
+    *,
+    long_access_coef: float = LONG_ACCESS_COEF,
 ) -> LevelAccessPlan:
     """Deterministic level-access plan for one main ramp (top level first).
-    Junction spacing is enforced against every already-selected junction."""
+    Junction spacing is enforced against every already-selected junction.
+    Among the VALID candidates of a level the selection minimizes
+    ``(access_length_cost(L, P), L, junction chainage, terminal sense)`` with
+    ``P`` = the effective preferred access length (closeout v3 §2) — hard
+    limits are never traded against this cost."""
     g_max = cfg.max_gradient if cfg.max_gradient is not None else ramp.max_gradient
     r_min = cfg.min_turn_radius if cfg.min_turn_radius is not None else ramp.min_turn_radius
+    preferred, preferred_source = effective_preferred_access_length(cfg, ramp)
     used: list[float] = []
     accesses: list[LevelAccess] = []
     for lv, anchor in zip(levels, anchors, strict=True):
@@ -580,7 +638,7 @@ def plan_level_accesses(
         access = LevelAccess(lv.level_id, lv.elevation, "INFEASIBLE", anchor)
         cands = _junction_candidates(ramp_points, lv.elevation, cfg, anchor.position[:2])
         rejections: dict[str, int] = {}
-        best: tuple[tuple[float, float, int], LevelAccess] | None = None
+        best: tuple[tuple[float, float, float, int], LevelAccess] | None = None
         reject = _rejecter(rejections)
 
         if not cands:
@@ -653,7 +711,8 @@ def plan_level_accesses(
                 access.candidates_valid += 1
                 seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
                 field_cost = float(np.sum(0.5 * (finite[:-1] + finite[1:]) * seg))
-                key = (conn.length3d, cand.chainage, sense_k)
+                cost = access_length_cost(conn.length3d, preferred, long_access_coef)
+                key = (cost, conn.length3d, cand.chainage, sense_k)
                 if best is None or key < best[0]:
                     chosen = LevelAccess(
                         lv.level_id,
@@ -673,6 +732,9 @@ def plan_level_accesses(
                         max_gradient=abs(conn.gradient),
                         min_plan_radius=r_min_delivered,
                         field_cost=field_cost,
+                        preferred_length=preferred,
+                        length_deviation=conn.length3d - preferred,
+                        selection_cost=cost,
                         validation={
                             "sampleCount": int(pts.shape[0]),
                             "invalidSampleCount": 0,
@@ -687,6 +749,7 @@ def plan_level_accesses(
                     best = (key, chosen)
         if best is None:
             access.rejection_counts = rejections
+            access.preferred_length = preferred
             top = (
                 max(rejections.items(), key=lambda kv: (kv[1], kv[0]))[0]
                 if rejections
@@ -706,4 +769,12 @@ def plan_level_accesses(
         chosen.rejection_counts = rejections
         used.append(float(chosen.junction_chainage or 0.0))
         accesses.append(chosen)
-    return LevelAccessPlan(accesses, g_max, r_min, required_clearance)
+    return LevelAccessPlan(
+        accesses,
+        g_max,
+        r_min,
+        required_clearance,
+        preferred_length=preferred,
+        preferred_source=preferred_source,
+        long_access_coef=long_access_coef,
+    )

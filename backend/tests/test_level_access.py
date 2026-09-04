@@ -18,9 +18,12 @@ from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.design.profile import build_profile
 from minegen.layout.access import (
+    LONG_ACCESS_COEF,
     AccessFailure,
+    access_length_cost,
     build_anchor,
     build_connector,
+    effective_preferred_access_length,
     plan_level_accesses,
 )
 from minegen.layout.families import build_footwall_track
@@ -451,3 +454,104 @@ def test_cut_and_fill_generic_backbone_is_independent_of_longhole_parameters(
     stations_20 = _levels_builder(longhole, world).station_us(ob)  # type: ignore[arg-type]
     stations_30 = _levels_builder(sc, world).station_us(ob)  # type: ignore[arg-type]
     assert stations_20 != stations_30
+
+
+# --------------------------------------------------------------------------- #
+# closeout v3 §2: preferred access length
+# --------------------------------------------------------------------------- #
+
+
+def test_preferred_access_length_default_and_validation() -> None:
+    from pydantic import ValidationError
+
+    from minegen.core.models import LevelAccessConfig, RampConstraints
+
+    ramp = RampConstraints()
+    cfg = LevelAccessConfig()
+    p, source = effective_preferred_access_length(cfg, ramp)
+    assert source == "DEFAULT_6X_TUNNEL_WIDTH"
+    assert p == max(cfg.minimum_access_length, 6.0 * ramp.tunnel_width) == 30.0
+    # narrower tunnels: 3.5 m → 21 m, 4.5 m → 27 m; the hard floor wins below it
+    assert effective_preferred_access_length(cfg, ramp.model_copy(update={"tunnel_width": 3.5}))[
+        0
+    ] == pytest.approx(21.0)
+    assert effective_preferred_access_length(cfg, ramp.model_copy(update={"tunnel_width": 4.5}))[
+        0
+    ] == pytest.approx(27.0)
+    assert effective_preferred_access_length(cfg, ramp.model_copy(update={"tunnel_width": 2.0}))[
+        0
+    ] == pytest.approx(cfg.minimum_access_length)
+    # explicit value: validated inside [min, max], never clamped
+    explicit = LevelAccessConfig(preferred_access_length=25.0)
+    assert effective_preferred_access_length(explicit, ramp) == (25.0, "EXPLICIT")
+    with pytest.raises(ValidationError):
+        LevelAccessConfig(preferred_access_length=10.0)
+    with pytest.raises(ValidationError):
+        LevelAccessConfig(preferred_access_length=500.0)
+    with pytest.raises(ValidationError):
+        LevelAccessConfig(minimum_access_length=50.0, maximum_access_length=40.0)
+    # the hard floor is untouched by the preferred length
+    assert LevelAccessConfig().minimum_access_length == 15.0
+    # selection cost: symmetric below, extra-penalized above the preferred length
+    assert access_length_cost(30.0, 30.0) == 0.0
+    assert access_length_cost(20.0, 30.0) == pytest.approx(10.0)
+    assert access_length_cost(40.0, 30.0) == pytest.approx(10.0 + LONG_ACCESS_COEF * 10.0)
+    assert access_length_cost(40.0, 30.0, 1.0) == pytest.approx(20.0)
+
+
+def test_selection_targets_the_preferred_length_instead_of_the_hard_floor(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    sc, world = tabular
+    s, res = search
+    _, plan = _plan(sc, world, s, res)
+    assert plan.feasible and plan.preferred_length == 30.0
+    assert plan.preferred_source == "DEFAULT_6X_TUNNEL_WIDTH"
+    ok = [a for a in plan.accesses if a.ok]
+    floor = sc.layout.access.minimum_access_length
+    # the old shortest-first objective (preferred == hard floor) hugs the floor
+    _, shortest = _plan(sc, world, s, res, preferred_access_length=floor)
+    ok_short = [a for a in shortest.accesses if a.ok]
+    mean_short = float(np.mean([a.length3d for a in ok_short]))
+    mean_pref = float(np.mean([a.length3d for a in ok]))
+    assert mean_pref > mean_short
+    # the distribution moves toward the preferred length and off the floor
+    assert float(np.mean([abs(a.length3d - 30.0) for a in ok])) < float(
+        np.mean([abs(a.length3d - 30.0) for a in ok_short])
+    )
+    assert sum(1 for a in ok if a.length3d < floor + 2.0) < len(ok)
+    # every selected branch still honours every hard limit
+    for a in ok:
+        assert floor <= a.length3d <= sc.layout.access.maximum_access_length
+        assert a.max_gradient <= plan.max_gradient_limit + 1e-9
+        assert a.preferred_length == 30.0
+        assert a.length_deviation == pytest.approx(a.length3d - 30.0)
+        assert a.selection_cost == pytest.approx(access_length_cost(a.length3d, 30.0))
+    summary = plan.summary()
+    assert summary["effectivePreferredAccessLength"] == 30.0
+    assert summary["preferredAccessSource"] == "DEFAULT_6X_TUNNEL_WIDTH"
+    assert summary["longAccessCoefficient"] == LONG_ACCESS_COEF
+    assert summary["meanAbsDeviationFromPreferred"] is not None
+    d = plan.to_dict()["accesses"][0]
+    assert {
+        "effectivePreferredAccessLength",
+        "lengthDeviationFromPreferred",
+        "selectionCost",
+    } <= set(d)
+
+
+def test_preferred_selection_is_deterministic(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    sc, world = tabular
+    s, res = search
+    _, a = _plan(sc, world, s, res)
+    _, b = _plan(sc, world, s, res)
+    for x, y in zip(a.accesses, b.accesses, strict=True):
+        assert (x.junction_chainage, x.terminal_heading, x.length3d, x.connector_word) == (
+            y.junction_chainage,
+            y.terminal_heading,
+            y.length3d,
+            y.connector_word,
+        )
+    assert a.to_dict() == b.to_dict()

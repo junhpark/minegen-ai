@@ -114,10 +114,23 @@ FULL_SUITE: tuple[LayoutCase, ...] = (
         overrides=(("mining.method", "CUT_AND_FILL"),),
         note="generic ramp junctions + level accesses for a reserved production method",
     ),
+    # closeout v3 §3.F: the same-RL direct reach (a heuristic) is exceeded on
+    # the deeper levels of the irregular body, yet explicit ramp junctions +
+    # graded level accesses exist → stage 4 SUCCESS. Under the Phase 20A/20B
+    # hard reach gate this case had no feasible candidate.
+    LayoutCase(
+        "IRREGULAR-REACH-EXCEEDED",
+        ScenarioPreset.RANDOM_WARPED_VEIN,
+        301,
+        1,
+        overrides=(("layout.access_reach", 30.0),),
+        note="direct same-RL reach exceeded (heuristic only); explicit level accesses feasible",
+    ),
 )
 SMOKE_KEYS: tuple[str, ...] = (
     "TABULAR-REFERENCE",
     "WARPED_VEIN-301",
+    "IRREGULAR-REACH-EXCEEDED",
     "GEOMETRY-STRESS",
     "ACCESS-INFEASIBLE",
     "CUT_AND_FILL",
@@ -209,6 +222,7 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
     contract["ranking"] = list(res.ranking)
     contract["winnerId"] = res.winner_id
     contract["status"] = "SUCCESS" if res.winner_id else "NO_FEASIBLE_CANDIDATE"
+    contract["cheapFeasibleCount"] = int(res.performance.get("cheapFeasibleCount", 0))
     metrics["requiredLevelElevations"] = [_r(lv.elevation, 6) for lv in res.levels]
     metrics["clearanceErrorBound"] = _r(res.clearance_error_bound)
     metrics["requiredClearance"] = _r(res.required_clearance)
@@ -295,6 +309,15 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
         contract["winnerAccessConnectors"] = [a.connector_word for a in plan.accesses]
         contract["winnerAccessFailures"] = summary["failures"]
         contract["miningMethod"] = sc.mining.method.value
+        contract["winnerPreferredAccessSource"] = summary["preferredAccessSource"]
+        contract["winnerReachExceededLevels"] = [
+            r.level_id for r in winner.level_service if not r.within_reach
+        ]
+        metrics["winnerPreferredAccessLength"] = _r(summary["effectivePreferredAccessLength"])
+        metrics["winnerMeanAbsDeviationFromPreferred"] = _r(
+            summary["meanAbsDeviationFromPreferred"]
+        )
+        metrics["winnerAccessDeviations"] = [_r(a.length_deviation) for a in plan.accesses]
         metrics["winnerTotalAccessLength"] = _r(summary["totalAccessLength"])
         metrics["winnerWorstAccessLength"] = _r(summary["worstAccessLength"])
         metrics["winnerMaxAccessGradient"] = _r(summary["maxAccessGradient"])
@@ -340,6 +363,8 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
         contract["winnerAccessConnectors"] = []
         contract["winnerAccessFailures"] = {}
         contract["miningMethod"] = sc.mining.method.value
+        contract["winnerPreferredAccessSource"] = None
+        contract["winnerReachExceededLevels"] = []
     runtime["total"] = time.perf_counter() - t_all
     return _record(case, contract, metrics, runtime, notes, candidates_out)
 
@@ -398,9 +423,12 @@ CONTRACT_COLUMNS = (
     "winnerAccessibleLevels",
     "winnerReversals",
     "miningMethod",
+    "cheapFeasibleCount",
+    "winnerPreferredAccessSource",
 )
 #: exact-compared nested contract members (lists / dicts)
 CONTRACT_NESTED = (
+    "winnerReachExceededLevels",
     "requiredLevelIds",
     "serviceableLevelIds",
     "candidateIds",
@@ -438,8 +466,11 @@ METRIC_COLUMNS = (
     "winnerWorstAccessLength",
     "winnerMaxAccessGradient",
     "winnerMinAccessPlanRadius",
+    "winnerPreferredAccessLength",
+    "winnerMeanAbsDeviationFromPreferred",
 )
 METRIC_NESTED = (
+    "winnerAccessDeviations",
     "requiredLevelElevations",
     "portal",
     "winnerReferenceChainages",
@@ -450,6 +481,73 @@ METRIC_NESTED = (
     "winnerAccessGradients",
 )
 RUNTIME_COLUMNS = ("realize", "world", "search", "materialize", "total")
+
+
+def audit_shortlist(cases: list[LayoutCase], label: str) -> dict[str, Any]:
+    """Closeout v3 §3.E shortlist-starvation audit (diagnostic, never part
+    of the production search): the normal bounded-shortlist run against an
+    exhaustive run that validates EVERY cheap-feasible candidate. Reports,
+    per case, the feasible candidates the shortlist never validated and
+    whether the exhaustive winner (or any feasible family) is missed."""
+    records: list[dict[str, Any]] = []
+    t_all = time.perf_counter()
+    for case in cases:
+        rec: dict[str, Any] = {"key": case.key, "note": case.note}
+        try:
+            sc = case.realize()
+        except ScenarioRealizationError as exc:
+            rec["realized"] = False
+            rec["realizationError"] = str(exc)
+            records.append(rec)
+            continue
+        world = generate_world(sc)
+        t0 = time.perf_counter()
+        normal = LayoutV2Search(sc, world).run()
+        t_normal = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        exhaustive = LayoutV2Search(sc, world).run(detailed_all=True)
+        t_exh = time.perf_counter() - t0
+        feasible_n = [c.candidate_id for c in normal.candidates if c.status == "FEASIBLE"]
+        feasible_x = [c.candidate_id for c in exhaustive.candidates if c.status == "FEASIBLE"]
+        fam = {c.candidate_id: c.params.family.value for c in exhaustive.candidates}
+        missed = [cid for cid in feasible_x if cid not in feasible_n]
+        rec.update(
+            {
+                "realized": True,
+                "candidateCount": len(normal.candidates),
+                "cheapFeasibleCount": int(normal.performance.get("cheapFeasibleCount", 0)),
+                "shortlistSize": len(normal.shortlist),
+                "shortlist": list(normal.shortlist),
+                "feasibleNormal": feasible_n,
+                "feasibleExhaustive": feasible_x,
+                "missedFeasible": missed,
+                "missedFamilies": sorted({fam[c] for c in missed} - {fam[c] for c in feasible_n}),
+                "winnerNormal": normal.winner_id,
+                "winnerExhaustive": exhaustive.winner_id,
+                "winnerMissedByShortlist": (
+                    exhaustive.winner_id is not None
+                    and exhaustive.winner_id not in normal.shortlist
+                ),
+                "rankingExhaustive": list(exhaustive.ranking),
+                "secondsNormal": t_normal,
+                "secondsExhaustive": t_exh,
+            }
+        )
+        records.append(rec)
+    return {
+        "suiteVersion": SUITE_VERSION,
+        "label": label,
+        "semantics": (
+            "diagnostic shortlist-starvation audit: exhaustive detailed validation "
+            "of every cheap-feasible candidate versus the bounded production "
+            "shortlist; the production search is unchanged by this report"
+        ),
+        "caseCount": len(records),
+        "anyWinnerMissed": any(r.get("winnerMissedByShortlist") for r in records),
+        "anyFamilyMissed": any(r.get("missedFamilies") for r in records),
+        "totalRuntimeSeconds": time.perf_counter() - t_all,
+        "cases": records,
+    }
 
 
 def write_report(report: dict[str, Any], out_dir: Path, name: str) -> tuple[Path, Path]:

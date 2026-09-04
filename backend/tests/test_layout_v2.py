@@ -476,12 +476,15 @@ def test_delivered_centerline_limits_hold_for_every_non_infeasible_candidate(
         assert c.points is not None
         assert np.all(np.abs(c.points[:, 0]) <= sc.world.size_x / 2)
         assert np.all(np.abs(c.points[:, 1]) <= sc.world.size_y / 2)
-        # every level passes the access-potential screen, exactly at its elevation
-        assert c.screened_count == len(c.level_service) == len(res.serviceable_ids)
+        # every level is vertically covered (an RL crossing exactly at its
+        # elevation); the footprint-reach screen is a heuristic (closeout v3
+        # §3) and may be exceeded without rejecting the candidate
+        assert len(c.level_service) == len(res.serviceable_ids)
         for rec in c.level_service:
             assert rec.connection_position is not None
             assert rec.connection_position[2] == rec.elevation
-            assert rec.access_distance is not None and rec.access_distance <= res.access_reach
+            assert rec.access_distance is not None
+            assert rec.within_reach == (rec.access_distance <= res.access_reach)
         checked += 1
     assert checked >= 3
 
@@ -999,3 +1002,78 @@ def test_plan_radius_handles_straight_and_reversal_triples() -> None:
     back = np.array([[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
     r = plan_radii(back)
     assert r.shape == (1,) and np.isfinite(r[0]) and r[0] < 1e-6
+
+
+# --------------------------------------------------------------------------- #
+# closeout v3 §3: stage-2 access-potential screen semantics
+# --------------------------------------------------------------------------- #
+
+
+def test_reach_exceeded_alone_never_rejects_a_candidate_but_no_rl_crossing_does() -> None:
+    from minegen.layout.search import LevelServiceRecord, level_screen_problems
+
+    within = LevelServiceRecord("L01", -10.0, True, access_distance=5.0)
+    far = LevelServiceRecord(
+        "L02",
+        -35.0,
+        False,
+        access_distance=250.0,
+        unserved_reason=InfeasibleReason.ACCESS_REACH_EXCEEDED.value,
+    )
+    uncovered = LevelServiceRecord(
+        "L03", -60.0, False, unserved_reason=InfeasibleReason.NO_RL_CROSSING.value
+    )
+    assert level_screen_problems([within, far]) == []
+    problems = level_screen_problems([within, far, uncovered])
+    assert [p[0] for p in problems] == [InfeasibleReason.LEVEL_SERVICE_INFEASIBLE]
+    assert "NO_RL_CROSSING" in problems[0][1] and "ACCESS_REACH_EXCEEDED" not in problems[0][1]
+
+
+def test_stage_four_access_planner_is_the_final_authority_over_the_reach_screen(
+    tabular: tuple[Scenario, SyntheticWorld],
+) -> None:
+    """A vanishing access reach makes every RL crossing fail the screen; the
+    candidates must still be shortlisted, planned and (where the explicit
+    access exists) FEASIBLE — the screen is a heuristic, not a gate."""
+    sc, world = tabular
+    tight = sc.model_copy(update={"layout": sc.layout.model_copy(update={"access_reach": 0.001})})
+    res = LayoutV2Search(tight, world).run()
+    assert res.winner_id is not None
+    winner = res.candidate(res.winner_id)
+    assert winner is not None and winner.access_plan is not None and winner.access_plan.feasible
+    assert winner.screened_count == 0  # nothing "within reach" ...
+    assert winner.accessible_count == len(res.serviceable_ids)  # ... yet every level accessed
+    assert all(
+        r.unserved_reason == InfeasibleReason.ACCESS_REACH_EXCEEDED.value
+        for r in winner.level_service
+    )
+    # a stage-2 level-screen rejection is only ever a vertical-coverage
+    # failure (NO_RL_CROSSING: e.g. a LONGITUDINAL ramp that runs out of strike
+    # length above the bottom level) — never the reach heuristic alone
+    for c in res.candidates:
+        if InfeasibleReason.LEVEL_SERVICE_INFEASIBLE.value in c.failure_reasons:
+            assert any(
+                r.unserved_reason == InfeasibleReason.NO_RL_CROSSING.value for r in c.level_service
+            )
+            assert c.points is not None and float(c.points[:, 2].min()) > res.levels[-1].elevation
+
+
+def test_exhaustive_diagnostic_mode_validates_every_cheap_feasible_candidate(
+    tabular: tuple[Scenario, SyntheticWorld],
+) -> None:
+    sc, world = tabular
+    normal = LayoutV2Search(sc, world).run()
+    exhaustive = LayoutV2Search(sc, world).run(detailed_all=True)
+    assert normal.performance["exhaustiveDiagnostic"] is False
+    assert exhaustive.performance["exhaustiveDiagnostic"] is True
+    assert len(exhaustive.shortlist) == exhaustive.performance["cheapFeasibleCount"]
+    assert len(normal.shortlist) == min(
+        sc.layout.shortlist_size, normal.performance["cheapFeasibleCount"]
+    )
+    assert set(normal.shortlist) <= set(exhaustive.shortlist)
+    # the exhaustive run can only ADD feasible candidates
+    feasible_n = {c.candidate_id for c in normal.candidates if c.status == CandidateStatus.FEASIBLE}
+    feasible_x = {
+        c.candidate_id for c in exhaustive.candidates if c.status == CandidateStatus.FEASIBLE
+    }
+    assert feasible_n <= feasible_x
