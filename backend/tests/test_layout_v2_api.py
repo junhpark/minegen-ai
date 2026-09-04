@@ -442,7 +442,12 @@ def test_warped_vein_development_mesh_sweeps_the_access_branches_only(client: Te
     assert cat["status"] == "SUCCESS"
     r = client.post(f"{base}/layout-v2/activate", json={"candidateId": _winner(cat)})
     assert r.status_code == 200, r.text
-    assert client.post(f"{base}/levels").status_code == 422  # rule 135 boundary
+    # closeout v3 §2: the implicit body REACHES the level builder and answers
+    # the typed Phase 20B boundary (200 FAILED), not the legacy 422
+    r = client.post(f"{base}/levels")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "FAILED"
+    assert "LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY" in r.json()["failureReason"]
     r = client.post(f"{base}/development-mesh", params={"sync": "true"})
     assert r.status_code == 200, r.text
     dev = r.json()
@@ -453,3 +458,33 @@ def test_warped_vein_development_mesh_sweeps_the_access_branches_only(client: Te
     assert dev["byKind"]["CROSSCUT"]["developmentCount"] == 0
     assert [p["name"] for p in dev["primitives"]] == ["LEVEL_ACCESS"]
     assert client.get(f"{base}/development-mesh/mesh.glb").status_code == 200
+
+
+def test_warped_vein_levels_return_the_typed_phase20b_boundary(client: TestClient) -> None:
+    """Closeout v3 §2: level development for an implicit body must be built
+    with the world's own clearance policy (CONSERVATIVE) so it reaches
+    ``LevelDevelopmentBuilder`` and answers the intended typed Phase 20B
+    boundary — not the legacy exact-only evaluator's 422 (rule 135 still
+    guards the LEGACY Hybrid-A* chain, which is a different path)."""
+    r = client.post(
+        "/api/v1/scenarios/realize",
+        json={"preset": "RANDOM_WARPED_VEIN", "seed": 301, "faultCount": 1},
+    )
+    assert r.status_code == 200, r.text
+    sid = client.post("/api/v1/scenarios", json=r.json()).json()["id"]
+    assert client.post(f"/api/v1/scenarios/{sid}/world/generate").status_code == 200
+    base = f"/api/v1/scenarios/{sid}/design"
+    cat = _generate_layout(client, sid)
+    act = client.post(f"{base}/layout-v2/activate", json={"candidateId": _winner(cat)})
+    assert act.status_code == 200, act.text
+    r = client.post(f"{base}/levels")
+    assert r.status_code == 200, r.text
+    payload = r.json()
+    assert payload["status"] == "FAILED"
+    assert "LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY" in payload["failureReason"]
+    assert payload["developments"] == [] and payload["levels"] == []
+    # the persisted artifact is readable and stays the same typed boundary
+    got = client.get(f"{base}/levels")
+    assert got.status_code == 200 and got.json()["status"] == "FAILED"
+    # the LEGACY exact-only chain keeps its typed 422 refusal (rule 135)
+    assert client.post(f"{base}/targets").status_code == 422

@@ -642,13 +642,23 @@ class DesignService:
     def generate_levels(self, scenario_id: str) -> LevelsPayload:
         """Synchronous deterministic analytic geometry (rule 71; rule 60
         reserves async jobs for long-running operations). Regenerating levels
-        invalidates the MineNetwork but never the tunnel mesh (rule 74)."""
+        invalidates the MineNetwork but never the tunnel mesh (rule 74).
+
+        The evaluators are built with the world's own clearance policy
+        (rule 146: EXACT for analytic bodies — numerically identical to the
+        legacy path — CONSERVATIVE for implicit ones) instead of the
+        exact-only ``self.evaluator``. An implicit body must REACH
+        ``LevelDevelopmentBuilder`` so it answers the intended typed Phase 20B
+        boundary (``LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY``)
+        rather than the legacy evaluator's 422."""
         fingerprint = self.levels_fingerprint(scenario_id)
         smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
         accesses_payload = self.active_level_accesses(scenario_id)
-        scenario, world, drift_ev = self.evaluator(scenario_id)
+        scenario, world = self.worlds.load(scenario_id)
+        policy = clearance_policy_for(world.orebody)
+        drift_ev = DesignCostEvaluator(world, scenario.design, clearance=policy)
         crosscut_ev = DesignCostEvaluator(
-            world, scenario.design, DesignContext.crosscut(scenario.design)
+            world, scenario.design, DesignContext.crosscut(scenario.design), clearance=policy
         )
         source_revision = hashlib.sha256(
             json.dumps(fingerprint.entries, sort_keys=True).encode()
@@ -1037,9 +1047,12 @@ class DesignService:
         result = builder.build(accesses_payload, levels_payload, on_progress=progress)
         payload = dict(result.report)
         payload["generationSeconds"] = time.perf_counter() - t0
+        # which owning artifacts actually CONTRIBUTED geometry: a persisted
+        # but FAILED levels artifact (e.g. the implicit-orebody Phase 20B
+        # boundary) contributes no drift / crosscut
         payload["sources"] = {
             "levelAccesses": accesses_payload is not None,
-            "levels": levels_payload is not None,
+            "levels": levels_payload is not None and levels_payload.get("status") == "SUCCESS",
             "rampSource": read_ramp_source(self.store.derived_dir(scenario_id)),
         }
         if result.glb is not None:
