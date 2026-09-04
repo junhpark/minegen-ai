@@ -706,8 +706,11 @@ class LayoutV2Config(ApiModel):
     target_gradients: Annotated[
         list[Annotated[float, Field(gt=0, le=0.25)]], Field(min_length=1)
     ] = Field(default_factory=lambda: [0.12, 0.10])
-    #: maximum horizontal distance from a level crossing to the orebody
-    #: footprint at that level for the level to count as SERVED (m)
+    #: HEURISTIC access-potential reach (m): the horizontal distance from a
+    #: same-RL ramp crossing to the orebody footprint at that level. It feeds
+    #: the stage-3 cheap proxy and stays inspectable per level, but it is NOT
+    #: the "served" authority and never rejects a candidate (rule 164) — a
+    #: level is served only by a validated level access (``plan_level_accesses``)
     access_reach: PositiveFloat = 60.0
     #: perpendicular stand-off of the corridor's ore-facing edge from the
     #: footwall footprint edge; ``None`` → ``ramp.footwall_access_offset``

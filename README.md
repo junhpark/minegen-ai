@@ -182,7 +182,13 @@ Scenario A — TABULAR + LONGHOLE
    accesses) toggle independently of the meshes. No inverted faces,
    accidental caps or severe z-fighting; exact boolean junctions are NOT
    expected (Phase 20D).
-5. Report the numerical table per level (junction chainage, access
+5. Zoom into 2–3 ramp turnouts and inspect the OPEN access junctions
+   closely. Without CSG the neighbouring tube's inner shell is visible
+   through the opening — that is the recorded Phase 20D limitation
+   ("Unified Development Mesh"), NOT a Phase 20B defect. The walkthrough
+   also still traverses the Phase 06 ramp tunnel only; it does not enter
+   the level-access / drift / crosscut meshes (Phase 20D).
+6. Report the numerical table per level (junction chainage, access
    length, preferred, ΔP, gradient, min radius) from
    `GET …/design/level-accesses`, and the mesh table (triangles, draw
    calls, GLB size, generation time, initial load, FPS) from the two mesh
@@ -196,9 +202,15 @@ Scenario B — WARPED_VEIN
    direct reach is exceeded (the reach screen is a heuristic). A
    NO_FEASIBLE_CANDIDATE result names the failure stage
    (RAMP_GEOMETRY / STAGE2 / SHORTLIST / ACCESS_PLANNER / CLEARANCE).
-2. Activate → Generate level development answers the typed implicit-body
-   boundary; **Generate development mesh** still sweeps the access
-   branches (accesses only).
+2. Activate → Generate level development reports the typed implicit-body
+   boundary IN THE PANEL (`FAILED` ·
+   `LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY`, not an HTTP error);
+   **Generate development mesh** still sweeps the access branches
+   (accesses only).
+3. Inspect 2–3 of the long level accesses, especially the ~70 m-class
+   branches: each must read as a reasonable access drive from the turnout to
+   the level entry, not as wandering or a loop. Record the junction
+   chainage, length and ΔP of the ones you inspect.
 
 Scenario C — CUT_AND_FILL
 

@@ -49,7 +49,7 @@ Deferred deployment item (not scheduled):
 | D0 | Hugging Face public demo | single Docker Space, session isolation, TTL, prebuilt demo scenario |
 
 Phases 01–20B are described in `docs/architecture.md`; the invariants they
-established are `CLAUDE.md` rules 1–168.
+established are `CLAUDE.md` rules 1–169.
 
 ## How this list is used
 

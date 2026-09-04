@@ -20,9 +20,13 @@ and this module plans it deterministically:
   to the anchor pose, chord-exact constant vertical gradient, and hard
   validation of the DELIVERED polyline (gradient, plan circumradius, world,
   cover, restricted zones, orebody clearance under the evaluator's policy,
-  excavation envelope). Junction spacing is a hard rule. Selection is the
-  minimum (length, junction chainage, terminal sense). Every failure is a
+  excavation envelope). Junction spacing is a hard rule. Every failure is a
   typed reason; nothing is clamped.
+
+  Among the candidates that pass EVERY hard check, selection minimizes
+  ``(access_length_cost(L, P), L, junction chainage, terminal sense)`` with
+  ``P`` = the effective PREFERRED access length (rule 163) — not the shortest
+  branch. Hard limits are never traded against that cost.
 """
 
 from __future__ import annotations

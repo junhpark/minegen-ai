@@ -809,5 +809,30 @@ chainages, entries, access lengths / gradients / radii and typed failures;
    auto-expands only for a scenario with legacy work under the LEGACY
    source (`rampSource.ts::legacySectionAutoOpen`); `accessTargets` /
    `rawSearchPath` default OFF and are hidden on activation.
-6. **Out of scope**: the ramp / footwall / access stand-off semantics audit
-   (rule 168, roadmap item S1).
+6. **Effective Ramp identity** (rule 169, `scene/invalidation.ts`).
+   Downstream preservation is decided on the identity (source, selected
+   candidate, layout revision), not on `activeSource` alone: replacing the
+   selected candidate while LAYOUT_V2 is ALREADY active changes the ramp
+   just as a source switch does and invalidates the whole chain. The two
+   halves each have exactly one comparison — `afterLayoutSelect`
+   (candidate / revision) and `afterRampSourceChange` (source) — and
+   `afterLayoutActivate` composes them for the activate call, preserving the
+   level accesses owned by the activated selection.
+7. **Level development under an implicit body**
+   (`DesignService.generate_levels`). The drift and crosscut evaluators are
+   built with the world's own clearance policy (`clearance_policy_for`,
+   rule 146) instead of the exact-only `self.evaluator`: TABULAR stays
+   EXACT and numerically identical, while a WARPED_VEIN now REACHES
+   `LevelDevelopmentBuilder` and answers the intended typed Phase 20B
+   boundary — `200` with `status = FAILED` and
+   `LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY` — instead of the
+   legacy evaluator's 422. Rule 135 still guards the LEGACY Hybrid-A* chain
+   (access targets / decline / smoothing), which is a different path. The
+   development mesh keeps sweeping the validated access branches, and its
+   `sources.levels` flag reports CONTRIBUTION (a persisted but FAILED levels
+   artifact contributes nothing).
+8. **Out of scope**: the ramp / footwall / access stand-off semantics audit
+   (rule 168, roadmap item S1); boolean junction openings, an all-development
+   watertight union and walkthrough / collider integration for the
+   development meshes (Phase 20D — the walkthrough traverses the Phase 06
+   ramp tunnel only).

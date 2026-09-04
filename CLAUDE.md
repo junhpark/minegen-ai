@@ -1211,7 +1211,13 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      back to development / piece ids; materials are shared by role.
      `development_mesh.{json,glb}` is invalidated with `levels.json`.
      Boolean wall openings, exact junction CSG and an all-development
-     watertight union are Phase 20D ("Unified Development Mesh").
+     watertight union are Phase 20D ("Unified Development Mesh"); so is
+     walkthrough / collider integration — the Phase 13–15 walkthrough
+     traverses the Phase 06 ramp tunnel only and does NOT enter the
+     level-access, drift or crosscut excavation meshes. Without CSG the
+     OPEN ends leave the neighbouring tube's inner shell visible at a
+     turnout; that is the recorded Phase 20D limitation, never patched in
+     Phase 20B.
 167. Legacy decline UX boundary. The primary workflow is World → Layout v2
      → select / activate → level access → level development → excavation
      meshes → network → stopes → timeline. The Phase 03–05 chain (access
@@ -1235,3 +1241,16 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      length are not additive in general). The separate change "Ramp /
      Footwall / Access Standoff Semantics Rationalization" audits their uses
      and relationships (see `docs/roadmap.md`).
+
+169. Effective Ramp IDENTITY decides downstream preservation — never
+     `activeSource` alone. The identity is (active source, selected layout
+     candidate, layout revision): switching LEGACY ⇄ LAYOUT_V2 AND replacing
+     the selected candidate under an already-active LAYOUT_V2 both change it
+     and invalidate tunnel mesh, development mesh, levels, network, stopes,
+     timeline, communication and sensors; re-selecting or re-activating the
+     same candidate at the same revision is idempotent. The frontend keeps
+     ONE comparison per half — `afterLayoutSelect` owns the candidate /
+     revision half, `afterRampSourceChange` the source half — and activate
+     composes them (`afterLayoutActivate`); the comparison is never
+     duplicated. The level accesses owned by the activated selection
+     (rule 157) survive the composition.
