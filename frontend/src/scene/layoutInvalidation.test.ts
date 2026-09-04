@@ -60,6 +60,7 @@ function rampSource(
 
 const DOWNSTREAM = [
   'tunnelMesh',
+  'developmentMesh',
   'levels',
   'network',
   'stopes',
@@ -82,6 +83,7 @@ function scene(active: 'LEGACY' | 'LAYOUT_V2'): WorldScene {
     smoothedDecline: active === 'LEGACY' ? legacy : selected,
     rampSource: rampSource(active),
     tunnelMesh: { tag: 'm' },
+    developmentMesh: { tag: 'dm' },
     levels: { tag: 'l' },
     network: { tag: 'n' },
     stopes: { tag: 's' },

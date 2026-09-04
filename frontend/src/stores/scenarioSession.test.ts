@@ -124,7 +124,13 @@ describe('scenario identity boundary', () => {
     expect(state().jobs.decline).toBe('job-a')
 
     activateScenario(scenario('B'))
-    expect(state().jobs).toEqual({ decline: null, smooth: null, tunnel: null, layout: null })
+    expect(state().jobs).toEqual({
+      decline: null,
+      smooth: null,
+      tunnel: null,
+      developmentMesh: null,
+      layout: null,
+    })
   })
 })
 

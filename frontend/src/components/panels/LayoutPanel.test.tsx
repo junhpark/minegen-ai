@@ -47,6 +47,11 @@ function candidate(over: Partial<LayoutCandidateSummary>): LayoutCandidateSummar
       maxGradientLimit: 0.12,
       minTurnRadiusLimit: 18,
       requiredClearance: 10.59,
+      effectivePreferredAccessLength: 30,
+      preferredAccessSource: 'DEFAULT_6X_TUNNEL_WIDTH',
+      longAccessCoefficient: 0.5,
+      meanAbsDeviationFromPreferred: 3.8,
+      maxAbsDeviationFromPreferred: 12.8,
     },
     levelAccesses: [
       {
@@ -74,6 +79,9 @@ function candidate(over: Partial<LayoutCandidateSummary>): LayoutCandidateSummar
         failureReason: null,
         failureDetail: null,
         centerline: null,
+        effectivePreferredAccessLength: 30,
+        lengthDeviationFromPreferred: -12.8,
+        selectionCost: 12.8,
       },
     ],
     diagnostics: {
@@ -196,7 +204,6 @@ function render(scene: WorldScene | null): string {
       job={null}
       busy={false}
       generating={false}
-      switching={false}
       selecting={false}
       activating={false}
       errorText={null}
@@ -205,17 +212,20 @@ function render(scene: WorldScene | null): string {
       onGenerate={noop}
       onSelect={noop}
       onActivate={noop}
-      onSwitch={noop}
     />,
   )
 }
 
 describe('LayoutPanel', () => {
-  it('shows the empty state and the source switch without a scene', () => {
+  it('shows the empty state as the primary workflow, without a legacy switch', () => {
     const html = render(null)
     expect(html).toContain('Layout v2')
     expect(html).toContain('Generate candidates')
-    expect(html).toContain('Legacy (Hybrid-A*)')
+    expect(html).toContain('Current design')
+    // closeout v3 §1: the LEGACY / LAYOUT_V2 source switch is an Advanced
+    // action of the legacy section, never a Layout v2 prerequisite
+    expect(html).not.toContain('Legacy (Hybrid-A*)')
+    expect(html).not.toContain('role="radiogroup"')
   })
 
   it('renders backend-authored candidate rows, scores and the winner mark', () => {
@@ -238,21 +248,30 @@ describe('LayoutPanel', () => {
     // Phase 20B: explicit access, never "served" by an RL crossing
     expect(html).toContain('4/4 accessible')
     expect(html).toContain('access 211 m · worst 17 m')
-    expect(html).toContain('junction @1300 m · access 17 m')
+    // closeout v3 §2.G: the backend preferred length and the deviation are shown
+    expect(html).toContain('preferred access 30 m (6 × width)')
+    expect(html).toContain('mean |ΔP| 3.8 m')
+    expect(html).toContain('junction @1300 m · access 17 m (ΔP −13 m)')
     expect(html).not.toContain('served')
   })
 
-  it('disables the LAYOUT_V2 source until a candidate is selected', () => {
+  it('names the current design: none, legacy (advanced) or the active layout-v2 candidate', () => {
     const html = render(sceneWith({}))
-    const idx = html.indexOf('>Layout v2</button>')
-    const buttonStart = html.lastIndexOf('<button', idx)
-    expect(html.slice(buttonStart, idx)).toContain(' disabled=""')
-    const html2 = render(
-      sceneWith({ rampSource: { ...sceneWith({}).rampSource, layoutV2Selected: true } }),
+    expect(html).toContain('none yet')
+    expect(html).toContain('Select or Activate one to make it the design')
+    const legacy = render(
+      sceneWith({
+        rampSource: {
+          ...sceneWith({}).rampSource,
+          available: true,
+          legacyAvailable: true,
+          sourceKind: 'LEGACY_SMOOTHED',
+          segmentCount: 3,
+        },
+      }),
     )
-    const idx2 = html2.indexOf('>Layout v2</button>')
-    const start2 = html2.lastIndexOf('<button', idx2)
-    expect(html2.slice(start2, idx2)).not.toContain(' disabled=""')
+    expect(legacy).toContain('Legacy decline (Hybrid-A*) — advanced')
+    expect(legacy).toContain('LEGACY_SMOOTHED · 3 segments · decline_smoothed.json')
   })
 
   it('marks the active candidate when LAYOUT_V2 is the source', () => {
@@ -271,6 +290,7 @@ describe('LayoutPanel', () => {
       }),
     )
     expect(html).toContain('(active)')
+    expect(html).toContain('Layout v2 · SPIRAL-n1-CW-e+0-g0.120 (active)')
     expect(html).toContain('PARAMETRIC_V2 · 4 segments · layout_v2_selected.json')
   })
 })

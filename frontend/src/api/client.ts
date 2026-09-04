@@ -27,6 +27,7 @@ import type {
   SmoothedDeclinePayload,
   StopesPayload,
   TimelinePayload,
+  DevelopmentMeshReport,
   TunnelMeshReport,
   WorldScene,
   WorldStats,
@@ -122,6 +123,11 @@ export const api = {
   submitTunnel: (id: string) =>
     request<JobSubmission>(`/scenarios/${id}/design/tunnel`, { method: 'POST' }),
   getTunnel: (id: string) => request<TunnelMeshReport>(`/scenarios/${id}/design/tunnel`),
+  /** Closeout v3 §4: submits the asynchronous development-mesh job (202, kind DEVELOPMENT_MESH). */
+  submitDevelopmentMesh: (id: string) =>
+    request<JobSubmission>(`/scenarios/${id}/design/development-mesh`, { method: 'POST' }),
+  getDevelopmentMesh: (id: string) =>
+    request<DevelopmentMeshReport>(`/scenarios/${id}/design/development-mesh`),
   /** Phase 20A: submits the asynchronous layout-v2 search (202, kind LAYOUT_V2). */
   submitLayoutV2: (id: string) =>
     request<JobSubmission>(`/scenarios/${id}/design/layout-v2`, { method: 'POST' }),

@@ -44,14 +44,17 @@ const DEFAULT_VISIBLE: LayerId[] = [
   'terrain',
   'orebody',
   'faults',
-  'accessTargets',
   // Phase 17.1 §2/§3: the raw Hybrid-A* search path and the block-field
   // slice are explicit opt-in diagnostic layers and default OFF —
-  // 'rawSearchPath' and 'rockQuality' are intentionally absent here
+  // 'rawSearchPath' and 'rockQuality' are intentionally absent here.
+  // Phase 20B closeout v3 §1.C: the legacy 'accessTargets' layer is an
+  // advanced legacy-workflow layer and defaults OFF too; generating legacy
+  // access targets turns it on explicitly.
   'smoothedDecline',
   'layoutV2',
   'levelAccesses',
   'tunnelMesh',
+  'developmentMesh',
   'ramp',
   'levels',
   'crosscuts',

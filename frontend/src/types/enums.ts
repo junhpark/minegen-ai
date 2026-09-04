@@ -93,5 +93,6 @@ export const LAYER_IDS = [
   'layoutV2',
   'levelAccesses',
   'tunnelMesh',
+  'developmentMesh',
 ] as const
 export type LayerId = (typeof LAYER_IDS)[number]

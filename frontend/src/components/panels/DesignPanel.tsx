@@ -1,125 +1,55 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { api, ApiError } from '@/api/client'
 import { PanelSection } from '@/components/layout/PanelSection'
-import { DESIGN_UNSUPPORTED_NOTICE, designSupported } from '@/scenario/builder'
+import { useJobPoll } from '@/components/panels/useJobPoll'
 import {
-  afterLegacySmoothRegen,
-  afterLegacyUpstreamRegen,
+  afterDevelopmentMeshRegen,
   afterLevelsRegen,
   afterNetworkRegen,
   afterStopesRegen,
   afterTimelineRegen,
 } from '@/scene/invalidation'
-import { useScenarioStore, type DesignJobKind } from '@/stores/scenarioStore'
+import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
-import { fmtMeters } from '@/utils/format'
 import type {
-  DeclinePayload,
+  DevelopmentMeshReport,
   LevelsPayload,
-  SmoothedDeclinePayload,
   StopesPayload,
   TimelinePayload,
   TunnelMeshReport,
 } from '@/types/scene'
 
-/** Phase 03: access-target generation. Values are echoed from the API. */
+/**
+ * Mine development chain over the ACTIVE Effective Ramp (closeout v3 §1):
+ * Level development (Phase 08) → excavation meshes (Phase 06 ramp tunnel +
+ * Phase 20B development mesh) → Network (Phase 07) → Stopes (Phase 09) →
+ * Timeline (Phase 10). Every value is echoed from the backend; the legacy
+ * Phase 03–05 decline workflow lives in the separate Advanced section.
+ */
 export function DesignPanel() {
-  const scenario = useScenarioStore((s) => s.scenario)
   const scene = useScenarioStore((s) => s.scene)
   // Phase 17.1 §1: derived results are written through `applyScene`, which
   // re-reads the scene INSIDE the store and drops any write whose epoch is
-  // no longer active. The previous `setScene({ ...scene, X })` captured the
-  // manifest from the render that started the mutation, so a scenario-A job
-  // resolving after scenario B loaded restored the whole stale A manifest.
+  // no longer active.
   const applyScene = useScenarioStore((s) => s.applyScene)
   const epoch = useScenarioStore((s) => s.epoch)
   const jobs = useScenarioStore((s) => s.jobs)
   const setJob = useScenarioStore((s) => s.setJob)
   const setLayerVisible = useViewerStore((s) => s.setLayerVisible)
-  const targets = scene?.accessTargets ?? null
-  const decline = scene?.decline ?? null
-  // Phase 20A: `smoothedDecline` is the ACTIVE effective ramp (legacy or
-  // layout-v2); the legacy Phase 05 readout uses the raw legacy artifact
+  // Phase 20A: `smoothedDecline` is the ACTIVE effective ramp (legacy or layout-v2)
   const smoothed = scene?.smoothedDecline ?? null
-  const legacySmoothed = scene?.legacySmoothedDecline ?? null
   const rampSource = scene?.rampSource.activeSource ?? 'LEGACY'
   const tunnel = scene?.tunnelMesh ?? null
+  const developmentMesh = scene?.developmentMesh ?? null
+  const rampReady = smoothed !== null && smoothed.status !== 'FAILED'
 
-  const generate = useMutation({
-    mutationFn: async () => {
-      if (!scene) throw new Error('generate the world first')
-      const started = epoch
-      const t = await api.generateTargets(scene.scenarioId)
-      // rule 64: regenerated targets invalidate the decline AND its smoothing
-      applyScene(started, (current) => ({
-        ...afterLegacyUpstreamRegen(current),
-        accessTargets: t,
-        decline: null,
-      }))
-      setLayerVisible('accessTargets', true)
-    },
-  })
-  // asynchronous decline job: submit → poll GET /jobs/{id} → apply result.
-  // §1: the job id lives in the scenario store, so a scenario change drops
-  // it (the component stays mounted and would otherwise keep polling A).
-  const jobId = jobs.decline
-  const generateDecline = useMutation({
-    mutationFn: async () => {
-      if (!scene) throw new Error('generate the world first')
-      const started = epoch
-      const job = await api.submitDecline(scene.scenarioId)
-      setJob('decline', job.jobId, started)
-    },
-  })
-  const job = useJobPoll('decline', jobId, epoch, 500)
-  const jobRunning = job.data?.status === 'QUEUED' || job.data?.status === 'RUNNING'
-  useEffect(() => {
-    const rec = job.data
-    if (rec?.status === 'SUCCEEDED' && rec.result) {
-      // a new decline invalidates the previous smoothed artifact (rule 64)
-      applyScene(epoch, (current) =>
-        current.decline === rec.result
-          ? current
-          : {
-              ...afterLegacyUpstreamRegen(current),
-              decline: rec.result as DeclinePayload,
-            },
-      )
-      setLayerVisible('rawSearchPath', true)
-    }
-  }, [job.data, epoch, applyScene, setLayerVisible])
-  // Phase 05 smoothing job: submit → poll → apply smoothedDecline
-  const smoothJobId = jobs.smooth
-  const smoothDecline = useMutation({
-    mutationFn: async () => {
-      if (!scene) throw new Error('generate the decline first')
-      const started = epoch
-      const job = await api.submitSmooth(scene.scenarioId)
-      setJob('smooth', job.jobId, started)
-    },
-  })
-  const smoothJob = useJobPoll('smooth', smoothJobId, epoch, 500)
-  const smoothRunning = smoothJob.data?.status === 'QUEUED' || smoothJob.data?.status === 'RUNNING'
-  useEffect(() => {
-    const rec = smoothJob.data
-    if (rec?.status === 'SUCCEEDED' && rec.result) {
-      // rule 74: a new smoothed artifact invalidates tunnel + levels + network
-      // — only while LEGACY is the active ramp source (rule 151)
-      applyScene(epoch, (current) =>
-        current.legacySmoothedDecline === rec.result
-          ? current
-          : afterLegacySmoothRegen(current, rec.result as SmoothedDeclinePayload),
-      )
-      setLayerVisible('smoothedDecline', true)
-    }
-  }, [smoothJob.data, epoch, applyScene, setLayerVisible])
   // Phase 06 tunnel-mesh job: submit → poll → apply tunnelMesh report
   const tunnelJobId = jobs.tunnel
   const generateTunnel = useMutation({
     mutationFn: async () => {
-      if (!scene) throw new Error('smooth the decline first')
+      if (!scene) throw new Error('activate a ramp first')
       const started = epoch
       const job = await api.submitTunnel(scene.scenarioId)
       setJob('tunnel', job.jobId, started)
@@ -138,22 +68,47 @@ export function DesignPanel() {
       setLayerVisible('tunnelMesh', true)
     }
   }, [tunnelJob.data, epoch, applyScene, setLayerVisible])
+
   // Phase 08 levels: synchronous deterministic developments (rules 71–74).
-  // Regenerating levels invalidates the network server-side (rule 74), so
-  // the displayed network report and scene overlay are cleared here too.
   const levels = scene?.levels ?? null
   const generateLevels = useMutation({
     mutationFn: async () => {
-      if (!scene) throw new Error('smooth the decline first')
+      if (!scene) throw new Error('activate a ramp first')
       return api.generateLevels(scene.scenarioId)
     },
     onSuccess: (payload: LevelsPayload) => {
-      // rules 74/79: levels regeneration invalidates network + stopes (tunnel kept)
+      // rules 74/79: levels regeneration invalidates development mesh +
+      // network + stopes (tunnel kept)
       applyScene(epoch, (current) => afterLevelsRegen(current, payload))
       setLayerVisible('levels', true)
       setLayerVisible('crosscuts', true)
     },
   })
+
+  // closeout v3 §4: development mesh job (LEVEL_ACCESS / DRIFT / CROSSCUT)
+  const devMeshJobId = jobs.developmentMesh
+  const generateDevelopmentMesh = useMutation({
+    mutationFn: async () => {
+      if (!scene) throw new Error('generate levels first')
+      const started = epoch
+      const job = await api.submitDevelopmentMesh(scene.scenarioId)
+      setJob('developmentMesh', job.jobId, started)
+    },
+  })
+  const devMeshJob = useJobPoll('developmentMesh', devMeshJobId, epoch, 400)
+  const devMeshRunning =
+    devMeshJob.data?.status === 'QUEUED' || devMeshJob.data?.status === 'RUNNING'
+  useEffect(() => {
+    const rec = devMeshJob.data
+    if (rec?.status === 'SUCCEEDED' && rec.result) {
+      applyScene(epoch, (current) =>
+        current.developmentMesh === rec.result
+          ? current
+          : afterDevelopmentMeshRegen(current, rec.result as DevelopmentMeshReport),
+      )
+      setLayerVisible('developmentMesh', true)
+    }
+  }, [devMeshJob.data, epoch, applyScene, setLayerVisible])
 
   // Phase 09 stopes: synchronous planned-stope generation (rules 75–80).
   const stopes = scene?.stopes ?? null
@@ -163,8 +118,6 @@ export function DesignPanel() {
       return api.generateStopes(scene.scenarioId)
     },
     onSuccess: (payload: StopesPayload) => {
-      // rules 79/86: stope regeneration leaves tunnel/network/levels
-      // untouched but invalidates the timeline
       applyScene(epoch, (current) => afterStopesRegen(current, payload))
       setLayerVisible('stopes', true)
     },
@@ -179,234 +132,153 @@ export function DesignPanel() {
       return api.generateTimeline(scene.scenarioId)
     },
     onSuccess: (payload: TimelinePayload) => {
-      // rule 86: timeline regeneration touches nothing upstream
       applyScene(epoch, (current) => afterTimelineRegen(current, payload))
     },
   })
 
-  // Phase 07/08 network: the scene manifest is the single source of truth —
-  // the backend deletes network.json on upstream invalidation, the manifest
-  // reload restores it, and the setScene calls mirror rules 74/79/86.
+  // Phase 07/08 network
   const generateNetwork = useMutation({
     mutationFn: async () => {
-      if (!scene) throw new Error('smooth the decline first')
+      if (!scene) throw new Error('generate levels first')
       return api.generateNetwork(scene.scenarioId)
     },
     onSuccess: (payload) => {
-      // rule 86: a rebuilt network invalidates the timeline
       applyScene(epoch, (current) => afterNetworkRegen(current, payload))
       setLayerVisible('network', true)
     },
   })
 
   const err =
-    generate.error ??
-    generateDecline.error ??
-    smoothDecline.error ??
     generateTunnel.error ??
+    generateDevelopmentMesh.error ??
     generateLevels.error ??
     generateNetwork.error ??
     generateStopes.error ??
     generateTimeline.error
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
+  const levelsReady = levels !== null && levels.status !== 'FAILED'
+  // the development mesh sweeps whatever the owning artifacts hold: level
+  // accesses (layout-v2) and/or level developments — an implicit body with
+  // no level development (typed boundary) still gets its access branches
+  const developmentMeshReady =
+    levelsReady || (rampSource === 'LAYOUT_V2' && scene?.levelAccesses != null)
 
   return (
-    <PanelSection title="Access targets" tag="Phase 03">
-      {!designSupported(scenario) ? (
+    <PanelSection title="Mine development" tag="Phase 06–10">
+      <p className="mb-2 text-[11px] leading-relaxed text-mute">
+        Built on the active design
+        {rampSource === 'LAYOUT_V2'
+          ? ` (Layout v2${smoothed?.candidateId ? ` · ${smoothed.candidateId}` : ''})`
+          : smoothed
+            ? ' (legacy decline)'
+            : ''}
+        : level access → level development → excavation meshes → network → stopes → timeline.
+      </p>
+      {!rampReady ? (
         <p className="mb-2 rounded-sm border border-rock-700 bg-rock-900/70 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
-          {DESIGN_UNSUPPORTED_NOTICE}
+          No active design yet: generate Layout v2 candidates and activate one above.
         </p>
       ) : null}
-      {scenario ? (
-        <dl className="readout mb-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-          <dt className="text-mute">Sublevel</dt>
-          <dd>{fmtMeters(scenario.mining.sublevelInterval, 0)}</dd>
-          <dt className="text-mute">Footwall offset</dt>
-          <dd>{fmtMeters(scenario.ramp.footwallAccessOffset, 0)}</dd>
-          <dt className="text-mute">Candidates</dt>
-          <dd>
-            {scenario.design.candidateCount} over ±
-            {(scenario.design.candidateAlongStrikeSpan / 2).toFixed(0)} m
-          </dd>
-          <dt className="text-mute">Exclusion</dt>
-          <dd>{fmtMeters(scenario.design.orebodyExclusionBuffer, 0)} buffer</dd>
-        </dl>
-      ) : null}
-      <button
-        type="button"
-        onClick={() => generate.mutate()}
-        disabled={!scene || !designSupported(scenario) || generate.isPending}
-        className="plate w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {generate.isPending
-          ? 'Generating…'
-          : targets
-            ? 'Regenerate access targets'
-            : 'Generate access targets'}
-      </button>
       {errorText ? (
-        <p role="alert" className="mt-2 text-[11px] text-danger">
+        <p role="alert" className="mb-2 text-[11px] text-danger">
           {errorText}
         </p>
       ) : null}
-      {targets ? (
-        <div className="readout mt-2 text-[11px]">
-          <div className="flex justify-between text-chalk-dim">
-            <span>{targets.nLevels} levels</span>
-            <span>
-              <span className="text-lamp">{targets.nValid} valid</span> ·{' '}
-              <span className="text-danger">{targets.nRejected} rejected</span>
-            </span>
-          </div>
-          <ul className="mt-1 max-h-40 overflow-y-auto">
-            {targets.levels.map((l) => (
-              <li key={l.levelId} className="flex justify-between py-0.5 text-chalk-dim">
-                <span>
-                  {l.levelId} <span className="text-mute">{l.elevation.toFixed(0)} m</span>
-                </span>
-                <span>
-                  {Array.from({ length: l.nValid }, () => '●').join('')}
-                  <span className="text-danger">
-                    {Array.from({ length: l.nRejected }, () => '○').join('')}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-1 text-mute">
-            Portal {targets.portalGenerated ? '(auto)' : ''}: E {targets.portal[0].toFixed(0)} N{' '}
-            {targets.portal[1].toFixed(0)} Z {targets.portal[2].toFixed(0)}
-          </div>
-        </div>
-      ) : (
-        <p className="mt-2 text-[11px] text-mute">
-          Generates decline access elevations and footwall candidates per level.
-        </p>
-      )}
 
       <button
         type="button"
-        onClick={() => generateDecline.mutate()}
-        disabled={!targets || generateDecline.isPending || jobRunning}
-        className="plate mt-3 w-full rounded-sm bg-lamp px-3 py-1.5 text-[13px] text-rock-950 hover:bg-lamp-deep hover:text-chalk disabled:cursor-not-allowed disabled:opacity-40"
+        onClick={() => generateLevels.mutate()}
+        disabled={!rampReady || generateLevels.isPending}
+        className="plate w-full rounded-sm bg-lamp px-3 py-1.5 text-[13px] text-rock-950 hover:bg-lamp-deep hover:text-chalk disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {generateDecline.isPending || jobRunning
-          ? 'Generating decline…'
-          : decline
-            ? 'Regenerate decline'
-            : 'Generate decline (Hybrid-A*)'}
+        {generateLevels.isPending
+          ? 'Laying out levels…'
+          : levels
+            ? 'Regenerate level development'
+            : 'Generate level development (Phase 08)'}
       </button>
-      {job.data && (jobRunning || job.data.status === 'FAILED') ? (
-        <JobProgress job={job.data} />
-      ) : null}
-      {decline ? (
+      {levels ? (
         <div className="readout mt-2 text-[11px]">
           <div className="flex justify-between text-chalk-dim">
-            <span className={decline.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
-              {decline.status} · {decline.completedLevels}/{decline.nLevels} levels
+            <span className={levels.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+              {levels.status}
             </span>
-            <span>{decline.totals.rawLength.toFixed(0)} m raw</span>
-          </div>
-          <div className="mt-1 flex justify-between text-mute">
-            <span>cost {decline.totals.generalizedCost.toFixed(0)}</span>
-            <span>{decline.totals.expandedStates.toLocaleString()} states</span>
-            <span>{(decline.elapsedMs / 1000).toFixed(1)} s</span>
-          </div>
-          <ul className="mt-1 max-h-40 overflow-y-auto">
-            {decline.levels.map((l) => (
-              <li key={l.levelId} className="flex justify-between py-0.5 text-chalk-dim">
-                <span>
-                  {l.levelId}{' '}
-                  <span className={l.status === 'SUCCESS' ? 'text-mute' : 'text-danger'}>
-                    {l.status === 'SUCCESS' ? (l.selectedCandidateId ?? '').slice(-3) : l.status}
-                  </span>
-                </span>
-                <span>
-                  {l.candidateResults
-                    .map((c) => (c.status === 'SUCCESS' ? (c.selected ? '●' : '○') : '×'))
-                    .join('')}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-1 text-mute">
-            raw Hybrid-A* centerline · not an engineering design (rule 11)
-          </div>
-        </div>
-      ) : null}
-
-      <button
-        type="button"
-        onClick={() => smoothDecline.mutate()}
-        disabled={!decline || smoothDecline.isPending || smoothRunning || jobRunning}
-        className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {smoothDecline.isPending || smoothRunning
-          ? 'Smoothing decline…'
-          : legacySmoothed
-            ? 'Re-smooth decline'
-            : 'Smooth decline (Phase 05)'}
-      </button>
-      {smoothJob.data && (smoothRunning || smoothJob.data.status === 'FAILED') ? (
-        <JobProgress job={smoothJob.data} />
-      ) : null}
-      {rampSource === 'LAYOUT_V2' ? (
-        <p className="mt-2 text-[11px] text-mute">
-          Active ramp source: Layout v2
-          {smoothed?.candidateId ? ` (${smoothed.candidateId})` : ''}. The legacy smoothed decline
-          is kept but not consumed downstream.
-        </p>
-      ) : null}
-      {legacySmoothed ? (
-        <div className="readout mt-2 text-[11px]">
-          <div className="flex justify-between text-chalk-dim">
-            <span className={legacySmoothed.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
-              {legacySmoothed.status}
-            </span>
-            <span>
-              {legacySmoothed.totals.segments} segments ·{' '}
-              <span className="text-lamp">{legacySmoothed.totals.smoothedSegments} smoothed</span> ·{' '}
-              <span className={legacySmoothed.totals.fallbackSegments > 0 ? 'text-danger' : ''}>
-                {legacySmoothed.totals.fallbackSegments} fallback
+            {levels.status === 'SUCCESS' && levels.metrics ? (
+              <span>
+                {levels.metrics.driftPieceCount} drift pieces · {levels.metrics.crosscutCount}{' '}
+                crosscuts · pitch {levels.metrics.stationPitch.toFixed(0)} m
               </span>
-            </span>
+            ) : null}
           </div>
-          <div className="mt-1 flex justify-between text-mute">
-            <span>{legacySmoothed.totals.effectiveLength.toFixed(0)} m effective</span>
-            <span>
-              cost{' '}
-              {legacySmoothed.totals.fieldCostDeltaPct === null
-                ? '—'
-                : `${legacySmoothed.totals.fieldCostDeltaPct.toFixed(2)}%`}
-            </span>
-            <span>
-              min R{' '}
-              {legacySmoothed.totals.minimumPlanRadius === null
-                ? '—'
-                : legacySmoothed.totals.minimumPlanRadius.toFixed(2)}{' '}
-              m
-            </span>
-          </div>
-          <ul className="mt-1 max-h-40 overflow-y-auto">
-            {legacySmoothed.segments.map((s, i) => (
-              <li key={s.levelId ?? i} className="flex justify-between py-0.5 text-chalk-dim">
-                <span>
-                  {s.levelId}{' '}
-                  <span className={s.effectiveSource === 'SMOOTHED' ? 'text-mute' : 'text-danger'}>
-                    {s.effectiveSource === 'SMOOTHED'
-                      ? `${s.report.repairs > 0 ? `${String(s.report.repairs)}r ` : ''}Δ${(s.report.fieldCostDeltaPct ?? 0).toFixed(2)}%`
-                      : 'RAW FALLBACK'}
-                  </span>
-                </span>
-                <span>
-                  {s.report.minPlanRadius === null ? '—' : `${s.report.minPlanRadius.toFixed(1)} m`}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {levels.status === 'SUCCESS' && levels.metrics ? (
+            <div className="mt-1 flex justify-between text-mute">
+              <span>{levels.metrics.totalDriftLength3d.toFixed(0)} m drifts</span>
+              <span>{levels.metrics.totalCrosscutLength3d.toFixed(0)} m crosscuts</span>
+              <span>{levels.metrics.stationsPerLevel} stations/level</span>
+            </div>
+          ) : (
+            <div className="mt-1 text-danger">{levels.failureReason}</div>
+          )}
           <div className="mt-1 text-mute">
-            validated effective centerline · Phase 06 tunnel input (rule 64)
+            {levels.entrySource === 'LEVEL_ACCESS'
+              ? 'entries at the level-access terminals (rule 157)'
+              : 'entries at the legacy Phase 05 segment ends'}
+            {levels.productionDevelopment && levels.productionDevelopment.status !== 'IMPLEMENTED'
+              ? ` · production development ${levels.productionDevelopment.status} (${levels.productionDevelopment.method})`
+              : ''}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="readout mt-3 mb-1 text-[10px] text-mute">Excavation meshes</div>
+      <button
+        type="button"
+        onClick={() => generateDevelopmentMesh.mutate()}
+        disabled={
+          !developmentMeshReady ||
+          generateDevelopmentMesh.isPending ||
+          devMeshRunning ||
+          generateLevels.isPending
+        }
+        className="plate w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {generateDevelopmentMesh.isPending || devMeshRunning
+          ? 'Sweeping development mesh…'
+          : developmentMesh
+            ? 'Regenerate development mesh'
+            : 'Generate development mesh (access · drift · crosscut)'}
+      </button>
+      {devMeshJob.data && (devMeshRunning || devMeshJob.data.status === 'FAILED') ? (
+        <JobProgress job={devMeshJob.data} />
+      ) : null}
+      {developmentMesh ? (
+        <div className="readout mt-2 text-[11px]">
+          <div className="flex justify-between text-chalk-dim">
+            <span className={developmentMesh.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+              {developmentMesh.status}
+            </span>
+            {developmentMesh.status === 'SUCCESS' && developmentMesh.byKind ? (
+              <span>
+                {developmentMesh.byKind.LEVEL_ACCESS.developmentCount} access ·{' '}
+                {developmentMesh.byKind.DRIFT.developmentCount} drift ·{' '}
+                {developmentMesh.byKind.CROSSCUT.developmentCount} crosscut
+              </span>
+            ) : null}
+          </div>
+          {developmentMesh.status === 'SUCCESS' ? (
+            <div className="mt-1 flex justify-between text-mute">
+              <span>{(developmentMesh.triangleCount ?? 0).toLocaleString()} tris</span>
+              <span>{developmentMesh.primitiveCount ?? 0} draw calls</span>
+              <span>{((developmentMesh.glbBytes ?? 0) / 1024).toFixed(0)} kB</span>
+              <span>{(developmentMesh.generationSeconds ?? 0).toFixed(1)} s</span>
+            </div>
+          ) : (
+            <div className="mt-1 text-danger">{developmentMesh.failureReason}</div>
+          )}
+          <div className="mt-1 text-mute">
+            swept on the owning centerlines · CAP / OPEN endpoints · no boolean junctions (Phase
+            20D)
           </div>
         </div>
       ) : null}
@@ -414,21 +286,14 @@ export function DesignPanel() {
       <button
         type="button"
         onClick={() => generateTunnel.mutate()}
-        disabled={
-          !smoothed ||
-          smoothed.status === 'FAILED' ||
-          generateTunnel.isPending ||
-          tunnelRunning ||
-          smoothRunning ||
-          jobRunning
-        }
-        className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
+        disabled={!rampReady || generateTunnel.isPending || tunnelRunning}
+        className="plate mt-2 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {generateTunnel.isPending || tunnelRunning
-          ? 'Sweeping tunnel mesh…'
+          ? 'Sweeping ramp tunnel mesh…'
           : tunnel
-            ? 'Regenerate tunnel mesh'
-            : 'Generate tunnel mesh (Phase 06)'}
+            ? 'Regenerate ramp tunnel mesh'
+            : 'Generate ramp tunnel mesh (Phase 06)'}
       </button>
       {tunnelJob.data && (tunnelRunning || tunnelJob.data.status === 'FAILED') ? (
         <JobProgress job={tunnelJob.data} />
@@ -480,57 +345,9 @@ export function DesignPanel() {
 
       <button
         type="button"
-        onClick={() => generateLevels.mutate()}
-        disabled={
-          !smoothed || smoothed.status === 'FAILED' || generateLevels.isPending || smoothRunning
-        }
-        className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {generateLevels.isPending
-          ? 'Laying out levels…'
-          : levels
-            ? 'Regenerate levels'
-            : 'Generate levels (Phase 08)'}
-      </button>
-      {levels ? (
-        <div className="readout mt-2 text-[11px]">
-          <div className="flex justify-between text-chalk-dim">
-            <span className={levels.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
-              {levels.status}
-            </span>
-            {levels.status === 'SUCCESS' && levels.metrics ? (
-              <span>
-                {levels.metrics.driftPieceCount} drift pieces · {levels.metrics.crosscutCount}{' '}
-                crosscuts · pitch {levels.metrics.stationPitch.toFixed(0)} m
-              </span>
-            ) : null}
-          </div>
-          {levels.status === 'SUCCESS' && levels.metrics ? (
-            <div className="mt-1 flex justify-between text-mute">
-              <span>{levels.metrics.totalDriftLength3d.toFixed(0)} m drifts</span>
-              <span>{levels.metrics.totalCrosscutLength3d.toFixed(0)} m crosscuts</span>
-              <span>{levels.metrics.stationsPerLevel} stations/level</span>
-            </div>
-          ) : (
-            <div className="mt-1 text-danger">{levels.failureReason}</div>
-          )}
-          <div className="mt-1 text-mute">
-            orebody-derived station lattice on the strike drift (rules 71–74)
-          </div>
-        </div>
-      ) : null}
-
-      <button
-        type="button"
         onClick={() => generateNetwork.mutate()}
         disabled={
-          !smoothed ||
-          smoothed.status === 'FAILED' ||
-          !levels ||
-          levels.status === 'FAILED' ||
-          generateNetwork.isPending ||
-          generateLevels.isPending ||
-          smoothRunning
+          !rampReady || !levelsReady || generateNetwork.isPending || generateLevels.isPending
         }
         className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
       >
@@ -572,7 +389,8 @@ export function DesignPanel() {
             <div className="mt-1 text-danger">{network.failureReason}</div>
           )}
           <div className="mt-1 text-mute">
-            RAMP + DRIFT + CROSSCUT graph rebuilt from smoothed + levels (rules 68–74)
+            RAMP + LEVEL_ACCESS + DRIFT + CROSSCUT graph rebuilt from the owning artifacts (rules
+            68–74, 160)
           </div>
         </div>
       ) : null}
@@ -580,12 +398,7 @@ export function DesignPanel() {
       <button
         type="button"
         onClick={() => generateStopes.mutate()}
-        disabled={
-          !levels ||
-          levels.status === 'FAILED' ||
-          generateStopes.isPending ||
-          generateLevels.isPending
-        }
+        disabled={!levelsReady || generateStopes.isPending || generateLevels.isPending}
         className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {generateStopes.isPending
@@ -677,23 +490,4 @@ export function DesignPanel() {
       ) : null}
     </PanelSection>
   )
-}
-
-/**
- * Poll one asynchronous design job (Phase 17.1 §1). The query key carries
- * the scenario epoch and the job id comes from the scenario store, so a
- * scenario change both stops the poll (the store cleared the id) and makes
- * it impossible for a cached scenario-A job record to be served to
- * scenario B under the same key.
- */
-function useJobPoll(kind: DesignJobKind, jobId: string | null, epoch: number, intervalMs: number) {
-  return useQuery({
-    queryKey: ['job', kind, epoch, jobId],
-    queryFn: () => api.getJob(jobId as string),
-    enabled: jobId !== null,
-    refetchInterval: (q) => {
-      const s = q.state.data?.status
-      return s === 'SUCCEEDED' || s === 'FAILED' ? false : intervalMs
-    },
-  })
 }

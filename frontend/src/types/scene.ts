@@ -361,6 +361,11 @@ export interface LevelAccessPayload {
   failureReason: string | null
   failureDetail: string | null
   centerline: { points: number[]; pointCount: number } | null
+  /** closeout v3 §2.G: why this branch was selected (backend planning
+   * default max(min, 6 × tunnel width) or the explicit scenario value) */
+  effectivePreferredAccessLength?: number | null
+  lengthDeviationFromPreferred?: number | null
+  selectionCost?: number | null
 }
 
 export interface LevelAccessSummary {
@@ -376,6 +381,11 @@ export interface LevelAccessSummary {
   maxGradientLimit: number
   minTurnRadiusLimit: number
   requiredClearance: number
+  effectivePreferredAccessLength?: number | null
+  preferredAccessSource?: 'DEFAULT_6X_TUNNEL_WIDTH' | 'EXPLICIT' | null
+  longAccessCoefficient?: number
+  meanAbsDeviationFromPreferred?: number | null
+  maxAbsDeviationFromPreferred?: number | null
 }
 
 /** derived/level_accesses.json (rule 157) */
@@ -1015,6 +1025,54 @@ export interface TunnelMeshReport {
   meshUrl: string | null
 }
 
+/** derived/development_mesh.json (Phase 20B closeout v3 §4): LEVEL_ACCESS /
+ * DRIFT / CROSSCUT excavation meshes swept on their owning centerlines with
+ * an explicit CAP / OPEN endpoint policy. Presentation only. */
+export interface DevelopmentMeshKindSummary {
+  developmentCount: number
+  ringCount: number
+  triangleCount: number
+  length3d: number
+  nominalExcavationVolume: number
+  surfaceArea: number
+  endpointPolicies: string[]
+}
+
+export interface DevelopmentMeshReport {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  developmentCount?: number
+  ringCount?: number
+  triangleCount?: number
+  renderVertexCount?: number
+  primitiveCount?: number
+  length3d?: number
+  nominalExcavationVolume?: number
+  byKind?: Record<'LEVEL_ACCESS' | 'DRIFT' | 'CROSSCUT', DevelopmentMeshKindSummary>
+  profile?: {
+    archSegments: number
+    mainRampArchSegments: number
+    ringMaxSpacing: number
+    mainRampRingMaxSpacing: number
+    analyticProfileArea: number
+  }
+  developments?: {
+    developmentId: string
+    kind: 'LEVEL_ACCESS' | 'DRIFT' | 'CROSSCUT'
+    levelId: string
+    endpointPolicy: { start: 'CAP' | 'OPEN'; end: 'CAP' | 'OPEN' }
+    length3d: number
+    triangleCount: number
+    topology: { valid: boolean; boundaryEdges: number; expectedBoundaryEdges: number }
+  }[]
+  booleanUnion?: string
+  generationSeconds?: number
+  sources?: { levelAccesses: boolean; levels: boolean; rampSource: string }
+  glbBytes?: number
+  artifactRevision: string | null
+  meshUrl: string | null
+}
+
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
 
 export interface JobProgress {
@@ -1043,7 +1101,13 @@ export interface JobRecord {
   progress: Partial<JobProgress>
   error: { code: string; message: string } | null
   version: number
-  result?: DeclinePayload | SmoothedDeclinePayload | TunnelMeshReport | LayoutV2Catalogue | null
+  result?:
+    | DeclinePayload
+    | SmoothedDeclinePayload
+    | TunnelMeshReport
+    | DevelopmentMeshReport
+    | LayoutV2Catalogue
+    | null
 }
 
 export interface JobSubmission {
@@ -1084,6 +1148,8 @@ export interface WorldScene {
   /** Phase 20B: ramp junctions + level accesses of the selection (rule 157) */
   levelAccesses: LevelAccessesPayload | null
   tunnelMesh: TunnelMeshReport | null
+  /** closeout v3 §4: level access / drift / crosscut excavation meshes */
+  developmentMesh: DevelopmentMeshReport | null
   levels: LevelsPayload | null
   network: NetworkPayload | null
   stopes: StopesPayload | null

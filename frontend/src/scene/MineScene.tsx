@@ -16,6 +16,7 @@ import { LayoutSelectedLayer } from '@/scene/LayoutSelectedLayer'
 import { LevelAccessLayer } from '@/scene/LevelAccessLayer'
 import { SmoothedDeclineLayer } from './SmoothedDeclineLayer'
 import { TunnelMeshLayer } from './TunnelMeshLayer'
+import { DevelopmentMeshLayer } from './DevelopmentMeshLayer'
 import { LevelDevelopmentLayer } from './LevelDevelopmentLayer'
 import { NetworkLayer } from './NetworkLayer'
 import { StopeLayer } from './StopeLayer'
@@ -122,6 +123,14 @@ export function MineScene() {
             <TunnelMeshLayer url={`${API_BASE_URL}${scene.tunnelMesh.meshUrl}`} />
           </Suspense>
         ) : null
+      ) : null}
+      {showStatic &&
+      scene?.developmentMesh?.status === 'SUCCESS' &&
+      scene.developmentMesh.meshUrl &&
+      visible.has('developmentMesh') ? (
+        <Suspense fallback={null}>
+          <DevelopmentMeshLayer url={`${API_BASE_URL}${scene.developmentMesh.meshUrl}`} />
+        </Suspense>
       ) : null}
       {showStatic && scene?.levels && (visible.has('levels') || visible.has('crosscuts')) ? (
         <LevelDevelopmentLayer

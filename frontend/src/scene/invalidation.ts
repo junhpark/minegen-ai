@@ -1,5 +1,6 @@
 import type {
   CommunicationPayload,
+  DevelopmentMeshReport,
   LayoutV2Catalogue,
   LevelAccessesPayload,
   LevelsPayload,
@@ -27,6 +28,7 @@ export function afterUpstreamRegen(scene: WorldScene): WorldScene {
   return {
     ...scene,
     levels: null,
+    developmentMesh: null,
     network: null,
     stopes: null,
     timeline: null,
@@ -35,17 +37,28 @@ export function afterUpstreamRegen(scene: WorldScene): WorldScene {
   }
 }
 
-/** Levels rebuilt: network + stopes + timeline + communication cascade. */
+/** Levels rebuilt: development mesh + network + stopes + timeline +
+ * communication cascade (the development mesh is a derivative of levels +
+ * level accesses, closeout v3 §4). */
 export function afterLevelsRegen(scene: WorldScene, payload: LevelsPayload): WorldScene {
   return {
     ...scene,
     levels: payload,
+    developmentMesh: null,
     network: null,
     stopes: null,
     timeline: null,
     communication: null,
     sensors: null,
   }
+}
+
+/** Development mesh rebuilt (closeout v3 §4): touches nothing else. */
+export function afterDevelopmentMeshRegen(
+  scene: WorldScene,
+  payload: DevelopmentMeshReport,
+): WorldScene {
+  return { ...scene, developmentMesh: payload }
 }
 
 /** Network rebuilt (rules 86/92): timeline and communication are stale;
