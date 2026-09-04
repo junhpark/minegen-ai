@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { api, ApiError } from '@/api/client'
 import { PanelSection } from '@/components/layout/PanelSection'
+import { developmentMeshScope } from '@/components/panels/developmentMeshScope'
 import { useJobPoll } from '@/components/panels/useJobPoll'
 import {
   afterDevelopmentMeshRegen,
@@ -163,6 +164,9 @@ export function DesignPanel() {
   // no level development (typed boundary) still gets its access branches
   const developmentMeshReady =
     levelsReady || (rampSource === 'LAYOUT_V2' && scene?.levelAccesses != null)
+  // closeout v4 §1.1: an access-only sweep is a legitimate result, not a
+  // missing level mesh — say so instead of leaving the user to infer it
+  const devMeshScope = developmentMeshScope(developmentMesh, levels)
 
   return (
     <PanelSection title="Mine development" tag="Phase 06–10">
@@ -276,6 +280,12 @@ export function DesignPanel() {
           ) : (
             <div className="mt-1 text-danger">{developmentMesh.failureReason}</div>
           )}
+          {devMeshScope.accessOnly ? (
+            <div className="mt-1 text-chalk-dim">
+              {devMeshScope.headline}
+              <span className="block text-mute">{devMeshScope.detail}</span>
+            </div>
+          ) : null}
           <div className="mt-1 text-mute">
             swept on the owning centerlines · CAP / OPEN endpoints · no boolean junctions (Phase
             20D)
