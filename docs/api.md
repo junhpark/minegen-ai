@@ -69,6 +69,20 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  …/design/tunnel/mesh.glb                    binary glTF, model/gltf-binary,
                                                      immutable cache headers; use the report's
                                                      cache-busted meshUrl (?v=<sha16>)
+    POST …/design/development-mesh                   Phase 20B closeout: LEVEL_ACCESS / DRIFT /
+                                                     CROSSCUT excavation meshes swept on their
+                                                     owning centerlines (kind DEVELOPMENT_MESH)
+                                                     → 202 {jobId, …}; ?sync=true runs inline.
+                                                     409 LEVELS_NOT_GENERATED without levels.
+                                                     Report: byKind counts / rings / triangles /
+                                                     length / nominal volume, per-development
+                                                     endpoint policy (CAP | OPEN) and topology
+                                                     QA, profile tessellation, primitives
+                                                     (draw calls), glbBytes, generationSeconds
+    GET  …/design/development-mesh                   409 DEVELOPMENT_MESH_NOT_GENERATED if missing
+    GET  …/design/development-mesh/mesh.glb          binary glTF (one tube + one cap primitive per
+                                                     kind, `ranges` extras → development ids);
+                                                     deleted with levels.json / the ramp chain
     POST …/design/layout-v2                          Phase 20A parametric family search
                                                      (kind LAYOUT_V2) → 202 {jobId, …}; ?sync=true
                                                      runs inline. Every orebody type (EXACT or
@@ -87,7 +101,12 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  …/design/level-accesses                     Phase 20B: ramp junctions + level-access
                                                      branches + development anchors of the selected
                                                      candidate (derived/level_accesses.json, written
-                                                     with the selection; rule 157)
+                                                     with the selection; rule 157). Each access
+                                                     carries effectivePreferredAccessLength,
+                                                     lengthDeviationFromPreferred and selectionCost;
+                                                     the summary carries the preferred length, its
+                                                     source (DEFAULT_6X_TUNNEL_WIDTH | EXPLICIT) and
+                                                     the mean / max |ΔP| (rule 163)
                                                      409 LEVEL_ACCESSES_NOT_GENERATED if missing
     GET  …/design/ramp-source                        {activeSource, owningArtifact, available, …}
     PUT  …/design/ramp-source {activeSource}         LEGACY | LAYOUT_V2 (409 LAYOUT_V2_NOT_SELECTED
@@ -112,8 +131,9 @@ meters (`docs/coordinate-system.md`). Schemas live in
     WS   /ws/jobs/{jobId}                            {"type":"progress", …record…} on every
                                                      change (≤ 10 Hz), then {"type":"done"};
                                                      {"type":"error","code":"JOB_NOT_FOUND"}
-    GET  …/scene                                     includes "accessTargets", "decline" and
-                                                     "smoothedDecline" (or null)
+    GET  …/scene                                     includes "accessTargets", "decline",
+                                                     "smoothedDecline", "tunnelMesh" and
+                                                     "developmentMesh" (or null)
     POST /api/v1/scenarios/{id}/design/levels        Phase 08: synchronous level developments
                                                      (typed LevelsPayload; 409 SMOOTHED_NOT_GENERATED
                                                      without a Phase 05 artifact)

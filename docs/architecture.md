@@ -752,3 +752,62 @@ for the walkthrough / minimap. Golden: `golden/phase20b_layout_v2.json`
 (6 cases incl. ACCESS-INFEASIBLE and CUT_AND_FILL) records junction
 chainages, entries, access lengths / gradients / radii and typed failures;
 `golden/phase20b_full.json` re-runs the legacy suite.
+
+#### Phase 20B closeout v3 — manual-acceptance fixes (rules 163–168)
+
+1. **Preferred access length** (`layout/access.py`,
+   `LevelAccessConfig.preferredAccessLength`). The old selection
+   `min (length, chainage, sense)` hugged the 15 m hard floor. The planner
+   now orders VALID candidates by `access_length_cost(L, P) = |L − P| +
+   LONG_ACCESS_COEF · max(0, L − P)` with `P = effective preferred length`
+   (`max(minimumAccessLength, 6 × tunnel_width)` unless an explicit,
+   schema-validated value is given) and `LONG_ACCESS_COEF = 0.5` (a
+   documented provisional module constant). Hard limits are checked before
+   the cost exists; every access reports the preferred length, its deviation
+   and the selection cost; the plan summary reports the preferred source
+   and the mean / max |ΔP|. Purpose: usable turnout development and room for
+   future sump / services / ore-pass connections — a planning default, not
+   a regulation and not a mandatory minimum.
+2. **Stage-2 screen** (`layout/search.py::level_screen_problems`).
+   ACCESS_REACH_EXCEEDED (same-RL crossing → footprint distance) is a
+   heuristic that feeds the stage-3 proxy and never rejects a candidate;
+   NO_RL_CROSSING (the main ramp does not vertically cover the level —
+   e.g. a LONGITUDINAL ramp that runs out of strike length above the
+   bottom level) stays hard. Stage 4 (`plan_level_accesses`) is the final
+   authority. Golden effects are explained in
+   `golden/phase20b_closeout_vs_phase20b_layout.json`.
+3. **Shortlist starvation audit** (`LayoutV2Search.run(detailed_all=True)`,
+   `python -m minegen.regression layout-v2-audit`,
+   `golden/phase20b_closeout_shortlist_audit.json`): exhaustive detailed
+   validation of every cheap-feasible candidate against the bounded
+   production shortlist. The audit reports the feasible candidates the
+   shortlist never validated and whether the exhaustive winner or a
+   feasible family is missed; the production shortlist changes only when it
+   does.
+4. **Development excavation meshes** (`design/development_mesh.py`,
+   `derived/development_mesh.{json,glb}`, `GET/POST …/design/development-mesh`).
+   `DevelopmentSpec`s are built from the owning artifacts (access branches
+   OPEN-OPEN, one continuous drift tube per level from its consecutive
+   pieces CAP-CAP, crosscuts OPEN-CAP), swept through the Phase 06
+   `build_ring_chain` / `build_logical_mesh` / `build_render_mesh` (now
+   with a `caps` switch) with `secondary_profile` tessellation (arch
+   segments halved, subdivision spacing doubled — polyline vertices are
+   always rings), validated by `validate_development_topology` (OPEN:
+   manifold with boundary, exactly K boundary edges per open end on the end
+   rings; CAP-CAP: watertight + signed volume) and
+   `validate_development_envelope` (drift / access context, crosscut
+   context), then batched per kind (`batch_render`: one tube + one cap
+   primitive per kind, `ranges` extras → development / piece ids) into one
+   GLB. The frontend `DevelopmentMeshLayer` assigns the shared tunnel
+   materials by role; centerline overlays stay independent layers. Boolean
+   junctions are Phase 20D.
+5. **UX hierarchy** (`LayoutPanel`, `DesignPanel`, `LegacyDeclinePanel`,
+   `LayerPanel`): Layout v2 is the primary workflow and names the current
+   design; the mine-development chain (levels → excavation meshes →
+   network → stopes → timeline) follows; the legacy Phase 03–05 chain and
+   the explicit source switch are one collapsed Advanced section that
+   auto-expands only for a scenario with legacy work under the LEGACY
+   source (`rampSource.ts::legacySectionAutoOpen`); `accessTargets` /
+   `rawSearchPath` default OFF and are hidden on activation.
+6. **Out of scope**: the ramp / footwall / access stand-off semantics audit
+   (rule 168, roadmap item S1).

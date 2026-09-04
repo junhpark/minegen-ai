@@ -158,6 +158,62 @@ Every phase must pass all of these before it is considered complete:
    network → 4D unchanged; the warped-vein mesh (≈ 10–25 k vertices) orbits
    smoothly in the browser.
 
+## Phase 20B closeout v3 manual acceptance (preferred access, meshes, UX)
+
+Scenario A — TABULAR + LONGHOLE
+
+1. Baseline scenario → Generate world. The left panel reads **Layout v2 —
+   whole-mine layout** (Current design: none yet) → **Mine development**
+   → the collapsed **Legacy decline (Hybrid-A*) — Advanced** section. No
+   access-target step is required.
+2. **Generate candidates** → the winner detail shows "preferred access
+   30 m (6 × width) · mean |ΔP| … m" and per level "junction @… m ·
+   access … m (ΔP ± … m)". Accesses are NOT systematically at the 15 m
+   floor; deviations are explained by geometry (typed, inspectable).
+3. **Activate** → Current design reads "Layout v2 · <candidate> (active)";
+   the legacy section stays collapsed; Access-target / raw-search layers
+   are off.
+4. Mine development: Generate level development → **Generate development
+   mesh** → Generate ramp tunnel mesh → network → stopes → timeline. The
+   3D view shows tunnel-shaped excavations for the ramp, every access
+   branch (open at the turnout and at the drift), every footwall drift and
+   every crosscut (open at the drift, capped at the ore face); the
+   centerline layers (Level drifts / Crosscuts / Ramp junctions & level
+   accesses) toggle independently of the meshes. No inverted faces,
+   accidental caps or severe z-fighting; exact boolean junctions are NOT
+   expected (Phase 20D).
+5. Report the numerical table per level (junction chainage, access
+   length, preferred, ΔP, gradient, min radius) from
+   `GET …/design/level-accesses`, and the mesh table (triangles, draw
+   calls, GLB size, generation time, initial load, FPS) from the two mesh
+   reports and the browser.
+
+Scenario B — WARPED_VEIN
+
+1. Randomized · irregular warped vein → Generate world → Generate
+   candidates → at least one irregular scenario is SUCCESS; the winner's
+   levels are served by explicit level accesses even where the same-RL
+   direct reach is exceeded (the reach screen is a heuristic). A
+   NO_FEASIBLE_CANDIDATE result names the failure stage
+   (RAMP_GEOMETRY / STAGE2 / SHORTLIST / ACCESS_PLANNER / CLEARANCE).
+2. Activate → Generate level development answers the typed implicit-body
+   boundary; **Generate development mesh** still sweeps the access
+   branches (accesses only).
+
+Scenario C — CUT_AND_FILL
+
+1. Baseline with mining method CUT_AND_FILL → Generate candidates →
+   Activate → level development: generic backbone drifts only, no
+   crosscut lattice, productionDevelopment UNSUPPORTED_METHOD; the
+   development mesh shows access branches + drifts, no crosscuts.
+
+Legacy UX
+
+1. A scenario with legacy work (access targets / decline / smoothed
+   decline) under the LEGACY source opens the Advanced section
+   automatically; a fresh scenario keeps it collapsed; the source switch
+   (LEGACY ⇄ LAYOUT_V2) lives inside it and still works.
+
 ## Phase 20B manual acceptance (ramp junctions & level accesses)
 
 Scenario 1 — TABULAR / LONGHOLE

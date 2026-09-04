@@ -1155,3 +1155,83 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      belongs to the selection). Geology is never invalidated by a level
      access. Approximate WARPED_VEIN clearance stays explicitly conservative
      and the legacy pipeline stays behind its compatibility path.
+
+163. Preferred access length (Phase 20B closeout v3). `minimumAccessLength`
+     (15 m) stays the HARD floor and `maximumAccessLength` the hard ceiling;
+     `LevelAccessConfig.preferredAccessLength` is a mine-PLANNING default,
+     never a statutory value or a mandatory minimum. `None` resolves to
+     `max(minimumAccessLength, 6 × tunnel_width)` (30 m for the 5 m default
+     tunnel); an explicit value must lie inside [min, max] — validated,
+     never clamped. Among VALID junction / connector candidates the planner
+     minimizes `(|L − P| + LONG_ACCESS_COEF · max(0, L − P), L, junction
+     chainage, sense)`; `LONG_ACCESS_COEF` (0.5) is a documented deterministic
+     module constant in `layout/access.py` — provisional, not a user weight
+     and not an engineering invariant. Every access reports
+     `effectivePreferredAccessLength`, `lengthDeviationFromPreferred` and
+     `selectionCost`. The topology (RAMP_JUNCTION → LEVEL_ACCESS →
+     LEVEL_ENTRY → drift) is unchanged: no LEVEL_STATION node, no new
+     junction semantic.
+164. Stage-2 access-potential screen semantics. `withinReach` /
+     ACCESS_REACH_EXCEEDED (same-RL crossing → orebody footprint distance)
+     is a HEURISTIC: it feeds the stage-3 cheap proxy (mean access
+     distance) and stays inspectable per level, but it NEVER rejects a
+     candidate. Only NO_RL_CROSSING — the main ramp does not vertically
+     cover the level, so no junction lattice can exist — remains a hard
+     stage-2 failure (`level_screen_problems`). Stage 4
+     (`plan_level_accesses`) is the final service authority; gradient,
+     radius, clearance, envelope and world hard constraints are never
+     relaxed. TABULAR and WARPED golden results MAY change under this rule;
+     every change is explained in the golden comparison, and no partial
+     reach gate is kept to preserve an old winner.
+165. Shortlist starvation is audited, not assumed. The production search
+     keeps the bounded shortlist; `LayoutV2Search.run(detailed_all=True)`
+     is a DIAGNOSTIC mode (never a config or API option) and
+     `python -m minegen.regression layout-v2-audit` records, per golden
+     case, the feasible candidates the shortlist never validated and whether
+     the exhaustive winner or a feasible family is missed. A family-diverse
+     shortlist or a cheap lower bound is added only when that audit shows
+     a missed winner / family.
+166. Development excavation meshes (closeout v3 §4). LEVEL_ACCESS / DRIFT /
+     CROSSCUT are swept by `design/development_mesh.py` through the SAME
+     Phase 06 machinery (`build_ring_chain` / `build_logical_mesh` /
+     `build_render_mesh`) and gravity-aligned profile frame on their
+     authoritative centerlines (`level_accesses.json`, `levels.json`) —
+     never re-designed, moved or decimated; only the RENDER tessellation is
+     coarser (arch segments halved, subdivision spacing doubled). Endpoint
+     policy is explicit: CAP closes an isolated end (drift extremities, the
+     crosscut face), OPEN leaves the ring boundary open where a development
+     joins another excavation (access at the turnout and at the entry,
+     crosscut start). QA is split: CAP-CAP tubes keep the closed-solid
+     contract (manifold, watertight, outward, signed volume); OPEN tubes are
+     manifolds with boundary (finite, valid indices, non-degenerate,
+     orientation-consistent, exactly K boundary edges per open end on the
+     end rings, ring/centerline correspondence, envelope) and are never
+     asked for a closed signed volume. Render batching is one tube
+     primitive + one cap primitive per kind with `ranges` extras mapping
+     back to development / piece ids; materials are shared by role.
+     `development_mesh.{json,glb}` is invalidated with `levels.json`.
+     Boolean wall openings, exact junction CSG and an all-development
+     watertight union are Phase 20D ("Unified Development Mesh").
+167. Legacy decline UX boundary. The primary workflow is World → Layout v2
+     → select / activate → level access → level development → excavation
+     meshes → network → stopes → timeline. The Phase 03–05 chain (access
+     targets, Hybrid-A* decline, smoothing) and the explicit LEGACY ⇄
+     LAYOUT_V2 source switch are ONE collapsed "Legacy decline (Hybrid-A*)
+     — Advanced" section that auto-expands only when `activeSource ==
+     LEGACY AND hasLegacyWork` (an access-target, decline or legacy smoothed
+     artifact exists); the `accessTargets` / `rawSearchPath` layers default
+     OFF and are hidden when a layout-v2 candidate is activated. Legacy
+     backend, API, artifacts, schema, tests and goldens are untouched and
+     the source-neutral Effective Ramp stays.
+168. Standoff / clearance semantics audit is a FOLLOW-UP, not part of the
+     Phase 20B closeout. `RampConstraints.clearance`,
+     `DesignConfig.orebody_exclusion_buffer`, the layout-v2 required
+     centerline clearance (`buffer + hypot(width/2, height)`),
+     `footwall_access_offset`, the level-access anchor stand-off, the WARPED
+     conservative error bound and the preferred access length are DIFFERENT
+     distance concepts; no default is changed here and
+     `ramp_standoff >= level_entry_standoff + preferred_access_length` is
+     NOT declared an invariant (a spatial stand-off and a centerline path
+     length are not additive in general). The separate change "Ramp /
+     Footwall / Access Standoff Semantics Rationalization" audits their uses
+     and relationships (see `docs/roadmap.md`).
