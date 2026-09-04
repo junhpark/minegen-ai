@@ -871,12 +871,28 @@ phase is considered complete.
      `Orebody.distance_contract`. φ is never called or used as an SDF; an
      approximate clearance is never labelled exact; its sign is forced to
      agree with `contains` and membership wins on disagreement.
-135. No approximate hard buffer. The legacy Phase 03–18 design pipeline
-     (hard orebody exclusion buffers, access targets, levels, stopes)
-     accepts only `AnalyticOrebody`; `DesignCostEvaluator` raises
-     `ExactDistanceRequiredError` and the service returns
-     UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT (422) for any other contract.
-     WARPED_VEIN → approximate clearance → Hybrid-A* is forbidden.
+135. No approximate hard buffer in a SEARCH. The exact-only boundary is
+     the legacy Hybrid-A* search chain (access targets → decline →
+     smoothing) and the TABULAR-frame level layout (drift / crosscut
+     design, stopes): these CHOOSE geometry against the hard orebody
+     exclusion buffer, so an approximate buffer could steer a design into
+     the body. They accept only `AnalyticOrebody`; `DesignCostEvaluator`
+     with no explicit policy raises `ExactDistanceRequiredError` and every
+     such entry point answers UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT (422),
+     never 500 (rule 123). WARPED_VEIN → approximate clearance → Hybrid-A*
+     is forbidden.
+
+     A SWEEP is different (closeout v5). The Phase 06 ramp tunnel mesh and
+     the Phase 20B development mesh do not choose geometry: they sweep a
+     centerline that was already validated under the layout-v2 clearance
+     policy and judge the resulting excavation envelope. They build their
+     evaluator with `clearance_policy_for(world.orebody)` — for an
+     `AnalyticOrebody` that is the very same `ExactClearance` the default
+     constructor yields (bit-identical numerics); for an implicit body it
+     is CONSERVATIVE, which can only reject more of the envelope than an
+     exact check would, never admit more. A sweep therefore never
+     relaxes rule 135; it applies the buffer the centerline was designed
+     under.
 136. Resolved morphology. Every stochastic shape control AND every mode
      coefficient of a WARPED_VEIN is drawn in `scenario_realizer.py`
      (orebody sub-stream 0x0B0D17, no new key) and persisted resolved in
@@ -1029,13 +1045,16 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      solid, never from a global strike.
 146. Clearance policy is explicit. `DesignCostEvaluator` accepts a
      `ClearancePolicy`: EXACT (analytic SDF, legacy numerics unchanged and
-     still the only policy the legacy pipeline constructs) or CONSERVATIVE
-     (`safe = approximateClearance − errorBound`, errorBound = 1.5 × the
-     derived-lattice diagonal; empirically ≥ the measured mesh-distance
-     error). Layout-v2 reports clearanceBasis, approximate / conservative
-     minimum clearance, error bound and required clearance
-     (`buffer + hypot(width/2, height)`); WARPED_VEIN is first-class in
-     layout-v2 and still refused by the legacy pipeline (rule 135).
+     still the only policy the Hybrid-A* search chain constructs) or
+     CONSERVATIVE (`safe = approximateClearance − errorBound`, errorBound =
+     1.5 × the derived-lattice diagonal; empirically ≥ the measured
+     mesh-distance error). Layout-v2 and the downstream sweeps (Phase 06
+     tunnel mesh, Phase 20B development mesh) take
+     `clearance_policy_for(world.orebody)`. Layout-v2 reports
+     clearanceBasis, approximate / conservative minimum clearance, error
+     bound and required clearance (`buffer + hypot(width/2, height)`);
+     WARPED_VEIN is first-class in layout-v2 and its sweeps, and still
+     refused by the Hybrid-A* search chain (rule 135).
 147. Hard constraints stay hard. Layout-v2 stages are enumerate → cheap
      evaluation → bounded shortlist → detailed validation through the shared
      `DesignCostEvaluator` sample validator → deterministic ranking; a

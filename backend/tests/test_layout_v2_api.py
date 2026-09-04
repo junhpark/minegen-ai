@@ -533,3 +533,24 @@ def test_warped_vein_ramp_tunnel_mesh_uses_the_world_clearance_policy(
 
     # the LEGACY exact-only chain is untouched by this (rule 135)
     assert client.post(f"{base}/targets").status_code == 422
+
+
+def test_warped_vein_legacy_search_chain_answers_typed_422_never_500(
+    client: TestClient,
+) -> None:
+    """Rules 123/135 (closeout v5): every LEGACY Hybrid-A* entry point refuses
+    an implicit body with the typed UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT 422.
+    ``/decline`` and ``/decline/smooth`` used to let ``UnsupportedOrebodyError``
+    escape their precondition guard as an uncaught 500."""
+    r = client.post(
+        "/api/v1/scenarios/realize",
+        json={"preset": "RANDOM_WARPED_VEIN", "seed": 301, "faultCount": 1},
+    )
+    assert r.status_code == 200, r.text
+    sid = client.post("/api/v1/scenarios", json=r.json()).json()["id"]
+    assert client.post(f"/api/v1/scenarios/{sid}/world/generate").status_code == 200
+    base = f"/api/v1/scenarios/{sid}/design"
+    for path in ("targets", "decline", "decline/smooth"):
+        r = client.post(f"{base}/{path}", params={"sync": "true"})
+        assert r.status_code == 422, f"{path}: {r.status_code} {r.text}"
+        assert r.json()["detail"]["code"] == "UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT", path

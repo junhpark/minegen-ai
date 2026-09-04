@@ -408,11 +408,18 @@ def generate_decline(
     ``GET /jobs/{jobId}`` or subscribe to ``/ws/jobs/{jobId}``. The result is
     also persisted to ``derived/decline.json`` and served by ``GET …/decline``.
     ``?sync=true`` runs inline (≈ 30 s for the default scenario)."""
-    # validate preconditions up front so the caller gets 404/409 immediately
+    # validate preconditions up front so the caller gets 404/409/422
+    # immediately — the exact-only evaluator's refusal of an implicit body
+    # is a typed 422 (rules 123/135), never an uncaught 500
     try:
         svc.evaluator(scenario_id)
         svc._targets_object(scenario_id)
-    except (ScenarioNotFoundError, WorldNotGeneratedError, TargetsNotGeneratedError) as e:
+    except (
+        ScenarioNotFoundError,
+        WorldNotGeneratedError,
+        TargetsNotGeneratedError,
+        UnsupportedOrebodyError,
+    ) as e:
         raise _guard(scenario_id, e) from e
     if sync:
         response.status_code = status.HTTP_200_OK
@@ -475,6 +482,7 @@ def smooth_decline(
         WorldNotGeneratedError,
         TargetsNotGeneratedError,
         DeclineNotGeneratedError,
+        UnsupportedOrebodyError,  # typed 422, never 500 (rules 123/135)
     ) as e:
         raise _guard(scenario_id, e) from e
     if sync:
