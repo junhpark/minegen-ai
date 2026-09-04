@@ -134,6 +134,7 @@ class WorldService:
             ("decline", "decline.json"),
             ("smoothedDecline", "decline_smoothed.json"),
             ("tunnelMesh", "tunnel_mesh.json"),
+            ("developmentMesh", "development_mesh.json"),
             ("levels", "levels.json"),
             ("network", "network.json"),
             ("stopes", "stopes.json"),

@@ -15,6 +15,7 @@ from minegen.scheduling.models import TimelinePayload
 from minegen.services.design_service import (
     DeclineNotGeneratedError,
     DesignService,
+    DevelopmentMeshNotGeneratedError,
     LayoutCandidateInfeasibleError,
     LayoutCandidateNotFoundError,
     LayoutV2NotGeneratedError,
@@ -110,6 +111,13 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             status.HTTP_409_CONFLICT,
             "TUNNEL_NOT_GENERATED",
             f"scenario '{scenario_id}' has no tunnel mesh; POST …/design/tunnel first",
+        )
+    if isinstance(exc, DevelopmentMeshNotGeneratedError):
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "DEVELOPMENT_MESH_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no development mesh; "
+            "POST …/design/development-mesh first",
         )
     if isinstance(exc, LevelsNotGeneratedError):
         return _error(
@@ -575,6 +583,88 @@ def get_tunnel(scenario_id: str, svc: Service) -> dict[str, Any]:
         TunnelNotGeneratedError,
     ) as e:
         raise _guard(scenario_id, e) from e
+
+
+@router.post("/development-mesh", status_code=status.HTTP_202_ACCEPTED)
+def generate_development_mesh(
+    scenario_id: str,
+    svc: Service,
+    jobs: Jobs,
+    response: Response,
+    sync: Annotated[
+        bool, Query(description="Run inline and return the report (tests/CLI).")
+    ] = False,
+) -> dict[str, Any]:
+    """Phase 20B closeout v3 §4: excavation meshes of every LEVEL_ACCESS /
+    DRIFT / CROSSCUT swept on their authoritative centerlines with the shared
+    profile frame (CAP / OPEN endpoint policy). Async job kind
+    ``DEVELOPMENT_MESH`` → 202; requires the levels artifact
+    (409 ``LEVELS_NOT_GENERATED`` otherwise)."""
+    try:
+        try:
+            svc.levels(scenario_id)
+        except LevelsNotGeneratedError:
+            # implicit bodies: the access branches alone can be swept
+            if svc.active_level_accesses(scenario_id) is None:
+                raise
+    except (ScenarioNotFoundError, WorldNotGeneratedError, LevelsNotGeneratedError) as e:
+        raise _guard(scenario_id, e) from e
+    if sync:
+        response.status_code = status.HTTP_200_OK
+        try:
+            return svc.generate_development_mesh(scenario_id)
+        except StaleInputsError as e:
+            raise _error(status.HTTP_409_CONFLICT, e.code, str(e)) from e
+    try:
+        job = jobs.submit(
+            scenario_id,
+            "DEVELOPMENT_MESH",
+            lambda on_progress: svc.generate_development_mesh(scenario_id, on_progress),
+        )
+    except JobAlreadyRunningError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ErrorDetail(
+                code="JOB_ALREADY_RUNNING",
+                message=f"scenario '{scenario_id}' already has job '{e.job_id}' running",
+            ).model_dump(by_alias=True)
+            | {"jobId": e.job_id},
+        ) from e
+    return {
+        "jobId": job.id,
+        "status": "QUEUED",
+        "scenarioId": scenario_id,
+        "kind": job.kind,
+    }
+
+
+@router.get("/development-mesh")
+def get_development_mesh(scenario_id: str, svc: Service) -> dict[str, Any]:
+    try:
+        return svc.development_mesh(scenario_id)
+    except (
+        ScenarioNotFoundError,
+        WorldNotGeneratedError,
+        DevelopmentMeshNotGeneratedError,
+    ) as e:
+        raise _guard(scenario_id, e) from e
+
+
+@router.get("/development-mesh/mesh.glb")
+def get_development_mesh_glb(scenario_id: str, svc: Service) -> Response:
+    try:
+        data = svc.development_mesh_glb(scenario_id)
+    except (
+        ScenarioNotFoundError,
+        WorldNotGeneratedError,
+        DevelopmentMeshNotGeneratedError,
+    ) as e:
+        raise _guard(scenario_id, e) from e
+    return Response(
+        content=data,
+        media_type="model/gltf-binary",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.get("/tunnel/mesh.glb")

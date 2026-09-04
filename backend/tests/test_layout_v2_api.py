@@ -224,6 +224,36 @@ def test_parametric_ramp_drives_the_tabular_downstream_chain(
     for lid, entry in entries.items():
         assert entry != junctions[lid]
 
+    # development mesh (closeout v3 §4): every LEVEL_ACCESS / DRIFT / CROSSCUT
+    # swept on its owning centerline; OPEN / CAP endpoint policy; sibling of
+    # the ramp tunnel mesh, invalidated with the levels artifact
+    r = client.post(f"{base}/development-mesh", params={"sync": "true"})
+    assert r.status_code == 200, r.text
+    dev = r.json()
+    assert dev["status"] == "SUCCESS", dev.get("failureReason")
+    assert dev["byKind"]["LEVEL_ACCESS"]["developmentCount"] == len(entries)
+    assert dev["byKind"]["DRIFT"]["developmentCount"] == len(entries)
+    assert dev["byKind"]["CROSSCUT"]["developmentCount"] == sum(
+        1 for d in levels["developments"] if d["kind"] == "CROSSCUT"
+    )
+    assert dev["byKind"]["LEVEL_ACCESS"]["endpointPolicies"] == ["OPEN-OPEN"]
+    assert dev["byKind"]["CROSSCUT"]["endpointPolicies"] == ["OPEN-CAP"]
+    assert dev["sources"] == {"levelAccesses": True, "levels": True, "rampSource": "LAYOUT_V2"}
+    assert dev["meshUrl"].startswith(f"{base}/development-mesh/mesh.glb?v=")
+    glb = client.get(f"{base}/development-mesh/mesh.glb")
+    assert glb.status_code == 200 and glb.headers["content-type"] == "model/gltf-binary"
+    assert len(glb.content) == dev["glbBytes"]
+    scene = client.get(f"/api/v1/scenarios/{sid}/scene").json()
+    assert scene["developmentMesh"]["artifactRevision"] == dev["artifactRevision"]
+    # regenerating levels deletes the development mesh (levels own its input)
+    assert client.post(f"{base}/levels").status_code == 200
+    assert client.get(f"{base}/development-mesh").status_code == 409
+    assert client.get(f"{base}/development-mesh").json()["detail"]["code"] == (
+        "DEVELOPMENT_MESH_NOT_GENERATED"
+    )
+    assert client.post(f"{base}/development-mesh", params={"sync": "true"}).status_code == 200
+    assert client.get(f"{base}/tunnel").status_code == 200  # the ramp mesh is untouched
+
     # network (Phase 07 + 20B): PORTAL → RAMP → RAMP_JUNCTION → LEVEL_ACCESS →
     # LEVEL_ENTRY → DRIFT → JUNCTION → CROSSCUT → STOPE_ACCESS
     r = client.post(f"/api/v1/scenarios/{sid}/network/generate")
@@ -393,3 +423,33 @@ def test_legacy_pipeline_is_unchanged_and_isolated_from_layout_v2(
     client.put(f"{base}/ramp-source", json={"activeSource": "LEGACY"})
     assert client.get(f"{base}/ramp").json()["sourceKind"].startswith("LEGACY")
     assert design_service.smoothed_path(sid).is_file()
+
+
+def test_warped_vein_development_mesh_sweeps_the_access_branches_only(client: TestClient) -> None:
+    """Closeout v3 §4 / §6 scenario B: an implicit body has no level
+    development (typed boundary) but its validated access branches are
+    swept; without a selection the endpoint stays a typed 409."""
+    r = client.post(
+        "/api/v1/scenarios/realize",
+        json={"preset": "RANDOM_WARPED_VEIN", "seed": 301, "faultCount": 1},
+    )
+    assert r.status_code == 200, r.text
+    sid = client.post("/api/v1/scenarios", json=r.json()).json()["id"]
+    assert client.post(f"/api/v1/scenarios/{sid}/world/generate").status_code == 200
+    base = f"/api/v1/scenarios/{sid}/design"
+    assert client.post(f"{base}/development-mesh", params={"sync": "true"}).status_code == 409
+    cat = _generate_layout(client, sid)
+    assert cat["status"] == "SUCCESS"
+    r = client.post(f"{base}/layout-v2/activate", json={"candidateId": _winner(cat)})
+    assert r.status_code == 200, r.text
+    assert client.post(f"{base}/levels").status_code == 422  # rule 135 boundary
+    r = client.post(f"{base}/development-mesh", params={"sync": "true"})
+    assert r.status_code == 200, r.text
+    dev = r.json()
+    assert dev["status"] == "SUCCESS", dev.get("failureReason")
+    assert dev["sources"] == {"levelAccesses": True, "levels": False, "rampSource": "LAYOUT_V2"}
+    assert dev["byKind"]["LEVEL_ACCESS"]["developmentCount"] == cat["serviceableLevelCount"]
+    assert dev["byKind"]["DRIFT"]["developmentCount"] == 0
+    assert dev["byKind"]["CROSSCUT"]["developmentCount"] == 0
+    assert [p["name"] for p in dev["primitives"]] == ["LEVEL_ACCESS"]
+    assert client.get(f"{base}/development-mesh/mesh.glb").status_code == 200

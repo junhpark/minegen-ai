@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,8 @@ from minegen.core.artifacts import (
 from minegen.core.enums import DistanceContract, OrebodyType
 from minegen.core.models import Scenario
 from minegen.design.constraints import DesignContext
-from minegen.design.cost_field import DesignCostEvaluator
+from minegen.design.cost_field import DesignCostEvaluator, clearance_policy_for
+from minegen.design.development_mesh import DevelopmentMeshBuilder
 from minegen.design.mine_designer import ChainedDeclineGenerator
 from minegen.design.progress import (
     ProgressCallback,
@@ -87,6 +89,10 @@ class LevelsNotGeneratedError(LookupError):
 
 class NetworkNotFoundError(LookupError):
     """network.json does not exist for the scenario."""
+
+
+class DevelopmentMeshNotGeneratedError(LookupError):
+    """development_mesh.json does not exist for the scenario."""
 
 
 class TunnelNotGeneratedError(LookupError):
@@ -618,6 +624,8 @@ class DesignService:
         path = self.levels_path(scenario_id)
         if path.exists():
             path.unlink()
+        # the development mesh is a derivative of levels + level accesses
+        self._delete_development_mesh_artifacts(scenario_id)
 
     def _levels_input_paths(self, scenario_id: str) -> list[Path]:
         # cross-section + mining lattice config from scenario.json, orebody
@@ -662,6 +670,7 @@ class DesignService:
             self._delete_timeline_artifact(scenario_id)  # rule 86 chain
             self._delete_communication_artifact(scenario_id)  # rule 92 chain
             self._delete_sensors_artifact(scenario_id)  # rule 98
+            self._delete_development_mesh_artifacts(scenario_id)  # closeout v3 §4
         return payload
 
     def levels(self, scenario_id: str) -> LevelsPayload:
@@ -945,6 +954,137 @@ class DesignService:
             elif glb_path.exists():
                 glb_path.unlink()  # never leave a stale GLB beside a FAILED report
         return payload
+
+    # -- development mesh (Phase 20B closeout v3 §4) ------------------------- #
+
+    def development_mesh_report_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / "development_mesh.json"
+
+    def development_mesh_glb_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / "development_mesh.glb"
+
+    def _delete_development_mesh_artifacts(self, scenario_id: str) -> None:
+        for path in (
+            self.development_mesh_report_path(scenario_id),
+            self.development_mesh_glb_path(scenario_id),
+        ):
+            if path.exists():
+                path.unlink()
+
+    def _development_mesh_input_paths(self, scenario_id: str) -> list[Path]:
+        return [*self._levels_input_paths(scenario_id), self.levels_path(scenario_id)]
+
+    def development_mesh_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._development_mesh_input_paths(scenario_id))
+
+    def generate_development_mesh(
+        self, scenario_id: str, on_progress: ProgressCallback = no_progress
+    ) -> dict[str, Any]:
+        """Sweep every LEVEL_ACCESS / DRIFT / CROSSCUT of the owning
+        artifacts (``level_accesses.json`` of the ACTIVE ramp, ``levels.json``)
+        with the shared profile frame. Requires the levels artifact OR active
+        level accesses (409 LEVELS_NOT_GENERATED otherwise); the GLB is
+        written only on SUCCESS under the locked stale-input protocol
+        (rule 60)."""
+        fingerprint = self.development_mesh_fingerprint(scenario_id)
+        accesses_payload = self.active_level_accesses(scenario_id)
+        try:
+            levels_payload: dict[str, Any] | None = self.levels(scenario_id).model_dump(
+                mode="json", by_alias=True
+            )
+        except LevelsNotGeneratedError:
+            # an implicit body has no level development yet (Phase 20B
+            # boundary): its validated access branches alone are swept
+            if accesses_payload is None:
+                raise
+            levels_payload = None
+        scenario, world = self.worlds.load(scenario_id)
+        # the drift / access envelope uses the layout clearance policy of the
+        # world (EXACT for analytic bodies, CONSERVATIVE for implicit ones —
+        # rule 146); crosscuts keep their orebody-contact context (rule 72)
+        drift_ev = DesignCostEvaluator(
+            world,
+            scenario.design,
+            DesignContext.decline(scenario.design),
+            clearance=clearance_policy_for(world.orebody),
+        )
+        crosscut_ev = DesignCostEvaluator(
+            world,
+            scenario.design,
+            DesignContext.crosscut(scenario.design),
+            clearance=clearance_policy_for(world.orebody),
+        )
+        builder = DevelopmentMeshBuilder(
+            drift_ev, crosscut_ev, scenario.ramp, scenario.tunnel_profile
+        )
+
+        def progress(i: int, n: int, label: str, stage: str) -> None:
+            on_progress(
+                ProgressEvent(
+                    stage=ProgressStage(stage),
+                    phase="DEVELOPMENT_MESH",
+                    level=min(i + 1, n) if n else 1,
+                    total_levels=max(n, 1),
+                    candidate=0,
+                    total_candidates=0,
+                    progress=min(i, n) / n if n else 1.0,
+                    expanded_states=0,
+                    level_id=label,
+                )
+            )
+
+        t0 = time.perf_counter()
+        result = builder.build(accesses_payload, levels_payload, on_progress=progress)
+        payload = dict(result.report)
+        payload["generationSeconds"] = time.perf_counter() - t0
+        payload["sources"] = {
+            "levelAccesses": accesses_payload is not None,
+            "levels": levels_payload is not None,
+            "rampSource": read_ramp_source(self.store.derived_dir(scenario_id)),
+        }
+        if result.glb is not None:
+            revision = hashlib.sha256(result.glb).hexdigest()
+            payload["artifactRevision"] = revision
+            payload["glbBytes"] = len(result.glb)
+            payload["meshUrl"] = (
+                f"/api/v1/scenarios/{scenario_id}/design/development-mesh/mesh.glb"
+                f"?v={revision[:16]}"
+            )
+        else:
+            payload["artifactRevision"] = None
+            payload["glbBytes"] = 0
+            payload["meshUrl"] = None
+        with self.store.lock(scenario_id):
+            if self.development_mesh_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            report_path = self.development_mesh_report_path(scenario_id)
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(json.dumps(payload), encoding="utf-8")
+            glb_path = self.development_mesh_glb_path(scenario_id)
+            if result.glb is not None:
+                glb_path.write_bytes(result.glb)
+            elif glb_path.exists():
+                glb_path.unlink()
+        return payload
+
+    def development_mesh(self, scenario_id: str) -> dict[str, Any]:
+        self.store.get(scenario_id)
+        if not self.worlds.is_generated(scenario_id):
+            from minegen.services.world_service import WorldNotGeneratedError
+
+            raise WorldNotGeneratedError(scenario_id)
+        path = self.development_mesh_report_path(scenario_id)
+        if not path.is_file():
+            raise DevelopmentMeshNotGeneratedError(scenario_id)
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
+
+    def development_mesh_glb(self, scenario_id: str) -> bytes:
+        report = self.development_mesh(scenario_id)
+        glb_path = self.development_mesh_glb_path(scenario_id)
+        if report.get("status") != "SUCCESS" or not glb_path.is_file():
+            raise DevelopmentMeshNotGeneratedError(scenario_id)
+        return glb_path.read_bytes()
 
     def tunnel(self, scenario_id: str) -> dict[str, Any]:
         self.store.get(scenario_id)

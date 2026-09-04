@@ -373,8 +373,13 @@ def build_render_mesh(
     shape: ProfileShape,
     crease_angle_deg: float,
     segments_meta: list[dict[str, Any]],
+    *,
+    caps: tuple[bool, bool] = (True, True),
 ) -> RenderMesh:
-    """Render-vertex split of the logical tube + caps. Normals come from the
+    """Render-vertex split of the logical tube + caps. ``caps`` selects which
+    end caps are emitted ((portal, terminal); the Phase 06 ramp keeps both, an
+    OPEN development endpoint — closeout v3 §4.B — emits none and leaves the
+    ring boundary open). Normals come from the
     ACTUAL generated triangle geometry: per-triangle geometric normals are
     angle-weighted into each render vertex, so curved sweeps get true surface
     normals; crease splits keep the floor/wall (and any non-tangent
@@ -390,7 +395,7 @@ def build_render_mesh(
     per_ring = k + n_split  # each crease adds one duplicate
     vid_a = np.zeros((r, k), dtype=np.int64)
     vid_b = np.zeros((r, k), dtype=np.int64)
-    positions = np.zeros((r * per_ring + 2 * (k + 1), 3))
+    positions = np.zeros((r * per_ring + (int(caps[0]) + int(caps[1])) * (k + 1), 3))
     uvs = np.zeros((positions.shape[0], 2))
     cursor = 0
     for i in range(r):
@@ -432,10 +437,12 @@ def build_render_mesh(
 
     # caps: own flat-shaded vertices (removable primitives, rule 66)
     cap_prims: list[RenderPrimitive] = []
-    for cap_name, ring_i, apex_logical in (
-        ("PORTAL_CAP", 0, r * k),
-        ("TERMINAL_CAP", r - 1, r * k + 1),
+    for cap_name, ring_i, apex_logical, wanted in (
+        ("PORTAL_CAP", 0, r * k, caps[0]),
+        ("TERMINAL_CAP", r - 1, r * k + 1, caps[1]),
     ):
+        if not wanted:
+            continue
         base = cursor
         for j in range(k):
             positions[cursor] = ring_pos[ring_i, j]
@@ -481,7 +488,7 @@ def build_render_mesh(
         for s, meta in enumerate(segments_meta)
     ] + cap_prims
 
-    closed = _geometrically_closed(positions[:cursor], prims)
+    closed = all(caps) and _geometrically_closed(positions[:cursor], prims)
     return RenderMesh(
         positions=positions[:cursor].astype(np.float32),
         normals=normals[:cursor].astype(np.float32),
