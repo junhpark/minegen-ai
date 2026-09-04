@@ -229,8 +229,18 @@ export function afterLayoutSelect(
   }
 }
 
-/** The active source switched (explicit backend response). The effective
- * ramp changes identity, so every ramp-derived artifact is stale. */
+/**
+ * The active SOURCE switched (explicit backend response). Downstream
+ * preservation is decided on Effective Ramp IDENTITY — source AND the
+ * selected layout candidate / revision (rule 169) — so this helper covers
+ * the source half only: a LEGACY ⇄ LAYOUT_V2 transition invalidates the
+ * chain, an unchanged source preserves it.
+ *
+ * A candidate change under an already-active LAYOUT_V2 source is the OTHER
+ * half and belongs to `afterLayoutSelect`; the identity comparison lives
+ * there and is never duplicated here. Activate (select + switch in one
+ * backend call) composes both — see `afterLayoutActivate`.
+ */
 export function afterRampSourceChange(
   scene: WorldScene,
   rampSource: RampSourceSummary,
@@ -251,6 +261,24 @@ export function afterRampSourceChange(
     layoutV2Selected: selected,
     smoothedDecline: effective,
   }
+}
+
+/**
+ * Activate = select + make LAYOUT_V2 the active source in one backend call,
+ * so the frontend applies BOTH halves of the Effective Ramp identity
+ * (rule 169): `afterLayoutSelect` handles the candidate/revision change
+ * (including A → B while LAYOUT_V2 is already active) and
+ * `afterRampSourceChange` the source transition with the backend's
+ * authoritative summary. The level accesses owned by the activated
+ * selection (rule 157) survive both.
+ */
+export function afterLayoutActivate(
+  scene: WorldScene,
+  rampSource: RampSourceSummary,
+  selected: SmoothedDeclinePayload,
+  accesses: LevelAccessesPayload | null = null,
+): WorldScene {
+  return afterRampSourceChange(afterLayoutSelect(scene, selected, accesses), rampSource, selected)
 }
 
 function rampSourceFor(

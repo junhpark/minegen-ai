@@ -4,7 +4,7 @@ import { api, ApiError } from '@/api/client'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { PanelSection } from '@/components/layout/PanelSection'
 import { compareCandidates } from '@/components/panels/layoutOrder'
-import { afterLayoutRegen, afterLayoutSelect, afterRampSourceChange } from '@/scene/invalidation'
+import { afterLayoutActivate, afterLayoutRegen, afterLayoutSelect } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import type {
@@ -88,10 +88,10 @@ export function LayoutPanel() {
       return { ...result, accesses }
     },
     onSuccess: ({ rampSource: src, selected: sel, accesses }) => {
-      applyScene(epoch, (current) => ({
-        ...afterRampSourceChange(current, src, sel),
-        levelAccesses: accesses,
-      }))
+      // rule 169: activate changes BOTH halves of the Effective Ramp
+      // identity — the selected candidate AND the active source — so the
+      // A → B case under an already-active LAYOUT_V2 invalidates the chain
+      applyScene(epoch, (current) => afterLayoutActivate(current, src, sel, accesses))
       setLayerVisible('smoothedDecline', true)
       setLayerVisible('levelAccesses', true)
       // closeout v3 §1.C: legacy diagnostic layers are not part of a

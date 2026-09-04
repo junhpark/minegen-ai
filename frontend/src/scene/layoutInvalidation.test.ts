@@ -11,6 +11,7 @@ import type {
   WorldScene,
 } from '@/types/scene'
 import {
+  afterLayoutActivate,
   afterLayoutRegen,
   afterLayoutSelect,
   afterLegacySmoothRegen,
@@ -216,5 +217,81 @@ describe('legacy pipeline while LAYOUT_V2 is active', () => {
     const legacyAfter = afterLegacyUpstreamRegen(scene('LEGACY'))
     expect(legacyAfter.smoothedDecline).toBeNull()
     expectDownstreamCleared(legacyAfter)
+  })
+})
+
+/**
+ * Closeout v3 §1 / rule 169: downstream preservation is decided on Effective
+ * Ramp IDENTITY (source AND selected candidate / revision), never on
+ * activeSource alone. Activate composes the two halves — a candidate change
+ * under an already-active LAYOUT_V2 must invalidate the chain exactly like a
+ * source switch does.
+ */
+describe('layout activate (rule 169)', () => {
+  const B = ramp('SWITCHBACK-k2-p+0-CW-g0.120', 'PARAMETRIC')
+  const accessesB = {
+    status: 'SUCCESS',
+    candidateId: 'SWITCHBACK-k2-p+0-CW-g0.120',
+    accesses: [],
+  } as unknown as WorldScene['levelAccesses']
+
+  it('A → B while LAYOUT_V2 is already active clears the whole downstream chain', () => {
+    const before = scene('LAYOUT_V2')
+    const after = afterLayoutActivate(
+      before,
+      rampSource('LAYOUT_V2', { candidateId: 'SWITCHBACK-k2-p+0-CW-g0.120', family: 'SWITCHBACK' }),
+      B,
+      accessesB,
+    )
+    expect(after.smoothedDecline?.candidateId).toBe('SWITCHBACK-k2-p+0-CW-g0.120')
+    expect(after.smoothedDecline?.activeSource).toBe('LAYOUT_V2')
+    expect(after.layoutV2Selected).toBe(B)
+    expect(after.rampSource.candidateId).toBe('SWITCHBACK-k2-p+0-CW-g0.120')
+    // the level accesses of the ACTIVATED selection survive (rule 157)
+    expect(after.levelAccesses).toBe(accessesB)
+    expectDownstreamCleared(after)
+  })
+
+  it('activating the active candidate again at the same revision is idempotent', () => {
+    const before = scene('LAYOUT_V2')
+    const same = ramp('SPIRAL-n1-CW-e+0-g0.120', 'PARAMETRIC')
+    const after = afterLayoutActivate(before, rampSource('LAYOUT_V2'), same)
+    expect(after.smoothedDecline?.candidateId).toBe('SPIRAL-n1-CW-e+0-g0.120')
+    expectDownstreamKept(after, before)
+  })
+
+  it('LEGACY → activate B switches the source and clears the chain', () => {
+    const before = scene('LEGACY')
+    const after = afterLayoutActivate(
+      before,
+      rampSource('LAYOUT_V2', { candidateId: 'SWITCHBACK-k2-p+0-CW-g0.120', family: 'SWITCHBACK' }),
+      B,
+      accessesB,
+    )
+    expect(after.rampSource.activeSource).toBe('LAYOUT_V2')
+    expect(after.smoothedDecline?.candidateId).toBe('SWITCHBACK-k2-p+0-CW-g0.120')
+    expect(after.levelAccesses).toBe(accessesB)
+    expectDownstreamCleared(after)
+    // legacy artifacts and the catalogue are untouched
+    expect(after.legacySmoothedDecline).toBe(before.legacySmoothedDecline)
+    expect(after.layoutV2).toBe(before.layoutV2)
+  })
+
+  it('select A → B and activate A → B invalidate the same downstream artifacts', () => {
+    const before = scene('LAYOUT_V2')
+    const selected = afterLayoutSelect(before, B, accessesB)
+    const activated = afterLayoutActivate(before, rampSource('LAYOUT_V2'), B, accessesB)
+    for (const k of DOWNSTREAM) expect(activated[k]).toEqual(selected[k])
+    expect(activated.smoothedDecline?.candidateId).toBe(selected.smoothedDecline?.candidateId)
+    expect(activated.levelAccesses).toBe(selected.levelAccesses)
+  })
+
+  it('a source switch alone never re-decides candidate identity', () => {
+    // afterRampSourceChange owns the SOURCE half only: with the same source
+    // and the same selection it is inert (the identity half is
+    // afterLayoutSelect's, and activate composes both)
+    const before = scene('LAYOUT_V2')
+    const after = afterRampSourceChange(before, rampSource('LAYOUT_V2'))
+    expectDownstreamKept(after, before)
   })
 })
