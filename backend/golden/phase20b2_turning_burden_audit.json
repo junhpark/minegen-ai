@@ -1,0 +1,910 @@
+{
+ "label": "phase20b2-turning-burden-audit",
+ "purpose": "Phase 20B.2-B: exhaustive (rule 165 detailed_all diagnostic) score components on the commit-A code BEFORE the equivalentHalfTurns term, best per family, plus the offline 0/0.5x/1x/2x coefficient sensitivity; never part of the production search",
+ "coefficientChosenBeforeSensitivity": {
+  "GEOM_HALF_TURN_COEF": 0.05,
+  "rationale": "180 deg of cumulative steering = one reversal (GEOM_REVERSAL_COEF); a hairpin and a helix loop both price 0.10"
+ },
+ "components": {
+  "coefficients": {
+   "GEOM_CURVATURE_COEF": 20.0,
+   "GEOM_REVERSAL_COEF": 0.05,
+   "GEOM_HAIRPIN_COEF": 0.02,
+   "GEOM_TURNING_COEF": 0.5,
+   "GEOM_CLEARANCE_COEF": 1.0
+  },
+  "TABULAR-REFERENCE": {
+   "winnerExhaustive": "SPIRAL-n1-CW-e+0-g0.120",
+   "feasibleCount": 14,
+   "bestPerFamily": {
+    "SPIRAL": {
+     "candidateId": "SPIRAL-n1-CW-e+0-g0.120",
+     "family": "SPIRAL",
+     "legsPerLevel": null,
+     "length3d": 3954.0,
+     "cumulativeHeadingDeg": 6188.7,
+     "equivalentHalfTurns": 34.381,
+     "meanCurvatureRadPerM": 0.027317,
+     "reversalCount": 0,
+     "hairpinRunCount": 1,
+     "development": 1.5835,
+     "geology": 0.0,
+     "geometry": 1.8986,
+     "total": 3.4821,
+     "geometryComponents": {
+      "unusedGradient": 0.0329,
+      "turningFraction": 0.4539,
+      "maxAccessRatio": 0.8454,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.5463,
+      "reversal": 0.0,
+      "hairpin": 0.02
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    "SWITCHBACK-k1": {
+     "candidateId": "SWITCHBACK-k1-p+0-CW-g0.120",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 1,
+     "length3d": 3825.2,
+     "cumulativeHeadingDeg": 2998.3,
+     "equivalentHalfTurns": 16.657,
+     "meanCurvatureRadPerM": 0.013681,
+     "reversalCount": 16,
+     "hairpinRunCount": 16,
+     "development": 1.7718,
+     "geology": 0.0297,
+     "geometry": 3.044,
+     "total": 4.8455,
+     "geometryComponents": {
+      "unusedGradient": 0.0,
+      "turningFraction": 0.1574,
+      "maxAccessRatio": 1.493,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.2736,
+      "reversal": 0.8,
+      "hairpin": 0.32
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    "SWITCHBACK-k2": {
+     "candidateId": "SWITCHBACK-k2-p+0-CW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 2,
+     "length3d": 4580.3,
+     "cumulativeHeadingDeg": 6052.3,
+     "equivalentHalfTurns": 33.624,
+     "meanCurvatureRadPerM": 0.023062,
+     "reversalCount": 33,
+     "hairpinRunCount": 33,
+     "development": 1.7254,
+     "geology": 0.0,
+     "geometry": 4.0115,
+     "total": 5.7369,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.241,
+      "maxAccessRatio": 0.8326,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4612,
+      "reversal": 1.65,
+      "hairpin": 0.66
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    }
+   },
+   "feasible": [
+    {
+     "candidateId": "SPIRAL-n1-CW-e+0-g0.120",
+     "family": "SPIRAL",
+     "legsPerLevel": null,
+     "length3d": 3954.0,
+     "cumulativeHeadingDeg": 6188.7,
+     "equivalentHalfTurns": 34.381,
+     "meanCurvatureRadPerM": 0.027317,
+     "reversalCount": 0,
+     "hairpinRunCount": 1,
+     "development": 1.5835,
+     "geology": 0.0,
+     "geometry": 1.8986,
+     "total": 3.4821,
+     "geometryComponents": {
+      "unusedGradient": 0.0329,
+      "turningFraction": 0.4539,
+      "maxAccessRatio": 0.8454,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.5463,
+      "reversal": 0.0,
+      "hairpin": 0.02
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SPIRAL-n1-CW-e+0-g0.100",
+     "family": "SPIRAL",
+     "legsPerLevel": null,
+     "length3d": 4661.1,
+     "cumulativeHeadingDeg": 6192.3,
+     "equivalentHalfTurns": 34.401,
+     "meanCurvatureRadPerM": 0.023187,
+     "reversalCount": 0,
+     "hairpinRunCount": 1,
+     "development": 1.7639,
+     "geology": 0.0,
+     "geometry": 1.9702,
+     "total": 3.7341,
+     "geometryComponents": {
+      "unusedGradient": 0.1812,
+      "turningFraction": 0.4622,
+      "maxAccessRatio": 0.8431,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4637,
+      "reversal": 0.0,
+      "hairpin": 0.02
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SPIRAL-n1-CCW-e+0-g0.100",
+     "family": "SPIRAL",
+     "legsPerLevel": null,
+     "length3d": 4678.6,
+     "cumulativeHeadingDeg": 6219.8,
+     "equivalentHalfTurns": 34.554,
+     "meanCurvatureRadPerM": 0.023203,
+     "reversalCount": 0,
+     "hairpinRunCount": 1,
+     "development": 1.769,
+     "geology": 0.0,
+     "geometry": 1.9764,
+     "total": 3.7454,
+     "geometryComponents": {
+      "unusedGradient": 0.1843,
+      "turningFraction": 0.4624,
+      "maxAccessRatio": 0.8456,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4641,
+      "reversal": 0.0,
+      "hairpin": 0.02
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k1-p+0-CW-g0.120",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 1,
+     "length3d": 3825.2,
+     "cumulativeHeadingDeg": 2998.3,
+     "equivalentHalfTurns": 16.657,
+     "meanCurvatureRadPerM": 0.013681,
+     "reversalCount": 16,
+     "hairpinRunCount": 16,
+     "development": 1.7718,
+     "geology": 0.0297,
+     "geometry": 3.044,
+     "total": 4.8455,
+     "geometryComponents": {
+      "unusedGradient": 0.0,
+      "turningFraction": 0.1574,
+      "maxAccessRatio": 1.493,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.2736,
+      "reversal": 0.8,
+      "hairpin": 0.32
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k1-p+0-CCW-g0.120",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 1,
+     "length3d": 3825.2,
+     "cumulativeHeadingDeg": 2995.7,
+     "equivalentHalfTurns": 16.643,
+     "meanCurvatureRadPerM": 0.013668,
+     "reversalCount": 16,
+     "hairpinRunCount": 16,
+     "development": 1.8219,
+     "geology": 0.0235,
+     "geometry": 3.1692,
+     "total": 5.0146,
+     "geometryComponents": {
+      "unusedGradient": 0.0,
+      "turningFraction": 0.1559,
+      "maxAccessRatio": 1.6199,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.2734,
+      "reversal": 0.8,
+      "hairpin": 0.32
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k1-p+0-CCW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 1,
+     "length3d": 4580.3,
+     "cumulativeHeadingDeg": 2998.6,
+     "equivalentHalfTurns": 16.659,
+     "meanCurvatureRadPerM": 0.011426,
+     "reversalCount": 16,
+     "hairpinRunCount": 16,
+     "development": 2.0499,
+     "geology": 0.0,
+     "geometry": 3.3109,
+     "total": 5.3608,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.1308,
+      "maxAccessRatio": 1.6649,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.2285,
+      "reversal": 0.8,
+      "hairpin": 0.32
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 1,
+     "length3d": 3825.2,
+     "cumulativeHeadingDeg": 2972.9,
+     "equivalentHalfTurns": 16.516,
+     "meanCurvatureRadPerM": 0.013565,
+     "reversalCount": 16,
+     "hairpinRunCount": 16,
+     "development": 1.9388,
+     "geology": 0.0365,
+     "geometry": 3.5309,
+     "total": 5.5062,
+     "geometryComponents": {
+      "unusedGradient": 0.0,
+      "turningFraction": 0.1536,
+      "maxAccessRatio": 1.986,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.2713,
+      "reversal": 0.8,
+      "hairpin": 0.32
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k1-p-20-CW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 1,
+     "length3d": 4580.3,
+     "cumulativeHeadingDeg": 3022.1,
+     "equivalentHalfTurns": 16.79,
+     "meanCurvatureRadPerM": 0.011516,
+     "reversalCount": 16,
+     "hairpinRunCount": 16,
+     "development": 2.0303,
+     "geology": 0.0,
+     "geometry": 3.5886,
+     "total": 5.6189,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.1307,
+      "maxAccessRatio": 1.6763,
+      "clearanceHeadroom": 0.2646,
+      "meanCurvature": 0.2303,
+      "reversal": 0.8,
+      "hairpin": 0.32
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 1,
+     "length3d": 4580.3,
+     "cumulativeHeadingDeg": 3018.3,
+     "equivalentHalfTurns": 16.769,
+     "meanCurvatureRadPerM": 0.011502,
+     "reversalCount": 16,
+     "hairpinRunCount": 16,
+     "development": 2.0269,
+     "geology": 0.0,
+     "geometry": 3.6027,
+     "total": 5.6296,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.1297,
+      "maxAccessRatio": 1.7347,
+      "clearanceHeadroom": 0.2216,
+      "meanCurvature": 0.23,
+      "reversal": 0.8,
+      "hairpin": 0.32
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k2-p+0-CW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 2,
+     "length3d": 4580.3,
+     "cumulativeHeadingDeg": 6052.3,
+     "equivalentHalfTurns": 33.624,
+     "meanCurvatureRadPerM": 0.023062,
+     "reversalCount": 33,
+     "hairpinRunCount": 33,
+     "development": 1.7254,
+     "geology": 0.0,
+     "geometry": 4.0115,
+     "total": 5.7369,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.241,
+      "maxAccessRatio": 0.8326,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4612,
+      "reversal": 1.65,
+      "hairpin": 0.66
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k2-p+0-CCW-g0.120",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 2,
+     "length3d": 3825.2,
+     "cumulativeHeadingDeg": 5930.4,
+     "equivalentHalfTurns": 32.947,
+     "meanCurvatureRadPerM": 0.027059,
+     "reversalCount": 32,
+     "hairpinRunCount": 32,
+     "development": 1.6886,
+     "geology": 0.0,
+     "geometry": 4.161,
+     "total": 5.8496,
+     "geometryComponents": {
+      "unusedGradient": 0.0,
+      "turningFraction": 0.2815,
+      "maxAccessRatio": 1.0984,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.5412,
+      "reversal": 1.6,
+      "hairpin": 0.64
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k2-p-20-CCW-g0.120",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 2,
+     "length3d": 3825.2,
+     "cumulativeHeadingDeg": 5891.1,
+     "equivalentHalfTurns": 32.728,
+     "meanCurvatureRadPerM": 0.026879,
+     "reversalCount": 32,
+     "hairpinRunCount": 32,
+     "development": 1.6913,
+     "geology": 0.0,
+     "geometry": 4.2484,
+     "total": 5.9397,
+     "geometryComponents": {
+      "unusedGradient": 0.0,
+      "turningFraction": 0.2778,
+      "maxAccessRatio": 1.193,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.5376,
+      "reversal": 1.6,
+      "hairpin": 0.64
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k2-p-20-CW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 2,
+     "length3d": 4580.3,
+     "cumulativeHeadingDeg": 6076.2,
+     "equivalentHalfTurns": 33.757,
+     "meanCurvatureRadPerM": 0.023154,
+     "reversalCount": 33,
+     "hairpinRunCount": 33,
+     "development": 1.8267,
+     "geology": 0.0,
+     "geometry": 4.2903,
+     "total": 6.117,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.24,
+      "maxAccessRatio": 1.1105,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4631,
+      "reversal": 1.65,
+      "hairpin": 0.66
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k2-p+20-CW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 2,
+     "length3d": 4580.3,
+     "cumulativeHeadingDeg": 6084.5,
+     "equivalentHalfTurns": 33.803,
+     "meanCurvatureRadPerM": 0.023185,
+     "reversalCount": 33,
+     "hairpinRunCount": 33,
+     "development": 2.105,
+     "geology": 0.0,
+     "geometry": 4.6912,
+     "total": 6.7961,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.2408,
+      "maxAccessRatio": 1.51,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4637,
+      "reversal": 1.65,
+      "hairpin": 0.66
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    }
+   ]
+  },
+  "WARPED_VEIN-301": {
+   "winnerExhaustive": "SPIRAL-n1-CCW-e+0-g0.120",
+   "feasibleCount": 10,
+   "bestPerFamily": {
+    "SPIRAL": {
+     "candidateId": "SPIRAL-n1-CCW-e+0-g0.120",
+     "family": "SPIRAL",
+     "legsPerLevel": null,
+     "length3d": 4418.9,
+     "cumulativeHeadingDeg": 6895.5,
+     "equivalentHalfTurns": 38.308,
+     "meanCurvatureRadPerM": 0.027235,
+     "reversalCount": 0,
+     "hairpinRunCount": 1,
+     "development": 1.6993,
+     "geology": 0.1066,
+     "geometry": 2.2661,
+     "total": 4.0721,
+     "geometryComponents": {
+      "unusedGradient": 0.0086,
+      "turningFraction": 0.4521,
+      "maxAccessRatio": 1.2408,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.5447,
+      "reversal": 0.0,
+      "hairpin": 0.02
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    "SWITCHBACK-k1": {
+     "candidateId": "SWITCHBACK-k1-p+0-CCW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 1,
+     "length3d": 5246.2,
+     "cumulativeHeadingDeg": 3495.0,
+     "equivalentHalfTurns": 19.417,
+     "meanCurvatureRadPerM": 0.011628,
+     "reversalCount": 19,
+     "hairpinRunCount": 19,
+     "development": 2.1533,
+     "geology": 0.0376,
+     "geometry": 3.83,
+     "total": 6.021,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.1232,
+      "maxAccessRatio": 1.9776,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.2326,
+      "reversal": 0.95,
+      "hairpin": 0.38
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    "SWITCHBACK-k2": {
+     "candidateId": "SWITCHBACK-k2-p+0-CCW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 2,
+     "length3d": 5246.2,
+     "cumulativeHeadingDeg": 6906.1,
+     "equivalentHalfTurns": 38.367,
+     "meanCurvatureRadPerM": 0.022976,
+     "reversalCount": 38,
+     "hairpinRunCount": 38,
+     "development": 1.9127,
+     "geology": 0.1101,
+     "geometry": 4.821,
+     "total": 6.8438,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.2294,
+      "maxAccessRatio": 1.3055,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4595,
+      "reversal": 1.9,
+      "hairpin": 0.76
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    }
+   },
+   "feasible": [
+    {
+     "candidateId": "SPIRAL-n1-CCW-e+0-g0.120",
+     "family": "SPIRAL",
+     "legsPerLevel": null,
+     "length3d": 4418.9,
+     "cumulativeHeadingDeg": 6895.5,
+     "equivalentHalfTurns": 38.308,
+     "meanCurvatureRadPerM": 0.027235,
+     "reversalCount": 0,
+     "hairpinRunCount": 1,
+     "development": 1.6993,
+     "geology": 0.1066,
+     "geometry": 2.2661,
+     "total": 4.0721,
+     "geometryComponents": {
+      "unusedGradient": 0.0086,
+      "turningFraction": 0.4521,
+      "maxAccessRatio": 1.2408,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.5447,
+      "reversal": 0.0,
+      "hairpin": 0.02
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SPIRAL-n1-CW-e+0-g0.120",
+     "family": "SPIRAL",
+     "legsPerLevel": null,
+     "length3d": 4455.0,
+     "cumulativeHeadingDeg": 6957.3,
+     "equivalentHalfTurns": 38.652,
+     "meanCurvatureRadPerM": 0.027257,
+     "reversalCount": 0,
+     "hairpinRunCount": 1,
+     "development": 1.7088,
+     "geology": 0.1603,
+     "geometry": 2.282,
+     "total": 4.1511,
+     "geometryComponents": {
+      "unusedGradient": 0.0167,
+      "turningFraction": 0.4524,
+      "maxAccessRatio": 1.2477,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.5451,
+      "reversal": 0.0,
+      "hairpin": 0.02
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SPIRAL-n1-CW-e+0-g0.100",
+     "family": "SPIRAL",
+     "legsPerLevel": null,
+     "length3d": 5251.4,
+     "cumulativeHeadingDeg": 6964.2,
+     "equivalentHalfTurns": 38.69,
+     "meanCurvatureRadPerM": 0.023146,
+     "reversalCount": 0,
+     "hairpinRunCount": 1,
+     "development": 1.8879,
+     "geology": 0.1522,
+     "geometry": 2.3587,
+     "total": 4.3988,
+     "geometryComponents": {
+      "unusedGradient": 0.1675,
+      "turningFraction": 0.4608,
+      "maxAccessRatio": 1.2475,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4629,
+      "reversal": 0.0,
+      "hairpin": 0.02
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SPIRAL-n1-CCW-e+0-g0.100",
+     "family": "SPIRAL",
+     "legsPerLevel": null,
+     "length3d": 5246.2,
+     "cumulativeHeadingDeg": 6957.1,
+     "equivalentHalfTurns": 38.651,
+     "meanCurvatureRadPerM": 0.023145,
+     "reversalCount": 0,
+     "hairpinRunCount": 1,
+     "development": 2.061,
+     "geology": 0.1162,
+     "geometry": 2.662,
+     "total": 4.8392,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.4608,
+      "maxAccessRatio": 1.5516,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4629,
+      "reversal": 0.0,
+      "hairpin": 0.02
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k1-p+0-CCW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 1,
+     "length3d": 5246.2,
+     "cumulativeHeadingDeg": 3495.0,
+     "equivalentHalfTurns": 19.417,
+     "meanCurvatureRadPerM": 0.011628,
+     "reversalCount": 19,
+     "hairpinRunCount": 19,
+     "development": 2.1533,
+     "geology": 0.0376,
+     "geometry": 3.83,
+     "total": 6.021,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.1232,
+      "maxAccessRatio": 1.9776,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.2326,
+      "reversal": 0.95,
+      "hairpin": 0.38
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k1-p-20-CW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 1,
+     "length3d": 5246.2,
+     "cumulativeHeadingDeg": 3520.2,
+     "equivalentHalfTurns": 19.557,
+     "meanCurvatureRadPerM": 0.011711,
+     "reversalCount": 19,
+     "hairpinRunCount": 19,
+     "development": 2.1566,
+     "geology": 0.0886,
+     "geometry": 3.8946,
+     "total": 6.1398,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.1233,
+      "maxAccessRatio": 1.8948,
+      "clearanceHeadroom": 0.1455,
+      "meanCurvature": 0.2342,
+      "reversal": 0.95,
+      "hairpin": 0.38
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k1-p+20-CW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 1,
+     "length3d": 5246.2,
+     "cumulativeHeadingDeg": 3464.5,
+     "equivalentHalfTurns": 19.247,
+     "meanCurvatureRadPerM": 0.011526,
+     "reversalCount": 19,
+     "hairpinRunCount": 19,
+     "development": 2.0829,
+     "geology": 0.1567,
+     "geometry": 3.9744,
+     "total": 6.214,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.1234,
+      "maxAccessRatio": 1.7133,
+      "clearanceHeadroom": 0.4105,
+      "meanCurvature": 0.2305,
+      "reversal": 0.95,
+      "hairpin": 0.38
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k2-p+0-CCW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 2,
+     "length3d": 5246.2,
+     "cumulativeHeadingDeg": 6906.1,
+     "equivalentHalfTurns": 38.367,
+     "meanCurvatureRadPerM": 0.022976,
+     "reversalCount": 38,
+     "hairpinRunCount": 38,
+     "development": 1.9127,
+     "geology": 0.1101,
+     "geometry": 4.821,
+     "total": 6.8438,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.2294,
+      "maxAccessRatio": 1.3055,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4595,
+      "reversal": 1.9,
+      "hairpin": 0.76
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k2-p-20-CCW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 2,
+     "length3d": 5246.2,
+     "cumulativeHeadingDeg": 6930.3,
+     "equivalentHalfTurns": 38.502,
+     "meanCurvatureRadPerM": 0.023056,
+     "reversalCount": 38,
+     "hairpinRunCount": 38,
+     "development": 2.0328,
+     "geology": 0.0195,
+     "geometry": 5.1027,
+     "total": 7.155,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.2284,
+      "maxAccessRatio": 1.5865,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4611,
+      "reversal": 1.9,
+      "hairpin": 0.76
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    },
+    {
+     "candidateId": "SWITCHBACK-k2-p-20-CW-g0.100",
+     "family": "SWITCHBACK",
+     "legsPerLevel": 2,
+     "length3d": 5246.2,
+     "cumulativeHeadingDeg": 6977.5,
+     "equivalentHalfTurns": 38.764,
+     "meanCurvatureRadPerM": 0.023213,
+     "reversalCount": 38,
+     "hairpinRunCount": 38,
+     "development": 2.3665,
+     "geology": 0.0232,
+     "geometry": 5.7475,
+     "total": 8.1372,
+     "geometryComponents": {
+      "unusedGradient": 0.1667,
+      "turningFraction": 0.2302,
+      "maxAccessRatio": 2.2263,
+      "clearanceHeadroom": 0.0,
+      "meanCurvature": 0.4643,
+      "reversal": 1.9,
+      "hairpin": 0.76
+     },
+     "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+     }
+    }
+   ]
+  },
+  "GEOMETRY-STRESS": {
+   "winnerExhaustive": null,
+   "feasibleCount": 0,
+   "bestPerFamily": {},
+   "feasible": []
+  }
+ },
+ "sensitivity": "== TABULAR-REFERENCE\n  c=0.0    winner=SPIRAL-n1-CW-e+0-g0.120          total=3.4821  bestPerFamily={'SPIRAL': ('SPIRAL-n1-CW-e+0-g0.120', 3.4821), 'SWITCHBACK-k1': ('SWITCHBACK-k1-p+0-CW-g0.120', 4.8455), 'SWITCHBACK-k2': ('SWITCHBACK-k2-p+0-CW-g0.100', 5.7369)}\n  c=0.025  winner=SPIRAL-n1-CW-e+0-g0.120          total=4.3416  bestPerFamily={'SPIRAL': ('SPIRAL-n1-CW-e+0-g0.120', 4.3416), 'SWITCHBACK-k1': ('SWITCHBACK-k1-p+0-CW-g0.120', 5.2619), 'SWITCHBACK-k2': ('SWITCHBACK-k2-p+0-CW-g0.100', 6.5775)}\n  c=0.05   winner=SPIRAL-n1-CW-e+0-g0.120          total=5.2012  bestPerFamily={'SPIRAL': ('SPIRAL-n1-CW-e+0-g0.120', 5.2012), 'SWITCHBACK-k1': ('SWITCHBACK-k1-p+0-CW-g0.120', 5.6784), 'SWITCHBACK-k2': ('SWITCHBACK-k2-p+0-CW-g0.100', 7.4181)}\n  c=0.1    winner=SWITCHBACK-k1-p+0-CW-g0.120      total=6.5112  bestPerFamily={'SWITCHBACK-k1': ('SWITCHBACK-k1-p+0-CW-g0.120', 6.5112), 'SPIRAL': ('SPIRAL-n1-CW-e+0-g0.120', 6.9202), 'SWITCHBACK-k2': ('SWITCHBACK-k2-p+0-CW-g0.100', 9.0993)}\n  flip coefficient (SPIRAL best vs k1 best): 0.0769\n== WARPED_VEIN-301\n  c=0.0    winner=SPIRAL-n1-CCW-e+0-g0.120         total=4.0721  bestPerFamily={'SPIRAL': ('SPIRAL-n1-CCW-e+0-g0.120', 4.0721), 'SWITCHBACK-k1': ('SWITCHBACK-k1-p+0-CCW-g0.100', 6.021), 'SWITCHBACK-k2': ('SWITCHBACK-k2-p+0-CCW-g0.100', 6.8438)}\n  c=0.025  winner=SPIRAL-n1-CCW-e+0-g0.120         total=5.0298  bestPerFamily={'SPIRAL': ('SPIRAL-n1-CCW-e+0-g0.120', 5.0298), 'SWITCHBACK-k1': ('SWITCHBACK-k1-p+0-CCW-g0.100', 6.5064), 'SWITCHBACK-k2': ('SWITCHBACK-k2-p+0-CCW-g0.100', 7.803)}\n  c=0.05   winner=SPIRAL-n1-CCW-e+0-g0.120         total=5.9875  bestPerFamily={'SPIRAL': ('SPIRAL-n1-CCW-e+0-g0.120', 5.9875), 'SWITCHBACK-k1': ('SWITCHBACK-k1-p+0-CCW-g0.100', 6.9919), 'SWITCHBACK-k2': ('SWITCHBACK-k2-p+0-CCW-g0.100', 8.7622)}\n  c=0.1    winner=SPIRAL-n1-CCW-e+0-g0.120         total=7.9029  bestPerFamily={'SPIRAL': ('SPIRAL-n1-CCW-e+0-g0.120', 7.9029), 'SWITCHBACK-k1': ('SWITCHBACK-k1-p+0-CCW-g0.100', 7.9627), 'SWITCHBACK-k2': ('SWITCHBACK-k2-p+0-CCW-g0.100', 10.6805)}\n  flip coefficient (SPIRAL best vs k1 best): 0.1032\n"
+}

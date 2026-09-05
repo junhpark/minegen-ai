@@ -579,7 +579,8 @@ Search: cheap stage on every candidate (grade ≤ g_max + 1e-9, plan radius
 served), shortlist of 12 by the Phase 20B.1 D cheap LOWER BOUND of the
 weighted total (`w_dev·(L/L_ideal + 0.5·meanAccess/reach) +
 w_geom·(unusedGrade + 0.5·turningFrac + maxAccess/reach +
-20·meanCurvature + 0.05·reversals + 0.02·hairpinRuns)`; geology, the
+20·meanCurvature + 0.05·reversals + 0.02·hairpinRuns +
+0.05·equivalentHalfTurns)`; geology, the
 access length and the clearance headroom are the omitted non-negative
 terms — the rule 165 corrective after the audited proxy missed exhaustive
 winners at ranks 40/62 and 22/26; additionally every declared family's
@@ -594,9 +595,27 @@ portal transition), clearance report under the evaluator's policy,
     geology     = 10·coreFrac + 3·damageFrac + 5·poorRockFrac + 0.1·crossings
     geometry    = unusedGrade + 0.5·turningFrac + maxAccess/reach + clearanceHeadroom
                   + 20·meanCurvature(rad/m) + 0.05·reversals + 0.02·hairpinRuns
+                  + 0.05·equivalentHalfTurns
                   (Phase 20B.1 D-2: the measured family signature priced in —
                   a priori round coefficients, never reverse-engineered to
-                  crown a family)
+                  crown a family. Phase 20B.2-B: equivalentHalfTurns =
+                  cumulative |Δheading| (rad) / π is the ABSOLUTE turning
+                  burden in 180° units — the audit showed meanCurvature,
+                  being length-normalized, let a 34-half-turn helix price
+                  0.55 while a 17-half-turn k1 switchback paid 1.12 through
+                  the absolute reversal / hairpin counts. The coefficient
+                  was fixed before the sensitivity run: 180° of steering
+                  costs the same 0.05 as one reversal, so a hairpin (180° +
+                  reversal) and one helix loop (360°) both price 0.10. It
+                  shares its measurement with meanCurvature (density vs
+                  count — reported separately, never a family bonus).
+                  Measured 0.5× / 1× / 2× sensitivity on the exhaustive
+                  feasible sets (golden/phase20b2_turning_burden_audit.json):
+                  TABULAR spiral-vs-k1 flips only above 0.077 (k1 wins at
+                  0.10), WARPED-301 above 0.103 (spiral wins at 0.10);
+                  at the chosen 0.05 the SPIRAL winners stand and are
+                  accepted as-is; no family bonus / penalty / multiplier
+                  exists)
     total       = w_dev·development + w_geo·geology + w_geom·geometry
 
 Ranking `(feasible, round(total, 1e-9), family order, id)`. Measured

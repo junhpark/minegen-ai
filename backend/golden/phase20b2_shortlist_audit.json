@@ -25,17 +25,15 @@
       "feasibleNormal": [
         "SPIRAL-n1-CW-e+0-g0.120",
         "SPIRAL-n1-CW-e+0-g0.100",
-        "SPIRAL-n1-CCW-e+0-g0.100"
+        "SPIRAL-n1-CCW-e+0-g0.100",
+        "SWITCHBACK-k1-p+0-CW-g0.120",
+        "SWITCHBACK-k1-p+0-CCW-g0.120"
       ],
       "key": "TABULAR-REFERENCE",
-      "missedFamilies": [
-        "SWITCHBACK"
-      ],
+      "missedFamilies": [],
       "missedFeasible": [
         "SWITCHBACK-k1-p-20-CW-g0.100",
         "SWITCHBACK-k1-p-20-CCW-g0.100",
-        "SWITCHBACK-k1-p+0-CW-g0.120",
-        "SWITCHBACK-k1-p+0-CCW-g0.120",
         "SWITCHBACK-k1-p+0-CCW-g0.100",
         "SWITCHBACK-k1-p+20-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CW-g0.100",
@@ -62,21 +60,21 @@
         "SWITCHBACK-k2-p+20-CW-g0.100"
       ],
       "realized": true,
-      "secondsExhaustive": 32.317174533999605,
-      "secondsNormal": 8.198464746000354,
+      "secondsExhaustive": 31.953104789000463,
+      "secondsNormal": 12.824811325000155,
       "shortlist": [
         "SPIRAL-n1-CW-e-45-g0.120",
         "SPIRAL-n1-CCW-e+45-g0.120",
         "SPIRAL-n1-CW-e+45-g0.100",
         "SPIRAL-n1-CCW-e-45-g0.100",
         "SPIRAL-n1-CW-e+0-g0.120",
+        "SWITCHBACK-k1-p-20-CW-g0.120",
         "SPIRAL-n1-CW-e+0-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.100",
-        "SPIRAL-n2-CW-e+45-g0.100",
-        "SPIRAL-n2-CW-e-45-g0.100",
-        "SPIRAL-n2-CCW-e+45-g0.100",
-        "SPIRAL-n1.5-CCW-e+45-g0.120",
-        "SWITCHBACK-k1-p-20-CW-g0.120"
+        "SWITCHBACK-k1-p+0-CW-g0.120",
+        "SWITCHBACK-k1-p+20-CW-g0.120",
+        "SWITCHBACK-k1-p+0-CCW-g0.120",
+        "SWITCHBACK-k1-p+0-CW-g0.100"
       ],
       "shortlistSize": 12,
       "winnerExhaustive": "SPIRAL-n1-CW-e+0-g0.120",
@@ -130,8 +128,8 @@
         "SWITCHBACK-k2-p-20-CW-g0.100"
       ],
       "realized": true,
-      "secondsExhaustive": 42.96429116099989,
-      "secondsNormal": 14.220957855999586,
+      "secondsExhaustive": 45.09675210899968,
+      "secondsNormal": 17.276136206000047,
       "shortlist": [
         "SPIRAL-n1-CW-e-45-g0.120",
         "SPIRAL-n1-CCW-e+45-g0.100",
@@ -141,10 +139,10 @@
         "SPIRAL-n1-CCW-e+0-g0.120",
         "SPIRAL-n1-CW-e+0-g0.120",
         "SPIRAL-n1-CW-e+0-g0.100",
-        "SPIRAL-n2-CW-e-45-g0.100",
-        "SPIRAL-n2-CCW-e-45-g0.100",
-        "SPIRAL-n2-CCW-e+45-g0.100",
-        "SWITCHBACK-k1-p+20-CCW-g0.120"
+        "SWITCHBACK-k1-p+20-CCW-g0.120",
+        "SWITCHBACK-k1-p+0-CW-g0.120",
+        "SWITCHBACK-k1-p-20-CW-g0.120",
+        "SWITCHBACK-k1-p+0-CCW-g0.120"
       ],
       "shortlistSize": 12,
       "winnerExhaustive": "SPIRAL-n1-CCW-e+0-g0.120",
@@ -162,8 +160,8 @@
       "note": "15 m levels + R_min 20 m: derived spiral radius and switchback legs near limits",
       "rankingExhaustive": [],
       "realized": true,
-      "secondsExhaustive": 18.336150244000237,
-      "secondsNormal": 14.315335504000359,
+      "secondsExhaustive": 18.89522069600025,
+      "secondsNormal": 12.806224717000077,
       "shortlist": [
         "SPIRAL-n1-CW-e+45-g0.100",
         "SPIRAL-n1-CCW-e-45-g0.100",
@@ -175,8 +173,8 @@
         "SWITCHBACK-k1-p+0-CW-g0.100",
         "SWITCHBACK-k1-p+0-CCW-g0.100",
         "SWITCHBACK-k1-p-20-CCW-g0.100",
-        "SWITCHBACK-k1-p+20-CCW-g0.100",
-        "SWITCHBACK-k1-p-20-CCW-g0.120"
+        "SWITCHBACK-k1-p-20-CCW-g0.120",
+        "SWITCHBACK-k1-p+20-CCW-g0.120"
       ],
       "shortlistSize": 12,
       "winnerExhaustive": null,
@@ -194,21 +192,21 @@
       "note": "implicit body where the search honestly finds no feasible candidate",
       "rankingExhaustive": [],
       "realized": true,
-      "secondsExhaustive": 20.52769180499945,
-      "secondsNormal": 5.3437128650002705,
+      "secondsExhaustive": 21.472451419999743,
+      "secondsNormal": 10.841231130999404,
       "shortlist": [
         "SPIRAL-n1-CCW-e+45-g0.120",
         "SPIRAL-n1-CCW-e+45-g0.100",
         "SPIRAL-n1-CW-e-45-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.120",
+        "SWITCHBACK-k1-p+0-CW-g0.120",
+        "SWITCHBACK-k1-p-20-CCW-g0.120",
         "SPIRAL-n1-CCW-e+0-g0.100",
-        "SPIRAL-n2-CCW-e+45-g0.100",
-        "SPIRAL-n2-CW-e-45-g0.100",
-        "SPIRAL-n2-CCW-e-45-g0.100",
-        "SPIRAL-n1.5-CCW-e+45-g0.120",
-        "SPIRAL-n1.5-CW-e-45-g0.120",
-        "SPIRAL-n2-CCW-e+0-g0.100",
-        "SWITCHBACK-k1-p+0-CW-g0.120"
+        "SWITCHBACK-k1-p-20-CCW-g0.100",
+        "SWITCHBACK-k1-p+0-CCW-g0.120",
+        "SWITCHBACK-k1-p+0-CW-g0.100",
+        "SWITCHBACK-k1-p-20-CW-g0.120",
+        "SWITCHBACK-k1-p+0-CCW-g0.100"
       ],
       "shortlistSize": 12,
       "winnerExhaustive": null,
@@ -226,21 +224,21 @@
       "note": "deliberate access infeasibility: no branch can fit the 15-16 m length window",
       "rankingExhaustive": [],
       "realized": true,
-      "secondsExhaustive": 3.551852345000043,
-      "secondsNormal": 1.8502187609992689,
+      "secondsExhaustive": 3.630523066999558,
+      "secondsNormal": 1.9277251789999355,
       "shortlist": [
         "SPIRAL-n1-CW-e-45-g0.120",
         "SPIRAL-n1-CCW-e+45-g0.120",
         "SPIRAL-n1-CW-e+45-g0.100",
         "SPIRAL-n1-CCW-e-45-g0.100",
         "SPIRAL-n1-CW-e+0-g0.120",
+        "SWITCHBACK-k1-p-20-CW-g0.120",
         "SPIRAL-n1-CW-e+0-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.100",
-        "SPIRAL-n2-CW-e+45-g0.100",
-        "SPIRAL-n2-CW-e-45-g0.100",
-        "SPIRAL-n2-CCW-e+45-g0.100",
-        "SPIRAL-n1.5-CCW-e+45-g0.120",
-        "SWITCHBACK-k1-p-20-CW-g0.120"
+        "SWITCHBACK-k1-p+0-CW-g0.120",
+        "SWITCHBACK-k1-p+20-CW-g0.120",
+        "SWITCHBACK-k1-p+0-CCW-g0.120",
+        "SWITCHBACK-k1-p+0-CW-g0.100"
       ],
       "shortlistSize": 12,
       "winnerExhaustive": null,
@@ -269,17 +267,15 @@
       "feasibleNormal": [
         "SPIRAL-n1-CW-e+0-g0.120",
         "SPIRAL-n1-CW-e+0-g0.100",
-        "SPIRAL-n1-CCW-e+0-g0.100"
+        "SPIRAL-n1-CCW-e+0-g0.100",
+        "SWITCHBACK-k1-p+0-CW-g0.120",
+        "SWITCHBACK-k1-p+0-CCW-g0.120"
       ],
       "key": "CUT_AND_FILL",
-      "missedFamilies": [
-        "SWITCHBACK"
-      ],
+      "missedFamilies": [],
       "missedFeasible": [
         "SWITCHBACK-k1-p-20-CW-g0.100",
         "SWITCHBACK-k1-p-20-CCW-g0.100",
-        "SWITCHBACK-k1-p+0-CW-g0.120",
-        "SWITCHBACK-k1-p+0-CCW-g0.120",
         "SWITCHBACK-k1-p+0-CCW-g0.100",
         "SWITCHBACK-k1-p+20-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CW-g0.100",
@@ -306,21 +302,21 @@
         "SWITCHBACK-k2-p+20-CW-g0.100"
       ],
       "realized": true,
-      "secondsExhaustive": 32.6972137140001,
-      "secondsNormal": 8.310366617,
+      "secondsExhaustive": 33.76571850599976,
+      "secondsNormal": 13.196966892999626,
       "shortlist": [
         "SPIRAL-n1-CW-e-45-g0.120",
         "SPIRAL-n1-CCW-e+45-g0.120",
         "SPIRAL-n1-CW-e+45-g0.100",
         "SPIRAL-n1-CCW-e-45-g0.100",
         "SPIRAL-n1-CW-e+0-g0.120",
+        "SWITCHBACK-k1-p-20-CW-g0.120",
         "SPIRAL-n1-CW-e+0-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.100",
-        "SPIRAL-n2-CW-e+45-g0.100",
-        "SPIRAL-n2-CW-e-45-g0.100",
-        "SPIRAL-n2-CCW-e+45-g0.100",
-        "SPIRAL-n1.5-CCW-e+45-g0.120",
-        "SWITCHBACK-k1-p-20-CW-g0.120"
+        "SWITCHBACK-k1-p+0-CW-g0.120",
+        "SWITCHBACK-k1-p+20-CW-g0.120",
+        "SWITCHBACK-k1-p+0-CCW-g0.120",
+        "SWITCHBACK-k1-p+0-CW-g0.100"
       ],
       "shortlistSize": 12,
       "winnerExhaustive": "SPIRAL-n1-CW-e+0-g0.120",
@@ -345,17 +341,15 @@
       "feasibleNormal": [
         "SPIRAL-n1-CW-e+0-g0.120",
         "SPIRAL-n1-CW-e+0-g0.100",
-        "SPIRAL-n1-CCW-e+0-g0.120"
+        "SPIRAL-n1-CCW-e+0-g0.120",
+        "SPIRAL-n1-CCW-e+0-g0.100",
+        "SWITCHBACK-k1-p+20-CW-g0.100"
       ],
       "key": "IRREGULAR-REACH-EXCEEDED",
-      "missedFamilies": [
-        "SWITCHBACK"
-      ],
+      "missedFamilies": [],
       "missedFeasible": [
-        "SPIRAL-n1-CCW-e+0-g0.100",
         "SWITCHBACK-k1-p-20-CW-g0.100",
         "SWITCHBACK-k1-p+0-CCW-g0.100",
-        "SWITCHBACK-k1-p+20-CW-g0.100",
         "SWITCHBACK-k2-p-20-CW-g0.100",
         "SWITCHBACK-k2-p-20-CCW-g0.100",
         "SWITCHBACK-k2-p+0-CCW-g0.100"
@@ -367,28 +361,28 @@
         "SPIRAL-n1-CW-e+0-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.100",
         "SWITCHBACK-k1-p+20-CW-g0.100",
-        "SWITCHBACK-k2-p+0-CCW-g0.100",
         "SWITCHBACK-k1-p+0-CCW-g0.100",
         "SWITCHBACK-k1-p-20-CW-g0.100",
+        "SWITCHBACK-k2-p+0-CCW-g0.100",
         "SWITCHBACK-k2-p-20-CCW-g0.100",
         "SWITCHBACK-k2-p-20-CW-g0.100"
       ],
       "realized": true,
-      "secondsExhaustive": 44.10644052399948,
-      "secondsNormal": 14.42248164800003,
+      "secondsExhaustive": 43.755077003000224,
+      "secondsNormal": 18.887518591000116,
       "shortlist": [
         "SPIRAL-n1-CCW-e+45-g0.100",
         "SPIRAL-n1-CW-e-45-g0.100",
         "SPIRAL-n1-CW-e-45-g0.120",
         "SPIRAL-n1-CW-e+45-g0.100",
         "SPIRAL-n1-CCW-e-45-g0.100",
-        "SPIRAL-n2-CW-e-45-g0.100",
-        "SPIRAL-n2-CCW-e-45-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.120",
         "SPIRAL-n1-CW-e+0-g0.120",
-        "SPIRAL-n2-CCW-e+45-g0.100",
         "SPIRAL-n1-CW-e+0-g0.100",
-        "SWITCHBACK-k1-p+20-CCW-g0.120"
+        "SWITCHBACK-k1-p+20-CCW-g0.120",
+        "SWITCHBACK-k1-p+0-CW-g0.120",
+        "SPIRAL-n1-CCW-e+0-g0.100",
+        "SWITCHBACK-k1-p+20-CW-g0.100"
       ],
       "shortlistSize": 12,
       "winnerExhaustive": "SPIRAL-n1-CCW-e+0-g0.120",
@@ -397,8 +391,8 @@
     }
   ],
   "gitHead": "ebb7e74f59e0c3f1d69e4e35ac50d4ae57f3594b",
-  "label": "20b2a-audit",
+  "label": "20b2b-audit",
   "semantics": "diagnostic shortlist-starvation audit: exhaustive detailed validation of every cheap-feasible candidate versus the bounded production shortlist; the production search is unchanged by this report",
   "suiteVersion": 1,
-  "totalRuntimeSeconds": 263.97792412800027
+  "totalRuntimeSeconds": 289.26427725400026
 }

@@ -120,6 +120,21 @@ GEOM_REVERSAL_COEF = 0.05
 #: × count of ≥ 150° same-sense turning runs (hairpins AND a spiral's
 #: continuous winding — one long run for a helix)
 GEOM_HAIRPIN_COEF = 0.02
+#: × equivalentHalfTurns = cumulative |Δheading| (rad) / π — the ABSOLUTE
+#: turning burden as a dimensionless count of 180° units (Phase 20B.2-B).
+#: The 20B.2-B audit (golden/phase20b2_turning_burden_audit.json) showed the
+#: structural asymmetry: meanCurvature is length-normalized, so a helix
+#: winding 34 half-turns over 3954 m priced 0.55 while a k1 switchback
+#: turning 17 half-turns paid 0.8 + 0.32 through the ABSOLUTE reversal and
+#: hairpin counts. Coefficient chosen A PRIORI, before the sensitivity run:
+#: 180° of cumulative steering costs the same 0.05 as one direction
+#: reversal (GEOM_REVERSAL_COEF), so a hairpin (180° + a reversal) and one
+#: helix loop (360°, no reversal) both price 0.10 — symmetric by
+#: construction, not fitted to any family. It is a geometry planning
+#: proxy, not a tyre / fuel / ventilation model; it shares its measurement
+#: (cumulative heading) with meanCurvature (turning DENSITY per metre) —
+#: the two are different normalizations and are reported separately.
+GEOM_HALF_TURN_COEF = 0.05
 #: score ties within this tolerance fall through to the family-order and
 #: candidate-id tie-breaks (§28)
 SCORE_TIE_TOLERANCE = 1e-9
@@ -554,6 +569,7 @@ def cheap_proxy(
         + GEOM_CURVATURE_COEF * math.radians(diag.cumulative_heading_change_deg) / total_len
         + GEOM_REVERSAL_COEF * diag.heading_reversal_count
         + GEOM_HAIRPIN_COEF * diag.hairpin_run_count
+        + GEOM_HALF_TURN_COEF * math.radians(diag.cumulative_heading_change_deg) / math.pi
     )
     w = ctx.cfg.weights
     return w.development * dev_lb + w.geometry * geom_lb
@@ -594,6 +610,9 @@ def score_candidate(
     mean_curvature = math.radians(diag.cumulative_heading_change_deg) / total_len
     reversals = float(diag.heading_reversal_count)
     hairpin_runs = float(diag.hairpin_run_count)
+    # Phase 20B.2-B: absolute turning burden in 180° units (see the
+    # GEOM_HALF_TURN_COEF rationale) — reported next to the density term
+    half_turns = math.radians(diag.cumulative_heading_change_deg) / math.pi
     geometry = (
         unused_grade
         + GEOM_TURNING_COEF * turning_frac
@@ -602,6 +621,7 @@ def score_candidate(
         + GEOM_CURVATURE_COEF * mean_curvature
         + GEOM_REVERSAL_COEF * reversals
         + GEOM_HAIRPIN_COEF * hairpin_runs
+        + GEOM_HALF_TURN_COEF * half_turns
     )
     total = (
         weights.development * development + weights.geology * geology + weights.geometry * geometry
@@ -627,6 +647,7 @@ def score_candidate(
             "meanCurvatureRadPerM": mean_curvature,
             "headingReversalCount": reversals,
             "hairpinRunCount": hairpin_runs,
+            "equivalentHalfTurns": half_turns,
         },
     )
 

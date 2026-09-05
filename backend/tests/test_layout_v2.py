@@ -1212,14 +1212,20 @@ def test_geometry_score_prices_the_family_signature(
 ) -> None:
     """Phase 20B.1 D-2: the geometry group carries the three curvature
     components with the documented coefficients — recomputable exactly from
-    the candidate's own diagnostics, for every validated candidate."""
+    the candidate's own diagnostics, for every validated candidate. Phase
+    20B.2-B adds the ABSOLUTE turning burden ``equivalentHalfTurns`` =
+    cumulative heading (rad) / π, priced at GEOM_HALF_TURN_COEF; no family
+    bonus / penalty / multiplier exists anywhere in the score."""
     from minegen.layout.search import (
         GEOM_CLEARANCE_COEF,
         GEOM_CURVATURE_COEF,
         GEOM_HAIRPIN_COEF,
+        GEOM_HALF_TURN_COEF,
         GEOM_REVERSAL_COEF,
         GEOM_TURNING_COEF,
     )
+
+    assert GEOM_HALF_TURN_COEF == GEOM_REVERSAL_COEF  # documented a-priori symmetry
 
     _, res = tabular_search
     validated = [c for c in res.candidates if c.scores is not None and c.diagnostics is not None]
@@ -1233,6 +1239,14 @@ def test_geometry_score_prices_the_family_signature(
         )
         assert comp["headingReversalCount"] == d.heading_reversal_count
         assert comp["hairpinRunCount"] == d.hairpin_run_count
+        assert comp["equivalentHalfTurns"] == pytest.approx(
+            math.radians(d.cumulative_heading_change_deg) / math.pi
+        )
+        # density (per metre) and count (per 180°) are two normalizations of
+        # the same measurement — both reported, both priced separately
+        assert comp["equivalentHalfTurns"] == pytest.approx(
+            comp["meanCurvatureRadPerM"] * d.length3d / math.pi
+        )
         expected = (
             comp["unusedGradient"]
             + GEOM_TURNING_COEF * comp["turningFraction"]
@@ -1241,8 +1255,12 @@ def test_geometry_score_prices_the_family_signature(
             + GEOM_CURVATURE_COEF * comp["meanCurvatureRadPerM"]
             + GEOM_REVERSAL_COEF * comp["headingReversalCount"]
             + GEOM_HAIRPIN_COEF * comp["hairpinRunCount"]
+            + GEOM_HALF_TURN_COEF * comp["equivalentHalfTurns"]
         )
         assert s.geometry == pytest.approx(expected)
+        # the stage-3 proxy stays a LOWER BOUND of the weighted total
+        if c.cheap_proxy is not None:
+            assert c.cheap_proxy <= s.total + 1e-9
         saw_reversals = saw_reversals or d.heading_reversal_count > 0
     # the fixture validates both hairpin (switchback) and non-hairpin shapes
     assert saw_reversals
