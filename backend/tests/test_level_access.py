@@ -622,7 +622,9 @@ def test_separation_metrics_on_synthetic_geometry() -> None:
     got = turnout_heading_change_deg(arc_pts, arc_ch, mid)
     assert got == pytest.approx(math.degrees(50.0 / 18.0), rel=0.05)
 
-    # branch shorter than the taper exclusion: separation is None, not 0
+    # branch shorter than the taper exclusion (commit B): the TERMINAL is
+    # always judged, so a 6 m stub reports its entry separation (its entry is
+    # 6 m off the ramp -> envelope separation 1 m), never None and never 0
     short = LevelAccess(
         "L02",
         0.0,
@@ -633,8 +635,8 @@ def test_separation_metrics_on_synthetic_geometry() -> None:
         points=pts[:4],  # 6 m
     )
     fill_separation_metrics(short, ramp, ramp_ch, tunnel_width=5.0)
-    assert short.excavation_separation is None
-    assert short.ramp_centerline_distance is None
+    assert short.ramp_centerline_distance == pytest.approx(6.0, abs=0.05)
+    assert short.excavation_separation == pytest.approx(1.0, abs=0.05)
     assert short.junction_to_entry_plan_sep == pytest.approx(6.0)
 
 
@@ -654,7 +656,6 @@ def test_separation_metrics_reported_for_every_selected_access(
         assert a.junction_to_entry_dist3d >= a.junction_to_entry_plan_sep - 1e-9
         assert a.turnout_heading_change_deg is not None
         assert a.turnout_heading_change_deg >= 0.0
-        # branches are ~25-30 m >= the 15 m exclusion, so the pillar exists
         assert a.excavation_separation is not None
         assert a.ramp_centerline_distance is not None
         assert a.excavation_separation == pytest.approx(a.ramp_centerline_distance - 5.0)
@@ -670,3 +671,116 @@ def test_separation_metrics_reported_for_every_selected_access(
     assert summary["minJunctionToEntryPlanSep"] is not None
     assert summary["minExcavationSeparation"] is not None
     assert summary["maxTurnoutHeadingChangeDeg"] is not None
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20B.1 commit B — hard separation / pillar / turnout gates
+# --------------------------------------------------------------------------- #
+
+
+def test_gate_taper_arc_closed_form() -> None:
+    from minegen.layout.access import gate_taper_arc
+
+    # lateral within one turn: R * arccos(1 - l/R)
+    assert gate_taper_arc(18.0, 15.0) == pytest.approx(18.0 * math.acos(1.0 - 15.0 / 18.0))
+    assert gate_taper_arc(18.0, 0.0) == 0.0
+    # beyond one radius: quarter turn then perpendicular straight
+    assert gate_taper_arc(18.0, 40.0) == pytest.approx(18.0 * math.pi / 2.0 + 22.0)
+    # monotone in the lateral requirement
+    assert gate_taper_arc(18.0, 10.0) < gate_taper_arc(18.0, 15.0) < gate_taper_arc(18.0, 20.0)
+
+
+def test_selected_accesses_satisfy_every_hard_gate(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    """B-6: every SELECTED access of the winner plan honours the resolved
+    gates — plan separation, rock pillar (beyond the geometric taper,
+    terminal included) and turnout curvature."""
+    from minegen.layout.access import SEPARATION_TOLERANCE
+
+    sc, world = tabular
+    s, res = search
+    _, plan = _plan(sc, world, s, res)
+    assert plan.feasible
+    assert plan.plan_separation_required == pytest.approx(6.0 * sc.ramp.tunnel_width)
+    assert plan.excavation_separation_required == pytest.approx(2.0 * sc.ramp.tunnel_width)
+    assert plan.gate_taper_arc_m is not None and plan.gate_taper_arc_m > 0.0
+    for a in plan.accesses:
+        assert a.ok
+        assert a.junction_to_entry_plan_sep is not None
+        assert a.junction_to_entry_plan_sep >= plan.plan_separation_required - SEPARATION_TOLERANCE
+        assert a.excavation_separation is not None
+        assert a.excavation_separation >= plan.excavation_separation_required - SEPARATION_TOLERANCE
+        assert a.turnout_heading_change_deg is not None
+        assert (
+            a.turnout_heading_change_deg
+            <= sc.layout.access.maximum_turnout_heading_change_deg + 1e-6
+        )
+    summary = plan.summary()
+    assert summary["minimumPlanSeparationRequired"] == plan.plan_separation_required
+    assert summary["minimumExcavationSeparationRequired"] == plan.excavation_separation_required
+    assert summary["gateTaperArc"] == plan.gate_taper_arc_m
+
+
+def test_hard_gates_reject_with_typed_reasons(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    sc, world = tabular
+    s, res = search
+    # B-2: an impossible pillar demand fails typed, never clamped
+    _, plan = _plan(sc, world, s, res, minimum_excavation_separation=200.0)
+    assert not plan.feasible
+    failed = [a for a in plan.accesses if not a.ok]
+    assert failed
+    assert all(
+        a.rejection_counts.get(AccessFailure.INSUFFICIENT_RAMP_PILLAR, 0) > 0
+        or a.failure_reason == AccessFailure.INSUFFICIENT_RAMP_PILLAR
+        for a in failed
+    )
+    # B-1: an impossible plan-separation demand fails typed
+    _, plan = _plan(sc, world, s, res, minimum_ramp_to_entry_plan_separation=299.0)
+    assert not plan.feasible
+    failed = [a for a in plan.accesses if not a.ok]
+    assert failed
+    assert any(
+        a.rejection_counts.get(AccessFailure.INSUFFICIENT_RAMP_TO_ENTRY_SEPARATION, 0) > 0
+        for a in failed
+    )
+    # B-3: a near-zero curvature tolerance rejects in-curve junctions typed;
+    # any access that still succeeds sits in genuinely straight chainage
+    _, plan = _plan(sc, world, s, res, maximum_turnout_heading_change_deg=1e-3)
+    for a in plan.accesses:
+        if a.ok:
+            assert a.turnout_heading_change_deg is not None
+            assert a.turnout_heading_change_deg <= 1e-3 + 1e-6
+        else:
+            assert a.rejection_counts.get(AccessFailure.TURNOUT_NOT_STRAIGHT, 0) > 0
+
+
+def test_starvation_diagnostic_distinguishes_greedy_from_geometry(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    """B-5: with an absurd junction-spacing rule the FIRST level consumes the
+    whole ramp; deeper levels fail on JUNCTION_SPACING_CONFLICT and the
+    diagnostic re-run (ignoring only the used spacing) proves valid
+    candidates exist — assignment starvation, not geometry. Nothing is
+    relaxed for the recorded result."""
+    sc, world = tabular
+    s, res = search
+    _, plan = _plan(sc, world, s, res, minimum_ramp_junction_spacing=5000.0)
+    assert not plan.feasible
+    ok = [a for a in plan.accesses if a.ok]
+    starved = [
+        a for a in plan.accesses if a.failure_reason == AccessFailure.JUNCTION_SPACING_CONFLICT
+    ]
+    assert ok and starved
+    for a in starved:
+        d = a.assignment_diagnostic
+        assert d is not None
+        assert d["starvationSuspected"] is True
+        assert d["validCandidatesIgnoringSpacing"] > 0
+    # a level that fails WITHOUT any spacing conflict carries no diagnostic
+    _, plan_geo = _plan(sc, world, s, res, minimum_excavation_separation=200.0)
+    for a in plan_geo.accesses:
+        if not a.ok and a.rejection_counts.get(AccessFailure.JUNCTION_SPACING_CONFLICT, 0) == 0:
+            assert a.assignment_diagnostic is None

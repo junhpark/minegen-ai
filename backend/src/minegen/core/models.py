@@ -661,6 +661,33 @@ class LevelAccessConfig(ApiModel):
     access_sampling_spacing: Annotated[float, Field(gt=0.0, le=5.0)] = 2.0
     #: level-entry stand-off from the footwall edge; None → footwall_access_offset
     anchor_standoff: PositiveFloat | None = None
+    #: Phase 20B.1 B-1 hard floor on the junction → level-entry PLAN
+    #: separation (m); ``None`` → 6 × tunnel_width (30 m for the default
+    #: profile). The 3-D chord can exceed it through the vertical drop, but
+    #: independent level-access SPACE is a plan-view quantity. Violation is
+    #: the typed INSUFFICIENT_RAMP_TO_ENTRY_SEPARATION — never a clamp.
+    minimum_ramp_to_entry_plan_separation: PositiveFloat | None = None
+    #: Phase 20B.1 B-2 hard floor on the branch-to-ramp excavation
+    #: separation (rock pillar between the two envelopes, m); ``None`` →
+    #: 2 × tunnel_width (10 m). Keeping 1.5–3 spans of rock between parallel
+    #: openings is an engineering PLANNING default, never a statutory value.
+    #: Judged on the delivered branch beyond the geometry-derived turnout
+    #: taper (``layout/access.py::gate_taper_arc``), terminal always
+    #: included; violation is the typed INSUFFICIENT_RAMP_PILLAR.
+    minimum_excavation_separation: PositiveFloat | None = None
+    #: Phase 20B.1 B-3 chainage half-window (m) around a junction candidate
+    #: over which the delivered main ramp's cumulative heading change is
+    #: gated (the O-2 diagnostic window)
+    minimum_turnout_straight_buffer: PositiveFloat = 25.0
+    #: Phase 20B.1 B-3 gate: maximum cumulative |Δheading| (deg) of the
+    #: delivered ramp inside that window. The 100° default rejects a turnout
+    #: inside a near-minimum-radius turn (mean window radius below
+    #: ≈ 1.6 × R_min for the defaults — an R_min hairpin reads ≈ 159°) while
+    #: a gently curving helix still passes; a TRUE straight-insert turnout
+    #: requirement needs family support for local straight sections
+    #: (Phase 20C) and is NOT what this v0.1 gate enforces. Violation is the
+    #: typed TURNOUT_NOT_STRAIGHT, family-neutral.
+    maximum_turnout_heading_change_deg: PositiveFloat = 100.0
     #: level entry placement on the development backbone
     entry_policy: Literal["NEAREST_TO_RAMP"] = "NEAREST_TO_RAMP"
     #: PREFERRED access length (m, 3-D) — a mine-planning default, never a

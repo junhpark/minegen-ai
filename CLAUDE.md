@@ -1298,3 +1298,22 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      defaulting to the same 20 m, making the permanent ramp collinear with
      every level drift (measured envelope separation −4.9 m) — must not be
      reintroduced.
+
+171. Level-access separation gates are HARD (Phase 20B.1 B). Every access
+     candidate passes, typed and never clamped: junction → entry PLAN
+     separation ≥ `minimumRampToEntryPlanSeparation` (None → 6 × width);
+     branch-to-ramp excavation separation (rock pillar, both half-spans
+     subtracted) ≥ `minimumExcavationSeparation` (None → 2 × width), judged
+     on the delivered branch beyond the geometry-derived turnout taper
+     `s* = R·arccos(1 − (pillar + width)/R)` with the terminal always
+     included; and turnout curvature — cumulative |Δheading| of the
+     delivered main ramp over junction ± `minimumTurnoutStraightBuffer`
+     ≤ `maximumTurnoutHeadingChangeDeg` (100° default: rejects turnouts in
+     near-minimum-radius turns, family-neutral; a TRUE straight-insert
+     turnout needs Phase 20C family support and this v0.1 gate does not
+     claim it). Length cost stays the secondary ordering. A level failing
+     with junction-spacing conflicts records the B-5 assignment diagnostic
+     (the same search re-run ignoring only the used spacing) so greedy
+     starvation is distinguishable from geometric infeasibility; the
+     diagnostic never relaxes a constraint and never changes the result.
+     These are engineering planning defaults, never statutory values.

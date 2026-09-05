@@ -618,13 +618,29 @@ Acceptance on the delivered branch: `|g| ≤ g_max + 1e-9`, circumradius
 established (world, terrain, cover, restricted, orebody buffer under the
 policy), clearance ≥ required, profile boundary points through
 `envelope_masks` (0 hard, 0 above terrain), junction spacing ≥ 40 m.
-Selection `(length3d, junction chainage, sense)`.
+Phase 20B.1 B hard gates on every candidate (typed, never clamped):
+turnout curvature — cumulative |Δheading| of the delivered ramp over
+junction ± 25 m ≤ 100° (rejects a turnout inside a near-minimum-radius
+turn; a true straight-insert requirement needs Phase 20C family support);
+junction → entry PLAN separation ≥ 6 × width (30 m default); rock pillar —
+branch-to-ramp envelope separation ≥ 2 × width (10 m default) on samples
+beyond the geometry-derived taper `s* = R·arccos(1 − (pillar + width)/R)`
+(≈ 25.3 m for the defaults; quarter-turn + straight beyond one radius),
+terminal always judged. Selection among the survivors stays
+`(access_length_cost(L, P), L, junction chainage, sense)` (rule 163) — the
+length cost is SECONDARY to the gates. A level that fails with junction-
+spacing conflicts re-runs its search ignoring only the used spacing as the
+B-5 assignment diagnostic (starvation vs geometry); nothing is relaxed for
+the recorded result.
 
-Measured (TABULAR reference, defaults): 68 candidates, 6 feasible, winner
-`SWITCHBACK-k2-p+0-CCW-g0.120` with 13/13 accesses, total access 211 m
-(worst 17 m); the spiral `SPIRAL-n1-CCW-e+0-g0.120` needs 1 171 m of access
-(≈ 95 m per level) and drops from 2nd to 3rd; per-candidate access planning
-costs 0.5–0.75 s (≈ 80 connectors per level), stage-4 total ≈ 4 s.
+Measured (TABULAR reference, 20B.1 defaults): 68 candidates, 2 feasible
+under the hard gates, winner `SWITCHBACK-k2-p+20-CW-g0.120` with 13/13
+accesses — per level: pillar 10.2–16.1 m, plan separation 33.2–39.4 m,
+turnout 23–52° over ± 25 m, branch 66–91 m; stage-4 total ≈ 20 s (the
+pillar gate evaluates every surviving connector against the full ramp
+polyline). WARPED-301: winner `SPIRAL-n1-CCW-e+0-g0.120`, 14/14 accesses,
+pillar 10.1–13.8 m, turnout 81–91° (a gentle helix passes the 100° gate by
+design), branch 48–97 m.
 
 ## Phase 20B.1 — stand-off / clearance semantics audit (S1) and local refinement
 

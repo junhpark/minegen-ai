@@ -117,7 +117,21 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      ramp over junction ± 25 m chainage); summary
                                                      aggregates minJunctionToEntryPlanSep,
                                                      minExcavationSeparation,
-                                                     maxTurnoutHeadingChangeDeg
+                                                     maxTurnoutHeadingChangeDeg. Phase 20B.1 B
+                                                     hard gates (typed, never clamped):
+                                                     INSUFFICIENT_RAMP_TO_ENTRY_SEPARATION
+                                                     (plan sep < min, None → 6 × width),
+                                                     INSUFFICIENT_RAMP_PILLAR (excavation
+                                                     separation < min, None → 2 × width, judged
+                                                     beyond the geometry-derived turnout taper,
+                                                     terminal always included) and
+                                                     TURNOUT_NOT_STRAIGHT (cumulative |Δheading|
+                                                     over junction ± minimumTurnoutStraightBuffer
+                                                     above maximumTurnoutHeadingChangeDeg).
+                                                     Summary carries the resolved gate values +
+                                                     gateTaperArc; a level failed with spacing
+                                                     conflicts carries assignmentDiagnostic
+                                                     (B-5 starvation vs geometry)
                                                      409 LEVEL_ACCESSES_NOT_GENERATED if missing
     GET  …/design/ramp-source                        {activeSource, owningArtifact, available, …}
     PUT  …/design/ramp-source {activeSource}         LEGACY | LAYOUT_V2 (409 LAYOUT_V2_NOT_SELECTED
