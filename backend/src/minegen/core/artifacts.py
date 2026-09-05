@@ -10,6 +10,8 @@ from __future__ import annotations
 LEGACY_RAMP_ARTIFACT = "decline_smoothed.json"
 LAYOUT_V2_ARTIFACT = "layout_v2.json"
 LAYOUT_V2_SELECTED_ARTIFACT = "layout_v2_selected.json"
+#: Phase 20B: ramp junctions + level-access branches of the selected candidate
+LEVEL_ACCESSES_ARTIFACT = "level_accesses.json"
 LEVELS_ARTIFACT = "levels.json"
 RAMP_SOURCE_FILE = "ramp_source.json"
 

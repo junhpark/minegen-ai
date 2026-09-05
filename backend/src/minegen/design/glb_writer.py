@@ -25,7 +25,9 @@ _FLOAT = 5126
 _UNSIGNED_INT = 5125
 
 
-def write_glb(mesh: RenderMesh, *, generator: str = "minegen-phase06") -> bytes:
+def write_glb(
+    mesh: RenderMesh, *, generator: str = "minegen-phase06", name: str = "tunnel"
+) -> bytes:
     def pad4(data: bytes, fill: bytes) -> bytes:
         return data + fill * (-len(data) % 4)
 
@@ -95,8 +97,8 @@ def write_glb(mesh: RenderMesh, *, generator: str = "minegen-phase06") -> bytes:
         "buffers": [{"byteLength": len(binary)}],
         "bufferViews": views,
         "accessors": accessors,
-        "meshes": [{"name": "tunnel", "primitives": primitives}],
-        "nodes": [{"mesh": 0, "name": "tunnel"}],
+        "meshes": [{"name": name, "primitives": primitives}],
+        "nodes": [{"mesh": 0, "name": name}],
         "scenes": [{"nodes": [0]}],
         "scene": 0,
     }

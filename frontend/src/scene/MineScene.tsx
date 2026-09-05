@@ -13,8 +13,10 @@ import { FaultLayer } from './FaultLayer'
 import { OrebodyLayer } from './OrebodyLayer'
 import { RawDeclineLayer } from './RawDeclineLayer'
 import { LayoutSelectedLayer } from '@/scene/LayoutSelectedLayer'
+import { LevelAccessLayer } from '@/scene/LevelAccessLayer'
 import { SmoothedDeclineLayer } from './SmoothedDeclineLayer'
 import { TunnelMeshLayer } from './TunnelMeshLayer'
+import { DevelopmentMeshLayer } from './DevelopmentMeshLayer'
 import { LevelDevelopmentLayer } from './LevelDevelopmentLayer'
 import { NetworkLayer } from './NetworkLayer'
 import { StopeLayer } from './StopeLayer'
@@ -122,6 +124,14 @@ export function MineScene() {
           </Suspense>
         ) : null
       ) : null}
+      {showStatic &&
+      scene?.developmentMesh?.status === 'SUCCESS' &&
+      scene.developmentMesh.meshUrl &&
+      visible.has('developmentMesh') ? (
+        <Suspense fallback={null}>
+          <DevelopmentMeshLayer url={`${API_BASE_URL}${scene.developmentMesh.meshUrl}`} />
+        </Suspense>
+      ) : null}
       {showStatic && scene?.levels && (visible.has('levels') || visible.has('crosscuts')) ? (
         <LevelDevelopmentLayer
           levels={scene.levels}
@@ -147,6 +157,7 @@ export function MineScene() {
           timeline={scene.timeline}
           smoothed={scene.smoothedDecline}
           levels={scene.levels}
+          levelAccesses={scene.levelAccesses}
         />
       ) : null}
       {timelineActive && scene?.timeline && scene.stopes ? (
@@ -163,6 +174,9 @@ export function MineScene() {
       scene.rampSource.activeSource !== 'LAYOUT_V2' &&
       visible.has('layoutV2') ? (
         <LayoutSelectedLayer selected={scene.layoutV2Selected} />
+      ) : null}
+      {showStatic && scene?.levelAccesses && visible.has('levelAccesses') ? (
+        <LevelAccessLayer accesses={scene.levelAccesses} />
       ) : null}
       {scene?.decline && visible.has('rawSearchPath') ? (
         <RawDeclineLayer decline={scene.decline} />

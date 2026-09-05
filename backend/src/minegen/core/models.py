@@ -552,6 +552,8 @@ class ScheduleConfig(ApiModel):
     relative continuous days from startDay 0; no calendars/shifts."""
 
     ramp_advance_m_per_day: PositiveFloat = 4.0
+    #: Phase 20B level-access branch drives (same haulage profile as the ramp)
+    level_access_advance_m_per_day: PositiveFloat = 4.0
     drift_advance_m_per_day: PositiveFloat = 5.0
     crosscut_advance_m_per_day: PositiveFloat = 4.0
     stope_preparation_days: PositiveFloat = 5.0
@@ -627,6 +629,59 @@ class SwitchbackFamilyGrid(ApiModel):
     )
 
 
+class LevelAccessConfig(ApiModel):
+    """Phase 20B ramp-junction / level-access planning parameters (rules
+    153–160). Engineering PLANNING defaults for the synthetic sandbox — never
+    statutory or code-compliant values. ``None`` gradient / radius / stand-off
+    inherit the scenario ``RampConstraints`` (same haulage geometry)."""
+
+    max_gradient: Annotated[float | None, Field(gt=0.0, le=0.5)] = None
+    min_turn_radius: Annotated[float | None, Field(gt=0.0)] = None
+    #: chainage step of the ramp-junction candidate lattice (m)
+    junction_search_spacing: PositiveFloat = 10.0
+    #: two turnouts may not lie closer than this along the ramp (m)
+    minimum_ramp_junction_spacing: PositiveFloat = 40.0
+    #: junction window relative to the level: the branch may leave the ramp
+    #: this far ABOVE (descending branch) or BELOW (climbing branch) the level
+    junction_window_above: NonNegativeFloat = 45.0
+    junction_window_below: NonNegativeFloat = 10.0
+    #: shortest meaningful branch (m, 3-D): below this the "access" would be a
+    #: sliver of the ramp itself, not a turnout
+    minimum_access_length: PositiveFloat = 15.0
+    #: longest accepted access branch (m, 3-D)
+    maximum_access_length: PositiveFloat = 300.0
+    #: delivered polyline sampling (m)
+    access_sampling_spacing: Annotated[float, Field(gt=0.0, le=5.0)] = 2.0
+    #: level-entry stand-off from the footwall edge; None → footwall_access_offset
+    anchor_standoff: PositiveFloat | None = None
+    #: level entry placement on the development backbone
+    entry_policy: Literal["NEAREST_TO_RAMP"] = "NEAREST_TO_RAMP"
+    #: PREFERRED access length (m, 3-D) — a mine-planning default, never a
+    #: statutory value or a mandatory minimum. ``None`` → the engineering
+    #: default ``max(minimum_access_length, 6 × tunnel_width)``; an explicit
+    #: value must lie inside [minimum_access_length, maximum_access_length]
+    #: (validated, never clamped). The planner picks, among the VALID
+    #: junction / connector candidates, the one closest to this length
+    #: (long branches penalized more) instead of the shortest one.
+    preferred_access_length: PositiveFloat | None = None
+
+    @model_validator(mode="after")
+    def _access_length_window(self) -> LevelAccessConfig:
+        if self.minimum_access_length > self.maximum_access_length:
+            raise ValueError(
+                "minimumAccessLength must be <= maximumAccessLength "
+                f"({self.minimum_access_length:g} > {self.maximum_access_length:g})"
+            )
+        p = self.preferred_access_length
+        if p is not None and not (self.minimum_access_length <= p <= self.maximum_access_length):
+            raise ValueError(
+                f"preferredAccessLength {p:g} must lie inside "
+                f"[minimumAccessLength {self.minimum_access_length:g}, "
+                f"maximumAccessLength {self.maximum_access_length:g}]"
+            )
+        return self
+
+
 class LayoutScoreWeights(ApiModel):
     """The ONLY user-facing objective controls (rule 148): three
     interpretable groups. Internal coefficients are documented constants in
@@ -651,8 +706,11 @@ class LayoutV2Config(ApiModel):
     target_gradients: Annotated[
         list[Annotated[float, Field(gt=0, le=0.25)]], Field(min_length=1)
     ] = Field(default_factory=lambda: [0.12, 0.10])
-    #: maximum horizontal distance from a level crossing to the orebody
-    #: footprint at that level for the level to count as SERVED (m)
+    #: HEURISTIC access-potential reach (m): the horizontal distance from a
+    #: same-RL ramp crossing to the orebody footprint at that level. It feeds
+    #: the stage-3 cheap proxy and stays inspectable per level, but it is NOT
+    #: the "served" authority and never rejects a candidate (rule 164) — a
+    #: level is served only by a validated level access (``plan_level_accesses``)
     access_reach: PositiveFloat = 60.0
     #: perpendicular stand-off of the corridor's ore-facing edge from the
     #: footwall footprint edge; ``None`` → ``ramp.footwall_access_offset``
@@ -682,6 +740,8 @@ class LayoutV2Config(ApiModel):
     spiral: SpiralFamilyGrid = Field(default_factory=SpiralFamilyGrid)
     longitudinal: LongitudinalFamilyGrid = Field(default_factory=LongitudinalFamilyGrid)
     switchback: SwitchbackFamilyGrid = Field(default_factory=SwitchbackFamilyGrid)
+    #: Phase 20B ramp-junction / level-access planning (rules 153–160)
+    access: LevelAccessConfig = Field(default_factory=LevelAccessConfig)
     weights: LayoutScoreWeights = Field(default_factory=LayoutScoreWeights)
 
 

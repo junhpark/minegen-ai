@@ -16,10 +16,18 @@ declare module '@react-three/fiber' {
 import { positionsToThree } from '@/geometry/coordinateTransform'
 import { useTimelineStore } from '@/stores/timelineStore'
 import { clipPolylineByFractions, developmentProgress, stateAt } from '@/timeline/evaluate'
-import type { LevelsPayload, SmoothedDeclinePayload, TimelinePayload } from '@/types/scene'
+import type {
+  LevelAccessesPayload,
+  LevelsPayload,
+  SmoothedDeclinePayload,
+  TimelinePayload,
+} from '@/types/scene'
+
+export const LEVEL_ACCESSES_ARTIFACT = 'level_accesses.json'
 
 const COLORS: Record<string, string> = {
   RAMP: '#7fd4b8',
+  LEVEL_ACCESS: '#f2c14e',
   DRIFT: '#8fb8de',
   CROSSCUT: '#deb46a',
 }
@@ -35,10 +43,12 @@ export function TimelineDevelopmentLayer({
   timeline,
   smoothed,
   levels,
+  levelAccesses = null,
 }: {
   timeline: TimelinePayload
   smoothed: SmoothedDeclinePayload
   levels: LevelsPayload
+  levelAccesses?: LevelAccessesPayload | null
 }) {
   const currentDay = useTimelineStore((s) => s.currentDay)
 
@@ -48,10 +58,13 @@ export function TimelineDevelopmentLayer({
       const state = stateAt(dev.initialState, dev.transitions, currentDay)
       if (state === 'NOT_BUILT') continue
       const ref = dev.geometryRef
+      // rule 157: every geometryRef resolves against its OWNING artifact
       const points =
         ref.artifact === rampOwningArtifact(smoothed)
           ? smoothed.segments[ref.segmentIndex]?.effectiveCenterline.points
-          : levels.developments[ref.segmentIndex]?.centerline.points
+          : ref.artifact === LEVEL_ACCESSES_ARTIFACT
+            ? (levelAccesses?.accesses[ref.segmentIndex]?.centerline?.points ?? undefined)
+            : levels.developments[ref.segmentIndex]?.centerline.points
       if (!points) continue
       const clipped =
         state === 'DEVELOPING'
@@ -69,7 +82,7 @@ export function TimelineDevelopmentLayer({
       })
     }
     return out
-  }, [timeline, smoothed, levels, currentDay])
+  }, [timeline, smoothed, levels, levelAccesses, currentDay])
 
   return (
     <group>

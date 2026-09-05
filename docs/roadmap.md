@@ -27,14 +27,20 @@ demo (D0) is **deferred** and is no longer the next phase.
 | 18 | Spatial Field Core | remove BlockModel/SMU semantics, batch field API, replace longhole grade proxy, golden-scenario harness — done |
 | 19 | Implicit Geological Orebody | WARPED_VEIN: authoritative implicit solid (φ), variable thickness, pinch & swell, warped mid-surface, asymmetric outline → derived approximate clearance → derived marching-cubes mesh; legacy layout stays TABULAR-only — done |
 | 20A | Parametric Layout Family Search — families & Effective Ramp | SPIRAL / LONGITUDINAL / SWITCHBACK finite grids, numerical level service, delivered-centerline validation, EXACT / CONSERVATIVE clearance, hierarchical search + 3-group ranking, source-neutral Effective Ramp (LEGACY \| LAYOUT_V2) driving tunnel → levels → network → timeline → walkthrough for TABULAR; WARPED_VEIN candidates / ranking / rendering — done (Phase 20 NOT complete) |
-| 20B | Generalized level development | drifts / crosscuts / LEVEL_ENTRY from layout-v2 level connections for every orebody type; WARPED_VEIN walkthrough |
+| 20B | Ramp junctions, level access drives, method-aware level development | RAMP_JUNCTION → LEVEL_ACCESS → LEVEL_ENTRY topology, level-development anchors, finite deterministic access planning with hard validation, access length in ranking, `level_accesses.json`, method split (LONGHOLE lattice vs generic backbone; CUT_AND_FILL typed boundary), network / timeline / infrastructure connectivity, Phase 20A circumradius closeout — done. Closeout v3: preferred access length (6 × tunnel width planning default), stage-2 reach screen demoted to a heuristic (NO_RL_CROSSING stays hard), shortlist-starvation audit, LEVEL_ACCESS / DRIFT / CROSSCUT excavation meshes with CAP / OPEN endpoint QA, Layout v2 as the primary UX with the legacy decline chain as an Advanced section — done. Drifts / crosscuts for implicit bodies and the WARPED_VEIN walkthrough stay deferred |
 | 20C | Local bounded refinement | bounded local A* / repair inside the family corridor, FIGURE_EIGHT / HYBRID families |
-| 20D | Rulebook constraints & layout comparison | explicit rulebook compliance reporting, multi-candidate comparison; legacy A* kept as baseline |
+| 20D | Rulebook constraints, layout comparison & unified development mesh | explicit rulebook compliance reporting, multi-candidate comparison; boolean wall openings / exact junction CSG / all-development watertight union ("Unified Development Mesh"); legacy A* kept as baseline |
 | 21A | Longhole migration | prove the new MiningMethodPlan abstraction with already-validated geometry |
 | 21B | Cut & Fill | lift / cut / backfill 4D mining method |
 | 21C | Room & Pillar | limestone; pillar, room, bench, double bench |
 | 22 | Analysis / Economics / Compliance | production, development, cost, revenue, cashflow + rule compliance + layout comparison |
 | 23 | External Simulation Bridge | Ventsim, AnyLogic, blast, support, Unreal adapters |
+
+Follow-up change (not a phase, scheduled after the Phase 20B closeout):
+
+| Item | Purpose | Key change |
+| --- | --- | --- |
+| S1 | Ramp / Footwall / Access Standoff Semantics Rationalization | audit where `RampConstraints.clearance` is actually used and whether it duplicates `DesignConfig.orebody_exclusion_buffer`; define the main-ramp permanent-infrastructure stand-off, the level-development anchor stand-off and the envelope-inclusive distance basis; decide the WARPED conservative error-bound handling and per-method stand-off needs; separate user-adjustable values from internal derived ones; only then fix the engineering defaults and their relationships (CLAUDE.md rule 168) |
 
 Deferred deployment item (not scheduled):
 
@@ -42,8 +48,8 @@ Deferred deployment item (not scheduled):
 | --- | --- | --- |
 | D0 | Hugging Face public demo | single Docker Space, session isolation, TTL, prebuilt demo scenario |
 
-Phases 01–20A are described in `docs/architecture.md`; the invariants they
-established are `CLAUDE.md` rules 1–152.
+Phases 01–20B are described in `docs/architecture.md`; the invariants they
+established are `CLAUDE.md` rules 1–169.
 
 ## How this list is used
 

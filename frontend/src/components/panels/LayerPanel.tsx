@@ -29,22 +29,32 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
   },
   {
     title: 'Design',
-    rows: [{ id: 'accessTargets', label: 'Access targets', phase: 3 }],
+    rows: [
+      { id: 'smoothedDecline', label: 'Effective ramp (active design)', phase: 5 },
+      { id: 'layoutV2', label: 'Layout v2 selected candidate', phase: 20 },
+      { id: 'levelAccesses', label: 'Ramp junctions & level accesses', phase: 20 },
+      { id: 'levels', label: 'Level drifts (centerline)', phase: 8 },
+      { id: 'crosscuts', label: 'Crosscuts (centerline)', phase: 8 },
+    ],
   },
   {
     title: 'Excavations',
     rows: [
-      // §2: default OFF, and suppressed outright in 4D / TIMELINE_SNAPSHOT
-      { id: 'rawSearchPath', label: 'Raw search path', phase: 4 },
-      { id: 'smoothedDecline', label: 'Effective ramp (active source)', phase: 5 },
-      { id: 'layoutV2', label: 'Layout v2 selected candidate', phase: 20 },
-      { id: 'tunnelMesh', label: 'Tunnel mesh', phase: 6 },
+      { id: 'tunnelMesh', label: 'Ramp tunnel mesh', phase: 6 },
+      { id: 'developmentMesh', label: 'Development mesh (access · drift · crosscut)', phase: 20 },
       { id: 'ramp', label: 'Ramp', phase: 6 },
-      { id: 'levels', label: 'Levels', phase: 8 },
-      { id: 'crosscuts', label: 'Crosscuts', phase: 8 },
       { id: 'stopes', label: 'Stopes', phase: 9 },
       { id: 'backfill', label: 'Backfill', phase: 10 },
       { id: 'networkGraph', label: 'Network graph', phase: 7 },
+    ],
+  },
+  {
+    // closeout v3 §1.C: legacy diagnostic layers, default OFF
+    title: 'Legacy decline (advanced)',
+    rows: [
+      { id: 'accessTargets', label: 'Access targets (Phase 03)', phase: 3 },
+      // §2: default OFF, and suppressed outright in 4D / TIMELINE_SNAPSHOT
+      { id: 'rawSearchPath', label: 'Raw Hybrid-A* search path', phase: 4 },
     ],
   },
   {
@@ -58,7 +68,10 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
   },
 ]
 
-const CURRENT_PHASE = 4
+// every listed layer has backend content by now (Phase 20B closeout v3 §4:
+// the excavation meshes and their centerline overlays must toggle
+// independently); rows above this phase would render disabled
+const CURRENT_PHASE = 20
 
 const FIELDS: { id: SliceField; label: string }[] = [
   { id: 'rockQuality', label: 'Rock quality (synthetic RMR-like, 0-100)' },

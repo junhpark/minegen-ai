@@ -7,6 +7,7 @@
  * imply they are traversable (§14).
  */
 import type { SmoothedDeclinePayload } from '@/types/scene'
+import { rampSegmentId } from '@/types/scene'
 
 export interface MinimapPolyline {
   segmentId: string
@@ -35,7 +36,7 @@ export function buildMinimapModel(
   const polylines: MinimapPolyline[] = []
   const chainagePoints: number[] = []
   for (const seg of segments) {
-    if (active !== null && !active.has(seg.levelId)) break // ACTIVE prefix only
+    if (active !== null && !active.has(rampSegmentId(seg))) break // ACTIVE prefix only
     const pts = seg.effectiveCenterline?.points
     if (!Array.isArray(pts) || pts.length < 6) continue
     const xy: number[] = []
@@ -43,7 +44,7 @@ export function buildMinimapModel(
       xy.push(pts[i]!, pts[i + 1]!)
       chainagePoints.push(pts[i]!, pts[i + 1]!, pts[i + 2]!)
     }
-    polylines.push({ segmentId: seg.levelId, xy })
+    polylines.push({ segmentId: rampSegmentId(seg), xy })
   }
   const first = polylines[0]
   const last = polylines[polylines.length - 1]

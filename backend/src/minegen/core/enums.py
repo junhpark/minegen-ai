@@ -50,6 +50,10 @@ class NodeType(StrEnum):
     PORTAL = "PORTAL"
     JUNCTION = "JUNCTION"
     LEVEL_ENTRY = "LEVEL_ENTRY"
+    #: Phase 20B: turnout on the main ramp where a level access leaves it
+    RAMP_JUNCTION = "RAMP_JUNCTION"
+    #: Phase 20B: terminal of the main ramp below the last turnout
+    RAMP_END = "RAMP_END"
     STOPE_ACCESS = "STOPE_ACCESS"
     SHAFT_STATION = "SHAFT_STATION"
     CRUSHER = "CRUSHER"
@@ -61,6 +65,8 @@ class NodeType(StrEnum):
 
 class EdgeType(StrEnum):
     RAMP = "RAMP"
+    #: Phase 20B: branch drive from a RAMP_JUNCTION to a LEVEL_ENTRY
+    LEVEL_ACCESS = "LEVEL_ACCESS"
     DRIFT = "DRIFT"
     CROSSCUT = "CROSSCUT"
     RAISE = "RAISE"
@@ -82,6 +88,8 @@ class ObjectState(StrEnum):
 
 class TaskType(StrEnum):
     DEVELOP_RAMP = "DEVELOP_RAMP"
+    #: Phase 20B: ramp-junction → level-entry branch drive
+    DEVELOP_LEVEL_ACCESS = "DEVELOP_LEVEL_ACCESS"
     DEVELOP_LEVEL = "DEVELOP_LEVEL"
     DEVELOP_CROSSCUT = "DEVELOP_CROSSCUT"
     DEVELOP_RAISE = "DEVELOP_RAISE"

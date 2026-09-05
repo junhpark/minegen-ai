@@ -58,7 +58,9 @@ class Development(ApiModel):
 class LevelSummary(ApiModel):
     level_id: str
     candidate_id: str
-    entry: tuple[float, float, float]  # exact Phase 05 LEVEL_ENTRY (rule 71)
+    #: exact LEVEL_ENTRY (rule 71): the Phase 05 segment end for LEGACY, the
+    #: level-access terminal for LAYOUT_V2 (rule 157)
+    entry: tuple[float, float, float]
     entry_u: float
     drift_piece_count: int
     crosscut_count: int
@@ -76,10 +78,25 @@ class LevelsMetrics(ApiModel):
     total_crosscut_length3d: float = Field(alias="totalCrosscutLength3d")
 
 
+class ProductionDevelopment(ApiModel):
+    """Method-specific production development status (Phase 20B, rule 159):
+    the generic backbone drift is always attempted; the production lattice
+    (longhole crosscut stations) exists only for an implemented method, and
+    a reserved method reports UNSUPPORTED_METHOD explicitly — never a silent
+    longhole substitute."""
+
+    method: str
+    status: Literal["IMPLEMENTED", "UNSUPPORTED_METHOD"]
+    reason: str | None = None
+
+
 class LevelsPayload(ApiModel):
     status: Literal["SUCCESS", "FAILED"]
     failure_reason: str | None
     source_revision: str
+    #: LEGACY_RAMP_SEGMENT (Phase 05 segment ends) | LEVEL_ACCESS (rule 157)
+    entry_source: Literal["LEGACY_RAMP_SEGMENT", "LEVEL_ACCESS"] = "LEGACY_RAMP_SEGMENT"
+    production_development: ProductionDevelopment | None = None
     developments: list[Development]
     levels: list[LevelSummary]
     metrics: LevelsMetrics | None

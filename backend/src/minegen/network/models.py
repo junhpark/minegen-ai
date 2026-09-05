@@ -21,10 +21,13 @@ class NodeType(StrEnum):
     LEVEL_ENTRY = "LEVEL_ENTRY"
     JUNCTION = "JUNCTION"  # reserved (Phase 08+)
     STOPE_ACCESS = "STOPE_ACCESS"  # reserved (Phase 09+)
+    RAMP_JUNCTION = "RAMP_JUNCTION"  # Phase 20B: turnout on the main ramp
+    RAMP_END = "RAMP_END"  # Phase 20B: main-ramp terminal below the last turnout
 
 
 class EdgeType(StrEnum):
     RAMP = "RAMP"
+    LEVEL_ACCESS = "LEVEL_ACCESS"  # Phase 20B: RAMP_JUNCTION → LEVEL_ENTRY branch
     DRIFT = "DRIFT"  # reserved (Phase 08+)
     CROSSCUT = "CROSSCUT"  # reserved (Phase 08+)
     RAISE = "RAISE"  # reserved
@@ -63,6 +66,8 @@ class NetworkNode(ApiModel):
     candidate_id: str | None = None
     elevation: float | None = None
     station_index: int | None = None  # Phase 08 crosscut station k
+    #: Phase 20B RAMP_JUNCTION: chainage along the main ramp (m)
+    chainage: float | None = None
     station_u: float | None = None  # strike coordinate of the station
 
 
@@ -88,6 +93,10 @@ class NetworkMetrics(ApiModel):
     edge_count: int
     level_count: int
     junction_count: int = 0
+    #: Phase 20B
+    ramp_junction_count: int = 0
+    level_access_edge_count: int = 0
+    total_level_access_length3d: float = Field(alias="totalLevelAccessLength3d", default=0.0)
     stope_access_count: int = 0
     drift_edge_count: int = 0
     crosscut_edge_count: int = 0

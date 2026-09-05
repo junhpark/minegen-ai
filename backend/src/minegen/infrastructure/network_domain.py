@@ -25,15 +25,16 @@ from typing import Any
 
 import numpy as np
 
-from minegen.core.artifacts import RAMP_OWNING_ARTIFACTS
+from minegen.core.artifacts import LEVEL_ACCESSES_ARTIFACT, RAMP_OWNING_ARTIFACTS
 from minegen.infrastructure.models import CandidateSite, DemandPoint
 
 LENGTH_SYNC_TOLERANCE = 1e-6  # m — recomputed centerline vs edge.length3d
 ENDPOINT_TOLERANCE = 1e-6  # m — centerline ends vs from/to node positions
 
-_SUPPORTED_EDGE_TYPES = ("RAMP", "DRIFT", "CROSSCUT")
+_SUPPORTED_EDGE_TYPES = ("RAMP", "LEVEL_ACCESS", "DRIFT", "CROSSCUT")
 _OWNING_ARTIFACTS: dict[str, tuple[str, ...]] = {
     "RAMP": RAMP_OWNING_ARTIFACTS,
+    "LEVEL_ACCESS": (LEVEL_ACCESSES_ARTIFACT,),
     "DRIFT": ("levels.json",),
     "CROSSCUT": ("levels.json",),
 }
@@ -103,6 +104,7 @@ class InfrastructureNetworkDomain:
         network_payload: dict[str, Any],
         smoothed_payload: dict[str, Any],
         levels_payload: dict[str, Any],
+        accesses_payload: dict[str, Any] | None = None,
     ) -> InfrastructureNetworkDomain:
         """§11 shared gates. Raises typed errors; never Key/Index/ValueError."""
         if network_payload.get("status") != "SUCCESS":
@@ -141,7 +143,9 @@ class InfrastructureNetworkDomain:
 
         geometries: dict[str, EdgeGeometry] = {}
         for e in edge_list:
-            geometries[e["id"]] = cls._resolve_geometry(e, nodes, smoothed_payload, levels_payload)
+            geometries[e["id"]] = cls._resolve_geometry(
+                e, nodes, smoothed_payload, levels_payload, accesses_payload or {}
+            )
 
         node_order = sorted(nodes)
         edge_order = sorted(edge_ids)
@@ -221,6 +225,7 @@ class InfrastructureNetworkDomain:
         nodes: dict[str, dict[str, Any]],
         smoothed_payload: dict[str, Any],
         levels_payload: dict[str, Any],
+        accesses_payload: dict[str, Any],
     ) -> EdgeGeometry:
         expected_artifacts = _OWNING_ARTIFACTS[e["type"]]
         ref = e.get("geometryRef")
@@ -238,7 +243,12 @@ class InfrastructureNetworkDomain:
                 f"edge {e['id']} segmentIndex {raw_index!r} is not a non-negative integer"
             )
         is_ramp = artifact in RAMP_OWNING_ARTIFACTS
-        owners = smoothed_payload.get("segments") if is_ramp else levels_payload.get("developments")
+        if is_ramp:
+            owners = smoothed_payload.get("segments")
+        elif artifact == LEVEL_ACCESSES_ARTIFACT:
+            owners = accesses_payload.get("accesses")
+        else:
+            owners = levels_payload.get("developments")
         container = "effectiveCenterline" if is_ramp else "centerline"
         if not isinstance(owners, list) or raw_index >= len(owners):
             count = len(owners) if isinstance(owners, list) else 0

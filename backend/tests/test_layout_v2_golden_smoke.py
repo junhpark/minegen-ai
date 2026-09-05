@@ -22,7 +22,7 @@ from minegen.regression.layout_v2 import (
 )
 
 GOLDEN_DIR = Path(__file__).resolve().parents[1] / "golden"
-BASELINE = GOLDEN_DIR / "phase20a_layout_v2.json"
+BASELINE = GOLDEN_DIR / "phase20b_closeout_layout_v2.json"
 
 
 def test_layout_v2_baseline_is_committed() -> None:
@@ -39,6 +39,48 @@ def test_layout_v2_baseline_is_committed() -> None:
     assert by_key["WARPED_VEIN-301"]["metrics"]["clearanceErrorBound"] > 0
     assert all(c["contract"]["candidateCount"] == 68 for c in report["cases"])
     assert "optimality" in report["semantics"]
+    # Phase 20B: every winner has an explicit access branch per level (§23)
+    ref = by_key["TABULAR-REFERENCE"]
+    assert ref["contract"]["winnerAccessibleLevels"] == ref["contract"]["serviceableLevelCount"]
+    assert ref["contract"]["winnerAccessFailures"] == {}
+    assert (
+        len(ref["metrics"]["winnerJunctionChainages"]) == ref["contract"]["serviceableLevelCount"]
+    )
+    assert ref["metrics"]["winnerTotalAccessLength"] > 0
+    assert ref["contract"]["miningMethod"] == "LONGHOLE_OPEN_STOPING"
+    assert by_key["ACCESS-INFEASIBLE"]["contract"]["status"] == "NO_FEASIBLE_CANDIDATE"
+    assert "LEVEL_ACCESS_INFEASIBLE" in {
+        r
+        for rs in by_key["ACCESS-INFEASIBLE"]["contract"]["candidateFailureReasons"].values()
+        for r in rs
+    }
+    caf = by_key["CUT_AND_FILL"]
+    assert caf["contract"]["miningMethod"] == "CUT_AND_FILL"
+    assert caf["contract"]["status"] == "SUCCESS"
+    assert caf["contract"]["winnerAccessibleLevels"] == caf["contract"]["serviceableLevelCount"]
+    # closeout v3: preferred access length recorded; the reach screen is a
+    # heuristic — the irregular case has reach-exceeded levels yet SUCCESS
+    assert ref["contract"]["winnerPreferredAccessSource"] == "DEFAULT_6X_TUNNEL_WIDTH"
+    assert ref["metrics"]["winnerPreferredAccessLength"] == 30.0
+    assert all(
+        r["contract"]["cheapFeasibleCount"] >= len(r["contract"]["shortlist"])
+        for r in report["cases"]
+    )
+    irregular = by_key["IRREGULAR-REACH-EXCEEDED"]
+    assert irregular["contract"]["status"] == "SUCCESS"
+    assert irregular["contract"]["winnerReachExceededLevels"]
+    assert (
+        irregular["contract"]["winnerAccessibleLevels"]
+        == (irregular["contract"]["serviceableLevelCount"])
+    )
+    assert "LEVEL_SERVICE_INFEASIBLE" not in {
+        r
+        for cid, rs in irregular["contract"]["candidateFailureReasons"].items()
+        for r in rs
+        if not cid.startswith("LONGITUDINAL")
+    }
+    # the physically infeasible implicit body stays an explicit failure
+    assert by_key["WARPED_VEIN-307"]["contract"]["status"] == "NO_FEASIBLE_CANDIDATE"
 
 
 @pytest.mark.parametrize("key", SMOKE_KEYS)

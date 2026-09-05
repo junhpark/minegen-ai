@@ -44,7 +44,15 @@ def _layout_summary(catalogue: dict[str, Any]) -> dict[str, Any]:
     separately; the full catalogue is served by GET …/design/layout-v2)."""
     slim = dict(catalogue)
     slim["candidates"] = [
-        {k: v for k, v in c.items() if k not in ("centerline", "pieces")}
+        {
+            k: (
+                [{ak: av for ak, av in a.items() if ak != "centerline"} for a in v]
+                if k == "levelAccesses" and isinstance(v, list)
+                else v
+            )
+            for k, v in c.items()
+            if k not in ("centerline", "pieces")
+        }
         for c in catalogue.get("candidates", [])
     ]
     return slim
@@ -126,6 +134,7 @@ class WorldService:
             ("decline", "decline.json"),
             ("smoothedDecline", "decline_smoothed.json"),
             ("tunnelMesh", "tunnel_mesh.json"),
+            ("developmentMesh", "development_mesh.json"),
             ("levels", "levels.json"),
             ("network", "network.json"),
             ("stopes", "stopes.json"),
@@ -153,6 +162,13 @@ class WorldService:
         scene["layoutV2Selected"] = (
             json.loads(selected_path.read_text(encoding="utf-8"))
             if selected_path.is_file()
+            else None
+        )
+        # Phase 20B: ramp junctions + level accesses of the selection (rule 157)
+        accesses_path = derived / "level_accesses.json"
+        scene["levelAccesses"] = (
+            json.loads(accesses_path.read_text(encoding="utf-8"))
+            if accesses_path.is_file()
             else None
         )
         return scene

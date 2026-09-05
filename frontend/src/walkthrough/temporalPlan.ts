@@ -13,7 +13,12 @@
  * the frontend never guesses a temporal segment association.
  */
 import { stateAt } from '@/timeline/evaluate'
-import type { SmoothedDeclinePayload, TimelinePayload, WorldScene } from '@/types/scene'
+import {
+  rampSegmentId,
+  type SmoothedDeclinePayload,
+  type TimelinePayload,
+  type WorldScene,
+} from '@/types/scene'
 import type { TunnelRuntimeGeometry } from './tunnelRuntimeGeometry'
 
 export const SMOOTHED_ARTIFACT = 'decline_smoothed.json'
@@ -113,7 +118,7 @@ export function temporalActiveSegmentIds(
 ): string[] | null {
   const r = resolveActiveRampIndices(timeline, smoothed, day)
   if (typeof r === 'string') return null
-  return r.indices.map((i) => smoothed!.segments[i]!.levelId)
+  return r.indices.map((i) => rampSegmentId(smoothed!.segments[i]!))
 }
 
 export function resolveTemporalWalkthroughPlan(
@@ -134,10 +139,10 @@ export function resolveTemporalWalkthroughPlan(
   // exact runtime identity validation (rule 113): GLB primitive segmentId
   // is the Phase 05 levelId, index-aligned
   for (let i = 0; i < segments.length; i++) {
-    if (runtime.segments[i]!.segmentId !== segments[i]!.levelId) {
+    if (runtime.segments[i]!.segmentId !== rampSegmentId(segments[i]!)) {
       return invalid(
         snapshotDay,
-        `runtime segment ${i} id ${runtime.segments[i]!.segmentId} != smoothed levelId ${segments[i]!.levelId}`,
+        `runtime segment ${i} id ${runtime.segments[i]!.segmentId} != ramp segment id ${rampSegmentId(segments[i]!)}`,
       )
     }
   }
@@ -178,7 +183,7 @@ export function temporalSessionIdentity(scene: WorldScene | null | undefined): s
   if (!smoothed || !smoothed.segments || smoothed.segments.length === 0) return null
   if (!tunnel || tunnel.status !== 'SUCCESS' || !tunnel.meshUrl) return null
   const segKey = smoothed.segments
-    .map((s) => `${s.levelId}:${s.effectiveCenterline?.pointCount ?? 0}`)
+    .map((s) => `${rampSegmentId(s)}:${s.effectiveCenterline?.pointCount ?? 0}`)
     .join(',')
   return `${timeline.sourceRevision}|${tunnel.meshUrl}|${segKey}`
 }

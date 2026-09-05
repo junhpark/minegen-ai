@@ -1,6 +1,8 @@
 import type {
   CommunicationPayload,
+  DevelopmentMeshReport,
   LayoutV2Catalogue,
+  LevelAccessesPayload,
   LevelsPayload,
   NetworkPayload,
   RampSourceSummary,
@@ -26,6 +28,7 @@ export function afterUpstreamRegen(scene: WorldScene): WorldScene {
   return {
     ...scene,
     levels: null,
+    developmentMesh: null,
     network: null,
     stopes: null,
     timeline: null,
@@ -34,17 +37,28 @@ export function afterUpstreamRegen(scene: WorldScene): WorldScene {
   }
 }
 
-/** Levels rebuilt: network + stopes + timeline + communication cascade. */
+/** Levels rebuilt: development mesh + network + stopes + timeline +
+ * communication cascade (the development mesh is a derivative of levels +
+ * level accesses, closeout v3 §4). */
 export function afterLevelsRegen(scene: WorldScene, payload: LevelsPayload): WorldScene {
   return {
     ...scene,
     levels: payload,
+    developmentMesh: null,
     network: null,
     stopes: null,
     timeline: null,
     communication: null,
     sensors: null,
   }
+}
+
+/** Development mesh rebuilt (closeout v3 §4): touches nothing else. */
+export function afterDevelopmentMeshRegen(
+  scene: WorldScene,
+  payload: DevelopmentMeshReport,
+): WorldScene {
+  return { ...scene, developmentMesh: payload }
 }
 
 /** Network rebuilt (rules 86/92): timeline and communication are stale;
@@ -161,6 +175,7 @@ export function afterLayoutRegen(scene: WorldScene, catalogue: LayoutV2Catalogue
     ...base,
     layoutV2: catalogue,
     layoutV2Selected: null,
+    levelAccesses: null,
     smoothedDecline: active === 'LAYOUT_V2' ? null : scene.smoothedDecline,
     rampSource: {
       ...scene.rampSource,
@@ -183,12 +198,19 @@ export function afterLayoutRegen(scene: WorldScene, catalogue: LayoutV2Catalogue
 /** A candidate was selected (materialized). Inert unless LAYOUT_V2 is the
  * active source, in which case it becomes the effective ramp and the chain
  * is stale. */
-export function afterLayoutSelect(scene: WorldScene, selected: SmoothedDeclinePayload): WorldScene {
+export function afterLayoutSelect(
+  scene: WorldScene,
+  selected: SmoothedDeclinePayload,
+  accesses: LevelAccessesPayload | null = null,
+): WorldScene {
   const active = scene.rampSource.activeSource
+  // rule 157: the level-access artifact is owned by the selection
+  const levelAccesses = accesses ?? scene.levelAccesses
   if (active !== 'LAYOUT_V2') {
     return {
       ...scene,
       layoutV2Selected: selected,
+      levelAccesses,
       rampSource: { ...scene.rampSource, layoutV2Selected: true },
     }
   }
@@ -196,18 +218,29 @@ export function afterLayoutSelect(scene: WorldScene, selected: SmoothedDeclinePa
     scene.smoothedDecline?.candidateId === selected.candidateId &&
     scene.smoothedDecline?.layoutRevision === selected.layoutRevision
   ) {
-    return { ...scene, layoutV2Selected: selected }
+    return { ...scene, layoutV2Selected: selected, levelAccesses }
   }
   return {
     ...afterRampChange(scene),
     layoutV2Selected: selected,
+    levelAccesses,
     smoothedDecline: { ...selected, activeSource: 'LAYOUT_V2' },
     rampSource: rampSourceFor(scene.rampSource, 'LAYOUT_V2', selected),
   }
 }
 
-/** The active source switched (explicit backend response). The effective
- * ramp changes identity, so every ramp-derived artifact is stale. */
+/**
+ * The active SOURCE switched (explicit backend response). Downstream
+ * preservation is decided on Effective Ramp IDENTITY — source AND the
+ * selected layout candidate / revision (rule 169) — so this helper covers
+ * the source half only: a LEGACY ⇄ LAYOUT_V2 transition invalidates the
+ * chain, an unchanged source preserves it.
+ *
+ * A candidate change under an already-active LAYOUT_V2 source is the OTHER
+ * half and belongs to `afterLayoutSelect`; the identity comparison lives
+ * there and is never duplicated here. Activate (select + switch in one
+ * backend call) composes both — see `afterLayoutActivate`.
+ */
 export function afterRampSourceChange(
   scene: WorldScene,
   rampSource: RampSourceSummary,
@@ -228,6 +261,24 @@ export function afterRampSourceChange(
     layoutV2Selected: selected,
     smoothedDecline: effective,
   }
+}
+
+/**
+ * Activate = select + make LAYOUT_V2 the active source in one backend call,
+ * so the frontend applies BOTH halves of the Effective Ramp identity
+ * (rule 169): `afterLayoutSelect` handles the candidate/revision change
+ * (including A → B while LAYOUT_V2 is already active) and
+ * `afterRampSourceChange` the source transition with the backend's
+ * authoritative summary. The level accesses owned by the activated
+ * selection (rule 157) survive both.
+ */
+export function afterLayoutActivate(
+  scene: WorldScene,
+  rampSource: RampSourceSummary,
+  selected: SmoothedDeclinePayload,
+  accesses: LevelAccessesPayload | null = null,
+): WorldScene {
+  return afterRampSourceChange(afterLayoutSelect(scene, selected, accesses), rampSource, selected)
 }
 
 function rampSourceFor(

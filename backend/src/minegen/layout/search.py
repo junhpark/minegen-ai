@@ -2,7 +2,13 @@
 
     STAGE 1  finite parametric enumeration            (families.enumerate_candidates)
     STAGE 2  cheap evaluation on the delivered centerline: gradient, plan
-             radius, world bounds, monotonic descent, level service
+             radius, world bounds, monotonic descent, vertical level
+             coverage (NO_RL_CROSSING is hard: the main ramp does not span
+             the level's elevation). The same-RL crossing → footprint
+             distance (``withinReach`` / ACCESS_REACH_EXCEEDED) is an
+             ACCESS-POTENTIAL HEURISTIC only (closeout v3 §3): it feeds the
+             stage-3 proxy and never rejects a candidate — the Phase 20B
+             level-access planner (stage 4) is the final service authority.
     STAGE 3  bounded shortlist (``shortlist_size``) by a cheap proxy
     STAGE 4  detailed engineering validation of the shortlist through the
              shared ``DesignCostEvaluator`` (terrain, cover with the rule 52
@@ -41,8 +47,15 @@ from minegen.design.cost_field import (
     clearance_policy_for,
 )
 from minegen.design.exposure import measure_exposure
+from minegen.design.profile import build_profile
 from minegen.design.progress import ProgressCallback, ProgressEvent, ProgressStage, no_progress
 from minegen.design.targets import default_portal
+from minegen.layout.access import (
+    LevelAccessPlan,
+    LevelDevelopmentAnchor,
+    build_anchor,
+    plan_level_accesses,
+)
 from minegen.layout.families import (
     FAMILY_ORDER,
     CandidateParams,
@@ -72,6 +85,10 @@ LAYOUT_V2_VERSION = 1
 SOURCE_KIND_PARAMETRIC_V2 = "PARAMETRIC_V2"
 #: owning artifact name of a materialized layout-v2 effective ramp
 LAYOUT_V2_SELECTED_ARTIFACT = "layout_v2_selected.json"
+#: owning artifact of the ramp junctions + level access branches (Phase 20B)
+LEVEL_ACCESSES_ARTIFACT = "level_accesses.json"
+#: segment id of the main-ramp tail below the last turnout
+RAMP_END_SEGMENT_ID = "RAMP_END"
 
 # -- documented internal score coefficients (§27) ----------------------------- #
 #: DEVELOPMENT: ramp length / grade-limited ideal length, plus the mean
@@ -110,9 +127,15 @@ class Stage:
 
 @dataclass
 class LevelServiceRecord:
+    """Cheap ACCESS-POTENTIAL screen of one required level against the main
+    ramp (Phase 20A semantics, kept as a stage-2 screen in Phase 20B): the
+    ramp's RL crossing and its horizontal distance to the orebody footprint.
+    ``within_reach`` is NOT "served" — a level is served only by a validated
+    level access (``LevelAccess.ok``, rule 156)."""
+
     level_id: str
     elevation: float
-    served: bool
+    within_reach: bool
     connection_position: FloatArray | None = None
     connection_chainage: float | None = None
     access_distance: float | None = None
@@ -122,15 +145,15 @@ class LevelServiceRecord:
         return {
             "levelId": self.level_id,
             "elevation": self.elevation,
-            "served": self.served,
-            "connectionPosition": (
+            "withinReach": self.within_reach,
+            "referencePosition": (
                 [float(v) for v in self.connection_position]
                 if self.connection_position is not None
                 else None
             ),
-            "connectionChainage": self.connection_chainage,
-            "accessDistance": self.access_distance,
-            "unservedReason": self.unserved_reason,
+            "referenceChainage": self.connection_chainage,
+            "footprintDistance": self.access_distance,
+            "screenReason": self.unserved_reason,
         }
 
 
@@ -185,6 +208,8 @@ class CandidateResult:
     clearance: ClearanceReport | None = None
     exposure: dict[str, Any] | None = None
     validation: dict[str, Any] | None = None
+    access_plan: LevelAccessPlan | None = None
+    anchors: list[LevelDevelopmentAnchor | None] = field(default_factory=list)
     derived: dict[str, Any] = field(default_factory=dict)
     pieces: list[dict[str, Any]] = field(default_factory=list)
     points: FloatArray | None = None
@@ -198,8 +223,16 @@ class CandidateResult:
         return self.params.candidate_id
 
     @property
-    def served_count(self) -> int:
-        return sum(1 for r in self.level_service if r.served)
+    def screened_count(self) -> int:
+        """Levels passing the cheap access-potential screen."""
+        return sum(1 for r in self.level_service if r.within_reach)
+
+    @property
+    def accessible_count(self) -> int | None:
+        """Levels with a validated level access (None before stage 4)."""
+        if self.access_plan is None:
+            return None
+        return sum(1 for a in self.access_plan.accesses if a.ok)
 
     def to_dict(self, *, include_points: bool) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -212,9 +245,16 @@ class CandidateResult:
             "failureDetail": self.failure_detail,
             "shortlisted": self.shortlisted,
             "rank": self.rank,
-            "servedLevels": self.served_count,
+            "screenedLevels": self.screened_count,
+            "accessibleLevels": self.accessible_count,
             "requiredLevels": len(self.level_service),
-            "levelService": [r.to_dict() for r in self.level_service],
+            "rampLevelReferences": [r.to_dict() for r in self.level_service],
+            "access": self.access_plan.summary() if self.access_plan else None,
+            "levelAccesses": (
+                [a.to_dict(include_points=include_points) for a in self.access_plan.accesses]
+                if self.access_plan
+                else None
+            ),
             "diagnostics": self.diagnostics.to_dict() if self.diagnostics else None,
             "scores": self.scores.to_dict() if self.scores else None,
             "clearance": self.clearance.to_dict() if self.clearance else None,
@@ -354,16 +394,16 @@ def level_service(
             )
             continue
         d = sec.access_distance(cr.point[:2])
-        served = d <= reach
+        within = d <= reach
         records.append(
             LevelServiceRecord(
                 lv.level_id,
                 lv.elevation,
-                served,
+                within,
                 connection_position=cr.point,
                 connection_chainage=cr.chainage,
                 access_distance=d,
-                unserved_reason=None if served else InfeasibleReason.ACCESS_REACH_EXCEEDED.value,
+                unserved_reason=None if within else InfeasibleReason.ACCESS_REACH_EXCEEDED.value,
             )
         )
     return records, crossings
@@ -402,6 +442,38 @@ def cheap_checks(
     return problems
 
 
+#: stage-2 level-screen reasons that reject a candidate (closeout v3 §3.B).
+#: ACCESS_REACH_EXCEEDED is deliberately absent: it is a heuristic, not a
+#: physical infeasibility. NO_OREBODY_SECTION_AT_LEVEL never reaches the
+#: screen (the context carries serviceable levels only, rule 141).
+_HARD_SCREEN_REASONS = frozenset(
+    {
+        InfeasibleReason.NO_RL_CROSSING.value,
+        InfeasibleReason.NO_OREBODY_SECTION_AT_LEVEL.value,
+    }
+)
+
+
+def level_screen_problems(
+    records: list[LevelServiceRecord],
+) -> list[tuple[InfeasibleReason, str]]:
+    """Stage-2 decision on the level screen (closeout v3 §3.B): only a level
+    the main ramp does not vertically cover (NO_RL_CROSSING) rejects the
+    candidate. ACCESS_REACH_EXCEEDED alone never does — the record stays
+    inspectable (``withinReach = false``) and stage 4 plans the access."""
+    hard = [r for r in records if r.unserved_reason in _HARD_SCREEN_REASONS]
+    if not hard:
+        return []
+    reasons = sorted({r.unserved_reason or "" for r in hard})
+    return [
+        (
+            InfeasibleReason.LEVEL_SERVICE_INFEASIBLE,
+            f"{len(hard)} of {len(records)} required levels are not vertically covered "
+            f"by the main ramp ({', '.join(reasons)})",
+        )
+    ]
+
+
 def cheap_proxy(
     diag: CenterlineDiagnostics, records: list[LevelServiceRecord], ctx: LayoutContext
 ) -> float:
@@ -425,7 +497,10 @@ def score_candidate(
     mean_access = float(np.mean(access)) if access else ctx.cfg.access_reach
     max_access = float(np.max(access)) if access else ctx.cfg.access_reach
     reach = ctx.cfg.access_reach
-    length_ratio = diag.length3d / ideal
+    # Phase 20B: development = main ramp + EXPLICIT level-access development
+    # (rule 158); the cheap footprint-distance term stays as a corridor proxy
+    access_length = cand.access_plan.total_length if cand.access_plan else 0.0
+    length_ratio = (diag.length3d + access_length) / ideal
     development = length_ratio + DEV_ACCESS_COEF * mean_access / reach
     total_len = max(diag.length3d, 1e-9)
     core_frac = exposure["lengthFaultCore"] / total_len
@@ -457,6 +532,8 @@ def score_candidate(
         total,
         {
             "lengthRatio": length_ratio,
+            "mainRampLength": diag.length3d,
+            "levelAccessLength": access_length,
             "meanAccessRatio": mean_access / reach,
             "maxAccessRatio": max_access / reach,
             "faultCoreFraction": core_frac,
@@ -489,8 +566,30 @@ class LayoutV2Search:
             DesignContext.decline(scenario.design),
             clearance=self.policy,
         )
+        self.shape = build_profile(scenario.ramp, scenario.tunnel_profile)
+        self._sections: LevelSections | None = None
+        self._track: Any = None
 
-    def run(self, on_progress: ProgressCallback = no_progress) -> LayoutSearchResult:
+    def anchor_standoff(self, required: float) -> float:
+        """Level-entry stand-off from the footwall edge: the configured /
+        ramp value, raised for a CONSERVATIVE clearance policy so the entry
+        itself satisfies ``required + errorBound`` (rule 146 honesty)."""
+        base = (
+            self.cfg.access.anchor_standoff
+            if self.cfg.access.anchor_standoff is not None
+            else self.scenario.ramp.footwall_access_offset
+        )
+        if self.policy.basis == "CONSERVATIVE":
+            return max(base, required + float(self.policy.error_bound) + 1.0)
+        return base
+
+    def run(
+        self, on_progress: ProgressCallback = no_progress, *, detailed_all: bool = False
+    ) -> LayoutSearchResult:
+        """``detailed_all`` is a DIAGNOSTIC switch (closeout v3 §3.E shortlist
+        starvation audit): every cheap-feasible candidate receives detailed
+        validation instead of the bounded shortlist. It is never exposed
+        through the scenario config or the API."""
         t0 = time.perf_counter()
         sc = self.scenario
         world = self.world
@@ -502,6 +601,7 @@ class LayoutV2Search:
         )
         sections = LevelSections(world.orebody, levels, self.cfg.section_sampling_spacing)
         track = build_footwall_track(world.orebody, sections)
+        self._sections, self._track = sections, track
         if sc.portal is not None:
             portal = np.array(sc.portal.as_tuple(), dtype=np.float64)
             generated = False
@@ -557,10 +657,12 @@ class LayoutV2Search:
         # -- STAGE 3: bounded shortlist --------------------------------------- #
         cheap_ok = [c for c in results if c.status == CandidateStatus.NOT_VALIDATED]
         cheap_ok.sort(key=lambda c: (c.cheap_proxy or math.inf, _family_rank(c), c.candidate_id))
-        shortlist = cheap_ok[: self.cfg.shortlist_size]
+        shortlist = cheap_ok if detailed_all else cheap_ok[: self.cfg.shortlist_size]
         for c in shortlist:
             c.shortlisted = True
         perf["shortlistSize"] = len(shortlist)
+        perf["cheapFeasibleCount"] = len(cheap_ok)
+        perf["exhaustiveDiagnostic"] = detailed_all
 
         # -- STAGE 4: detailed validation ------------------------------------- #
         for j, cand in enumerate(shortlist):
@@ -675,16 +777,12 @@ class LayoutV2Search:
         )
         cand.level_service = records
         cand.crossings = crossings
-        unserved = [r for r in records if not r.served]
-        if unserved:
-            reasons = sorted({r.unserved_reason or "" for r in unserved})
-            problems.append(
-                (
-                    InfeasibleReason.LEVEL_SERVICE_INFEASIBLE,
-                    f"{len(unserved)} of {len(records)} required levels unserved "
-                    f"({', '.join(reasons)})",
-                )
-            )
+        # closeout v3 §3: only a level the main ramp does NOT vertically cover
+        # (NO_RL_CROSSING — no junction lattice can exist for a ramp that never
+        # reaches the level) is a hard stage-2 failure. ACCESS_REACH_EXCEEDED is
+        # a soft access-potential heuristic: it stays visible per level and in
+        # the stage-3 proxy, and stage 4 plans the explicit access.
+        problems.extend(level_screen_problems(records))
         cand.cheap_proxy = cheap_proxy(diag, records, ctx)
         if problems:
             cand.status = CandidateStatus.INFEASIBLE
@@ -721,17 +819,43 @@ class LayoutV2Search:
                     f"{req_clear:.2f} m ({self.policy.basis})",
                 )
             )
-        # connection points must themselves be valid samples (§6)
-        for rec, cr in zip(cand.level_service, cand.crossings, strict=True):
-            if cr is None:
-                continue
-            if not report.point_valid(cr.point):
-                rec.served = False
-                rec.unserved_reason = InfeasibleReason.CONNECTION_POINT_INVALID.value
+        # Phase 20B: explicit ramp-junction + level-access planning (rule 156).
+        # Only a main ramp that is itself valid gets an access plan; an
+        # unreachable level is a HARD failure, never a score term.
+        if not problems:
+            assert self._sections is not None and self._track is not None
+            standoff = self.anchor_standoff(req_clear)
+            cand.anchors = [
+                build_anchor(
+                    self.world.orebody,
+                    lv,
+                    self._sections,
+                    self._track,
+                    cand.points,
+                    standoff,
+                    self.scenario.mining.method.value,
+                )
+                for lv in ctx.levels
+            ]
+            cand.access_plan = plan_level_accesses(
+                cand.points,
+                cand.anchors,
+                ctx.levels,
+                self.cfg.access,
+                self.scenario.ramp,
+                self.evaluator,
+                self.shape,
+                req_clear,
+            )
+            if not cand.access_plan.feasible:
+                failed = [a for a in cand.access_plan.accesses if not a.ok]
                 problems.append(
                     (
-                        InfeasibleReason.CONNECTION_POINT_INVALID,
-                        f"{rec.level_id} connection invalid",
+                        InfeasibleReason.LEVEL_ACCESS_INFEASIBLE,
+                        f"{len(failed)} of {len(cand.access_plan.accesses)} required levels "
+                        "have no valid ramp junction + level access ("
+                        + ", ".join(f"{a.level_id}: {a.failure_reason}" for a in failed)
+                        + ")",
                     )
                 )
         exposure = measure_exposure([cand.points], self.world.faults, self.evaluator.rock_quality)
@@ -807,29 +931,57 @@ def materialize_effective_ramp(
     evaluator: DesignCostEvaluator,
     source_revision: str,
 ) -> dict[str, Any]:
-    """Split the validated delivered centerline at the EXACT level connection
-    points into Effective Ramp segments in the source-neutral contract the
-    downstream consumers read (``segments[].effectiveCenterline`` etc.).
-    Each segment owns one level; consecutive segments share their boundary
-    vertex and 3-D tangent. No smoothing, no re-sampling: the geometry is
-    the validated candidate centerline itself."""
+    """Materialize the MAIN RAMP of a FEASIBLE candidate as the Effective Ramp
+    (rule 149). Phase 20B (rule 157): the validated delivered centerline is
+    split at the EXACT ramp-junction points of its level-access plan — the
+    turnouts are the RAMP segment boundaries (network RAMP_JUNCTION nodes);
+    a tail below the last turnout is the ``RAMP_END`` segment. A level's RL
+    crossing is recorded only as a diagnostic reference; it is never a
+    segment boundary, never a level entry. Level accesses are NOT ramp
+    segments — they live in ``level_accesses.json``. No smoothing, no
+    re-sampling: the geometry is the validated candidate centerline itself.
+    """
     if cand.status != CandidateStatus.FEASIBLE or cand.points is None:
         raise ValueError(f"candidate {cand.candidate_id} is not FEASIBLE")
-    levels = result.serviceable_levels
-    crossings = [c for c in cand.crossings if c is not None]
-    if len(crossings) != len(levels):
-        raise ValueError("a FEASIBLE candidate must cross every serviceable required level")
-    pts, idx = insert_vertices(cand.points, crossings)
+    plan = cand.access_plan
+    if plan is None or not plan.feasible:
+        raise ValueError(f"candidate {cand.candidate_id} has no feasible level-access plan")
+    pts_raw = cand.points
+    ch = chainage_of(pts_raw)
+    junctions = [
+        _JunctionMark(a.level_id, float(a.junction_chainage or 0.0), a.junction_position)
+        for a in plan.accesses
+    ]
+    junctions.sort(key=lambda j: j.chainage)
+    crossings = [_crossing_at_chainage(pts_raw, ch, j.chainage) for j in junctions]
+    pts, idx = insert_vertices(pts_raw, crossings)
+    for j, i in zip(junctions, idx, strict=True):
+        # exact weld: the inserted vertex IS the planned junction position
+        if j.position is not None:
+            pts[i] = np.asarray(j.position, dtype=np.float64)
     pieces = split_at(pts, idx)
+    # tail below the last turnout
+    tail = pts[idx[-1] :].copy() if idx and idx[-1] < pts.shape[0] - 1 else None
+    labels: list[tuple[str, str | None, dict[str, Any] | None]] = [
+        (
+            f"RAMP_JUNCTION:{j.level_id}",
+            j.level_id,
+            {"levelId": j.level_id, "chainage": j.chainage, "position": [float(v) for v in pts[i]]},
+        )
+        for j, i in zip(junctions, idx, strict=True)
+    ]
+    if tail is not None and tail.shape[0] >= 2:
+        pieces.append(tail)
+        labels.append((RAMP_END_SEGMENT_ID, None, None))
     segments: list[dict[str, Any]] = []
     raw_total = 0.0
     cost_total = 0.0
     max_grade = 0.0
     radii: list[float] = []
-    for k, (piece, lv) in enumerate(zip(pieces, levels, strict=True)):
-        # boundary tangents: chord directions, shared at the split vertices
-        start_t = _tangent(pts, idx[k - 1] if k > 0 else 0, shared=k > 0)
-        end_t = _tangent(pts, idx[k], shared=k < len(pieces) - 1)
+    bounds = [*idx, pts.shape[0] - 1] if tail is not None and tail.shape[0] >= 2 else list(idx)
+    for k, (piece, (segment_id, level_id, junction)) in enumerate(zip(pieces, labels, strict=True)):
+        start_t = _tangent(pts, bounds[k - 1] if k > 0 else 0, shared=k > 0)
+        end_t = _tangent(pts, bounds[k], shared=k < len(pieces) - 1)
         diag = analyze_centerline(piece) if piece.shape[0] >= 2 else None
         ev = evaluator.evaluate_points(piece)
         finite = ev.base_cost + ev.rock_penalty + ev.fault_penalty + ev.orebody_penalty
@@ -845,7 +997,8 @@ def materialize_effective_ramp(
                 radii.append(diag.min_plan_radius)
         segments.append(
             {
-                "levelId": lv.level_id,
+                "segmentId": segment_id,
+                "levelId": level_id,
                 "candidateId": cand.candidate_id,
                 "smoothed": None,
                 "effectiveSource": SOURCE_KIND_PARAMETRIC_V2,
@@ -857,13 +1010,8 @@ def materialize_effective_ramp(
                     "start": [float(v) for v in start_t],
                     "end": [float(v) for v in end_t],
                 },
-                "levelConnection": {
-                    "levelId": lv.level_id,
-                    "elevation": lv.elevation,
-                    "position": [float(v) for v in piece[-1]],
-                    "chainage": crossings[k].chainage,
-                    "accessDistance": cand.level_service[k].access_distance,
-                },
+                "terminalKind": "RAMP_JUNCTION" if junction else "RAMP_END",
+                "rampJunction": junction,
                 "report": {
                     "rawLength": length,
                     "smoothedLength": None,
@@ -889,6 +1037,18 @@ def materialize_effective_ramp(
                 },
             }
         )
+    references = [
+        {
+            "levelId": r.level_id,
+            "elevation": r.elevation,
+            "position": [float(v) for v in r.connection_position]
+            if r.connection_position is not None
+            else None,
+            "chainage": r.connection_chainage,
+            "footprintDistance": r.access_distance,
+        }
+        for r in cand.level_service
+    ]
     return {
         "status": "SUCCESS",
         "sourceKind": SOURCE_KIND_PARAMETRIC_V2,
@@ -898,7 +1058,9 @@ def materialize_effective_ramp(
         "failureReason": None,
         "portal": [float(v) for v in result.portal],
         "segments": segments,
-        "levelConnections": [s["levelConnection"] for s in segments],
+        "rampJunctions": [s["rampJunction"] for s in segments if s["rampJunction"]],
+        "rampLevelReferences": references,
+        "levelAccessArtifact": LEVEL_ACCESSES_ARTIFACT,
         "totals": {
             "segments": len(segments),
             "smoothedSegments": 0,
@@ -915,7 +1077,64 @@ def materialize_effective_ramp(
         "diagnostics": cand.diagnostics.to_dict() if cand.diagnostics else None,
         "clearance": cand.clearance.to_dict() if cand.clearance else None,
         "scores": cand.scores.to_dict() if cand.scores else None,
+        "access": plan.summary(),
     }
+
+
+def materialize_level_accesses(
+    result: LayoutSearchResult,
+    cand: CandidateResult,
+    source_revision: str,
+    mining_method: str,
+) -> dict[str, Any]:
+    """``level_accesses.json`` (rule 157): the ramp junctions and level-access
+    branches of the selected candidate — the ONLY owner of that geometry.
+    Every ``levelEntry`` is the authoritative LEVEL_ENTRY the level
+    development starts from."""
+    if cand.status != CandidateStatus.FEASIBLE or cand.access_plan is None:
+        raise ValueError(f"candidate {cand.candidate_id} is not FEASIBLE")
+    plan = cand.access_plan
+    return {
+        "status": "SUCCESS" if plan.feasible else "FAILED",
+        "failureReason": None
+        if plan.feasible
+        else "; ".join(f"{a.level_id}: {a.failure_reason}" for a in plan.accesses if not a.ok),
+        "sourceRevision": source_revision,
+        "rampSource": "LAYOUT_V2",
+        "rampArtifact": LAYOUT_V2_SELECTED_ARTIFACT,
+        "candidateId": cand.candidate_id,
+        "family": cand.params.family.value,
+        "miningMethod": mining_method,
+        "clearanceBasis": result.clearance_basis,
+        "requiredClearance": result.required_clearance,
+        "anchors": [a.to_dict() if a else None for a in cand.anchors],
+        "accesses": [a.to_dict(include_points=True) for a in plan.accesses],
+        "summary": plan.summary(),
+    }
+
+
+@dataclass(frozen=True)
+class _JunctionMark:
+    level_id: str
+    chainage: float
+    position: FloatArray | None
+
+
+def chainage_of(points: FloatArray) -> FloatArray:
+    seg = np.linalg.norm(np.diff(points, axis=0), axis=1)
+    return np.asarray(np.concatenate([[0.0], np.cumsum(seg)]))
+
+
+def _crossing_at_chainage(points: FloatArray, ch: FloatArray, s: float) -> Crossing:
+    """Exact vertex position at 3-D chainage ``s`` as a Crossing so the
+    shared ``insert_vertices`` machinery can split there."""
+    i = int(np.searchsorted(ch, s, side="right") - 1)
+    i = min(max(i, 0), points.shape[0] - 2)
+    seg = float(ch[i + 1] - ch[i])
+    t = (s - float(ch[i])) / seg if seg > 1e-12 else 0.0
+    t = min(max(t, 0.0), 1.0)
+    p = points[i] + t * (points[i + 1] - points[i])
+    return Crossing(float(p[2]), i, float(t), np.asarray(p, dtype=np.float64), float(s))
 
 
 def _tangent(pts: FloatArray, vertex: int, *, shared: bool) -> FloatArray:

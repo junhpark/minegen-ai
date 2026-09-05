@@ -30,7 +30,7 @@ from typing import Any
 
 import numpy as np
 
-from minegen.core.artifacts import RAMP_OWNING_ARTIFACTS
+from minegen.core.artifacts import LEVEL_ACCESSES_ARTIFACT, RAMP_OWNING_ARTIFACTS
 from minegen.core.enums import ObjectState, TaskType
 from minegen.core.models import Scenario
 from minegen.network.models import GeometryRef
@@ -49,6 +49,7 @@ DAY_TOLERANCE = 1e-9
 
 _DEV_TASK_TYPE = {
     "RAMP": TaskType.DEVELOP_RAMP,
+    "LEVEL_ACCESS": TaskType.DEVELOP_LEVEL_ACCESS,
     "DRIFT": TaskType.DEVELOP_LEVEL,
     "CROSSCUT": TaskType.DEVELOP_CROSSCUT,
 }
@@ -107,13 +108,14 @@ def solve_earliest_start(tasks: dict[str, TimelineTask]) -> str | None:
     return None
 
 
-_OWNING_ARTIFACTS = (*RAMP_OWNING_ARTIFACTS, "levels.json")
+_OWNING_ARTIFACTS = (*RAMP_OWNING_ARTIFACTS, LEVEL_ACCESSES_ARTIFACT, "levels.json")
 
 
 def _resolve_centerline(
     ref: Any,
     smoothed_payload: dict[str, Any],
     levels_payload: dict[str, Any],
+    accesses_payload: dict[str, Any] | None = None,
 ) -> tuple[list[float] | None, str | None]:
     """Safely resolve a GeometryRef to its owning centerline points
     (blocker 2): malformed references return a reason, never raise
@@ -129,6 +131,9 @@ def _resolve_centerline(
     if artifact in RAMP_OWNING_ARTIFACTS:
         owners = smoothed_payload.get("segments")
         container = "effectiveCenterline"
+    elif artifact == LEVEL_ACCESSES_ARTIFACT:
+        owners = (accesses_payload or {}).get("accesses")
+        container = "centerline"
     else:
         owners = levels_payload.get("developments")
         container = "centerline"
@@ -170,6 +175,7 @@ class MineTimelineBuilder:
         smoothed_payload: dict[str, Any],
         levels_payload: dict[str, Any],
         source_revision: str,
+        accesses_payload: dict[str, Any] | None = None,
     ) -> TimelinePayload:
         sch = self.schedule
         # -- prerequisite gates (rule 86): FAILED inputs never schedule ------ #
@@ -226,6 +232,7 @@ class MineTimelineBuilder:
         dev_task_by_edge: dict[str, str] = {}
         rate_by_type = {
             "RAMP": (sch.ramp_advance_m_per_day, "m/day"),
+            "LEVEL_ACCESS": (sch.level_access_advance_m_per_day, "m/day"),
             "DRIFT": (sch.drift_advance_m_per_day, "m/day"),
             "CROSSCUT": (sch.crosscut_advance_m_per_day, "m/day"),
         }
@@ -300,6 +307,21 @@ class MineTimelineBuilder:
                 tasks[tid].dependencies.append(prev_task)
             ramp_task_by_entry[e["toNode"]] = tid
             prev_task = tid
+
+        # -- Phase 20B level accesses: RAMP_JUNCTION → LEVEL_ENTRY (rule 157) --- #
+        # an access branch starts once the ramp task reaching its junction is
+        # done; the level entry it reaches is then the root of that level's
+        # development. A ramp RL crossing never establishes access by itself.
+        for e in sorted((e for e in edges if e["type"] == "LEVEL_ACCESS"), key=lambda e: e["id"]):
+            ramp_task = ramp_task_by_entry.get(e["fromNode"])
+            if ramp_task is None:
+                return _failed(
+                    source_revision,
+                    f"no RAMP task reaches the junction {e['fromNode']} of {e['id']}",
+                )
+            tid = dev_task_by_edge[e["id"]]
+            tasks[tid].dependencies.append(ramp_task)
+            ramp_task_by_entry[e["toNode"]] = tid
 
         # -- level-development access precedence (§7, rule 85) --------------- #
         level_edges = [e for e in edges if e["type"] in ("DRIFT", "CROSSCUT")]
@@ -537,7 +559,9 @@ class MineTimelineBuilder:
         total_dev_len = 0.0
         for e in edges:
             ref = e["geometryRef"]
-            points, resolve_failure = _resolve_centerline(ref, smoothed_payload, levels_payload)
+            points, resolve_failure = _resolve_centerline(
+                ref, smoothed_payload, levels_payload, accesses_payload
+            )
             if points is None:
                 return _failed(
                     source_revision,

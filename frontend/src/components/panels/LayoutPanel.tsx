@@ -4,24 +4,24 @@ import { api, ApiError } from '@/api/client'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { PanelSection } from '@/components/layout/PanelSection'
 import { compareCandidates } from '@/components/panels/layoutOrder'
-import { afterLayoutRegen, afterLayoutSelect, afterRampSourceChange } from '@/scene/invalidation'
+import { afterLayoutActivate, afterLayoutRegen, afterLayoutSelect } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import type {
   JobRecord,
   LayoutCandidateSummary,
   LayoutV2Catalogue,
-  RampSource,
   RampSourceSummary,
-  SmoothedDeclinePayload,
   WorldScene,
 } from '@/types/scene'
 
 /**
- * Phase 20A — parametric whole-mine layout (layout-v2) and the explicit
- * Effective Ramp source switch (rules 149–151). Display + intent only: the
- * backend enumerates, validates, scores, ranks, materializes and resolves
- * the active source; this panel never computes any of it.
+ * Phase 20A/20B — parametric whole-mine layout (layout-v2): the PRIMARY
+ * design workflow (closeout v3 §1). Display + intent only: the backend
+ * enumerates, validates, scores, ranks, materializes and resolves the
+ * active source; this panel never computes any of it. The explicit
+ * LEGACY ⇄ LAYOUT_V2 source switch is an Advanced action in the legacy
+ * decline section; here "Activate" makes a candidate the current design.
  */
 export function LayoutPanel() {
   const scene = useScenarioStore((s) => s.scene)
@@ -69,34 +69,39 @@ export function LayoutPanel() {
   const select = useMutation({
     mutationFn: async (candidateId: string) => {
       if (!scene) throw new Error('generate the world first')
-      return api.selectLayoutCandidate(scene.scenarioId, candidateId)
+      const selected = await api.selectLayoutCandidate(scene.scenarioId, candidateId)
+      // rule 157: the level-access artifact is written with the selection
+      const accesses = await api.getLevelAccesses(scene.scenarioId)
+      return { selected, accesses }
     },
-    onSuccess: (payload: SmoothedDeclinePayload) => {
-      applyScene(epoch, (current) => afterLayoutSelect(current, payload))
+    onSuccess: ({ selected, accesses }) => {
+      applyScene(epoch, (current) => afterLayoutSelect(current, selected, accesses))
       setLayerVisible('layoutV2', true)
+      setLayerVisible('levelAccesses', true)
     },
   })
   const activate = useMutation({
     mutationFn: async (candidateId: string) => {
       if (!scene) throw new Error('generate the world first')
-      return api.activateLayoutCandidate(scene.scenarioId, candidateId)
+      const result = await api.activateLayoutCandidate(scene.scenarioId, candidateId)
+      const accesses = await api.getLevelAccesses(scene.scenarioId)
+      return { ...result, accesses }
     },
-    onSuccess: ({ rampSource: src, selected: sel }) => {
-      applyScene(epoch, (current) => afterRampSourceChange(current, src, sel))
+    onSuccess: ({ rampSource: src, selected: sel, accesses }) => {
+      // rule 169: activate changes BOTH halves of the Effective Ramp
+      // identity — the selected candidate AND the active source — so the
+      // A → B case under an already-active LAYOUT_V2 invalidates the chain
+      applyScene(epoch, (current) => afterLayoutActivate(current, src, sel, accesses))
       setLayerVisible('smoothedDecline', true)
-    },
-  })
-  const switchSource = useMutation({
-    mutationFn: async (source: RampSource) => {
-      if (!scene) throw new Error('generate the world first')
-      return api.setRampSource(scene.scenarioId, source)
-    },
-    onSuccess: (src) => {
-      applyScene(epoch, (current) => afterRampSourceChange(current, src))
+      setLayerVisible('levelAccesses', true)
+      // closeout v3 §1.C: legacy diagnostic layers are not part of a
+      // layout-v2 design
+      setLayerVisible('accessTargets', false)
+      setLayerVisible('rawSearchPath', false)
     },
   })
 
-  const err = generate.error ?? select.error ?? activate.error ?? switchSource.error
+  const err = generate.error ?? select.error ?? activate.error
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
 
@@ -108,7 +113,6 @@ export function LayoutPanel() {
       job={job.data ?? null}
       busy={generate.isPending || running || select.isPending || activate.isPending}
       generating={generate.isPending || running}
-      switching={switchSource.isPending}
       selecting={select.isPending}
       activating={activate.isPending}
       errorText={errorText}
@@ -117,7 +121,6 @@ export function LayoutPanel() {
       onGenerate={() => generate.mutate()}
       onSelect={(id) => select.mutate(id)}
       onActivate={(id) => activate.mutate(id)}
-      onSwitch={(src) => switchSource.mutate(src)}
     />
   )
 }
@@ -129,7 +132,6 @@ export interface LayoutPanelBodyProps {
   job: JobRecord | null
   busy: boolean
   generating: boolean
-  switching: boolean
   selecting: boolean
   activating: boolean
   errorText: string | null
@@ -138,7 +140,6 @@ export interface LayoutPanelBodyProps {
   onGenerate: () => void
   onSelect: (id: string) => void
   onActivate: (id: string) => void
-  onSwitch: (source: RampSource) => void
 }
 
 /** Pure presentation of the backend layout-v2 state (testable without a
@@ -155,40 +156,26 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
   const picked = p.pick ?? catalogue?.winnerId ?? null
   const running = job?.status === 'QUEUED' || job?.status === 'RUNNING'
 
+  const layoutActive = active === 'LAYOUT_V2' && (rampSource?.available ?? false)
+
   return (
-    <PanelSection title="Layout v2 — parametric families" tag="Phase 20A">
-      <div className="readout mb-2 text-[11px]">
-        <div className="mb-1 text-mute">Effective ramp source</div>
-        <div className="flex gap-1" role="radiogroup" aria-label="ramp source">
-          {(['LEGACY', 'LAYOUT_V2'] as const).map((src) => (
-            <button
-              key={src}
-              type="button"
-              role="radio"
-              aria-checked={active === src}
-              disabled={
-                !scene ||
-                p.switching ||
-                (src === 'LAYOUT_V2' && !(rampSource?.layoutV2Selected ?? false))
-              }
-              onClick={() => p.onSwitch(src)}
-              className={`plate flex-1 rounded-sm border px-2 py-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-40 ${
-                active === src
-                  ? 'border-lamp bg-lamp text-rock-950'
-                  : 'border-rock-700 text-chalk-dim hover:border-lamp'
-              }`}
-            >
-              {src === 'LEGACY' ? 'Legacy (Hybrid-A*)' : 'Layout v2'}
-            </button>
-          ))}
+    <PanelSection title="Layout v2 — whole-mine layout" tag="Phase 20A/20B">
+      <div className="readout mb-2 text-[11px]" aria-label="current design">
+        <div className="flex justify-between">
+          <span className="text-mute">Current design</span>
+          <span className={layoutActive ? 'text-lamp' : 'text-chalk-dim'}>
+            {layoutActive
+              ? `Layout v2 · ${rampSource?.candidateId ?? '—'} (active)`
+              : active === 'LEGACY' && (rampSource?.available ?? false)
+                ? 'Legacy decline (Hybrid-A*) — advanced'
+                : 'none yet'}
+          </span>
         </div>
         {rampSource ? (
           <div className="mt-1 text-mute">
             {rampSource.available
               ? `${rampSource.sourceKind ?? '—'} · ${String(rampSource.segmentCount)} segments · ${rampSource.owningArtifact}`
-              : active === 'LEGACY'
-                ? 'no smoothed legacy decline yet'
-                : 'no selected layout-v2 candidate yet'}
+              : 'generate candidates, then Select or Activate one to make it the design'}
           </div>
         ) : null}
       </div>
@@ -278,8 +265,11 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
                   </span>
                   <span className="flex w-full justify-between text-mute">
                     <span>
-                      {c.servedLevels}/{c.requiredLevels} levels
-                      {c.diagnostics ? ` · ${c.diagnostics.length3d.toFixed(0)} m` : ''}
+                      {c.accessibleLevels !== null
+                        ? `${String(c.accessibleLevels)}/${String(c.requiredLevels)} accessible`
+                        : `${String(c.screenedLevels)}/${String(c.requiredLevels)} screened`}
+                      {c.diagnostics ? ` · ramp ${c.diagnostics.length3d.toFixed(0)} m` : ''}
+                      {c.access ? ` · access ${c.access.totalAccessLength.toFixed(0)} m` : ''}
                     </span>
                     <span>
                       {c.scores
@@ -359,19 +349,67 @@ function CandidateDetail({ candidate }: { candidate: LayoutCandidateSummary | nu
       {candidate.failureDetail ? (
         <div className="text-danger">{candidate.failureDetail}</div>
       ) : null}
+      {candidate.access ? (
+        <div className="flex justify-between" aria-label="level access summary">
+          <span>
+            {candidate.access.accessibleLevelCount}/{candidate.access.levelCount} levels accessed
+          </span>
+          <span>
+            access {candidate.access.totalAccessLength.toFixed(0)} m · worst{' '}
+            {candidate.access.worstAccessLength.toFixed(0)} m · g ≤{' '}
+            {candidate.access.maxAccessGradient.toFixed(3)} · R ≥{' '}
+            {candidate.access.minAccessPlanRadius === null
+              ? '—'
+              : candidate.access.minAccessPlanRadius.toFixed(1)}{' '}
+            m
+          </span>
+        </div>
+      ) : null}
+      {candidate.access?.effectivePreferredAccessLength != null ? (
+        <div className="flex justify-between" aria-label="preferred access length">
+          <span>
+            preferred access {candidate.access.effectivePreferredAccessLength.toFixed(0)} m
+            {candidate.access.preferredAccessSource === 'EXPLICIT' ? ' (scenario)' : ' (6 × width)'}
+          </span>
+          <span>
+            mean |ΔP|{' '}
+            {candidate.access.meanAbsDeviationFromPreferred == null
+              ? '—'
+              : candidate.access.meanAbsDeviationFromPreferred.toFixed(1)}{' '}
+            m
+          </span>
+        </div>
+      ) : null}
       <ul className="mt-0.5 max-h-24 overflow-y-auto">
-        {candidate.levelService.map((r) => (
-          <li key={r.levelId} className="flex justify-between">
-            <span>
-              {r.levelId} <span>{r.elevation.toFixed(0)} m</span>
-            </span>
-            <span className={r.served ? '' : 'text-danger'}>
-              {r.served
-                ? `served · ${(r.accessDistance ?? 0).toFixed(0)} m`
-                : (r.unservedReason ?? 'unserved')}
-            </span>
-          </li>
-        ))}
+        {candidate.levelAccesses
+          ? candidate.levelAccesses.map((a) => (
+              <li key={a.levelId} className="flex justify-between">
+                <span>
+                  {a.levelId} <span>{a.elevation.toFixed(0)} m</span>
+                </span>
+                <span className={a.status === 'OK' ? '' : 'text-danger'}>
+                  {a.status === 'OK'
+                    ? `junction @${(a.rampJunctionChainage ?? 0).toFixed(0)} m · access ${a.length3d.toFixed(0)} m${
+                        a.lengthDeviationFromPreferred != null
+                          ? ` (ΔP ${a.lengthDeviationFromPreferred >= 0 ? '+' : '−'}${Math.abs(a.lengthDeviationFromPreferred).toFixed(0)} m)`
+                          : ''
+                      }`
+                    : (a.failureReason ?? 'no access')}
+                </span>
+              </li>
+            ))
+          : candidate.rampLevelReferences.map((r) => (
+              <li key={r.levelId} className="flex justify-between">
+                <span>
+                  {r.levelId} <span>{r.elevation.toFixed(0)} m</span>
+                </span>
+                <span className={r.withinReach ? '' : 'text-danger'}>
+                  {r.withinReach
+                    ? `screen ok · ${(r.footprintDistance ?? 0).toFixed(0)} m to ore`
+                    : (r.screenReason ?? 'screen failed')}
+                </span>
+              </li>
+            ))}
       </ul>
     </div>
   )

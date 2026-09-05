@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,12 +19,14 @@ from minegen.core.artifacts import (
     LAYOUT_V2_ARTIFACT,
     LAYOUT_V2_SELECTED_ARTIFACT,
     LEGACY_RAMP_ARTIFACT,
+    LEVEL_ACCESSES_ARTIFACT,
     RAMP_SOURCE_FILE,
 )
 from minegen.core.enums import DistanceContract, OrebodyType
 from minegen.core.models import Scenario
 from minegen.design.constraints import DesignContext
-from minegen.design.cost_field import DesignCostEvaluator
+from minegen.design.cost_field import DesignCostEvaluator, clearance_policy_for
+from minegen.design.development_mesh import DevelopmentMeshBuilder
 from minegen.design.mine_designer import ChainedDeclineGenerator
 from minegen.design.progress import (
     ProgressCallback,
@@ -39,8 +42,9 @@ from minegen.layout.search import (
     LayoutSearchResult,
     LayoutV2Search,
     materialize_effective_ramp,
+    materialize_level_accesses,
 )
-from minegen.levels.builder import LevelDevelopmentBuilder
+from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
 from minegen.levels.models import LevelsPayload
 from minegen.mining.methods.base import strategy_for, unsupported_method_payload
 from minegen.mining.models import StopesPayload
@@ -87,6 +91,10 @@ class NetworkNotFoundError(LookupError):
     """network.json does not exist for the scenario."""
 
 
+class DevelopmentMeshNotGeneratedError(LookupError):
+    """development_mesh.json does not exist for the scenario."""
+
+
 class TunnelNotGeneratedError(LookupError):
     """tunnel_mesh.json does not exist for the scenario."""
 
@@ -114,6 +122,10 @@ class LayoutV2NotGeneratedError(LookupError):
 class LayoutV2NotSelectedError(LookupError):
     """layout_v2_selected.json does not exist (no candidate selected), or
     LAYOUT_V2 is the active ramp source without a selection."""
+
+
+class LevelAccessesNotGeneratedError(LookupError):
+    """level_accesses.json does not exist for the scenario (Phase 20B)."""
 
 
 class LayoutCandidateNotFoundError(LookupError):
@@ -387,6 +399,9 @@ class DesignService:
     def layout_selected_path(self, scenario_id: str) -> Path:
         return self.store.derived_dir(scenario_id) / LAYOUT_V2_SELECTED_ARTIFACT
 
+    def level_accesses_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / LEVEL_ACCESSES_ARTIFACT
+
     def ramp_source_path(self, scenario_id: str) -> Path:
         return self.store.derived_dir(scenario_id) / RAMP_SOURCE_FILE
 
@@ -398,6 +413,7 @@ class DesignService:
         return [
             Path(self.smoothed_path(scenario_id)),
             self.layout_selected_path(scenario_id),
+            self.level_accesses_path(scenario_id),
             self.ramp_source_path(scenario_id),
         ]
 
@@ -408,9 +424,10 @@ class DesignService:
         return InputFingerprint.capture(self._layout_input_paths(scenario_id))
 
     def _delete_layout_selection(self, scenario_id: str) -> None:
-        path = self.layout_selected_path(scenario_id)
-        if path.exists():
-            path.unlink()
+        # rule 157: the level-access artifact is owned by the selection
+        for path in (self.layout_selected_path(scenario_id), self.level_accesses_path(scenario_id)):
+            if path.exists():
+                path.unlink()
 
     def _delete_ramp_downstream(self, scenario_id: str) -> None:
         """Everything derived from the Effective Ramp (rule 151): tunnel,
@@ -510,7 +527,14 @@ class DesignService:
         payload = materialize_effective_ramp(result, cand, search.evaluator, revision)
         payload["layoutRevision"] = layout_rev
         payload["owningArtifact"] = LAYOUT_V2_SELECTED_ARTIFACT
+        # rule 157: the ramp junctions + level accesses of the SAME candidate,
+        # same revision, persisted together with the main ramp
+        accesses = materialize_level_accesses(
+            result, cand, revision, self.store.get(scenario_id).mining.method.value
+        )
+        accesses["layoutRevision"] = layout_rev
         serialized = json.dumps(payload)
+        serialized_accesses = json.dumps(accesses)
         with self.store.lock(scenario_id):
             current = InputFingerprint.capture(
                 [*self._layout_input_paths(scenario_id), self.layout_path(scenario_id)]
@@ -519,6 +543,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.layout_selected_path(scenario_id)
             path.write_text(serialized, encoding="utf-8")
+            self.level_accesses_path(scenario_id).write_text(serialized_accesses, encoding="utf-8")
             self._delete_ramp_downstream_if_active(scenario_id, "LAYOUT_V2")
         return payload
 
@@ -535,6 +560,22 @@ class DesignService:
         if data is None:
             raise LayoutV2NotSelectedError(scenario_id)
         return data
+
+    def level_accesses(self, scenario_id: str) -> dict[str, Any]:
+        self.store.get(scenario_id)
+        path = self.level_accesses_path(scenario_id)
+        if not path.is_file():
+            raise LevelAccessesNotGeneratedError(scenario_id)
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
+
+    def active_level_accesses(self, scenario_id: str) -> dict[str, Any] | None:
+        """The level-access artifact of the ACTIVE ramp: required (and
+        present by construction of the selection) for LAYOUT_V2, ``None``
+        for LEGACY (Phase 05 segment ends are the level entries)."""
+        if read_ramp_source(self.store.derived_dir(scenario_id)) != "LAYOUT_V2":
+            return None
+        return self.level_accesses(scenario_id)
 
     def ramp_source(self, scenario_id: str) -> dict[str, Any]:
         self.store.get(scenario_id)
@@ -583,6 +624,8 @@ class DesignService:
         path = self.levels_path(scenario_id)
         if path.exists():
             path.unlink()
+        # the development mesh is a derivative of levels + level accesses
+        self._delete_development_mesh_artifacts(scenario_id)
 
     def _levels_input_paths(self, scenario_id: str) -> list[Path]:
         # cross-section + mining lattice config from scenario.json, orebody
@@ -599,18 +642,32 @@ class DesignService:
     def generate_levels(self, scenario_id: str) -> LevelsPayload:
         """Synchronous deterministic analytic geometry (rule 71; rule 60
         reserves async jobs for long-running operations). Regenerating levels
-        invalidates the MineNetwork but never the tunnel mesh (rule 74)."""
+        invalidates the MineNetwork but never the tunnel mesh (rule 74).
+
+        The evaluators are built with the world's own clearance policy
+        (rule 146: EXACT for analytic bodies — numerically identical to the
+        legacy path — CONSERVATIVE for implicit ones) instead of the
+        exact-only ``self.evaluator``. An implicit body must REACH
+        ``LevelDevelopmentBuilder`` so it answers the intended typed Phase 20B
+        boundary (``LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY``)
+        rather than the legacy evaluator's 422."""
         fingerprint = self.levels_fingerprint(scenario_id)
         smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
-        scenario, world, drift_ev = self.evaluator(scenario_id)
+        accesses_payload = self.active_level_accesses(scenario_id)
+        scenario, world = self.worlds.load(scenario_id)
+        policy = clearance_policy_for(world.orebody)
+        drift_ev = DesignCostEvaluator(world, scenario.design, clearance=policy)
         crosscut_ev = DesignCostEvaluator(
-            world, scenario.design, DesignContext.crosscut(scenario.design)
+            world, scenario.design, DesignContext.crosscut(scenario.design), clearance=policy
         )
         source_revision = hashlib.sha256(
             json.dumps(fingerprint.entries, sort_keys=True).encode()
         ).hexdigest()[:16]
         builder = LevelDevelopmentBuilder(scenario, world.orebody, drift_ev, crosscut_ev)
-        payload = builder.build(smoothed_payload, source_revision)
+        entries = (
+            entries_from_level_accesses(accesses_payload) if accesses_payload is not None else None
+        )
+        payload = builder.build(smoothed_payload, source_revision, entries=entries)
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):
             if self.levels_fingerprint(scenario_id) != fingerprint:
@@ -623,6 +680,7 @@ class DesignService:
             self._delete_timeline_artifact(scenario_id)  # rule 86 chain
             self._delete_communication_artifact(scenario_id)  # rule 92 chain
             self._delete_sensors_artifact(scenario_id)  # rule 98
+            self._delete_development_mesh_artifacts(scenario_id)  # closeout v3 §4
         return payload
 
     def levels(self, scenario_id: str) -> LevelsPayload:
@@ -740,6 +798,7 @@ class DesignService:
         network_payload = self.network(scenario_id)  # NetworkNotFoundError if absent
         stopes_payload = self.stopes(scenario_id)  # 409 if absent
         smoothed_payload = self.effective_ramp(scenario_id)
+        accesses_payload = self.active_level_accesses(scenario_id)
         levels_payload = self.levels(scenario_id)
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
@@ -752,6 +811,7 @@ class DesignService:
             smoothed_payload,
             levels_payload.model_dump(mode="json", by_alias=True),
             source_revision,
+            accesses_payload=accesses_payload,
         )
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):
@@ -799,6 +859,7 @@ class DesignService:
         invalidates the other (rule 68)."""
         fingerprint = self.network_fingerprint(scenario_id)
         smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
+        accesses_payload = self.active_level_accesses(scenario_id)
         levels_payload = self.levels(scenario_id)  # 409 if not generated (rule 74)
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
@@ -810,6 +871,7 @@ class DesignService:
             source_revision,
             levels_payload=levels_payload.model_dump(mode="json", by_alias=True),
             geometry_artifact=str(smoothed_payload.get("owningArtifact", LEGACY_RAMP_ARTIFACT)),
+            accesses_payload=accesses_payload,
         )
         # deterministic serialization of the TYPED contract (rule 69): field
         # order is the model definition order, values are JSON-mode primitives
@@ -858,10 +920,24 @@ class DesignService:
         centerline (rules 65–67). The fingerprint covers all five upstream
         inputs; persistence follows the locked stale-input protocol
         (rule 60). The GLB is written only on SUCCESS; the report is always
-        persisted with an explicit status."""
+        persisted with an explicit status.
+
+        The sweep evaluator is built with the world's own clearance policy
+        (rule 146: EXACT for analytic bodies — the default constructor path
+        yields the very same ``ExactClearance``, so TABULAR is numerically
+        unchanged — CONSERVATIVE for implicit ones) rather than the
+        exact-only ``self.evaluator``. Phase 06 does not route a search
+        through the hard orebody buffer; it sweeps an ALREADY validated
+        centerline and checks the resulting envelope, and under a
+        CONSERVATIVE policy that envelope check is strictly stricter. Rule
+        135 still guards the legacy Hybrid-A* chain, which keeps refusing an
+        implicit body at ``/design/targets``."""
         fingerprint = self.tunnel_fingerprint(scenario_id)
         smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
-        scenario, _, ev = self.evaluator(scenario_id)
+        scenario, world = self.worlds.load(scenario_id)
+        ev = DesignCostEvaluator(
+            world, scenario.design, clearance=clearance_policy_for(world.orebody)
+        )
         builder = TunnelMeshBuilder(ev, scenario.ramp, scenario.tunnel_profile)
 
         def progress(i: int, n: int, label: str, stage: str) -> None:
@@ -902,6 +978,140 @@ class DesignService:
             elif glb_path.exists():
                 glb_path.unlink()  # never leave a stale GLB beside a FAILED report
         return payload
+
+    # -- development mesh (Phase 20B closeout v3 §4) ------------------------- #
+
+    def development_mesh_report_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / "development_mesh.json"
+
+    def development_mesh_glb_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / "development_mesh.glb"
+
+    def _delete_development_mesh_artifacts(self, scenario_id: str) -> None:
+        for path in (
+            self.development_mesh_report_path(scenario_id),
+            self.development_mesh_glb_path(scenario_id),
+        ):
+            if path.exists():
+                path.unlink()
+
+    def _development_mesh_input_paths(self, scenario_id: str) -> list[Path]:
+        return [*self._levels_input_paths(scenario_id), self.levels_path(scenario_id)]
+
+    def development_mesh_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._development_mesh_input_paths(scenario_id))
+
+    def generate_development_mesh(
+        self, scenario_id: str, on_progress: ProgressCallback = no_progress
+    ) -> dict[str, Any]:
+        """Sweep every LEVEL_ACCESS / DRIFT / CROSSCUT of the owning
+        artifacts (``level_accesses.json`` of the ACTIVE ramp, ``levels.json``)
+        with the shared profile frame. Requires the levels artifact OR active
+        level accesses (409 LEVELS_NOT_GENERATED otherwise); the GLB is
+        written only on SUCCESS under the locked stale-input protocol
+        (rule 60)."""
+        fingerprint = self.development_mesh_fingerprint(scenario_id)
+        accesses_payload = self.active_level_accesses(scenario_id)
+        try:
+            levels_payload: dict[str, Any] | None = self.levels(scenario_id).model_dump(
+                mode="json", by_alias=True
+            )
+        except LevelsNotGeneratedError:
+            # an implicit body has no level development yet (Phase 20B
+            # boundary): its validated access branches alone are swept
+            if accesses_payload is None:
+                raise
+            levels_payload = None
+        scenario, world = self.worlds.load(scenario_id)
+        # the drift / access envelope uses the layout clearance policy of the
+        # world (EXACT for analytic bodies, CONSERVATIVE for implicit ones —
+        # rule 146); crosscuts keep their orebody-contact context (rule 72)
+        drift_ev = DesignCostEvaluator(
+            world,
+            scenario.design,
+            DesignContext.decline(scenario.design),
+            clearance=clearance_policy_for(world.orebody),
+        )
+        crosscut_ev = DesignCostEvaluator(
+            world,
+            scenario.design,
+            DesignContext.crosscut(scenario.design),
+            clearance=clearance_policy_for(world.orebody),
+        )
+        builder = DevelopmentMeshBuilder(
+            drift_ev, crosscut_ev, scenario.ramp, scenario.tunnel_profile
+        )
+
+        def progress(i: int, n: int, label: str, stage: str) -> None:
+            on_progress(
+                ProgressEvent(
+                    stage=ProgressStage(stage),
+                    phase="DEVELOPMENT_MESH",
+                    level=min(i + 1, n) if n else 1,
+                    total_levels=max(n, 1),
+                    candidate=0,
+                    total_candidates=0,
+                    progress=min(i, n) / n if n else 1.0,
+                    expanded_states=0,
+                    level_id=label,
+                )
+            )
+
+        t0 = time.perf_counter()
+        result = builder.build(accesses_payload, levels_payload, on_progress=progress)
+        payload = dict(result.report)
+        payload["generationSeconds"] = time.perf_counter() - t0
+        # which owning artifacts actually CONTRIBUTED geometry: a persisted
+        # but FAILED levels artifact (e.g. the implicit-orebody Phase 20B
+        # boundary) contributes no drift / crosscut
+        payload["sources"] = {
+            "levelAccesses": accesses_payload is not None,
+            "levels": levels_payload is not None and levels_payload.get("status") == "SUCCESS",
+            "rampSource": read_ramp_source(self.store.derived_dir(scenario_id)),
+        }
+        if result.glb is not None:
+            revision = hashlib.sha256(result.glb).hexdigest()
+            payload["artifactRevision"] = revision
+            payload["glbBytes"] = len(result.glb)
+            payload["meshUrl"] = (
+                f"/api/v1/scenarios/{scenario_id}/design/development-mesh/mesh.glb"
+                f"?v={revision[:16]}"
+            )
+        else:
+            payload["artifactRevision"] = None
+            payload["glbBytes"] = 0
+            payload["meshUrl"] = None
+        with self.store.lock(scenario_id):
+            if self.development_mesh_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            report_path = self.development_mesh_report_path(scenario_id)
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(json.dumps(payload), encoding="utf-8")
+            glb_path = self.development_mesh_glb_path(scenario_id)
+            if result.glb is not None:
+                glb_path.write_bytes(result.glb)
+            elif glb_path.exists():
+                glb_path.unlink()
+        return payload
+
+    def development_mesh(self, scenario_id: str) -> dict[str, Any]:
+        self.store.get(scenario_id)
+        if not self.worlds.is_generated(scenario_id):
+            from minegen.services.world_service import WorldNotGeneratedError
+
+            raise WorldNotGeneratedError(scenario_id)
+        path = self.development_mesh_report_path(scenario_id)
+        if not path.is_file():
+            raise DevelopmentMeshNotGeneratedError(scenario_id)
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
+
+    def development_mesh_glb(self, scenario_id: str) -> bytes:
+        report = self.development_mesh(scenario_id)
+        glb_path = self.development_mesh_glb_path(scenario_id)
+        if report.get("status") != "SUCCESS" or not glb_path.is_file():
+            raise DevelopmentMeshNotGeneratedError(scenario_id)
+        return glb_path.read_bytes()
 
     def tunnel(self, scenario_id: str) -> dict[str, Any]:
         self.store.get(scenario_id)

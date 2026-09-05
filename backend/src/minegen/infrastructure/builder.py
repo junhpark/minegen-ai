@@ -78,6 +78,7 @@ class CommunicationBuilder:
         smoothed_payload: dict[str, Any],
         levels_payload: dict[str, Any],
         source_revision: str,
+        accesses_payload: dict[str, Any] | None = None,
     ) -> CommunicationPayload:
         cfg = self.config
         # -- supported asset gate (§2): never silently substitute ------------ #
@@ -93,7 +94,7 @@ class CommunicationBuilder:
         # the builder never reimplements them
         try:
             domain = InfrastructureNetworkDomain.build(
-                network_payload, smoothed_payload, levels_payload
+                network_payload, smoothed_payload, levels_payload, accesses_payload
             )
         except UnsupportedEdgeTypeError as exc:
             return _failed(

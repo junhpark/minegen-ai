@@ -18,6 +18,13 @@ Deterministic analytic geometry, no path search:
   the first footwall contact. Their context permits the ore contact while
   retaining world/terrain/restricted-zone hard constraints (rule 72).
 
+* A mining method without an implemented production lattice (CUT_AND_FILL
+  and every other reserved method) develops the GENERIC footwall backbone
+  drift over the orebody strike extent minus a fixed end clearance
+  (``GENERIC_BACKBONE_END_CLEARANCE``). ``stope_length`` / ``minimum_pillar``
+  are LONGHOLE production parameters and never influence the generic
+  backbone extent (rule 159).
+
 The drift is emitted as PIECES split at every station/entry breakpoint, so
 each Phase 08 MineNetwork DRIFT edge maps 1:1 onto a development in this
 artifact (rule 73) and every graph edge owns exactly one centerline span.
@@ -32,6 +39,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from minegen.core.enums import MiningMethodType
 from minegen.core.models import Scenario
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.design.profile import boundary_points, build_profile
@@ -43,6 +51,7 @@ from minegen.levels.models import (
     LevelsMetrics,
     LevelsPayload,
     LevelSummary,
+    ProductionDevelopment,
 )
 from minegen.world.orebody import Orebody, TabularOrebody
 
@@ -51,6 +60,11 @@ FloatArray = npt.NDArray[np.float64]
 WELD_TOLERANCE = 1e-6  # m
 TERMINAL_SDF_TOLERANCE = 1e-6  # m — crosscut end sits ON the footwall contact
 SAMPLE_SPACING = 2.0  # m — polyline sampling (endpoints always exact)
+#: generic backbone end clearance from the orebody strike extent (m). Shared
+#: with the level-access anchor placement; independent of every production
+#: parameter (rule 159). Bounded by a quarter of the strike span so a tiny
+#: body still gets a positive-length backbone.
+GENERIC_BACKBONE_END_CLEARANCE = 5.0
 CONSUMABLE_SMOOTHED_STATUSES = ("SUCCESS", "SUCCESS_WITH_FALLBACK")
 
 
@@ -63,6 +77,41 @@ def _failed(source_revision: str, reason: str) -> LevelsPayload:
         levels=[],
         metrics=None,
     )
+
+
+@dataclass(frozen=True)
+class LevelEntrySpec:
+    """Authoritative LEVEL_ENTRY handed to the builder (rule 157): for
+    LAYOUT_V2 the terminal of the validated level access, for LEGACY the
+    Phase 05 segment end."""
+
+    level_id: str
+    position: FloatArray
+    candidate_id: str
+
+
+def entries_from_level_accesses(accesses_payload: dict[str, Any]) -> list[LevelEntrySpec]:
+    out: list[LevelEntrySpec] = []
+    for acc in accesses_payload["accesses"]:
+        if acc.get("status") != "OK" or acc.get("centerline") is None:
+            continue
+        pts = np.asarray(acc["centerline"]["points"], dtype=np.float64).reshape(-1, 3)
+        out.append(
+            LevelEntrySpec(
+                str(acc["levelId"]), pts[-1].copy(), str(accesses_payload.get("candidateId") or "")
+            )
+        )
+    return out
+
+
+def entries_from_ramp_segments(smoothed_payload: dict[str, Any]) -> list[LevelEntrySpec]:
+    """LEGACY semantics only: Phase 05 preserves every level-access target as
+    the exact segment end, so the segment end IS the level entry."""
+    out: list[LevelEntrySpec] = []
+    for seg in smoothed_payload["segments"]:
+        pts = np.asarray(seg["effectiveCenterline"]["points"], dtype=np.float64).reshape(-1, 3)
+        out.append(LevelEntrySpec(str(seg["levelId"]), pts[-1].copy(), str(seg["candidateId"])))
+    return out
 
 
 def _sample_line(start: FloatArray, end: FloatArray) -> FloatArray:
@@ -123,6 +172,15 @@ class LevelDevelopmentBuilder:
         k_max = math.floor((orebody.half_length - margin) / pitch + 1e-9)
         return [k * pitch for k in range(-k_max, k_max + 1)]
 
+    @staticmethod
+    def generic_backbone_extent(orebody: TabularOrebody) -> tuple[float, float]:
+        """Along-strike ``[u0, u1]`` of the generic backbone drift: the orebody
+        strike extent minus a fixed end clearance. No production parameter
+        (``stope_length``, ``minimum_pillar``) enters here (rule 159)."""
+        half = float(orebody.half_length)
+        clearance = min(GENERIC_BACKBONE_END_CLEARANCE, 0.25 * (2.0 * half))
+        return (-half + clearance, half - clearance)
+
     # -- envelope helper ---------------------------------------------------- #
 
     def _envelope(
@@ -153,7 +211,16 @@ class LevelDevelopmentBuilder:
 
     # -- build --------------------------------------------------------------- #
 
-    def build(self, smoothed_payload: dict[str, Any], source_revision: str) -> LevelsPayload:
+    def build(
+        self,
+        smoothed_payload: dict[str, Any],
+        source_revision: str,
+        entries: list[LevelEntrySpec] | None = None,
+    ) -> LevelsPayload:
+        """``entries`` are the authoritative LEVEL_ENTRY positions. They MUST
+        be supplied for a PARAMETRIC_V2 ramp (its segment ends are ramp
+        junctions, not level entries — rule 157); for a LEGACY ramp they
+        default to the Phase 05 segment ends."""
         smoothed_status = smoothed_payload.get("status")
         if smoothed_status not in CONSUMABLE_SMOOTHED_STATUSES:
             return _failed(
@@ -165,12 +232,44 @@ class LevelDevelopmentBuilder:
         segments = smoothed_payload["segments"]
         if not segments:
             return _failed(source_revision, "smoothed artifact has no effective segments")
+        parametric = smoothed_payload.get("sourceKind") == "PARAMETRIC_V2" or any(
+            s.get("rampJunction") is not None or s.get("levelId") is None for s in segments
+        )
+        if entries is None:
+            if parametric:
+                return _failed(
+                    source_revision,
+                    "LEVEL_ACCESSES_REQUIRED: a parametric main ramp ends its segments at "
+                    "ramp junctions, never at level entries; level development needs the "
+                    "validated level-access artifact (rule 157)",
+                )
+            entries = entries_from_ramp_segments(smoothed_payload)
+            entry_source = "LEGACY_RAMP_SEGMENT"
+        else:
+            entry_source = "LEVEL_ACCESS"
+        if not entries:
+            return _failed(source_revision, "no level entries to develop")
 
+        method = self.scenario.mining.method
+        if method is MiningMethodType.LONGHOLE_OPEN_STOPING:
+            production = ProductionDevelopment(method=method.value, status="IMPLEMENTED")
+        else:
+            production = ProductionDevelopment(
+                method=method.value,
+                status="UNSUPPORTED_METHOD",
+                reason=(
+                    f"{method.value} production development (ore drives, lift / fill "
+                    "accesses, raises) is reserved and not implemented; only the generic "
+                    "footwall backbone drift is developed — no longhole crosscut lattice "
+                    "is substituted (rule 159)"
+                ),
+            )
         if not isinstance(self.orebody, TabularOrebody):
             return _failed(
                 source_revision,
-                "Phase 08 v0.1 requires a TABULAR orebody for the analytic "
-                "strike-extent station lattice (rule 72)",
+                "LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY: level drifts / "
+                "crosscuts for a non-TABULAR orebody are not implemented (Phase 20B "
+                "boundary); ramp junctions and level accesses are available",
             )
         ob = self.orebody
         u_hat = np.asarray(ob.u, dtype=np.float64)
@@ -190,9 +289,10 @@ class LevelDevelopmentBuilder:
         g = float(self.scenario.ramp.level_drift_gradient)
         drift_dir = np.array([u_hat[0], u_hat[1], -g])
         drift_dir /= float(np.linalg.norm(drift_dir))
-        stations = self.station_us(ob)
+        longhole = production.status == "IMPLEMENTED"
+        stations = self.station_us(ob) if longhole else []
         pitch = self.station_pitch()
-        if not stations:
+        if longhole and not stations:
             margin = self.scenario.mining.stope_length / 2.0 + self.scenario.mining.minimum_pillar
             return _failed(
                 source_revision,
@@ -210,11 +310,9 @@ class LevelDevelopmentBuilder:
             if first_failure is None:
                 first_failure = reason
 
-        for seg in segments:
-            level_id = seg["levelId"]
-            entry = np.asarray(seg["effectiveCenterline"]["points"], dtype=np.float64).reshape(
-                -1, 3
-            )[-1]
+        for spec in entries:
+            level_id = spec.level_id
+            entry = np.asarray(spec.position, dtype=np.float64)
             u_entry = float(np.dot(entry - ob.center, u_hat))
 
             def drift_point(
@@ -225,8 +323,11 @@ class LevelDevelopmentBuilder:
                 p: FloatArray = _entry + (u - _u0) * u_hat + np.array([0.0, 0.0, -g * (u - _u0)])
                 return p
 
-            # breakpoints: stations ∪ entry (merged within weld tolerance)
-            breakpoints = sorted(stations)
+            # breakpoints: stations ∪ entry (merged within weld tolerance). A
+            # method without a production lattice develops the generic
+            # backbone drift over the strike extent minus a fixed end
+            # clearance — never a stope / pillar margin (rule 159).
+            breakpoints = sorted(stations) if longhole else list(self.generic_backbone_extent(ob))
             if not any(abs(u_entry - s) <= WELD_TOLERANCE for s in breakpoints):
                 breakpoints = sorted([*breakpoints, u_entry])
             level_valid = True
@@ -339,7 +440,7 @@ class LevelDevelopmentBuilder:
             summaries.append(
                 LevelSummary(
                     level_id=level_id,
-                    candidate_id=seg["candidateId"],
+                    candidate_id=spec.candidate_id,
                     entry=(float(entry[0]), float(entry[1]), float(entry[2])),
                     entry_u=u_entry,
                     drift_piece_count=piece_count,
@@ -364,6 +465,8 @@ class LevelDevelopmentBuilder:
             status="SUCCESS" if first_failure is None else "FAILED",
             failure_reason=first_failure,
             source_revision=source_revision,
+            entry_source=entry_source,
+            production_development=production,
             developments=developments,
             levels=summaries,
             metrics=metrics,

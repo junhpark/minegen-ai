@@ -871,12 +871,28 @@ phase is considered complete.
      `Orebody.distance_contract`. φ is never called or used as an SDF; an
      approximate clearance is never labelled exact; its sign is forced to
      agree with `contains` and membership wins on disagreement.
-135. No approximate hard buffer. The legacy Phase 03–18 design pipeline
-     (hard orebody exclusion buffers, access targets, levels, stopes)
-     accepts only `AnalyticOrebody`; `DesignCostEvaluator` raises
-     `ExactDistanceRequiredError` and the service returns
-     UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT (422) for any other contract.
-     WARPED_VEIN → approximate clearance → Hybrid-A* is forbidden.
+135. No approximate hard buffer in a SEARCH. The exact-only boundary is
+     the legacy Hybrid-A* search chain (access targets → decline →
+     smoothing) and the TABULAR-frame level layout (drift / crosscut
+     design, stopes): these CHOOSE geometry against the hard orebody
+     exclusion buffer, so an approximate buffer could steer a design into
+     the body. They accept only `AnalyticOrebody`; `DesignCostEvaluator`
+     with no explicit policy raises `ExactDistanceRequiredError` and every
+     such entry point answers UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT (422),
+     never 500 (rule 123). WARPED_VEIN → approximate clearance → Hybrid-A*
+     is forbidden.
+
+     A SWEEP is different (closeout v5). The Phase 06 ramp tunnel mesh and
+     the Phase 20B development mesh do not choose geometry: they sweep a
+     centerline that was already validated under the layout-v2 clearance
+     policy and judge the resulting excavation envelope. They build their
+     evaluator with `clearance_policy_for(world.orebody)` — for an
+     `AnalyticOrebody` that is the very same `ExactClearance` the default
+     constructor yields (bit-identical numerics); for an implicit body it
+     is CONSERVATIVE, which can only reject more of the envelope than an
+     exact check would, never admit more. A sweep therefore never
+     relaxes rule 135; it applies the buffer the centerline was designed
+     under.
 136. Resolved morphology. Every stochastic shape control AND every mode
      coefficient of a WARPED_VEIN is drawn in `scenario_realizer.py`
      (orebody sub-stream 0x0B0D17, no new key) and persisted resolved in
@@ -1029,13 +1045,16 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      solid, never from a global strike.
 146. Clearance policy is explicit. `DesignCostEvaluator` accepts a
      `ClearancePolicy`: EXACT (analytic SDF, legacy numerics unchanged and
-     still the only policy the legacy pipeline constructs) or CONSERVATIVE
-     (`safe = approximateClearance − errorBound`, errorBound = 1.5 × the
-     derived-lattice diagonal; empirically ≥ the measured mesh-distance
-     error). Layout-v2 reports clearanceBasis, approximate / conservative
-     minimum clearance, error bound and required clearance
-     (`buffer + hypot(width/2, height)`); WARPED_VEIN is first-class in
-     layout-v2 and still refused by the legacy pipeline (rule 135).
+     still the only policy the Hybrid-A* search chain constructs) or
+     CONSERVATIVE (`safe = approximateClearance − errorBound`, errorBound =
+     1.5 × the derived-lattice diagonal; empirically ≥ the measured
+     mesh-distance error). Layout-v2 and the downstream sweeps (Phase 06
+     tunnel mesh, Phase 20B development mesh) take
+     `clearance_policy_for(world.orebody)`. Layout-v2 reports
+     clearanceBasis, approximate / conservative minimum clearance, error
+     bound and required clearance (`buffer + hypot(width/2, height)`);
+     WARPED_VEIN is first-class in layout-v2 and its sweeps, and still
+     refused by the Hybrid-A* search chain (rule 135).
 147. Hard constraints stay hard. Layout-v2 stages are enumerate → cheap
      evaluation → bounded shortlist → detailed validation through the shared
      `DesignCostEvaluator` sample validator → deterministic ranking; a
@@ -1080,3 +1099,177 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      Phase 20B–20D. The frontend edits only explicit layout parameters and
      performs no layout engineering (no client-side enumeration, scoring or
      geometry).
+
+153. A main-ramp RL crossing is a RAMP LEVEL REFERENCE, never a level entry
+     (Phase 20B). The physical route is PORTAL → RAMP → RAMP_JUNCTION
+     (turnout) → LEVEL_ACCESS → LEVEL_ENTRY → level development → production
+     access. `RAMP_LEVEL_REFERENCE == LEVEL_ENTRY` is never assumed; the
+     Phase 20A crossing / footprint-reach predicate survives only as the
+     stage-2 ACCESS-POTENTIAL SCREEN (`withinReach`), never as "served".
+154. LEVEL_ENTRY is owned by the terminal of a validated Level Access. The
+     level drift is anchored there (`entrySource = LEVEL_ACCESS`); a
+     PARAMETRIC_V2 ramp whose segments end at turnouts is refused by the
+     level builder without the level-access artifact
+     (LEVEL_ACCESSES_REQUIRED). LEGACY keeps its Phase 05 segment ends as
+     entries behind the same builder (`entrySource = LEGACY_RAMP_SEGMENT`).
+155. Level Access is separate geometry from the Effective Ramp. The main
+     ramp is split EXACTLY at its ramp junctions (plus the `RAMP_END` tail);
+     access branches are never ramp segments and never inflate ramp totals.
+     Artifact ownership: `layout_v2_selected.json` (main ramp),
+     `level_accesses.json` (junctions + branches + anchors, written with the
+     selection under the same revision), `levels.json` (level / production
+     development). No polyline is duplicated across artifacts.
+156. Final "level served" means explicit physical access: a valid ramp
+     junction, a validated branch welded to the ramp (≤ 1e-6 m) reaching the
+     authoritative level-development anchor, hard constraints passed, and a
+     connected network path from the portal to the level entry. A layout-v2
+     candidate is FEASIBLE only when EVERY serviceable required level has a
+     valid access (LEVEL_ACCESS_INFEASIBLE otherwise, with per-level typed
+     reasons). Development score = main ramp + total access length; access
+     failures are never score penalties.
+157. Level-access planning is finite and deterministic: junction candidates
+     on a `junctionSearchSpacing` chainage lattice inside the
+     `junctionWindowAbove/Below` elevation window; a G1 Dubins CSC connector
+     (R = minTurnRadius) from the junction pose to the anchor pose with a
+     chord-exact constant gradient; selection = min (length, junction
+     chainage, terminal sense); `minimumRampJunctionSpacing` is a hard
+     rule (JUNCTION_SPACING_CONFLICT). Every candidate branch is judged on
+     the DELIVERED polyline (gradient, circumradius, world, cover,
+     restricted zones, clearance under the evaluator's policy, excavation
+     envelope). Nothing is clamped; an impossible access is typed.
+158. Level-development anchors are backend engineering geometry: the
+     footwall backbone at `anchorStandoff` from the footwall edge (exact
+     rule 43 line for TABULAR; the numerical level section's principal axis
+     and footwall-side extent for implicit bodies), entry placed by the
+     explicit `entryPolicy` (NEAREST_TO_RAMP), terminal heading along the
+     backbone. Under a CONSERVATIVE clearance policy the stand-off is raised
+     so the entry itself satisfies `required + errorBound`. The frontend
+     never reconstructs access or anchor geometry.
+159. Generic level access never encodes LONGHOLE production geometry. The
+     level builder always develops the generic backbone drift; the longhole
+     crosscut station lattice exists only for LONGHOLE_OPEN_STOPING.
+     CUT_AND_FILL (and every other reserved method) gets ramp junctions,
+     level accesses and the backbone drift, and reports
+     `productionDevelopment.status = UNSUPPORTED_METHOD` for its production
+     portion — never a silent longhole substitute. The generic backbone
+     extent is the orebody strike extent minus a fixed end clearance
+     (`GENERIC_BACKBONE_END_CLEARANCE`, shared with the anchor placement);
+     `stope_length` / `minimum_pillar` are LONGHOLE production parameters
+     and never change generic level development.
+160. MineNetwork preserves physical truck connectivity: RAMP edges end at
+     RAMP_JUNCTION / RAMP_END nodes, LEVEL_ACCESS edges (owned by
+     `level_accesses.json`) join a RAMP_JUNCTION to its LEVEL_ENTRY, and
+     DRIFT / CROSSCUT never touch a ramp node. Scheduling roots each level's
+     development at the access task (which depends on the ramp task reaching
+     its junction); infrastructure and timeline resolve LEVEL_ACCESS
+     geometry through its owning artifact. No frontend shortcut exists.
+161. Plan radius on a delivered centerline is the three-point circumradius
+     `|p_{i+1} − p_{i−1}| / (2·sin δ_i)` (exact for any sampling of a circular
+     arc; ∞ for collinear triples; RADIUS_TOLERANCE 0.05 m covers only
+     floating-point noise). A true R_min hairpin sampled at 5 m is accepted.
+162. Level-access lifecycle: `level_accesses.json` is invalidated with the
+     layout selection (catalogue regeneration, re-selection, scenario /
+     world change) and is a fingerprint input of levels, network, timeline,
+     communication and sensors; switching the ramp source keeps it (it
+     belongs to the selection). Geology is never invalidated by a level
+     access. Approximate WARPED_VEIN clearance stays explicitly conservative
+     and the legacy pipeline stays behind its compatibility path.
+
+163. Preferred access length (Phase 20B closeout v3). `minimumAccessLength`
+     (15 m) stays the HARD floor and `maximumAccessLength` the hard ceiling;
+     `LevelAccessConfig.preferredAccessLength` is a mine-PLANNING default,
+     never a statutory value or a mandatory minimum. `None` resolves to
+     `max(minimumAccessLength, 6 × tunnel_width)` (30 m for the 5 m default
+     tunnel); an explicit value must lie inside [min, max] — validated,
+     never clamped. Among VALID junction / connector candidates the planner
+     minimizes `(|L − P| + LONG_ACCESS_COEF · max(0, L − P), L, junction
+     chainage, sense)`; `LONG_ACCESS_COEF` (0.5) is a documented deterministic
+     module constant in `layout/access.py` — provisional, not a user weight
+     and not an engineering invariant. Every access reports
+     `effectivePreferredAccessLength`, `lengthDeviationFromPreferred` and
+     `selectionCost`. The topology (RAMP_JUNCTION → LEVEL_ACCESS →
+     LEVEL_ENTRY → drift) is unchanged: no LEVEL_STATION node, no new
+     junction semantic.
+164. Stage-2 access-potential screen semantics. `withinReach` /
+     ACCESS_REACH_EXCEEDED (same-RL crossing → orebody footprint distance)
+     is a HEURISTIC: it feeds the stage-3 cheap proxy (mean access
+     distance) and stays inspectable per level, but it NEVER rejects a
+     candidate. Only NO_RL_CROSSING — the main ramp does not vertically
+     cover the level, so no junction lattice can exist — remains a hard
+     stage-2 failure (`level_screen_problems`). Stage 4
+     (`plan_level_accesses`) is the final service authority; gradient,
+     radius, clearance, envelope and world hard constraints are never
+     relaxed. TABULAR and WARPED golden results MAY change under this rule;
+     every change is explained in the golden comparison, and no partial
+     reach gate is kept to preserve an old winner.
+165. Shortlist starvation is audited, not assumed. The production search
+     keeps the bounded shortlist; `LayoutV2Search.run(detailed_all=True)`
+     is a DIAGNOSTIC mode (never a config or API option) and
+     `python -m minegen.regression layout-v2-audit` records, per golden
+     case, the feasible candidates the shortlist never validated and whether
+     the exhaustive winner or a feasible family is missed. A family-diverse
+     shortlist or a cheap lower bound is added only when that audit shows
+     a missed winner / family.
+166. Development excavation meshes (closeout v3 §4). LEVEL_ACCESS / DRIFT /
+     CROSSCUT are swept by `design/development_mesh.py` through the SAME
+     Phase 06 machinery (`build_ring_chain` / `build_logical_mesh` /
+     `build_render_mesh`) and gravity-aligned profile frame on their
+     authoritative centerlines (`level_accesses.json`, `levels.json`) —
+     never re-designed, moved or decimated; only the RENDER tessellation is
+     coarser (arch segments halved, subdivision spacing doubled). Endpoint
+     policy is explicit: CAP closes an isolated end (drift extremities, the
+     crosscut face), OPEN leaves the ring boundary open where a development
+     joins another excavation (access at the turnout and at the entry,
+     crosscut start). QA is split: CAP-CAP tubes keep the closed-solid
+     contract (manifold, watertight, outward, signed volume); OPEN tubes are
+     manifolds with boundary (finite, valid indices, non-degenerate,
+     orientation-consistent, exactly K boundary edges per open end on the
+     end rings, ring/centerline correspondence, envelope) and are never
+     asked for a closed signed volume. Render batching is one tube
+     primitive + one cap primitive per kind with `ranges` extras mapping
+     back to development / piece ids; materials are shared by role.
+     `development_mesh.{json,glb}` is invalidated with `levels.json`.
+     Boolean wall openings, exact junction CSG and an all-development
+     watertight union are Phase 20D ("Unified Development Mesh"); so is
+     walkthrough / collider integration — the Phase 13–15 walkthrough
+     traverses the Phase 06 ramp tunnel only and does NOT enter the
+     level-access, drift or crosscut excavation meshes. Without CSG the
+     OPEN ends leave the neighbouring tube's inner shell visible at a
+     turnout; that is the recorded Phase 20D limitation, never patched in
+     Phase 20B.
+167. Legacy decline UX boundary. The primary workflow is World → Layout v2
+     → select / activate → level access → level development → excavation
+     meshes → network → stopes → timeline. The Phase 03–05 chain (access
+     targets, Hybrid-A* decline, smoothing) and the explicit LEGACY ⇄
+     LAYOUT_V2 source switch are ONE collapsed "Legacy decline (Hybrid-A*)
+     — Advanced" section that auto-expands only when `activeSource ==
+     LEGACY AND hasLegacyWork` (an access-target, decline or legacy smoothed
+     artifact exists); the `accessTargets` / `rawSearchPath` layers default
+     OFF and are hidden when a layout-v2 candidate is activated. Legacy
+     backend, API, artifacts, schema, tests and goldens are untouched and
+     the source-neutral Effective Ramp stays.
+168. Standoff / clearance semantics audit is a FOLLOW-UP, not part of the
+     Phase 20B closeout. `RampConstraints.clearance`,
+     `DesignConfig.orebody_exclusion_buffer`, the layout-v2 required
+     centerline clearance (`buffer + hypot(width/2, height)`),
+     `footwall_access_offset`, the level-access anchor stand-off, the WARPED
+     conservative error bound and the preferred access length are DIFFERENT
+     distance concepts; no default is changed here and
+     `ramp_standoff >= level_entry_standoff + preferred_access_length` is
+     NOT declared an invariant (a spatial stand-off and a centerline path
+     length are not additive in general). The separate change "Ramp /
+     Footwall / Access Standoff Semantics Rationalization" audits their uses
+     and relationships (see `docs/roadmap.md`).
+
+169. Effective Ramp IDENTITY decides downstream preservation — never
+     `activeSource` alone. The identity is (active source, selected layout
+     candidate, layout revision): switching LEGACY ⇄ LAYOUT_V2 AND replacing
+     the selected candidate under an already-active LAYOUT_V2 both change it
+     and invalidate tunnel mesh, development mesh, levels, network, stopes,
+     timeline, communication and sensors; re-selecting or re-activating the
+     same candidate at the same revision is idempotent. The frontend keeps
+     ONE comparison per half — `afterLayoutSelect` owns the candidate /
+     revision half, `afterRampSourceChange` the source half — and activate
+     composes them (`afterLayoutActivate`); the comparison is never
+     duplicated. The level accesses owned by the activated selection
+     (rule 157) survive the composition.

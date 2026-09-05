@@ -77,6 +77,14 @@ def main(argv: list[str] | None = None) -> int:
     lvc_p.add_argument("baseline", type=Path)
     lvc_p.add_argument("current", type=Path)
 
+    lva_p = sub.add_parser(
+        "layout-v2-audit",
+        help="closeout v3 §3.E diagnostic: exhaustive vs bounded-shortlist validation",
+    )
+    lva_p.add_argument("--suite", choices=["full", "smoke"], default="full")
+    lva_p.add_argument("--label", required=True)
+    lva_p.add_argument("--out", type=Path, default=Path("golden"))
+
     args = parser.parse_args(argv)
     if args.command == "layout-v2":
         lv_cases = layout_v2.suite(args.suite)
@@ -94,6 +102,23 @@ def main(argv: list[str] | None = None) -> int:
             )
         json_path, csv_path = layout_v2.write_report(lv_report, args.out, args.label)
         print(f"wrote {json_path} and {csv_path} ({lv_report['totalRuntimeSeconds']:.1f} s)")
+        return 0
+    if args.command == "layout-v2-audit":
+        audit = layout_v2.audit_shortlist(layout_v2.suite(args.suite), args.label)
+        audit["gitHead"] = _git_head()
+        for rec in audit["cases"]:
+            print(
+                f"  {rec['key']}: cheap-feasible={rec.get('cheapFeasibleCount')} "
+                f"shortlist={rec.get('shortlistSize')} feasible normal/exhaustive="
+                f"{len(rec.get('feasibleNormal', []))}/{len(rec.get('feasibleExhaustive', []))} "
+                f"winner={rec.get('winnerNormal')} exhaustive={rec.get('winnerExhaustive')} "
+                f"missedWinner={rec.get('winnerMissedByShortlist')} "
+                f"missedFamilies={rec.get('missedFamilies')}"
+            )
+        args.out.mkdir(parents=True, exist_ok=True)
+        audit_path = args.out / f"{args.label}.json"
+        audit_path.write_text(json.dumps(audit, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"wrote {audit_path} ({audit['totalRuntimeSeconds']:.1f} s)")
         return 0
     if args.command == "layout-v2-compare":
         cmp_lv = layout_v2.compare_reports(

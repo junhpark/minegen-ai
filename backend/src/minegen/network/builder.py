@@ -38,7 +38,11 @@ import networkx as nx
 import numpy as np
 import numpy.typing as npt
 
-from minegen.core.artifacts import LEGACY_RAMP_ARTIFACT, RAMP_OWNING_ARTIFACTS
+from minegen.core.artifacts import (
+    LEGACY_RAMP_ARTIFACT,
+    LEVEL_ACCESSES_ARTIFACT,
+    RAMP_OWNING_ARTIFACTS,
+)
 from minegen.core.models import Scenario
 from minegen.design.profile import build_profile
 from minegen.network.models import (
@@ -165,10 +169,19 @@ class MineNetworkBuilder:
         source_revision: str,
         levels_payload: dict[str, Any] | None = None,
         geometry_artifact: str = GEOMETRY_ARTIFACT,
+        accesses_payload: dict[str, Any] | None = None,
     ) -> NetworkBuildResult:
         """``smoothed_payload`` is the Effective Ramp (Phase 05 shape) and
         ``geometry_artifact`` names the derived file that owns it (rule 149:
-        ``decline_smoothed.json`` or ``layout_v2_selected.json``)."""
+        ``decline_smoothed.json`` or ``layout_v2_selected.json``).
+
+        Phase 20B (rules 153–157): with ``accesses_payload`` (the
+        ``level_accesses.json`` contract) every ramp segment end is a
+        RAMP_JUNCTION (or the RAMP_END tail), each level access is a
+        LEVEL_ACCESS edge from its junction to the TRUE LEVEL_ENTRY, and
+        level developments hang off that entry — a main-ramp RL crossing is
+        never a level entry. Without it (LEGACY Phase 05 artifact) the
+        segment ends are the level entries, unchanged."""
         if geometry_artifact not in RAMP_OWNING_ARTIFACTS:
             return _failed(
                 source_revision,
@@ -225,21 +238,57 @@ class MineNetworkBuilder:
         max_weld = 0.0
         prev_node = portal.id
         prev_end = portal_pos
+        with_accesses = accesses_payload is not None
+        acc_payload: dict[str, Any] = accesses_payload or {}
+        if with_accesses and acc_payload.get("status") != "SUCCESS":
+            return _failed(
+                source_revision,
+                f"prerequisite level-access artifact status {acc_payload.get('status')!r} "
+                "is not consumable (rule 157)",
+            )
         for idx, (seg, pts) in enumerate(zip(segments, polylines, strict=True)):
-            level_id = seg["levelId"]
+            level_id = seg.get("levelId")
             end = pts[-1]
             # rule 68 synchronization: this segment must start where the chain
             # currently ends (weld across consecutive effective centerlines)
             weld = float(np.linalg.norm(pts[0] - prev_end))
             max_weld = max(max_weld, weld)
-            node = NetworkNode(
-                id=f"{NodeType.LEVEL_ENTRY.value}:{level_id}",
-                type=NodeType.LEVEL_ENTRY,
-                position=(float(end[0]), float(end[1]), float(end[2])),
-                level_id=level_id,
-                candidate_id=seg["candidateId"],
-                elevation=float(end[2]),
-            )
+            if with_accesses:
+                junction = seg.get("rampJunction")
+                if junction is not None:
+                    node = NetworkNode(
+                        id=f"{NodeType.RAMP_JUNCTION.value}:{level_id}",
+                        type=NodeType.RAMP_JUNCTION,
+                        position=(float(end[0]), float(end[1]), float(end[2])),
+                        level_id=level_id,
+                        candidate_id=seg["candidateId"],
+                        elevation=float(end[2]),
+                        chainage=float(junction["chainage"]),
+                    )
+                else:
+                    node = NetworkNode(
+                        id=NodeType.RAMP_END.value,
+                        type=NodeType.RAMP_END,
+                        position=(float(end[0]), float(end[1]), float(end[2])),
+                        candidate_id=seg["candidateId"],
+                        elevation=float(end[2]),
+                    )
+            else:
+                if level_id is None:
+                    return _failed(
+                        source_revision,
+                        f"ramp segment {idx} has no levelId and no level-access artifact was "
+                        "supplied: a ramp whose segments end at turnouts needs "
+                        f"{LEVEL_ACCESSES_ARTIFACT} (rule 157)",
+                    )
+                node = NetworkNode(
+                    id=f"{NodeType.LEVEL_ENTRY.value}:{level_id}",
+                    type=NodeType.LEVEL_ENTRY,
+                    position=(float(end[0]), float(end[1]), float(end[2])),
+                    level_id=level_id,
+                    candidate_id=seg["candidateId"],
+                    elevation=float(end[2]),
+                )
             nodes.append(node)
             graph.add_node(node.id, **node.model_dump(mode="json", by_alias=True))
 
@@ -250,7 +299,7 @@ class MineNetworkBuilder:
                 report["fieldCostSmoothed"] if source == "SMOOTHED" else report["fieldCostRaw"]
             )
             edge = NetworkEdge(
-                id=f"{EdgeType.RAMP.value}:{level_id}",
+                id=f"{EdgeType.RAMP.value}:{seg.get('segmentId') or level_id}",
                 type=EdgeType.RAMP,
                 from_node=prev_node,
                 to_node=node.id,
@@ -269,6 +318,53 @@ class MineNetworkBuilder:
             )
             prev_node = node.id
             prev_end = end
+
+        # -- Phase 20B level accesses: RAMP_JUNCTION → LEVEL_ENTRY ----------- #
+        if with_accesses:
+            junction_by_level = {n.level_id: n for n in nodes if n.type is NodeType.RAMP_JUNCTION}
+            for aidx, acc in enumerate(acc_payload["accesses"]):
+                lvl = acc["levelId"]
+                if acc.get("status") != "OK" or acc.get("centerline") is None:
+                    return _failed(
+                        source_revision,
+                        f"level access {lvl} is {acc.get('status')!r} ({acc.get('failureReason')})",
+                    )
+                jnode = junction_by_level.get(lvl)
+                if jnode is None:
+                    return _failed(source_revision, f"no RAMP_JUNCTION segment boundary for {lvl}")
+                apts = np.asarray(acc["centerline"]["points"], dtype=np.float64).reshape(-1, 3)
+                weld = float(np.linalg.norm(apts[0] - np.asarray(jnode.position)))
+                max_weld = max(max_weld, weld)
+                entry = apts[-1]
+                enode = NetworkNode(
+                    id=f"{NodeType.LEVEL_ENTRY.value}:{lvl}",
+                    type=NodeType.LEVEL_ENTRY,
+                    position=(float(entry[0]), float(entry[1]), float(entry[2])),
+                    level_id=lvl,
+                    candidate_id=smoothed_payload.get("candidateId"),
+                    elevation=float(entry[2]),
+                )
+                nodes.append(enode)
+                graph.add_node(enode.id, **enode.model_dump(mode="json", by_alias=True))
+                length_3d, mean_signed, max_abs = _polyline_metrics(apts)
+                aedge = NetworkEdge(
+                    id=f"{EdgeType.LEVEL_ACCESS.value}:{lvl}",
+                    type=EdgeType.LEVEL_ACCESS,
+                    from_node=jnode.id,
+                    to_node=enode.id,
+                    length3d=length_3d,
+                    mean_gradient_signed=mean_signed,
+                    max_abs_gradient=max_abs,
+                    cross_section=cross_section,
+                    effective_source="PARAMETRIC_V2",
+                    field_cost=float(acc.get("fieldCost") or 0.0),
+                    geometry_ref=GeometryRef(artifact=LEVEL_ACCESSES_ARTIFACT, segment_index=aidx),
+                    simulation=SimulationSlots(),
+                )
+                edges.append(aedge)
+                graph.add_edge(
+                    jnode.id, enode.id, key=aedge.id, **aedge.model_dump(mode="json", by_alias=True)
+                )
 
         # -- Phase 08 level developments (rule 73) --------------------------- #
         if levels_payload is not None:
@@ -437,6 +533,7 @@ class MineNetworkBuilder:
 
         elevations = [n.position[2] for n in nodes]
         ramp_edges = [e for e in edges if e.type is EdgeType.RAMP]
+        access_edges = [e for e in edges if e.type is EdgeType.LEVEL_ACCESS]
         drift_edges = [e for e in edges if e.type is EdgeType.DRIFT]
         crosscut_edges = [e for e in edges if e.type is EdgeType.CROSSCUT]
         metrics = NetworkMetrics(
@@ -444,6 +541,9 @@ class MineNetworkBuilder:
             edge_count=len(edges),
             level_count=sum(1 for n in nodes if n.type is NodeType.LEVEL_ENTRY),
             junction_count=sum(1 for n in nodes if n.type is NodeType.JUNCTION),
+            ramp_junction_count=sum(1 for n in nodes if n.type is NodeType.RAMP_JUNCTION),
+            level_access_edge_count=len(access_edges),
+            total_level_access_length3d=float(math.fsum(e.length3d for e in access_edges)),
             stope_access_count=sum(1 for n in nodes if n.type is NodeType.STOPE_ACCESS),
             drift_edge_count=len(drift_edges),
             crosscut_edge_count=len(crosscut_edges),

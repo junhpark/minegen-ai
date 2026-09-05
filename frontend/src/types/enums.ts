@@ -10,6 +10,8 @@ export const NODE_TYPES = [
   'JUNCTION',
   'LEVEL_ENTRY',
   'STOPE_ACCESS',
+  'RAMP_JUNCTION',
+  'RAMP_END',
   'SHAFT_STATION',
   'CRUSHER',
   'REFUGE',
@@ -19,7 +21,7 @@ export const NODE_TYPES = [
 ] as const
 export type NodeType = (typeof NODE_TYPES)[number]
 
-export const EDGE_TYPES = ['RAMP', 'DRIFT', 'CROSSCUT', 'RAISE', 'SHAFT'] as const
+export const EDGE_TYPES = ['RAMP', 'LEVEL_ACCESS', 'DRIFT', 'CROSSCUT', 'RAISE', 'SHAFT'] as const
 export type EdgeType = (typeof EDGE_TYPES)[number]
 
 export const OBJECT_STATES = [
@@ -89,6 +91,8 @@ export const LAYER_IDS = [
   'rawSearchPath',
   'smoothedDecline',
   'layoutV2',
+  'levelAccesses',
   'tunnelMesh',
+  'developmentMesh',
 ] as const
 export type LayerId = (typeof LAYER_IDS)[number]
