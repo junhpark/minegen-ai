@@ -449,7 +449,7 @@ class DesignService:
         self, scenario_id: str, on_progress: ProgressCallback = no_progress
     ) -> dict[str, Any]:
         """Phase 20A parametric family search over the generated world. Uses
-        the layout's own evaluator (EXACT or CONSERVATIVE clearance policy),
+        the layout's own evaluator (EXACT or COARSE_CONSERVATIVE clearance policy),
         so non-TABULAR orebodies are first-class here (rule 146). Persists
         ``derived/layout_v2.json``; a previous selection is stale and is
         deleted, and if LAYOUT_V2 is the active source its downstream chain
@@ -646,7 +646,7 @@ class DesignService:
 
         The evaluators are built with the world's own clearance policy
         (rule 146: EXACT for analytic bodies — numerically identical to the
-        legacy path — CONSERVATIVE for implicit ones) instead of the
+        legacy path — COARSE_CONSERVATIVE for implicit ones) instead of the
         exact-only ``self.evaluator``. An implicit body must REACH
         ``LevelDevelopmentBuilder`` so it answers the intended typed Phase 20B
         boundary (``LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY``)
@@ -925,11 +925,11 @@ class DesignService:
         The sweep evaluator is built with the world's own clearance policy
         (rule 146: EXACT for analytic bodies — the default constructor path
         yields the very same ``ExactClearance``, so TABULAR is numerically
-        unchanged — CONSERVATIVE for implicit ones) rather than the
+        unchanged — COARSE_CONSERVATIVE for implicit ones) rather than the
         exact-only ``self.evaluator``. Phase 06 does not route a search
         through the hard orebody buffer; it sweeps an ALREADY validated
         centerline and checks the resulting envelope, and under a
-        CONSERVATIVE policy that envelope check is strictly stricter. Rule
+        COARSE_CONSERVATIVE policy that envelope check is strictly stricter. Rule
         135 still guards the legacy Hybrid-A* chain, which keeps refusing an
         implicit body at ``/design/targets``."""
         fingerprint = self.tunnel_fingerprint(scenario_id)
@@ -1024,7 +1024,7 @@ class DesignService:
             levels_payload = None
         scenario, world = self.worlds.load(scenario_id)
         # the drift / access envelope uses the layout clearance policy of the
-        # world (EXACT for analytic bodies, CONSERVATIVE for implicit ones —
+        # world (EXACT for analytic bodies, COARSE_CONSERVATIVE for implicit ones —
         # rule 146); crosscuts keep their orebody-contact context (rule 72)
         drift_ev = DesignCostEvaluator(
             world,

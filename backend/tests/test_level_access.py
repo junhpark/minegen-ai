@@ -509,17 +509,21 @@ def test_selection_targets_the_preferred_length_instead_of_the_hard_floor(
     assert plan.preferred_source == "DEFAULT_6X_TUNNEL_WIDTH"
     ok = [a for a in plan.accesses if a.ok]
     floor = sc.layout.access.minimum_access_length
-    # the old shortest-first objective (preferred == hard floor) hugs the floor
+    # closeout v3 §2 established the preferred-length objective against the
+    # floor-hugging shortest-first one. Since 20B.1 commit C the corridor
+    # margin makes the SHORTEST feasible branch itself exceed both the floor
+    # and the preferred length in this fixture, so the two objectives select
+    # identically here — the preferred objective must never be WORSE, and no
+    # branch can hug the old 15 m floor at all.
     _, shortest = _plan(sc, world, s, res, preferred_access_length=floor)
     ok_short = [a for a in shortest.accesses if a.ok]
     mean_short = float(np.mean([a.length3d for a in ok_short]))
     mean_pref = float(np.mean([a.length3d for a in ok]))
-    assert mean_pref > mean_short
-    # the distribution moves toward the preferred length and off the floor
-    assert float(np.mean([abs(a.length3d - 30.0) for a in ok])) < float(
+    assert mean_pref >= mean_short
+    assert float(np.mean([abs(a.length3d - 30.0) for a in ok])) <= float(
         np.mean([abs(a.length3d - 30.0) for a in ok_short])
     )
-    assert sum(1 for a in ok if a.length3d < floor + 2.0) < len(ok)
+    assert min(a.length3d for a in ok) > floor + 2.0  # nothing on the floor
     # every selected branch still honours every hard limit
     for a in ok:
         assert floor <= a.length3d <= sc.layout.access.maximum_access_length

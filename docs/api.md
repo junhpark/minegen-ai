@@ -86,7 +86,7 @@ meters (`docs/coordinate-system.md`). Schemas live in
     POST …/design/layout-v2                          Phase 20A parametric family search
                                                      (kind LAYOUT_V2) → 202 {jobId, …}; ?sync=true
                                                      runs inline. Every orebody type (EXACT or
-                                                     CONSERVATIVE clearance). Persists
+                                                     COARSE/REFINED_CONSERVATIVE clearance). Persists
                                                      derived/layout_v2.json; deletes a stale
                                                      selection and, if LAYOUT_V2 is active, the
                                                      ramp-derived chain (rule 151)

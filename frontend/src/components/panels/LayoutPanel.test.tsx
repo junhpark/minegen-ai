@@ -110,7 +110,7 @@ function candidate(over: Partial<LayoutCandidateSummary>): LayoutCandidateSummar
       components: {},
     },
     clearance: {
-      clearanceBasis: 'CONSERVATIVE',
+      clearanceBasis: 'COARSE_CONSERVATIVE',
       requiredClearance: 10.59,
       conservativeMinimumClearance: 20.0,
       approximateMinimumClearance: 30.77,
@@ -137,7 +137,7 @@ const CATALOGUE: LayoutV2Catalogue = {
   shortlist: [],
   ranking: ['SPIRAL-n1-CW-e+0-g0.120', 'SWITCHBACK-k2-p+0-CCW-g0.120'],
   winnerId: 'SPIRAL-n1-CW-e+0-g0.120',
-  clearanceBasis: 'CONSERVATIVE',
+  clearanceBasis: 'COARSE_CONSERVATIVE',
   clearanceErrorBound: 10.77,
   requiredClearance: 10.59,
   accessReach: 60,
@@ -232,7 +232,7 @@ describe('LayoutPanel', () => {
     const html = render(sceneWith({}))
     expect(html).toContain('2 feasible / 68 enumerated')
     expect(html).toContain('1/2 levels with ore')
-    expect(html).toContain('clearance CONSERVATIVE (−10.8 m) ≥ 10.6 m')
+    expect(html).toContain('clearance COARSE_CONSERVATIVE (−10.8 m) ≥ 10.6 m')
     expect(html).toContain('#1 ')
     expect(html).toContain('2.174')
     expect(html).toContain('D 1.23 · G 0.06 · M 0.88')

@@ -625,3 +625,46 @@ Measured (TABULAR reference, defaults): 68 candidates, 6 feasible, winner
 (worst 17 m); the spiral `SPIRAL-n1-CCW-e+0-g0.120` needs 1 171 m of access
 (≈ 95 m per level) and drops from 2nd to 3rd; per-candidate access planning
 costs 0.5–0.75 s (≈ 80 connectors per level), stage-4 total ≈ 4 s.
+
+## Phase 20B.1 — stand-off / clearance semantics audit (S1) and local refinement
+
+### C-1 distance-concept audit (roadmap item S1, executed here)
+
+Seven DIFFERENT distance concepts, audited call-site by call-site. None is
+additive with a path length (rule 168); each row names what the value is
+measured FROM and applied TO.
+
+| Concept | Default | Measured from → applied to | Read by | Kind | Finding |
+| --- | --- | --- | --- | --- | --- |
+| `RampConstraints.clearance` | 3.0 m | (intended: inside-profile operating clearance) | **nothing** | user schema field | UNWIRED — declared, typed in the frontend, consumed nowhere. Documented as RESERVED on the model; wire or remove deliberately (schema change), never silently repurpose. It does NOT duplicate `orebody_exclusion_buffer` in effect because it has no effect. |
+| `DesignConfig.orebody_exclusion_buffer` | 5.0 m | orebody surface (signed distance under the active policy) → every centerline sample and every excavation-envelope point | `design/constraints.py` (context), `design/cost_field.py` (hard reject + sterilization ramp), `layout/search.py::required_clearance` | user engineering constraint | the ONE hard orebody buffer |
+| layout-v2 required centerline clearance | `buffer + hypot(width/2, height)` ≈ 10.59 m | orebody surface → the FLOOR CENTERLINE, derived so the whole profile envelope stays outside the buffer | stage-4 validation, access planner | derived | consistent envelope basis |
+| `ramp.footwall_access_offset` | 20 m | footwall footprint edge (⊥, ore side → out) → legacy rule 43 target line AND the level-development anchor plane | `design/targets.py`, anchor stand-off default | user planning value | the LEVEL-DEVELOPMENT plane |
+| `layout.footwall_standoff` | None → `footwall_access_offset + 6 × tunnel_width` = 50 m | footwall footprint edge → the main-ramp CENTERLINE's ore-facing nearest approach (SWITCHBACK near-leg centerline, SPIRAL helix rim, LONGITUDINAL corridor centerline — code semantics; the old docstring said "corridor edge" and was wrong) | `layout/families.py` corridor placement | user override of a derived default | **the audited misuse**: it previously defaulted to the SAME `footwall_access_offset`, putting the permanent ramp corridor IN the level-development plane — measured envelope separation −4.9 m on 12/13 reference levels (commit O). The new default keeps explicit spatial corridor margins (`RAMP_CORRIDOR_MARGIN_WIDTHS = 6` tunnel widths: two half-spans + a two-width pillar + a three-width turnout-taper allowance `R·(1 − cos(s*/R)) ≈ 15 m`, so a post-taper access can hold the full pillar everywhere, not only at its terminal); spatial + spatial, never a path-length sum |
+| `access.anchor_standoff` | None → `footwall_access_offset` (raised to `required + errorBound + 1` under a conservative basis) | footwall footprint edge → the LEVEL ENTRY point | `layout/search.py::anchor_standoff` | user override | with the stage-4 REFINED bound the raise shrinks (WARPED 301: 22.36 → 20.0 m) |
+| WARPED conservative error bound | `1.5 × ‖lattice spacing‖` (10.77 m coarse / 5.39 m refined ×2) | derivation, not a distance concept: boundary discretization ≤ 1 diagonal + trilinear ≤ 0.5 diagonal | clearance policies | derived, formally conservative | narrowed ONLY by shrinking spacing (C-2), never by lowering 1.5 |
+| `preferred_access_length` | None → max(15, 6 × width) = 30 m | PATH LENGTH along the branch | access selection cost | user planning default | not a spatial stand-off; never added to one (rule 168) |
+
+### C-2 stage-4 local clearance refinement (implicit bodies)
+
+Stages 2–3 keep the whole-body lattice (basis `COARSE_CONSERVATIVE`). For
+each shortlisted candidate, stage 4 builds ONE local window — the bbox of
+(a) centerline samples whose coarse certification falls below the required
+clearance and (b) the level-entry corridor (preliminary anchors under the
+coarse stand-off) — padded by `required + coarseBound + 2 m`, clipped to
+the derived-geometry box, re-sampled at `spacing / clearance_refinement_factor`
+(default 2), EDT + the SAME `1.5 × ‖spacing‖` bound (basis
+`REFINED_CONSERVATIVE`). A window-boundary clamp (`min(EDT, distance to a
+clamped window face)`) keeps the certificate a true lower bound against
+solid outside the window; faces at or beyond the analytic local bounds are
+never clamped. Outside the window every point keeps its coarse
+certification (`max` of two lower bounds). Budget
+`clearance_refinement_max_cells` (default 8 M) skips refinement with an
+explicit per-candidate diagnostic; measured windows: WARPED-301 winner
+26 × 154 × 81 = 324 k cells (~0.35 s), bound 10.77 → 5.39 m, anchor
+stand-off 22.36 → 20.0 m, total access 1 025 → 611 m.
+
+`EXACT` remains the analytic-body basis only; an implicit body is never
+labelled EXACT (rule 134) — its bases are COARSE_CONSERVATIVE /
+REFINED_CONSERVATIVE, both carrying their actual `latticeSpacing` and
+`errorBound` in the candidate report.

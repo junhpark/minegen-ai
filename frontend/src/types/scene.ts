@@ -399,7 +399,7 @@ export interface LevelAccessesPayload {
   candidateId: string
   family: RampFamily
   miningMethod: string
-  clearanceBasis: 'EXACT' | 'CONSERVATIVE'
+  clearanceBasis: ClearanceBasis
   requiredClearance: number
   anchors: (LevelDevelopmentAnchorPayload | null)[]
   accesses: LevelAccessPayload[]
@@ -490,13 +490,19 @@ export interface LayoutLevelServiceRecord {
   screenReason: string | null
 }
 
+/** Phase 20B.1 C-3: an implicit body's basis is never EXACT — the stage 2–3
+ *  lattice is COARSE_CONSERVATIVE and a stage-4 locally refined window is
+ *  REFINED_CONSERVATIVE (same 1.5 × ‖spacing‖ bound on a smaller spacing) */
+export type ClearanceBasis = 'EXACT' | 'COARSE_CONSERVATIVE' | 'REFINED_CONSERVATIVE'
+
 export interface LayoutClearanceReport {
-  clearanceBasis: 'EXACT' | 'CONSERVATIVE'
+  clearanceBasis: ClearanceBasis
   requiredClearance: number
   conservativeMinimumClearance: number
   approximateMinimumClearance: number | null
   clearanceErrorBound: number | null
   satisfied: boolean
+  refinement?: Record<string, unknown> | null
 }
 
 export interface LayoutScores {
@@ -570,7 +576,7 @@ export interface LayoutV2Catalogue {
   shortlist: string[]
   ranking: string[]
   winnerId: string | null
-  clearanceBasis: 'EXACT' | 'CONSERVATIVE'
+  clearanceBasis: ClearanceBasis
   clearanceErrorBound: number
   requiredClearance: number
   accessReach: number

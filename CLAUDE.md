@@ -889,8 +889,8 @@ phase is considered complete.
      evaluator with `clearance_policy_for(world.orebody)` — for an
      `AnalyticOrebody` that is the very same `ExactClearance` the default
      constructor yields (bit-identical numerics); for an implicit body it
-     is CONSERVATIVE, which can only reject more of the envelope than an
-     exact check would, never admit more. A sweep therefore never
+     is the conservative basis (COARSE_CONSERVATIVE), which can only reject
+     more of the envelope than an exact check would, never admit more. A sweep therefore never
      relaxes rule 135; it applies the buffer the centerline was designed
      under.
 136. Resolved morphology. Every stochastic shape control AND every mode
@@ -1045,16 +1045,24 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      solid, never from a global strike.
 146. Clearance policy is explicit. `DesignCostEvaluator` accepts a
      `ClearancePolicy`: EXACT (analytic SDF, legacy numerics unchanged and
-     still the only policy the Hybrid-A* search chain constructs) or
-     CONSERVATIVE (`safe = approximateClearance − errorBound`, errorBound =
-     1.5 × the derived-lattice diagonal; empirically ≥ the measured
-     mesh-distance error). Layout-v2 and the downstream sweeps (Phase 06
-     tunnel mesh, Phase 20B development mesh) take
-     `clearance_policy_for(world.orebody)`. Layout-v2 reports
-     clearanceBasis, approximate / conservative minimum clearance, error
-     bound and required clearance (`buffer + hypot(width/2, height)`);
-     WARPED_VEIN is first-class in layout-v2 and its sweeps, and still
-     refused by the Hybrid-A* search chain (rule 135).
+     still the only policy the Hybrid-A* search chain constructs; never the
+     name of an implicit body's basis) or a conservative basis
+     (`safe = certifiedClearance − errorBound`, errorBound = 1.5 × the
+     lattice diagonal — a DERIVED factor: boundary discretization ≤ 1
+     diagonal + trilinear interpolation of a 1-Lipschitz field ≤ 0.5;
+     empirical error ratios are reference metrics and never lower it).
+     Phase 20B.1: the whole-body lattice is COARSE_CONSERVATIVE; stage 4
+     may build ONE local refined window per shortlisted candidate
+     (REFINED_CONSERVATIVE, same 1.5 × ‖spacing‖ on `spacing / factor`,
+     window-boundary clamped, coarse fallback outside, explicit cell
+     budget) — the bound narrows ONLY by shrinking the spacing. Layout-v2
+     and the downstream sweeps (Phase 06 tunnel mesh, Phase 20B development
+     mesh) take `clearance_policy_for(world.orebody)`. Layout-v2 reports
+     clearanceBasis, certified / approximate minimum clearance, the ACTUAL
+     latticeSpacing and errorBound used, refinement diagnostics and the
+     required clearance (`buffer + hypot(width/2, height)`); WARPED_VEIN is
+     first-class in layout-v2 and its sweeps, and still refused by the
+     Hybrid-A* search chain (rule 135).
 147. Hard constraints stay hard. Layout-v2 stages are enumerate → cheap
      evaluation → bounded shortlist → detailed validation through the shared
      `DesignCostEvaluator` sample validator → deterministic ranking; a
@@ -1248,18 +1256,18 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      OFF and are hidden when a layout-v2 candidate is activated. Legacy
      backend, API, artifacts, schema, tests and goldens are untouched and
      the source-neutral Effective Ramp stays.
-168. Standoff / clearance semantics audit is a FOLLOW-UP, not part of the
-     Phase 20B closeout. `RampConstraints.clearance`,
+168. Standoff / clearance semantics are AUDITED (Phase 20B.1 commit C
+     executed roadmap item S1; the call-site table lives in
+     `docs/algorithms.md`). `RampConstraints.clearance` (UNWIRED/RESERVED),
      `DesignConfig.orebody_exclusion_buffer`, the layout-v2 required
      centerline clearance (`buffer + hypot(width/2, height)`),
      `footwall_access_offset`, the level-access anchor stand-off, the WARPED
      conservative error bound and the preferred access length are DIFFERENT
-     distance concepts; no default is changed here and
+     distance concepts, and
      `ramp_standoff >= level_entry_standoff + preferred_access_length` is
-     NOT declared an invariant (a spatial stand-off and a centerline path
-     length are not additive in general). The separate change "Ramp /
-     Footwall / Access Standoff Semantics Rationalization" audits their uses
-     and relationships (see `docs/roadmap.md`).
+     STILL not an invariant (a spatial stand-off and a centerline path
+     length are not additive in general) — the audited corridor default
+     (rule 170) sums SPATIAL margins only.
 
 169. Effective Ramp IDENTITY decides downstream preservation — never
      `activeSource` alone. The identity is (active source, selected layout
@@ -1273,3 +1281,20 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      composes them (`afterLayoutActivate`); the comparison is never
      duplicated. The level accesses owned by the activated selection
      (rule 157) survive the composition.
+
+
+170. Main-ramp corridor stand-off is separated from the level-development
+     plane (Phase 20B.1 C, the audited S1 misuse). `layout.footwallStandoff`
+     positions the main-ramp CENTERLINE's ore-facing nearest approach
+     (SWITCHBACK near-leg centerline / SPIRAL helix rim / LONGITUDINAL
+     corridor centerline) and defaults to `ramp.footwall_access_offset +
+     RAMP_CORRIDOR_MARGIN_WIDTHS × tunnel_width` (6 widths: two lateral
+     half-spans + a two-width rock pillar + a three-width turnout-taper
+     allowance, the lateral offset a minimum-radius turnout develops inside
+     its own geometric taper — spatial planning margins, never statutory,
+     never a path-length term). The level-development
+     anchor plane stays at `footwall_access_offset` (raised only by the
+     conservative-clearance honesty rule). The pre-audit behaviour — both
+     defaulting to the same 20 m, making the permanent ramp collinear with
+     every level drift (measured envelope separation −4.9 m) — must not be
+     reintroduced.

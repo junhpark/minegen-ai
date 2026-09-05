@@ -339,6 +339,13 @@ class RampConstraints(ApiModel):
     min_turn_radius: PositiveFloat = 18.0
     tunnel_width: PositiveFloat = 5.0
     tunnel_height: PositiveFloat = 5.0
+    #: RESERVED (Phase 20B.1 C-1 stand-off audit): intended as the inside-
+    #: profile operating clearance, but NOT consumed by any backend
+    #: calculation in v0.1 — the orebody exclusion is
+    #: ``DesignConfig.orebody_exclusion_buffer`` and the layout-v2 centerline
+    #: requirement derives from it (``layout/search.py::required_clearance``).
+    #: Kept for schema stability; wire or remove it deliberately, never
+    #: silently repurpose it.
     clearance: NonNegativeFloat = 3.0
     footwall_access_offset: NonNegativeFloat = 20.0  # rule 29
     level_drift_gradient: Annotated[float, Field(ge=0, le=0.05)] = 0.0  # rule 30
@@ -712,8 +719,18 @@ class LayoutV2Config(ApiModel):
     #: the "served" authority and never rejects a candidate (rule 164) — a
     #: level is served only by a validated level access (``plan_level_accesses``)
     access_reach: PositiveFloat = 60.0
-    #: perpendicular stand-off of the corridor's ore-facing edge from the
-    #: footwall footprint edge; ``None`` → ``ramp.footwall_access_offset``
+    #: perpendicular stand-off of the main-ramp CENTERLINE's ore-facing
+    #: nearest approach from the footwall footprint edge (SWITCHBACK: the
+    #: ore-facing leg centerline; SPIRAL: the helix rim; LONGITUDINAL: the
+    #: corridor centerline — code semantics, Phase 20B.1 C-1 audit).
+    #: ``None`` → ``ramp.footwall_access_offset +
+    #: RAMP_CORRIDOR_MARGIN_WIDTHS × tunnel_width`` (``layout/families.py``;
+    #: 6 widths: half-spans + rock pillar + turnout-taper allowance = 50 m
+    #: for the defaults): the PERMANENT main-ramp corridor is deliberately
+    #: held clear of the level-development plane (which sits at
+    #: ``footwall_access_offset``) by explicit spatial margins — before the
+    #: 20B.1 audit both defaulted to the same 20 m, which made the ramp and
+    #: every level drift collinear (measured envelope separation −4.9 m)
     footwall_standoff: PositiveFloat | None = None
     #: deterministic discretization / validation spacing of the delivered
     #: centerline (horizontal, m)
@@ -737,6 +754,17 @@ class LayoutV2Config(ApiModel):
     world_margin: NonNegativeFloat = 25.0
     #: how far a LONGITUDINAL corridor may run past the orebody ends (m)
     longitudinal_extension: NonNegativeFloat = 400.0
+    #: Phase 20B.1 C-2: stage-4 LOCAL clearance-lattice refinement for
+    #: implicit bodies. The shortlisted candidate's ambiguity region (plus
+    #: the level-entry corridor) is re-sampled at ``spacing / factor`` and
+    #: the SAME 1.5 × ‖spacing‖ conservative bound is recomputed on the
+    #: refined window (basis REFINED_CONSERVATIVE); 1 disables refinement.
+    #: The bound stays formally conservative — refinement narrows it only by
+    #: shrinking the spacing, never by weakening the derivation.
+    clearance_refinement_factor: Annotated[int, Field(ge=1, le=4)] = 2
+    #: hard cell budget of one refined window; exceeding it skips refinement
+    #: for that candidate with an explicit diagnostic (never a failure)
+    clearance_refinement_max_cells: Annotated[int, Field(ge=100_000, le=40_000_000)] = 8_000_000
     spiral: SpiralFamilyGrid = Field(default_factory=SpiralFamilyGrid)
     longitudinal: LongitudinalFamilyGrid = Field(default_factory=LongitudinalFamilyGrid)
     switchback: SwitchbackFamilyGrid = Field(default_factory=SwitchbackFamilyGrid)
