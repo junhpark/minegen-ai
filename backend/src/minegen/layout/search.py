@@ -43,7 +43,9 @@ from minegen.core.models import (
 from minegen.design.constraints import DesignContext, RejectionReason
 from minegen.design.cost_field import (
     ClearancePolicy,
+    ConservativeClearance,
     DesignCostEvaluator,
+    RefinedConservativeClearance,
     clearance_policy_for,
 )
 from minegen.design.exposure import measure_exposure
@@ -65,6 +67,7 @@ from minegen.layout.families import (
     LayoutContext,
     build_family,
     build_footwall_track,
+    effective_footwall_standoff,
     enumerate_candidates,
 )
 from minegen.layout.geometry import (
@@ -104,6 +107,19 @@ GEO_CROSSING_COEF = 0.1
 #: fraction of reach, clearance headroom below twice the requirement
 GEOM_TURNING_COEF = 0.5
 GEOM_CLEARANCE_COEF = 1.0
+#: GEOMETRY curvature quality (Phase 20B.1 D-2): the diagnostics the
+#: family signature already measures become priced score components. Round
+#: planning coefficients chosen A PRIORI — never reverse-engineered to
+#: crown a family (D-4); a mine whose scale genuinely favours k2 or a
+#: helix must still be able to win.
+#: × mean |Δheading| per metre of 3-D length (rad/m): overall turniness —
+#: a constant-R helix contributes ≈ 20/R, a switchback its hairpin share
+GEOM_CURVATURE_COEF = 20.0
+#: × count of 150–210° same-sense turning runs (switchback hairpins)
+GEOM_REVERSAL_COEF = 0.05
+#: × count of ≥ 150° same-sense turning runs (hairpins AND a spiral's
+#: continuous winding — one long run for a helix)
+GEOM_HAIRPIN_COEF = 0.02
 #: score ties within this tolerance fall through to the family-order and
 #: candidate-id tie-breaks (§28)
 SCORE_TIE_TOLERANCE = 1e-9
@@ -157,6 +173,38 @@ class LevelServiceRecord:
         }
 
 
+class ClearancePolicyReconstructionError(RuntimeError):
+    """The candidate-specific clearance policy could not be rebuilt to match
+    the candidate's recorded stage-4 report (Phase 20B.1-v2 1.1). Downstream
+    consumers fail closed instead of silently judging the design under a
+    different certification."""
+
+    code = "LAYOUT_V2_CLEARANCE_MISMATCH"
+
+    def __init__(self, candidate_id: str, detail: str) -> None:
+        super().__init__(
+            f"cannot reconstruct the stage-4 clearance policy of layout-v2 candidate "
+            f"'{candidate_id}': {detail}; regenerate the layout catalogue"
+        )
+        self.candidate_id = candidate_id
+
+
+def _refinement_key(refinement: dict[str, Any] | None) -> tuple[Any, ...]:
+    """Provenance of one stage-4 refinement decision, rounded so a rebuilt
+    window compares equal to its recorded (JSON round-tripped) report."""
+    r = refinement or {}
+    spacing = r.get("latticeSpacing")
+    return (
+        bool(r.get("applied")),
+        r.get("reason"),
+        int(r["factor"]) if r.get("factor") is not None else None,
+        tuple(round(float(v), 9) for v in spacing) if spacing else None,
+        tuple(int(v) for v in r["shape"]) if r.get("shape") else None,
+        int(r["cellCount"]) if r.get("cellCount") is not None else None,
+        round(float(r["errorBound"]), 9) if r.get("errorBound") is not None else None,
+    )
+
+
 @dataclass
 class ClearanceReport:
     basis: str
@@ -165,6 +213,9 @@ class ClearanceReport:
     approximate_minimum: float | None
     error_bound: float | None
     satisfied: bool
+    #: Phase 20B.1 C-2: what the stage-4 local refinement actually did for
+    #: THIS candidate ({applied, factor, reason, windowCells, latticeSpacing})
+    refinement: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -174,6 +225,7 @@ class ClearanceReport:
             "approximateMinimumClearance": self.approximate_minimum,
             "clearanceErrorBound": self.error_bound,
             "satisfied": self.satisfied,
+            "refinement": self.refinement,
         }
 
 
@@ -477,13 +529,34 @@ def level_screen_problems(
 def cheap_proxy(
     diag: CenterlineDiagnostics, records: list[LevelServiceRecord], ctx: LayoutContext
 ) -> float:
-    """Stage-3 ordering proxy: length ratio + mean access ratio (the
-    DEVELOPMENT group without the evaluator)."""
+    """Stage-3 ordering proxy (Phase 20B.1 D, rule 165 corrective): a cheap
+    LOWER BOUND of the final weighted total, computable at stage 2 with no
+    evaluator — the DEVELOPMENT group without its non-negative access-length
+    term, plus the FULL GEOMETRY group except its non-negative clearance
+    headroom; GEOLOGY (≥ 0) is omitted. The 20B.1-D shortlist audit showed
+    the old length-only proxy missing exhaustive winners (TABULAR rank
+    40/62, GEOMETRY-STRESS rank 22/26): under the hard gates the surviving
+    candidates are longer but geometrically calmer, which only a bound that
+    prices the measured curvature can rank."""
     drop = float(ctx.portal[2] - ctx.z_last)
     ideal = math.hypot(drop / ctx.ramp.max_gradient, drop)
     access = [r.access_distance for r in records if r.access_distance is not None]
     mean_access = float(np.mean(access)) if access else ctx.cfg.access_reach
-    return diag.length3d / ideal + DEV_ACCESS_COEF * mean_access / ctx.cfg.access_reach
+    max_access = float(np.max(access)) if access else ctx.cfg.access_reach
+    reach = ctx.cfg.access_reach
+    dev_lb = diag.length3d / ideal + DEV_ACCESS_COEF * mean_access / reach
+    total_len = max(diag.length3d, 1e-9)
+    unused_grade = max(0.0, 1.0 - diag.mean_abs_gradient / ctx.ramp.max_gradient)
+    geom_lb = (
+        unused_grade
+        + GEOM_TURNING_COEF * diag.turning_length / total_len
+        + max_access / reach
+        + GEOM_CURVATURE_COEF * math.radians(diag.cumulative_heading_change_deg) / total_len
+        + GEOM_REVERSAL_COEF * diag.heading_reversal_count
+        + GEOM_HAIRPIN_COEF * diag.hairpin_run_count
+    )
+    w = ctx.cfg.weights
+    return w.development * dev_lb + w.geometry * geom_lb
 
 
 def score_candidate(
@@ -516,11 +589,19 @@ def score_candidate(
     turning_frac = diag.turning_length / total_len
     req = cand.clearance.required
     headroom = max(0.0, 1.0 - cand.clearance.conservative_minimum / (2.0 * req)) if req > 0 else 0.0
+    # Phase 20B.1 D-2: curvature quality — the measured family signature
+    # priced into the geometry group (documented coefficients above)
+    mean_curvature = math.radians(diag.cumulative_heading_change_deg) / total_len
+    reversals = float(diag.heading_reversal_count)
+    hairpin_runs = float(diag.hairpin_run_count)
     geometry = (
         unused_grade
         + GEOM_TURNING_COEF * turning_frac
         + max_access / reach
         + GEOM_CLEARANCE_COEF * headroom
+        + GEOM_CURVATURE_COEF * mean_curvature
+        + GEOM_REVERSAL_COEF * reversals
+        + GEOM_HAIRPIN_COEF * hairpin_runs
     )
     total = (
         weights.development * development + weights.geology * geology + weights.geometry * geometry
@@ -543,6 +624,9 @@ def score_candidate(
             "unusedGradient": unused_grade,
             "turningFraction": turning_frac,
             "clearanceHeadroom": headroom,
+            "meanCurvatureRadPerM": mean_curvature,
+            "headingReversalCount": reversals,
+            "hairpinRunCount": hairpin_runs,
         },
     )
 
@@ -569,18 +653,24 @@ class LayoutV2Search:
         self.shape = build_profile(scenario.ramp, scenario.tunnel_profile)
         self._sections: LevelSections | None = None
         self._track: Any = None
+        #: the stage-4 LayoutContext of the last run — retained so the
+        #: candidate-specific clearance policy can be rebuilt after the fact
+        self._ctx: LayoutContext | None = None
 
-    def anchor_standoff(self, required: float) -> float:
+    def anchor_standoff(self, required: float, policy: ClearancePolicy | None = None) -> float:
         """Level-entry stand-off from the footwall edge: the configured /
-        ramp value, raised for a CONSERVATIVE clearance policy so the entry
-        itself satisfies ``required + errorBound`` (rule 146 honesty)."""
+        ramp value, raised for a conservative clearance policy so the entry
+        itself satisfies ``required + errorBound`` (rule 146 honesty). With a
+        stage-4 REFINED_CONSERVATIVE policy the smaller refined bound is what
+        raises it (C-2), so entries move back toward the configured value."""
         base = (
             self.cfg.access.anchor_standoff
             if self.cfg.access.anchor_standoff is not None
             else self.scenario.ramp.footwall_access_offset
         )
-        if self.policy.basis == "CONSERVATIVE":
-            return max(base, required + float(self.policy.error_bound) + 1.0)
+        p = policy if policy is not None else self.policy
+        if p.basis != "EXACT":
+            return max(base, required + float(p.error_bound) + 1.0)
         return base
 
     def run(
@@ -634,6 +724,7 @@ class LayoutV2Search:
             sc.world.size_x / 2.0,
             sc.world.size_y / 2.0,
         )
+        self._ctx = ctx
 
         # -- STAGE 1 + 2: construct and cheap-evaluate every candidate --------- #
         n = len(results)
@@ -657,7 +748,27 @@ class LayoutV2Search:
         # -- STAGE 3: bounded shortlist --------------------------------------- #
         cheap_ok = [c for c in results if c.status == CandidateStatus.NOT_VALIDATED]
         cheap_ok.sort(key=lambda c: (c.cheap_proxy or math.inf, _family_rank(c), c.candidate_id))
-        shortlist = cheap_ok if detailed_all else cheap_ok[: self.cfg.shortlist_size]
+        if detailed_all:
+            shortlist = cheap_ok
+        else:
+            shortlist = cheap_ok[: self.cfg.shortlist_size]
+            # rule 165 family diversity (Phase 20B.1 D): every family's best
+            # cheap-feasible candidate holds a slot, displacing the proxy
+            # tail — the bound stays `shortlist_size`, the order stays
+            # deterministic (proxy, family order, id)
+            missing = [
+                fam for fam in FAMILY_ORDER if not any(c.params.family is fam for c in shortlist)
+            ]
+            extras = [
+                best
+                for fam in missing
+                if (best := next((c for c in cheap_ok if c.params.family is fam), None)) is not None
+            ]
+            if extras:
+                shortlist = shortlist[: max(0, self.cfg.shortlist_size - len(extras))] + extras
+                shortlist.sort(
+                    key=lambda c: (c.cheap_proxy or math.inf, _family_rank(c), c.candidate_id)
+                )
         for c in shortlist:
             c.shortlisted = True
         perf["shortlistSize"] = len(shortlist)
@@ -736,11 +847,7 @@ class LayoutV2Search:
         perf: dict[str, Any],
         track: Any,
     ) -> LayoutSearchResult:
-        standoff = (
-            self.cfg.footwall_standoff
-            if self.cfg.footwall_standoff is not None
-            else self.scenario.ramp.footwall_access_offset
-        )
+        standoff = effective_footwall_standoff(self.cfg, self.scenario.ramp)[0]
         return LayoutSearchResult(
             levels=levels,
             serviceable_ids=[lv.level_id for lv in sections.serviceable()],
@@ -791,21 +898,115 @@ class LayoutV2Search:
         else:
             cand.status = CandidateStatus.NOT_VALIDATED
 
+    def candidate_policy(
+        self, result: LayoutSearchResult, candidate_id: str
+    ) -> tuple[DesignCostEvaluator, ClearancePolicy, dict[str, Any]]:
+        """The candidate-specific stage-4 evaluator / clearance policy of a
+        DETAILED candidate, rebuilt deterministically from the same inputs
+        (Phase 20B.1-v2 1.1). Selection materialization, the tunnel sweep and
+        the development sweep call this so the downstream chain judges the
+        selected design under the SAME certification that made it FEASIBLE —
+        never the whole-body COARSE basis again. Fails closed
+        (``ClearancePolicyReconstructionError``) when the rebuilt refinement
+        provenance disagrees with the candidate's recorded stage-4 report."""
+        cand = result.candidate(candidate_id)
+        if cand is None:
+            raise KeyError(candidate_id)
+        if cand.stage_reached != Stage.DETAILED or cand.clearance is None or self._ctx is None:
+            raise ClearancePolicyReconstructionError(
+                candidate_id, "the candidate has no stage-4 clearance report to reconstruct"
+            )
+        evaluator, policy, refinement = self._candidate_policy(
+            cand, self._ctx, result.required_clearance
+        )
+        recorded = cand.clearance
+        if policy.basis != recorded.basis or _refinement_key(refinement) != _refinement_key(
+            recorded.refinement
+        ):
+            raise ClearancePolicyReconstructionError(
+                candidate_id,
+                f"rebuilt policy {policy.basis} {_refinement_key(refinement)} != recorded "
+                f"{recorded.basis} {_refinement_key(recorded.refinement)}",
+            )
+        return evaluator, policy, refinement
+
+    def _candidate_policy(
+        self, cand: CandidateResult, ctx: LayoutContext, req_clear: float
+    ) -> tuple[DesignCostEvaluator, ClearancePolicy, dict[str, Any]]:
+        """Stage-4 evaluator for ONE candidate (Phase 20B.1 C-2): the shared
+        policy, or a per-candidate REFINED_CONSERVATIVE policy built from one
+        LOCAL refined window covering (a) the centerline samples whose COARSE
+        certification falls below the requirement and (b) the level-entry
+        corridor (preliminary anchors under the coarse stand-off — the
+        refined bound moves the entries). Points outside the window keep the
+        coarse certification, so refinement can only certify MORE, never
+        admit an optimistic distance. A window over the cell budget skips
+        refinement with an explicit diagnostic."""
+        policy: ClearancePolicy = self.policy
+        factor = int(self.cfg.clearance_refinement_factor)
+        refinement: dict[str, Any] = {"applied": False, "factor": factor, "reason": None}
+        if not isinstance(policy, ConservativeClearance):
+            refinement["reason"] = "NOT_APPLICABLE_EXACT_BASIS"
+            return self.evaluator, policy, refinement
+        if factor <= 1:
+            refinement["reason"] = "DISABLED"
+            return self.evaluator, policy, refinement
+        builder = getattr(self.world.orebody, "refined_clearance_window", None)
+        if builder is None:
+            refinement["reason"] = "UNSUPPORTED_OREBODY"
+            return self.evaluator, policy, refinement
+        assert cand.points is not None
+        assert self._sections is not None and self._track is not None
+        coarse = policy.signed_clearance(cand.points)
+        needy = [cand.points[coarse < req_clear + 1e-9]]
+        standoff_coarse = self.anchor_standoff(req_clear, policy)
+        for lv in ctx.levels:
+            a = build_anchor(
+                self.world.orebody,
+                lv,
+                self._sections,
+                self._track,
+                cand.points,
+                standoff_coarse,
+                self.scenario.mining.method.value,
+            )
+            if a is not None:
+                needy.append(a.position[None, :])
+        pts = np.vstack([p for p in needy if p.shape[0]])
+        pad = req_clear + float(policy.error_bound) + 2.0
+        window = builder(pts, pad, factor, int(self.cfg.clearance_refinement_max_cells))
+        if window is None:
+            refinement["reason"] = "BUDGET_EXCEEDED"
+            return self.evaluator, policy, refinement
+        refined = RefinedConservativeClearance(
+            coarse=policy, window=window, error_bound=float(window.error_bound)
+        )
+        refinement.update({"applied": True, "reason": "APPLIED", **window.info()})
+        evaluator = DesignCostEvaluator(
+            self.world,
+            self.scenario.design,
+            DesignContext.decline(self.scenario.design),
+            clearance=refined,
+        )
+        return evaluator, refined, refinement
+
     def _detailed_stage(self, cand: CandidateResult, ctx: LayoutContext, req_clear: float) -> None:
         assert cand.points is not None and cand.diagnostics is not None
         cand.stage_reached = Stage.DETAILED
-        report = validate_delivered_centerline(self.evaluator, cand.points)
+        evaluator, policy, refinement = self._candidate_policy(cand, ctx, req_clear)
+        report = validate_delivered_centerline(evaluator, cand.points)
         cand.validation = report.to_dict()
-        # clearance under the evaluator's policy (EXACT or CONSERVATIVE)
+        # clearance under the candidate's policy (EXACT, COARSE_CONSERVATIVE
+        # or the stage-4 REFINED_CONSERVATIVE window)
         conservative_min = float(np.min(report.orebody_distance))
         approx_min: float | None = None
         bound: float | None = None
-        if self.policy.basis == "CONSERVATIVE":
-            bound = float(self.policy.error_bound)
+        if policy.basis != "EXACT":
+            bound = float(policy.error_bound)
             approx_min = conservative_min + bound
         clear_ok = conservative_min >= req_clear - 1e-9
         cand.clearance = ClearanceReport(
-            self.policy.basis, req_clear, conservative_min, approx_min, bound, clear_ok
+            policy.basis, req_clear, conservative_min, approx_min, bound, clear_ok, refinement
         )
         problems: list[tuple[InfeasibleReason, str]] = []
         for reason, count in sorted(report.rejection_counts.items()):
@@ -816,15 +1017,17 @@ class LayoutV2Search:
                 (
                     InfeasibleReason.OREBODY_CLEARANCE,
                     f"conservative minimum clearance {conservative_min:.2f} m < required "
-                    f"{req_clear:.2f} m ({self.policy.basis})",
+                    f"{req_clear:.2f} m ({policy.basis})",
                 )
             )
         # Phase 20B: explicit ramp-junction + level-access planning (rule 156).
         # Only a main ramp that is itself valid gets an access plan; an
-        # unreachable level is a HARD failure, never a score term.
+        # unreachable level is a HARD failure, never a score term. The plan
+        # runs under the CANDIDATE's policy (C-2): a refined bound shrinks
+        # the anchor stand-off, so entries sit at the configured value again.
         if not problems:
             assert self._sections is not None and self._track is not None
-            standoff = self.anchor_standoff(req_clear)
+            standoff = self.anchor_standoff(req_clear, policy)
             cand.anchors = [
                 build_anchor(
                     self.world.orebody,
@@ -843,7 +1046,7 @@ class LayoutV2Search:
                 ctx.levels,
                 self.cfg.access,
                 self.scenario.ramp,
-                self.evaluator,
+                evaluator,
                 self.shape,
                 req_clear,
             )
@@ -1105,7 +1308,12 @@ def materialize_level_accesses(
         "candidateId": cand.candidate_id,
         "family": cand.params.family.value,
         "miningMethod": mining_method,
-        "clearanceBasis": result.clearance_basis,
+        # the basis the candidate's accesses were actually validated under
+        # (stage-4 REFINED_CONSERVATIVE when refinement applied), never the
+        # catalogue's whole-body search basis (Phase 20B.1-v2 1.1)
+        "clearanceBasis": cand.clearance.basis if cand.clearance else result.clearance_basis,
+        "clearanceErrorBound": cand.clearance.error_bound if cand.clearance else None,
+        "clearanceRefinement": cand.clearance.refinement if cand.clearance else None,
         "requiredClearance": result.required_clearance,
         "anchors": [a.to_dict() if a else None for a in cand.anchors],
         "accesses": [a.to_dict(include_points=True) for a in plan.accesses],

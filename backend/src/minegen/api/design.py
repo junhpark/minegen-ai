@@ -9,6 +9,7 @@ from pydantic import Field
 
 from minegen.api.deps import get_design_service, get_job_service
 from minegen.core.models import ApiModel, ErrorDetail
+from minegen.layout.search import ClearancePolicyReconstructionError
 from minegen.levels.models import LevelsPayload
 from minegen.mining.models import StopesPayload
 from minegen.scheduling.models import TimelinePayload
@@ -18,6 +19,7 @@ from minegen.services.design_service import (
     DevelopmentMeshNotGeneratedError,
     LayoutCandidateInfeasibleError,
     LayoutCandidateNotFoundError,
+    LayoutSelectionStaleError,
     LayoutV2NotGeneratedError,
     LayoutV2NotSelectedError,
     LevelAccessesNotGeneratedError,
@@ -163,6 +165,10 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             f"scenario '{scenario_id}' has no level-access artifact; select a layout-v2 "
             "candidate first (POST …/design/layout-v2/select)",
         )
+    if isinstance(exc, LayoutSelectionStaleError):
+        return _error(status.HTTP_409_CONFLICT, exc.code, str(exc))
+    if isinstance(exc, ClearancePolicyReconstructionError):
+        return _error(status.HTTP_409_CONFLICT, exc.code, str(exc))
     if isinstance(exc, LayoutCandidateNotFoundError):
         return _error(404, "LAYOUT_V2_CANDIDATE_NOT_FOUND", str(exc))
     if isinstance(exc, LayoutCandidateInfeasibleError):

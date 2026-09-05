@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,7 +26,7 @@ from minegen.core.artifacts import (
 from minegen.core.enums import DistanceContract, OrebodyType
 from minegen.core.models import Scenario
 from minegen.design.constraints import DesignContext
-from minegen.design.cost_field import DesignCostEvaluator, clearance_policy_for
+from minegen.design.cost_field import ClearancePolicy, DesignCostEvaluator, clearance_policy_for
 from minegen.design.development_mesh import DevelopmentMeshBuilder
 from minegen.design.mine_designer import ChainedDeclineGenerator
 from minegen.design.progress import (
@@ -39,6 +40,7 @@ from minegen.design.targets import AccessTargetSet, generate_access_targets, res
 from minegen.design.tunnel_mesh import TunnelMeshBuilder
 from minegen.layout.search import (
     CandidateStatus,
+    ClearancePolicyReconstructionError,
     LayoutSearchResult,
     LayoutV2Search,
     materialize_effective_ramp,
@@ -157,6 +159,21 @@ class StaleInputsError(RuntimeError):
         super().__init__(
             f"inputs of scenario '{scenario_id}' changed while the job was running; "
             "the stale result was discarded (regenerate to get a current one)"
+        )
+
+
+class LayoutSelectionStaleError(RuntimeError):
+    """``layout_v2_selected.json`` was written for a different layout-v2
+    catalogue revision than the one on disk (Phase 20B.1-v2 1.1). The
+    downstream builders fail closed rather than rebuild the selected
+    candidate's clearance policy from a catalogue it does not belong to."""
+
+    code = "LAYOUT_V2_SELECTION_STALE"
+
+    def __init__(self, scenario_id: str) -> None:
+        super().__init__(
+            f"the selected layout-v2 candidate of scenario '{scenario_id}' belongs to a "
+            "previous catalogue revision; re-select or re-activate a candidate"
         )
 
 
@@ -449,7 +466,7 @@ class DesignService:
         self, scenario_id: str, on_progress: ProgressCallback = no_progress
     ) -> dict[str, Any]:
         """Phase 20A parametric family search over the generated world. Uses
-        the layout's own evaluator (EXACT or CONSERVATIVE clearance policy),
+        the layout's own evaluator (EXACT or COARSE_CONSERVATIVE clearance policy),
         so non-TABULAR orebodies are first-class here (rule 146). Persists
         ``derived/layout_v2.json``; a previous selection is stale and is
         deleted, and if LAYOUT_V2 is the active source its downstream chain
@@ -524,7 +541,10 @@ class DesignService:
             and existing.get("layoutRevision") == layout_rev
         ):
             return existing
-        payload = materialize_effective_ramp(result, cand, search.evaluator, revision)
+        # materialize under the candidate's OWN stage-4 evaluator, never the
+        # whole-body search evaluator (Phase 20B.1-v2 1.1)
+        cand_evaluator, _, _ = search.candidate_policy(result, candidate_id)
+        payload = materialize_effective_ramp(result, cand, cand_evaluator, revision)
         payload["layoutRevision"] = layout_rev
         payload["owningArtifact"] = LAYOUT_V2_SELECTED_ARTIFACT
         # rule 157: the ramp junctions + level accesses of the SAME candidate,
@@ -553,6 +573,50 @@ class DesignService:
             return None
         data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return data
+
+    def _selected_candidate_policy(
+        self, scenario_id: str
+    ) -> tuple[DesignCostEvaluator, ClearancePolicy]:
+        """The clearance policy the SELECTED layout-v2 candidate was validated
+        under in stage 4, rebuilt deterministically from the persisted
+        selection identity (``candidateId`` + ``layoutRevision``) and the
+        layout search (``_layout_object`` re-runs it on a cache miss, so a
+        fresh process reconstructs the very same policy). Fails closed on a
+        stale selection or when the rebuilt refinement provenance disagrees
+        with what the selection recorded (Phase 20B.1-v2 1.1)."""
+        selected = self._layout_selected_if_present(scenario_id)
+        if selected is None:
+            raise LayoutV2NotSelectedError(scenario_id)
+        layout_rev = file_revision(self.layout_path(scenario_id)) or ""
+        if selected.get("layoutRevision") != layout_rev:
+            raise LayoutSelectionStaleError(scenario_id)
+        search, result = self._layout_object(scenario_id)
+        candidate_id = str(selected["candidateId"])
+        evaluator, policy, _ = search.candidate_policy(result, candidate_id)
+        recorded = selected.get("clearance") or {}
+        recorded_bound = recorded.get("clearanceErrorBound")
+        if recorded.get("clearanceBasis") != policy.basis or not math.isclose(
+            float(recorded_bound if recorded_bound is not None else 0.0),
+            float(policy.error_bound),
+            rel_tol=1e-9,
+            abs_tol=1e-9,
+        ):
+            raise ClearancePolicyReconstructionError(
+                candidate_id,
+                f"selection recorded {recorded.get('clearanceBasis')} "
+                f"(bound {recorded_bound}) but the rebuilt policy is {policy.basis} "
+                f"(bound {policy.error_bound})",
+            )
+        return evaluator, policy
+
+    def _active_clearance_policy(self, scenario_id: str, world: SyntheticWorld) -> ClearancePolicy:
+        """Clearance policy for every builder downstream of the ACTIVE ramp:
+        LEGACY keeps the world's own policy (EXACT for analytic bodies —
+        unchanged numerics); LAYOUT_V2 uses the selected candidate's own
+        stage-4 certification (Phase 20B.1-v2 1.1 invariant)."""
+        if read_ramp_source(self.store.derived_dir(scenario_id)) != "LAYOUT_V2":
+            return clearance_policy_for(world.orebody)
+        return self._selected_candidate_policy(scenario_id)[1]
 
     def layout_selected(self, scenario_id: str) -> dict[str, Any]:
         self.store.get(scenario_id)
@@ -646,7 +710,7 @@ class DesignService:
 
         The evaluators are built with the world's own clearance policy
         (rule 146: EXACT for analytic bodies — numerically identical to the
-        legacy path — CONSERVATIVE for implicit ones) instead of the
+        legacy path — COARSE_CONSERVATIVE for implicit ones) instead of the
         exact-only ``self.evaluator``. An implicit body must REACH
         ``LevelDevelopmentBuilder`` so it answers the intended typed Phase 20B
         boundary (``LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY``)
@@ -655,7 +719,7 @@ class DesignService:
         smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
         accesses_payload = self.active_level_accesses(scenario_id)
         scenario, world = self.worlds.load(scenario_id)
-        policy = clearance_policy_for(world.orebody)
+        policy = self._active_clearance_policy(scenario_id, world)
         drift_ev = DesignCostEvaluator(world, scenario.design, clearance=policy)
         crosscut_ev = DesignCostEvaluator(
             world, scenario.design, DesignContext.crosscut(scenario.design), clearance=policy
@@ -925,18 +989,18 @@ class DesignService:
         The sweep evaluator is built with the world's own clearance policy
         (rule 146: EXACT for analytic bodies — the default constructor path
         yields the very same ``ExactClearance``, so TABULAR is numerically
-        unchanged — CONSERVATIVE for implicit ones) rather than the
+        unchanged — COARSE_CONSERVATIVE for implicit ones) rather than the
         exact-only ``self.evaluator``. Phase 06 does not route a search
         through the hard orebody buffer; it sweeps an ALREADY validated
         centerline and checks the resulting envelope, and under a
-        CONSERVATIVE policy that envelope check is strictly stricter. Rule
+        COARSE_CONSERVATIVE policy that envelope check is strictly stricter. Rule
         135 still guards the legacy Hybrid-A* chain, which keeps refusing an
         implicit body at ``/design/targets``."""
         fingerprint = self.tunnel_fingerprint(scenario_id)
         smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
         scenario, world = self.worlds.load(scenario_id)
         ev = DesignCostEvaluator(
-            world, scenario.design, clearance=clearance_policy_for(world.orebody)
+            world, scenario.design, clearance=self._active_clearance_policy(scenario_id, world)
         )
         builder = TunnelMeshBuilder(ev, scenario.ramp, scenario.tunnel_profile)
 
@@ -1024,19 +1088,20 @@ class DesignService:
             levels_payload = None
         scenario, world = self.worlds.load(scenario_id)
         # the drift / access envelope uses the layout clearance policy of the
-        # world (EXACT for analytic bodies, CONSERVATIVE for implicit ones —
+        # world (EXACT for analytic bodies, COARSE_CONSERVATIVE for implicit ones —
         # rule 146); crosscuts keep their orebody-contact context (rule 72)
+        policy = self._active_clearance_policy(scenario_id, world)
         drift_ev = DesignCostEvaluator(
             world,
             scenario.design,
             DesignContext.decline(scenario.design),
-            clearance=clearance_policy_for(world.orebody),
+            clearance=policy,
         )
         crosscut_ev = DesignCostEvaluator(
             world,
             scenario.design,
             DesignContext.crosscut(scenario.design),
-            clearance=clearance_policy_for(world.orebody),
+            clearance=policy,
         )
         builder = DevelopmentMeshBuilder(
             drift_ev, crosscut_ev, scenario.ramp, scenario.tunnel_profile

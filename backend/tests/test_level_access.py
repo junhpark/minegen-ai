@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from minegen.core.enums import MiningMethodType
-from minegen.core.models import Scenario
+from minegen.core.models import RampConstraints, Scenario, TunnelProfile
 from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.design.profile import build_profile
@@ -102,6 +102,11 @@ def test_connector_refuses_degenerate_poses() -> None:
 # --------------------------------------------------------------------------- #
 # plan: welds, hard limits, typed failures, spacing, determinism
 # --------------------------------------------------------------------------- #
+
+
+#: the shared RampConstraints profile every access and the main ramp are
+#: driven with (5 m wide, 5 m high D-profile on the floor centerline)
+SHAPE = build_profile(RampConstraints(), TunnelProfile())
 
 
 def _plan(
@@ -509,17 +514,21 @@ def test_selection_targets_the_preferred_length_instead_of_the_hard_floor(
     assert plan.preferred_source == "DEFAULT_6X_TUNNEL_WIDTH"
     ok = [a for a in plan.accesses if a.ok]
     floor = sc.layout.access.minimum_access_length
-    # the old shortest-first objective (preferred == hard floor) hugs the floor
+    # closeout v3 §2 established the preferred-length objective against the
+    # floor-hugging shortest-first one. Since 20B.1 commit C the corridor
+    # margin makes the SHORTEST feasible branch itself exceed both the floor
+    # and the preferred length in this fixture, so the two objectives select
+    # identically here — the preferred objective must never be WORSE, and no
+    # branch can hug the old 15 m floor at all.
     _, shortest = _plan(sc, world, s, res, preferred_access_length=floor)
     ok_short = [a for a in shortest.accesses if a.ok]
     mean_short = float(np.mean([a.length3d for a in ok_short]))
     mean_pref = float(np.mean([a.length3d for a in ok]))
-    assert mean_pref > mean_short
-    # the distribution moves toward the preferred length and off the floor
-    assert float(np.mean([abs(a.length3d - 30.0) for a in ok])) < float(
+    assert mean_pref >= mean_short
+    assert float(np.mean([abs(a.length3d - 30.0) for a in ok])) <= float(
         np.mean([abs(a.length3d - 30.0) for a in ok_short])
     )
-    assert sum(1 for a in ok if a.length3d < floor + 2.0) < len(ok)
+    assert min(a.length3d for a in ok) > floor + 2.0  # nothing on the floor
     # every selected branch still honours every hard limit
     for a in ok:
         assert floor <= a.length3d <= sc.layout.access.maximum_access_length
@@ -555,3 +564,333 @@ def test_preferred_selection_is_deterministic(
             y.connector_word,
         )
     assert a.to_dict() == b.to_dict()
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20B.1 commit O — separation observability (reporting only)
+# --------------------------------------------------------------------------- #
+
+
+def test_separation_metrics_on_synthetic_geometry() -> None:
+    """The four O-1 metrics and the O-2 turnout diagnostic on hand-built
+    geometry with known answers. Since 20B.1-v2 1.2 the excavation
+    separation is the DIRECTION-AWARE profile-support gap at the closest
+    centerline pair: this branch drives straight AWAY from the ramp, so the
+    direction to the ramp runs along the branch's own axis (its cross-section
+    has no support there) while the ramp's profile contributes its lateral
+    half-span — ``d − 0 − width/2``. The first SEPARATION_TAPER_EXCLUSION_ARC
+    metres of the branch are excluded."""
+    from minegen.layout.access import (
+        SEPARATION_TAPER_EXCLUSION_ARC,
+        LevelAccess,
+        fill_separation_metrics,
+        min_distance_to_polyline,
+        turnout_heading_change_deg,
+    )
+    from minegen.layout.geometry import chainage
+
+    # straight ramp along +Y, descending at 0.12
+    y = np.arange(0.0, 200.0 + 1e-9, 5.0)
+    ramp = np.column_stack([np.zeros_like(y), y, -0.12 * y])
+    ramp_ch = chainage(ramp)
+    j = ramp[20].copy()  # y = 100
+    # branch: straight line perpendicular to the ramp, 30 m to +X at level z
+    n = 16
+    t = np.linspace(0.0, 1.0, n)
+    entry = j + np.array([30.0, 0.0, 0.0])
+    pts = j[None, :] + t[:, None] * (entry - j)[None, :]
+    access = LevelAccess(
+        "L01",
+        float(entry[2]),
+        "OK",
+        None,
+        junction_chainage=float(ramp_ch[20]),
+        junction_position=j,
+        points=pts,
+    )
+    fill_separation_metrics(access, ramp, ramp_ch, SHAPE)
+    assert access.junction_to_entry_plan_sep == pytest.approx(30.0)
+    assert access.junction_to_entry_dist3d == pytest.approx(30.0)
+    # nearest far-sample to the ramp is the first sample at arc >= exclusion
+    arc = chainage(pts)
+    far = pts[arc >= SEPARATION_TAPER_EXCLUSION_ARC]
+    expected = float(np.min(min_distance_to_polyline(far, ramp)))
+    assert access.ramp_centerline_distance == pytest.approx(expected)
+    assert expected == pytest.approx(float(far[0, 0]), abs=0.2)  # ~ its x offset
+    assert access.excavation_separation == pytest.approx(expected - 2.5, abs=0.05)
+    # straight ramp: zero heading change through the turnout window
+    assert access.turnout_heading_change_deg == pytest.approx(0.0, abs=1e-9)
+
+    # turnout inside a curve: an R = 18 m arc accumulates ~2*25/18 rad over
+    # the +-25 m window (the arc is 72 m long so the window never truncates)
+    ang = np.linspace(0.0, 4.0, 321)  # rad along the arc
+    arc_pts = np.column_stack([18.0 * np.sin(ang), 18.0 * (1 - np.cos(ang)), -2.16 * ang])
+    arc_ch = chainage(arc_pts)
+    mid = float(arc_ch[160])
+    got = turnout_heading_change_deg(arc_pts, arc_ch, mid)
+    assert got == pytest.approx(math.degrees(50.0 / 18.0), rel=0.05)
+
+    # branch shorter than the taper exclusion (commit B): the TERMINAL is
+    # always judged, so a 6 m stub reports its entry separation (its entry is
+    # 6 m off the ramp -> direction-aware gap 6 − 0 − 2.5 = 3.5 m), never
+    # None and never 0
+    short = LevelAccess(
+        "L02",
+        0.0,
+        "OK",
+        None,
+        junction_chainage=float(ramp_ch[20]),
+        junction_position=j,
+        points=pts[:4],  # 6 m
+    )
+    fill_separation_metrics(short, ramp, ramp_ch, SHAPE)
+    assert short.ramp_centerline_distance == pytest.approx(6.0, abs=0.05)
+    assert short.excavation_separation == pytest.approx(3.5, abs=0.05)
+    assert short.junction_to_entry_plan_sep == pytest.approx(6.0)
+
+
+def test_separation_metrics_reported_for_every_selected_access(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    """O-1/O-3: every OK access of a real plan carries the four metrics and
+    the payload / summary expose them; the metrics never gate feasibility in
+    commit O (an access with a sub-width pillar is still OK here)."""
+    sc, world = tabular
+    s, res = search
+    _, plan = _plan(sc, world, s, res)
+    assert plan.feasible
+    for a in plan.accesses:
+        assert a.junction_to_entry_plan_sep is not None and a.junction_to_entry_plan_sep > 0.0
+        assert a.junction_to_entry_dist3d is not None
+        assert a.junction_to_entry_dist3d >= a.junction_to_entry_plan_sep - 1e-9
+        assert a.turnout_heading_change_deg is not None
+        assert a.turnout_heading_change_deg >= 0.0
+        assert a.excavation_separation is not None
+        assert a.ramp_centerline_distance is not None
+        # direction-aware gap: never larger than the centerline distance and
+        # never more than two profile reaches (5 m each) below it
+        assert a.excavation_separation <= a.ramp_centerline_distance + 1e-9
+        assert a.excavation_separation >= a.ramp_centerline_distance - 10.0 - 1e-9
+        d = a.to_dict(include_points=False)
+        assert {
+            "junctionToEntryPlanSep",
+            "junctionToEntryDist3d",
+            "rampCenterlineDistance",
+            "excavationSeparation",
+            "turnoutHeadingChangeDeg",
+        } <= set(d)
+    summary = plan.summary()
+    assert summary["minJunctionToEntryPlanSep"] is not None
+    assert summary["minExcavationSeparation"] is not None
+    assert summary["maxTurnoutHeadingChangeDeg"] is not None
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20B.1 commit B — hard separation / pillar / turnout gates
+# --------------------------------------------------------------------------- #
+
+
+def test_gate_taper_arc_closed_form() -> None:
+    from minegen.layout.access import gate_taper_arc
+
+    # lateral within one turn: R * arccos(1 - l/R)
+    assert gate_taper_arc(18.0, 15.0) == pytest.approx(18.0 * math.acos(1.0 - 15.0 / 18.0))
+    assert gate_taper_arc(18.0, 0.0) == 0.0
+    # beyond one radius: quarter turn then perpendicular straight
+    assert gate_taper_arc(18.0, 40.0) == pytest.approx(18.0 * math.pi / 2.0 + 22.0)
+    # monotone in the lateral requirement
+    assert gate_taper_arc(18.0, 10.0) < gate_taper_arc(18.0, 15.0) < gate_taper_arc(18.0, 20.0)
+
+
+def test_selected_accesses_satisfy_every_hard_gate(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    """B-6: every SELECTED access of the winner plan honours the resolved
+    gates — plan separation, rock pillar (beyond the geometric taper,
+    terminal included) and turnout curvature."""
+    from minegen.layout.access import SEPARATION_TOLERANCE
+
+    sc, world = tabular
+    s, res = search
+    _, plan = _plan(sc, world, s, res)
+    assert plan.feasible
+    assert plan.plan_separation_required == pytest.approx(6.0 * sc.ramp.tunnel_width)
+    assert plan.excavation_separation_required == pytest.approx(2.0 * sc.ramp.tunnel_width)
+    assert plan.gate_taper_arc_m is not None and plan.gate_taper_arc_m > 0.0
+    for a in plan.accesses:
+        assert a.ok
+        assert a.junction_to_entry_plan_sep is not None
+        assert a.junction_to_entry_plan_sep >= plan.plan_separation_required - SEPARATION_TOLERANCE
+        assert a.excavation_separation is not None
+        assert a.excavation_separation >= plan.excavation_separation_required - SEPARATION_TOLERANCE
+        assert a.turnout_heading_change_deg is not None
+        assert (
+            a.turnout_heading_change_deg
+            <= sc.layout.access.maximum_turnout_heading_change_deg + 1e-6
+        )
+    summary = plan.summary()
+    assert summary["minimumPlanSeparationRequired"] == plan.plan_separation_required
+    assert summary["minimumExcavationSeparationRequired"] == plan.excavation_separation_required
+    assert summary["gateTaperArc"] == plan.gate_taper_arc_m
+
+
+def test_hard_gates_reject_with_typed_reasons(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    sc, world = tabular
+    s, res = search
+    # B-2: an impossible pillar demand fails typed, never clamped
+    _, plan = _plan(sc, world, s, res, minimum_excavation_separation=200.0)
+    assert not plan.feasible
+    failed = [a for a in plan.accesses if not a.ok]
+    assert failed
+    assert all(
+        a.rejection_counts.get(AccessFailure.INSUFFICIENT_RAMP_PILLAR, 0) > 0
+        or a.failure_reason == AccessFailure.INSUFFICIENT_RAMP_PILLAR
+        for a in failed
+    )
+    # B-1: an impossible plan-separation demand fails typed
+    _, plan = _plan(sc, world, s, res, minimum_ramp_to_entry_plan_separation=299.0)
+    assert not plan.feasible
+    failed = [a for a in plan.accesses if not a.ok]
+    assert failed
+    assert any(
+        a.rejection_counts.get(AccessFailure.INSUFFICIENT_RAMP_TO_ENTRY_SEPARATION, 0) > 0
+        for a in failed
+    )
+    # B-3: a near-zero curvature tolerance rejects in-curve junctions typed;
+    # any access that still succeeds sits in genuinely straight chainage
+    _, plan = _plan(sc, world, s, res, maximum_turnout_heading_change_deg=1e-3)
+    for a in plan.accesses:
+        if a.ok:
+            assert a.turnout_heading_change_deg is not None
+            assert a.turnout_heading_change_deg <= 1e-3 + 1e-6
+        else:
+            assert a.rejection_counts.get(AccessFailure.TURNOUT_NOT_STRAIGHT, 0) > 0
+
+
+def test_starvation_diagnostic_distinguishes_greedy_from_geometry(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    """B-5: with an absurd junction-spacing rule the FIRST level consumes the
+    whole ramp; deeper levels fail on JUNCTION_SPACING_CONFLICT and the
+    diagnostic re-run (ignoring only the used spacing) proves valid
+    candidates exist — assignment starvation, not geometry. Nothing is
+    relaxed for the recorded result."""
+    sc, world = tabular
+    s, res = search
+    _, plan = _plan(sc, world, s, res, minimum_ramp_junction_spacing=5000.0)
+    assert not plan.feasible
+    ok = [a for a in plan.accesses if a.ok]
+    starved = [
+        a for a in plan.accesses if a.failure_reason == AccessFailure.JUNCTION_SPACING_CONFLICT
+    ]
+    assert ok and starved
+    for a in starved:
+        d = a.assignment_diagnostic
+        assert d is not None
+        assert d["starvationSuspected"] is True
+        assert d["validCandidatesIgnoringSpacing"] > 0
+    # a level that fails WITHOUT any spacing conflict carries no diagnostic
+    _, plan_geo = _plan(sc, world, s, res, minimum_excavation_separation=200.0)
+    for a in plan_geo.accesses:
+        if not a.ok and a.rejection_counts.get(AccessFailure.JUNCTION_SPACING_CONFLICT, 0) == 0:
+            assert a.assignment_diagnostic is None
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20B.1-v2 1.2 — direction-aware rock-pillar support
+# --------------------------------------------------------------------------- #
+
+
+def _line(x: float, z: float, n: int = 41, length: float = 200.0, grade: float = 0.0) -> np.ndarray:
+    y = np.linspace(0.0, length, n)
+    return np.column_stack([np.full_like(y, x), y, z - grade * y])
+
+
+def test_directional_support_horizontal_parallel_matches_width_rule() -> None:
+    """A: two horizontal parallel drives 15 m apart read width/2 + width/2 —
+    the former fixed rule is preserved exactly where it was right."""
+    from minegen.layout.access import gated_separation
+
+    ramp, branch = _line(0.0, 0.0), _line(15.0, 0.0)
+    d, gap = gated_separation(branch, ramp, SHAPE, taper_arc=0.0)
+    assert d == pytest.approx(15.0)
+    assert gap == pytest.approx(15.0 - 2.5 - 2.5)
+
+
+def test_directional_support_vertically_stacked_is_stricter_than_width_rule() -> None:
+    """B: a drive 12 m BELOW another one: the lower profile reaches
+    ``height`` up to the upper floor centerline, which has no downward
+    extent — ``height + 0``. With a 6 m high profile that is 6 m of rock,
+    stricter than the fixed-width rule's 7 m and far less pessimistic than
+    the forbidden isotropic ``2·hypot(width/2, height)`` (−1 m)."""
+    from minegen.layout.access import gated_separation
+
+    tall = build_profile(RampConstraints(tunnel_width=5.0, tunnel_height=6.0), TunnelProfile())
+    upper, lower = _line(0.0, 0.0), _line(0.0, -12.0)
+    d, gap = gated_separation(lower, upper, tall, taper_arc=0.0)
+    assert d == pytest.approx(12.0)
+    assert gap == pytest.approx(12.0 - 6.0 - 0.0)
+    assert gap < 12.0 - 5.0  # stricter than the old "− tunnel_width"
+    assert gap > 12.0 - 2.0 * math.hypot(2.5, 6.0)  # never the isotropic bound
+    # the branch ABOVE the ramp reads the same rock: 0 + height
+    d2, gap2 = gated_separation(upper, lower, tall, taper_arc=0.0)
+    assert d2 == pytest.approx(12.0) and gap2 == pytest.approx(gap)
+
+
+def test_directional_support_follows_the_gravity_frame_on_a_slope() -> None:
+    """C: a sloped access stacked under a sloped ramp. The closest-pair
+    direction of two parallel sloped drives is their common normal — the
+    gravity frame's ``up`` — along which the lower profile's support is the
+    full ``height``; along TRUE vertical the same profile only reaches
+    ``height·cos(slope)``. The support therefore depends on the tangent's
+    gravity frame, and the gate reads the frame-correct value."""
+    from minegen.layout.access import gated_separation, profile_support
+
+    g = 0.12
+    upper, lower = _line(0.0, 0.0, grade=g), _line(0.0, -12.0, grade=g)
+    d, gap = gated_separation(lower, upper, SHAPE, taper_arc=0.0)
+    cos_slope = 1.0 / math.hypot(1.0, g)
+    # the vertical separation of two parallel sloped lines is measured along
+    # the common normal: d = 12·cos(slope)
+    assert d == pytest.approx(12.0 * cos_slope, abs=1e-6)
+    t = np.array([[0.0, 1.0, -g]]) / math.hypot(1.0, g)
+    up_support = profile_support(SHAPE, t, np.array([[0.0, 0.0, 1.0]]))
+    assert up_support[0] == pytest.approx(5.0 * cos_slope, rel=1e-9)
+    assert up_support[0] < 5.0
+    # along the common normal (the frame's up) the support is the full height
+    frame_up = np.array([[0.0, g, 1.0]]) / math.hypot(1.0, g)
+    assert profile_support(SHAPE, t, frame_up)[0] == pytest.approx(5.0, rel=1e-9)
+    assert gap == pytest.approx(d - 5.0 - 0.0, abs=1e-6)
+
+
+def test_directional_support_is_symmetric_in_the_pair() -> None:
+    """Swapping branch and ramp on identically sampled parallel lines gives
+    the same gap (the support pair is evaluated on the same closest points)."""
+    from minegen.layout.access import gated_separation
+
+    a, b = _line(0.0, 0.0), _line(9.0, -4.0)
+    assert gated_separation(a, b, SHAPE, 0.0) == pytest.approx(gated_separation(b, a, SHAPE, 0.0))
+
+
+def test_pillar_gate_uses_the_directional_support(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    """The B-2 gate and the reported metric share the direction-aware
+    definition: every selected access of the reference plan reports a gap
+    at/above the floor, computed by ``gated_separation`` on its own points."""
+    from minegen.layout.access import SEPARATION_TOLERANCE, gated_separation
+
+    sc, world = tabular
+    s, res = search
+    _, plan = _plan(sc, world, s, res)
+    assert plan.feasible and plan.excavation_separation_required is not None
+    winner = res.candidate(res.winner_id or "")
+    assert winner is not None and winner.points is not None
+    for a in plan.accesses:
+        assert a.points is not None and a.excavation_separation is not None
+        assert plan.gate_taper_arc_m is not None
+        _, gap = gated_separation(a.points, winner.points, SHAPE, plan.gate_taper_arc_m)
+        assert a.excavation_separation == pytest.approx(gap)
+        assert gap >= plan.excavation_separation_required - SEPARATION_TOLERANCE - 1e-9

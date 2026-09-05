@@ -43,25 +43,41 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from minegen.core.enums import FAMILY_ORDER as FAMILY_ORDER
+from minegen.core.enums import RampFamily as RampFamily
 from minegen.core.models import LayoutV2Config, RampConstraints
 from minegen.layout.levels import LevelSections, RequiredLevel, level_intervals
 from minegen.world.orebody import Orebody
 
 FloatArray = npt.NDArray[np.float64]
 
+#: Phase 20B.1 C-1 (roadmap S1): the PERMANENT main-ramp corridor's default
+#: stand-off exceeds the level-development anchor plane
+#: (``ramp.footwall_access_offset``) by this many tunnel widths. Three
+#: SPATIAL terms (spatial + spatial, never a path-length term — rule 168):
+#: one width for the two lateral half-spans of ramp and level development,
+#: a two-width rock pillar between their envelopes, and a three-width
+#: turnout-taper allowance — the lateral offset a minimum-radius turnout
+#: develops while still inside its own geometric taper,
+#: ``R·(1 − cos(s*/R)) ≈ 15 m ≈ 3 widths`` for the default R = 18 m — so an
+#: access can hold the full pillar over its ENTIRE post-taper run, not only
+#: at its terminal. A planning default, not a statutory value. Before the
+#: audit both stand-offs defaulted to the SAME 20 m, which made the main
+#: ramp and every level drift collinear (measured envelope separation
+#: −4.9 m, commit O baseline).
+RAMP_CORRIDOR_MARGIN_WIDTHS = 6.0
 
-class RampFamily(StrEnum):
-    SPIRAL = "SPIRAL"
-    LONGITUDINAL = "LONGITUDINAL"
-    SWITCHBACK = "SWITCHBACK"
 
-
-#: frozen family enumeration order (rule 142)
-FAMILY_ORDER: tuple[RampFamily, ...] = (
-    RampFamily.SPIRAL,
-    RampFamily.LONGITUDINAL,
-    RampFamily.SWITCHBACK,
-)
+def effective_footwall_standoff(cfg: LayoutV2Config, ramp: RampConstraints) -> tuple[float, str]:
+    """Main-ramp corridor stand-off and its provenance: ``EXPLICIT`` or
+    ``DEFAULT_OFFSET_PLUS_CORRIDOR_MARGIN`` = ``footwall_access_offset +
+    RAMP_CORRIDOR_MARGIN_WIDTHS × tunnel_width``."""
+    if cfg.footwall_standoff is not None:
+        return float(cfg.footwall_standoff), "EXPLICIT"
+    return (
+        float(ramp.footwall_access_offset) + RAMP_CORRIDOR_MARGIN_WIDTHS * float(ramp.tunnel_width),
+        "DEFAULT_OFFSET_PLUS_CORRIDOR_MARGIN",
+    )
 
 
 class InfeasibleReason(StrEnum):
@@ -503,11 +519,7 @@ class LayoutContext:
 
     @property
     def standoff(self) -> float:
-        return (
-            self.cfg.footwall_standoff
-            if self.cfg.footwall_standoff is not None
-            else self.ramp.footwall_access_offset
-        )
+        return effective_footwall_standoff(self.cfg, self.ramp)[0]
 
     @property
     def z_last(self) -> float:

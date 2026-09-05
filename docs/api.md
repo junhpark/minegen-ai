@@ -86,7 +86,7 @@ meters (`docs/coordinate-system.md`). Schemas live in
     POST …/design/layout-v2                          Phase 20A parametric family search
                                                      (kind LAYOUT_V2) → 202 {jobId, …}; ?sync=true
                                                      runs inline. Every orebody type (EXACT or
-                                                     CONSERVATIVE clearance). Persists
+                                                     COARSE/REFINED_CONSERVATIVE clearance). Persists
                                                      derived/layout_v2.json; deletes a stale
                                                      selection and, if LAYOUT_V2 is active, the
                                                      ramp-derived chain (rule 151)
@@ -106,7 +106,37 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      lengthDeviationFromPreferred and selectionCost;
                                                      the summary carries the preferred length, its
                                                      source (DEFAULT_6X_TUNNEL_WIDTH | EXPLICIT) and
-                                                     the mean / max |ΔP| (rule 163)
+                                                     the mean / max |ΔP| (rule 163). Phase 20B.1 O
+                                                     separation observability per access:
+                                                     junctionToEntryPlanSep, junctionToEntryDist3d,
+                                                     rampCenterlineDistance, excavationSeparation
+                                                     (direction-aware rock pillar: centerline
+                                                     distance minus each gravity-aligned profile's
+                                                     support along the closest-pair direction —
+                                                     width/2 + width/2 for parallel drives,
+                                                     height + 0 for stacked ones; a sampled
+                                                     cross-section gap, not an exact swept-surface
+                                                     distance; branch samples within the taper arc
+                                                     of the junction excluded) and turnoutHeadingChangeDeg
+                                                     (cumulative |Δheading| of the delivered main
+                                                     ramp over junction ± 25 m chainage); summary
+                                                     aggregates minJunctionToEntryPlanSep,
+                                                     minExcavationSeparation,
+                                                     maxTurnoutHeadingChangeDeg. Phase 20B.1 B
+                                                     hard gates (typed, never clamped):
+                                                     INSUFFICIENT_RAMP_TO_ENTRY_SEPARATION
+                                                     (plan sep < min, None → 6 × width),
+                                                     INSUFFICIENT_RAMP_PILLAR (excavation
+                                                     separation < min, None → 2 × width, judged
+                                                     beyond the geometry-derived turnout taper,
+                                                     terminal always included) and
+                                                     TURNOUT_NOT_STRAIGHT (cumulative |Δheading|
+                                                     over junction ± minimumTurnoutStraightBuffer
+                                                     above maximumTurnoutHeadingChangeDeg).
+                                                     Summary carries the resolved gate values +
+                                                     gateTaperArc; a level failed with spacing
+                                                     conflicts carries assignmentDiagnostic
+                                                     (B-5 starvation vs geometry)
                                                      409 LEVEL_ACCESSES_NOT_GENERATED if missing
     GET  …/design/ramp-source                        {activeSource, owningArtifact, available, …}
     PUT  …/design/ramp-source {activeSource}         LEGACY | LAYOUT_V2 (409 LAYOUT_V2_NOT_SELECTED
@@ -120,7 +150,15 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      LAYOUT_V2_NOT_SELECTED (LAYOUT_V2)
     (tunnel, levels, network, timeline, communication and sensors all consume
      the ACTIVE Effective Ramp; the scene's smoothedDecline is that ramp and
-     legacySmoothedDecline / rampSource / layoutV2 / layoutV2Selected are added)
+     legacySmoothedDecline / rampSource / layoutV2 / layoutV2Selected are added.
+     With LAYOUT_V2 active, tunnel / levels / development-mesh are judged under
+     the selected candidate's own stage-4 clearance certification, rebuilt from
+     candidateId + layoutRevision (Phase 20B.1-v2 1.1): 409
+     LAYOUT_V2_SELECTION_STALE when the selection belongs to another catalogue
+     revision, 409 LAYOUT_V2_CLEARANCE_MISMATCH when the rebuilt policy
+     disagrees with the recorded one. level_accesses.json carries the
+     candidate's actual clearanceBasis / clearanceErrorBound /
+     clearanceRefinement; the catalogue's clearanceBasis stays whole-body.)
     GET  /api/v1/jobs?scenario_id=                    job records (newest first, no result)
     (jobs fail with error.code JOB_INPUTS_CHANGED — nothing persisted — when
      scenario/world/targets were mutated while the job ran; rule 60)

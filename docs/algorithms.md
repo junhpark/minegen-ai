@@ -576,8 +576,16 @@ show ≈ 2 400–6 200° cumulative change, consistency 1.0, 0 reversals;
 
 Search: cheap stage on every candidate (grade ≤ g_max + 1e-9, plan radius
 ≥ R_min − 0.05 m, inside the world, monotonic, all serviceable levels
-served), shortlist of 12 by `length / grade-limited ideal + 0.5 ·
-mean access / reach`, detailed stage through
+served), shortlist of 12 by the Phase 20B.1 D cheap LOWER BOUND of the
+weighted total (`w_dev·(L/L_ideal + 0.5·meanAccess/reach) +
+w_geom·(unusedGrade + 0.5·turningFrac + maxAccess/reach +
+20·meanCurvature + 0.05·reversals + 0.02·hairpinRuns)`; geology, the
+access length and the clearance headroom are the omitted non-negative
+terms — the rule 165 corrective after the audited proxy missed exhaustive
+winners at ranks 40/62 and 22/26; additionally every declared family's
+best cheap-feasible candidate holds a shortlist slot, displacing the
+proxy tail so the bound stays 12 and the order stays (proxy, family
+order, id)), detailed stage through
 `design/validation.evaluate_and_validate` + `accepted_mask` (rule 52
 portal transition), clearance report under the evaluator's policy,
 `design/exposure.measure_exposure`, scores:
@@ -585,17 +593,31 @@ portal transition), clearance report under the evaluator's policy,
     development = L/L_ideal + 0.5·meanAccess/reach
     geology     = 10·coreFrac + 3·damageFrac + 5·poorRockFrac + 0.1·crossings
     geometry    = unusedGrade + 0.5·turningFrac + maxAccess/reach + clearanceHeadroom
+                  + 20·meanCurvature(rad/m) + 0.05·reversals + 0.02·hairpinRuns
+                  (Phase 20B.1 D-2: the measured family signature priced in —
+                  a priori round coefficients, never reverse-engineered to
+                  crown a family)
     total       = w_dev·development + w_geo·geology + w_geom·geometry
 
 Ranking `(feasible, round(total, 1e-9), family order, id)`. Measured
-(defaults): TABULAR reference 68 candidates, 6 feasible, winner
-`SWITCHBACK-k2-p+0-CCW-g0.120` (3 825 m, 13/13 levels) in ≈ 3.3 s;
-WARPED_VEIN seed 301 6 feasible, winner `SPIRAL-n1-CCW-e+0-g0.120`
-(14/14 serviceable of 18 required, conservative clearance 20.0 m ≥ 10.6 m)
-in ≈ 9 s; geometry-stress (15 m levels, R_min 20 m) 3 feasible; WARPED_VEIN
-seed 307 honestly returns NO_FEASIBLE_CANDIDATE (all 68 typed). Effective
-Ramp materialization inserts the exact level-crossing vertices and splits
-there; boundary tangents are shared chord directions.
+(defaults, Phase 20B.1 D golden): TABULAR reference 68 candidates,
+1 feasible in the bounded search (exhaustive diagnostic: 10), winner
+`SPIRAL-n1-CCW-e+0-g0.100` (4 679 m, 13/13 levels, 0 reversals,
+0.0232 rad/m, total 3.85 vs 5.05 for the best k1 and 5.86 for the best k2
+switchback) in ≈ 27 s; WARPED_VEIN seed 301 3 feasible (exhaustive 16),
+winner `SPIRAL-n1-CCW-e+0-g0.120` (14/14 serviceable of 18 required) in
+≈ 36 s; geometry-stress (15 m levels, R_min 20 m) SUCCESS with
+`SWITCHBACK-k1-p+20-CCW-g0.100` (21/21 accesses, 27 reversals; the k2
+variants are infeasible on this geometry); WARPED_VEIN seed 307 honestly
+returns NO_FEASIBLE_CANDIDATE (all 68 typed). Shortlist audit (rule 165,
+`golden/phase20b1_shortlist_audit.json`): missedWinner = False on all 7
+golden cases; missedFamilies = [SWITCHBACK] persists on 4 because stage-4
+access feasibility is invisible to any cheap bound (the family slot
+validates the family's best cheap candidate, which can fail the detailed
+gates while a costlier family member would pass) — a recorded
+bounded-shortlist limitation, not relaxed and not outcome-tuned away.
+Effective Ramp materialization inserts the exact level-crossing vertices
+and splits there; boundary tangents are shared chord directions.
 
 ## Phase 20B — ramp junctions and level accesses (`layout/access.py`, rules 153–160)
 
@@ -618,10 +640,107 @@ Acceptance on the delivered branch: `|g| ≤ g_max + 1e-9`, circumradius
 established (world, terrain, cover, restricted, orebody buffer under the
 policy), clearance ≥ required, profile boundary points through
 `envelope_masks` (0 hard, 0 above terrain), junction spacing ≥ 40 m.
-Selection `(length3d, junction chainage, sense)`.
+Phase 20B.1 B hard gates on every candidate (typed, never clamped):
+turnout curvature — cumulative |Δheading| of the delivered ramp over
+junction ± 25 m ≤ 100° (rejects a turnout inside a near-minimum-radius
+turn; a true straight-insert requirement needs Phase 20C family support);
+junction → entry PLAN separation ≥ 6 × width (30 m default); rock pillar —
+branch-to-ramp excavation separation ≥ 2 × width (10 m default) on samples
+beyond the geometry-derived taper `s* = R·arccos(1 − (pillar + width)/R)`
+(≈ 25.3 m for the defaults; quarter-turn + straight beyond one radius),
+terminal always judged. Since 20B.1-v2 (1.2) that separation is the
+DIRECTION-AWARE sampled envelope gap (`layout/access.py::gated_separation`):
+for every judged branch sample the closest-centerline pair
+(`nearest_on_polyline`) gives `u` = branch → ramp, and each tunnel's
+gravity-aligned cross-section contributes its support along `u`
+(`profile_support`: the `ProfileShape` vertices at `x·right + y·up` in the
+rule-26 frame of that tunnel's tangent) —
 
-Measured (TABULAR reference, defaults): 68 candidates, 6 feasible, winner
-`SWITCHBACK-k2-p+0-CCW-g0.120` with 13/13 accesses, total access 211 m
-(worst 17 m); the spiral `SPIRAL-n1-CCW-e+0-g0.120` needs 1 171 m of access
-(≈ 95 m per level) and drops from 2nd to 3rd; per-candidate access planning
-costs 0.5–0.75 s (≈ 80 connectors per level), stage-4 total ≈ 4 s.
+    gap = d_centerline − support_branch(+u) − support_ramp(−u)
+
+Horizontal parallel drives read `width/2 + width/2` (the former fixed rule,
+unchanged); a drive BELOW another reads `height + 0` (the lower profile
+reaches `height` up to the upper floor centerline, which has no downward
+extent), and a sloped pair reads `height·cos(slope)`. This is a cross-section
+support at the sampled closest pair — not an exact swept-surface /
+mesh-to-mesh distance (Phase 20D) — and a sample whose direction to the ramp
+runs along its own axis (an access driving straight away from the ramp)
+contributes 0 there, which the taper exclusion already covers. The isotropic
+`hypot(width/2, height)` on both sides (≈ 11.2 m) is deliberately not used. Selection among the survivors stays
+`(access_length_cost(L, P), L, junction chainage, sense)` (rule 163) — the
+length cost is SECONDARY to the gates. A level that fails with junction-
+spacing conflicts re-runs its search ignoring only the used spacing as the
+B-5 assignment diagnostic (starvation vs geometry); nothing is relaxed for
+the recorded result.
+
+Measured (TABULAR reference, 20B.1 defaults): 68 candidates, 2 feasible
+under the hard gates, winner `SWITCHBACK-k2-p+20-CW-g0.120` with 13/13
+accesses — per level: pillar 10.2–16.1 m, plan separation 33.2–39.4 m,
+turnout 23–52° over ± 25 m, branch 66–91 m; stage-4 total ≈ 20 s (the
+pillar gate evaluates every surviving connector against the full ramp
+polyline). WARPED-301: winner `SPIRAL-n1-CCW-e+0-g0.120`, 14/14 accesses,
+pillar 10.1–13.8 m, turnout 81–91° (a gentle helix passes the 100° gate by
+design), branch 48–97 m.
+
+## Phase 20B.1 — stand-off / clearance semantics audit (S1) and local refinement
+
+### C-1 distance-concept audit (roadmap item S1, executed here)
+
+Seven DIFFERENT distance concepts, audited call-site by call-site. None is
+additive with a path length (rule 168); each row names what the value is
+measured FROM and applied TO.
+
+| Concept | Default | Measured from → applied to | Read by | Kind | Finding |
+| --- | --- | --- | --- | --- | --- |
+| `RampConstraints.clearance` | 3.0 m | (intended: inside-profile operating clearance) | **nothing** | user schema field | UNWIRED — declared, typed in the frontend, consumed nowhere. Documented as RESERVED on the model; wire or remove deliberately (schema change), never silently repurpose. It does NOT duplicate `orebody_exclusion_buffer` in effect because it has no effect. |
+| `DesignConfig.orebody_exclusion_buffer` | 5.0 m | orebody surface (signed distance under the active policy) → every centerline sample and every excavation-envelope point | `design/constraints.py` (context), `design/cost_field.py` (hard reject + sterilization ramp), `layout/search.py::required_clearance` | user engineering constraint | the ONE hard orebody buffer |
+| layout-v2 required centerline clearance | `buffer + hypot(width/2, height)` ≈ 10.59 m | orebody surface → the FLOOR CENTERLINE, derived so the whole profile envelope stays outside the buffer | stage-4 validation, access planner | derived | consistent envelope basis |
+| `ramp.footwall_access_offset` | 20 m | footwall footprint edge (⊥, ore side → out) → legacy rule 43 target line AND the level-development anchor plane | `design/targets.py`, anchor stand-off default | user planning value | the LEVEL-DEVELOPMENT plane |
+| `layout.footwall_standoff` | None → `footwall_access_offset + 6 × tunnel_width` = 50 m | footwall footprint edge → the main-ramp CENTERLINE's ore-facing nearest approach (SWITCHBACK near-leg centerline, SPIRAL helix rim, LONGITUDINAL corridor centerline — code semantics; the old docstring said "corridor edge" and was wrong) | `layout/families.py` corridor placement | user override of a derived default | **the audited misuse**: it previously defaulted to the SAME `footwall_access_offset`, putting the permanent ramp corridor IN the level-development plane — measured envelope separation −4.9 m on 12/13 reference levels (commit O). The new default keeps explicit spatial corridor margins (`RAMP_CORRIDOR_MARGIN_WIDTHS = 6` tunnel widths: two half-spans + a two-width pillar + a three-width turnout-taper allowance `R·(1 − cos(s*/R)) ≈ 15 m`, so a post-taper access can hold the full pillar everywhere, not only at its terminal); spatial + spatial, never a path-length sum |
+| `access.anchor_standoff` | None → `footwall_access_offset` (raised to `required + errorBound + 1` under a conservative basis) | footwall footprint edge → the LEVEL ENTRY point | `layout/search.py::anchor_standoff` | user override | with the stage-4 REFINED bound the raise shrinks (WARPED 301: 22.36 → 20.0 m) |
+| WARPED conservative error bound | `1.5 × ‖lattice spacing‖` (10.77 m coarse / 5.39 m refined ×2) | derivation, not a distance concept: boundary discretization ≤ 1 diagonal + trilinear ≤ 0.5 diagonal | clearance policies | derived, formally conservative | narrowed ONLY by shrinking spacing (C-2), never by lowering 1.5 |
+| `preferred_access_length` | None → max(15, 6 × width) = 30 m | PATH LENGTH along the branch | access selection cost | user planning default | not a spatial stand-off; never added to one (rule 168) |
+
+### C-2 stage-4 local clearance refinement (implicit bodies)
+
+Stages 2–3 keep the whole-body lattice (basis `COARSE_CONSERVATIVE`). For
+each shortlisted candidate, stage 4 builds ONE local window — the bbox of
+(a) centerline samples whose coarse certification falls below the required
+clearance and (b) the level-entry corridor (preliminary anchors under the
+coarse stand-off) — padded by `required + coarseBound + 2 m`, clipped to
+the derived-geometry box, re-sampled at `spacing / clearance_refinement_factor`
+(default 2), EDT + the SAME `1.5 × ‖spacing‖` bound (basis
+`REFINED_CONSERVATIVE`). A window-boundary clamp (`min(EDT, distance to a
+clamped window face)`) keeps the certificate a true lower bound against
+solid outside the window; faces at or beyond the analytic local bounds are
+never clamped. Outside the window every point keeps its coarse
+certification (`max` of two lower bounds). Budget
+`clearance_refinement_max_cells` (default 8 M) skips refinement with an
+explicit per-candidate diagnostic; measured windows: WARPED-301 winner
+26 × 154 × 81 = 324 k cells (~0.35 s), bound 10.77 → 5.39 m, anchor
+stand-off 22.36 → 20.0 m, total access 1 025 → 611 m.
+
+One certification per selected design (20B.1-v2 1.1). The candidate-specific
+policy is NOT persisted: `LayoutV2Search.candidate_policy(result, id)`
+rebuilds it deterministically from the retained stage-4 context (the same
+`_candidate_policy` inputs — candidate points, serviceable levels, coarse
+policy, config) and fails closed when the rebuilt refinement provenance
+(applied / reason / factor / spacing / shape / cells / bound) differs from
+the candidate's recorded report. `DesignService._selected_candidate_policy`
+resolves the selection (`candidateId + layoutRevision`, stale → 409
+`LAYOUT_V2_SELECTION_STALE`), re-runs the search on a cache miss
+(`_layout_object`) and cross-checks the selection's persisted `clearance`
+block (basis / bound → 409 `LAYOUT_V2_CLEARANCE_MISMATCH`). Selection
+materialization, the Phase 06 tunnel sweep, the level builder and the
+development sweep all take `_active_clearance_policy` — the selected
+candidate's certification when LAYOUT_V2 is active, the world policy (EXACT
+for analytic bodies, numerically unchanged) for LEGACY. `level_accesses.json`
+reports the candidate's actual `clearanceBasis` / `clearanceErrorBound` /
+`clearanceRefinement`; the catalogue's top-level `clearanceBasis` keeps its
+whole-body search meaning. The shortlist bound is validated to be at least
+`len(FAMILY_ORDER)` (1.3) so the per-family reserved slot never exceeds it.
+
+`EXACT` remains the analytic-body basis only; an implicit body is never
+labelled EXACT (rule 134) — its bases are COARSE_CONSERVATIVE /
+REFINED_CONSERVATIVE, both carrying their actual `latticeSpacing` and
+`errorBound` in the candidate report.

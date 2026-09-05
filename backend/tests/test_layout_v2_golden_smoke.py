@@ -22,7 +22,7 @@ from minegen.regression.layout_v2 import (
 )
 
 GOLDEN_DIR = Path(__file__).resolve().parents[1] / "golden"
-BASELINE = GOLDEN_DIR / "phase20b_closeout_layout_v2.json"
+BASELINE = GOLDEN_DIR / "phase20b1_layout_v2.json"
 
 
 def test_layout_v2_baseline_is_committed() -> None:
@@ -35,7 +35,7 @@ def test_layout_v2_baseline_is_committed() -> None:
     assert by_key["TABULAR-REFERENCE"]["contract"]["clearanceBasis"] == "EXACT"
     assert by_key["TABULAR-REFERENCE"]["contract"]["status"] == "SUCCESS"
     assert by_key["WARPED_VEIN-301"]["contract"]["orebodyType"] == "WARPED_VEIN"
-    assert by_key["WARPED_VEIN-301"]["contract"]["clearanceBasis"] == "CONSERVATIVE"
+    assert by_key["WARPED_VEIN-301"]["contract"]["clearanceBasis"] == "COARSE_CONSERVATIVE"
     assert by_key["WARPED_VEIN-301"]["metrics"]["clearanceErrorBound"] > 0
     assert all(c["contract"]["candidateCount"] == 68 for c in report["cases"])
     assert "optimality" in report["semantics"]

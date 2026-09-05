@@ -889,8 +889,8 @@ phase is considered complete.
      evaluator with `clearance_policy_for(world.orebody)` — for an
      `AnalyticOrebody` that is the very same `ExactClearance` the default
      constructor yields (bit-identical numerics); for an implicit body it
-     is CONSERVATIVE, which can only reject more of the envelope than an
-     exact check would, never admit more. A sweep therefore never
+     is the conservative basis (COARSE_CONSERVATIVE), which can only reject
+     more of the envelope than an exact check would, never admit more. A sweep therefore never
      relaxes rule 135; it applies the buffer the centerline was designed
      under.
 136. Resolved morphology. Every stochastic shape control AND every mode
@@ -1045,16 +1045,24 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      solid, never from a global strike.
 146. Clearance policy is explicit. `DesignCostEvaluator` accepts a
      `ClearancePolicy`: EXACT (analytic SDF, legacy numerics unchanged and
-     still the only policy the Hybrid-A* search chain constructs) or
-     CONSERVATIVE (`safe = approximateClearance − errorBound`, errorBound =
-     1.5 × the derived-lattice diagonal; empirically ≥ the measured
-     mesh-distance error). Layout-v2 and the downstream sweeps (Phase 06
-     tunnel mesh, Phase 20B development mesh) take
-     `clearance_policy_for(world.orebody)`. Layout-v2 reports
-     clearanceBasis, approximate / conservative minimum clearance, error
-     bound and required clearance (`buffer + hypot(width/2, height)`);
-     WARPED_VEIN is first-class in layout-v2 and its sweeps, and still
-     refused by the Hybrid-A* search chain (rule 135).
+     still the only policy the Hybrid-A* search chain constructs; never the
+     name of an implicit body's basis) or a conservative basis
+     (`safe = certifiedClearance − errorBound`, errorBound = 1.5 × the
+     lattice diagonal — a DERIVED factor: boundary discretization ≤ 1
+     diagonal + trilinear interpolation of a 1-Lipschitz field ≤ 0.5;
+     empirical error ratios are reference metrics and never lower it).
+     Phase 20B.1: the whole-body lattice is COARSE_CONSERVATIVE; stage 4
+     may build ONE local refined window per shortlisted candidate
+     (REFINED_CONSERVATIVE, same 1.5 × ‖spacing‖ on `spacing / factor`,
+     window-boundary clamped, coarse fallback outside, explicit cell
+     budget) — the bound narrows ONLY by shrinking the spacing. Layout-v2
+     and the downstream sweeps (Phase 06 tunnel mesh, Phase 20B development
+     mesh) take `clearance_policy_for(world.orebody)`. Layout-v2 reports
+     clearanceBasis, certified / approximate minimum clearance, the ACTUAL
+     latticeSpacing and errorBound used, refinement diagnostics and the
+     required clearance (`buffer + hypot(width/2, height)`); WARPED_VEIN is
+     first-class in layout-v2 and its sweeps, and still refused by the
+     Hybrid-A* search chain (rule 135).
 147. Hard constraints stay hard. Layout-v2 stages are enumerate → cheap
      evaluation → bounded shortlist → detailed validation through the shared
      `DesignCostEvaluator` sample validator → deterministic ranking; a
@@ -1209,7 +1217,16 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      case, the feasible candidates the shortlist never validated and whether
      the exhaustive winner or a feasible family is missed. A family-diverse
      shortlist or a cheap lower bound is added only when that audit shows
-     a missed winner / family.
+     a missed winner / family — which the Phase 20B.1-D audit did (under
+     the rule 171 gates the old length-only proxy missed exhaustive winners
+     at cheap ranks 40/62 and 22/26): the stage-3 proxy is now the cheap
+     LOWER BOUND of the weighted total (development without the
+     non-negative access length + the full geometry group without the
+     non-negative clearance headroom; geology ≥ 0 omitted), AND every
+     declared family's best cheap-feasible candidate holds a shortlist
+     slot (bound unchanged: the proxy tail is displaced, order stays
+     (proxy, family order, id)). The re-run audit is the acceptance
+     instrument.
 166. Development excavation meshes (closeout v3 §4). LEVEL_ACCESS / DRIFT /
      CROSSCUT are swept by `design/development_mesh.py` through the SAME
      Phase 06 machinery (`build_ring_chain` / `build_logical_mesh` /
@@ -1248,18 +1265,18 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      OFF and are hidden when a layout-v2 candidate is activated. Legacy
      backend, API, artifacts, schema, tests and goldens are untouched and
      the source-neutral Effective Ramp stays.
-168. Standoff / clearance semantics audit is a FOLLOW-UP, not part of the
-     Phase 20B closeout. `RampConstraints.clearance`,
+168. Standoff / clearance semantics are AUDITED (Phase 20B.1 commit C
+     executed roadmap item S1; the call-site table lives in
+     `docs/algorithms.md`). `RampConstraints.clearance` (UNWIRED/RESERVED),
      `DesignConfig.orebody_exclusion_buffer`, the layout-v2 required
      centerline clearance (`buffer + hypot(width/2, height)`),
      `footwall_access_offset`, the level-access anchor stand-off, the WARPED
      conservative error bound and the preferred access length are DIFFERENT
-     distance concepts; no default is changed here and
+     distance concepts, and
      `ramp_standoff >= level_entry_standoff + preferred_access_length` is
-     NOT declared an invariant (a spatial stand-off and a centerline path
-     length are not additive in general). The separate change "Ramp /
-     Footwall / Access Standoff Semantics Rationalization" audits their uses
-     and relationships (see `docs/roadmap.md`).
+     STILL not an invariant (a spatial stand-off and a centerline path
+     length are not additive in general) — the audited corridor default
+     (rule 170) sums SPATIAL margins only.
 
 169. Effective Ramp IDENTITY decides downstream preservation — never
      `activeSource` alone. The identity is (active source, selected layout
@@ -1273,3 +1290,65 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      composes them (`afterLayoutActivate`); the comparison is never
      duplicated. The level accesses owned by the activated selection
      (rule 157) survive the composition.
+
+
+170. Main-ramp corridor stand-off is separated from the level-development
+     plane (Phase 20B.1 C, the audited S1 misuse). `layout.footwallStandoff`
+     positions the main-ramp CENTERLINE's ore-facing nearest approach
+     (SWITCHBACK near-leg centerline / SPIRAL helix rim / LONGITUDINAL
+     corridor centerline) and defaults to `ramp.footwall_access_offset +
+     RAMP_CORRIDOR_MARGIN_WIDTHS × tunnel_width` (6 widths: two lateral
+     half-spans + a two-width rock pillar + a three-width turnout-taper
+     allowance, the lateral offset a minimum-radius turnout develops inside
+     its own geometric taper — spatial planning margins, never statutory,
+     never a path-length term). The level-development
+     anchor plane stays at `footwall_access_offset` (raised only by the
+     conservative-clearance honesty rule). The pre-audit behaviour — both
+     defaulting to the same 20 m, making the permanent ramp collinear with
+     every level drift (measured envelope separation −4.9 m) — must not be
+     reintroduced.
+
+171. Level-access separation gates are HARD (Phase 20B.1 B). Every access
+     candidate passes, typed and never clamped: junction → entry PLAN
+     separation ≥ `minimumRampToEntryPlanSeparation` (None → 6 × width);
+     branch-to-ramp excavation separation (rock pillar) ≥
+     `minimumExcavationSeparation` (None → 2 × width), judged
+     on the delivered branch beyond the geometry-derived turnout taper
+     `s* = R·arccos(1 − (pillar + width)/R)` with the terminal always
+     included; and turnout curvature — cumulative |Δheading| of the
+     delivered main ramp over junction ± `minimumTurnoutStraightBuffer`
+     ≤ `maximumTurnoutHeadingChangeDeg` (100° default: rejects turnouts in
+     near-minimum-radius turns, family-neutral; a TRUE straight-insert
+     turnout needs Phase 20C family support and this v0.1 gate does not
+     claim it). Length cost stays the secondary ordering. A level failing
+     with junction-spacing conflicts records the B-5 assignment diagnostic
+     (the same search re-run ignoring only the used spacing) so greedy
+     starvation is distinguishable from geometric infeasibility; the
+     diagnostic never relaxes a constraint and never changes the result.
+     These are engineering planning defaults, never statutory values.
+
+172. Direction-aware rock pillar and one certification per selected design
+     (Phase 20B.1-v2). The B-2 excavation separation is the DIRECTION-AWARE
+     sampled envelope gap: at every post-taper branch sample the
+     closest-centerline pair is found, `u` = branch → ramp, and each tunnel's
+     gravity-aligned cross-section (`ProfileShape`, `gravity_frames`)
+     contributes its support along `u` — `gap = d − support_branch(+u) −
+     support_ramp(−u)` — so horizontal parallel drives read
+     `width/2 + width/2` (unchanged) and a drive below another reads
+     `height + 0`. It is a cross-section support at the sampled closest
+     pair, never claimed as an exact swept-surface / mesh-to-mesh distance;
+     the isotropic `hypot(width/2, height)` on both sides is forbidden. The
+     taper `s*` is unchanged. Separately, the selected Effective Ramp, its
+     level accesses, the tunnel sweep and the development sweep are judged
+     under the SAME candidate-specific clearance certification that made the
+     candidate FEASIBLE in stage 4 (`LayoutV2Search.candidate_policy`,
+     rebuilt deterministically from `candidateId + layoutRevision` — no new
+     persisted field); LEGACY keeps the world policy. A stale selection or a
+     reconstruction that disagrees with the recorded stage-4 report fails
+     closed (409 `LAYOUT_V2_SELECTION_STALE` /
+     `LAYOUT_V2_CLEARANCE_MISMATCH`). `level_accesses.json` reports the
+     candidate's ACTUAL basis / bound / refinement; the catalogue's
+     `clearanceBasis` stays the whole-body search basis. The shortlist bound
+     is never smaller than `len(FAMILY_ORDER)` (schema-validated, sized from
+     the enumeration, never a literal), so the bound and the per-family
+     reserved slot (rule 165) hold together.

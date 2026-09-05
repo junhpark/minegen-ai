@@ -473,6 +473,109 @@ def weld_mesh(verts: FloatArray, faces: npt.NDArray[np.int64]) -> tuple[FloatArr
 
 
 # --------------------------------------------------------------------------- #
+# Locally refined clearance window (Phase 20B.1 C-2)
+# --------------------------------------------------------------------------- #
+
+
+class RefinedClearanceWindow:
+    """One LOCAL clearance lattice at ``base spacing / factor`` over a window
+    of the derived-geometry box, built for one stage-4 layout candidate.
+
+    The certified query is a LOWER bound of the true signed clearance:
+
+        certified(p) = min(EDT_window(p), d_face(p)) − 1.5 × ‖refined spacing‖
+
+    * ``EDT_window`` is the signed Euclidean distance transform of the
+      φ-classified REFINED window cells (same construction and therefore the
+      same 1.5 × ‖spacing‖ derivation as the coarse field — boundary
+      discretization ≤ 1 diagonal, trilinear interpolation of a 1-Lipschitz
+      field ≤ 0.5 diagonal);
+    * ``d_face`` clamps against solid OUTSIDE the window: any such solid lies
+      beyond a window face, so the distance to the nearest CLAMPED face is a
+      valid lower bound of the distance to it. Faces at or beyond the
+      analytic local bounds of the solid are never clamped (no solid exists
+      beyond them). ``min`` keeps whichever certificate is weaker, so the
+      result never exceeds the true clearance; for a point inside the solid
+      the EDT term is negative and wins.
+
+    Queries outside the window return NaN — the caller falls back to the
+    coarse certification there (``RefinedConservativeClearance``)."""
+
+    def __init__(
+        self,
+        morph: WarpedVeinMorphology,
+        base: GeometryLattice,
+        lo_local: FloatArray,
+        hi_local: FloatArray,
+        factor: int,
+    ) -> None:
+        self.morph = morph
+        spacing = base.spacing / float(factor)
+        base_max = base.max_corner
+        lo = np.maximum(np.asarray(lo_local, dtype=np.float64), base.origin)
+        hi = np.minimum(np.asarray(hi_local, dtype=np.float64), base_max)
+        shape = tuple(math.ceil((h - g) / s) + 2 for g, h, s in zip(lo, hi, spacing, strict=True))
+        self.lattice = GeometryLattice(
+            origin=lo, spacing=np.asarray(spacing), shape=(shape[0], shape[1], shape[2])
+        )
+        self.error_bound = 1.5 * float(np.linalg.norm(spacing))
+        # faces beyond which no solid exists (analytic local bounds)
+        solid_lo, solid_hi = morph.local_bounds()
+        self._clamp_lo = self.lattice.origin > solid_lo + 1e-9
+        self._clamp_hi = self.lattice.max_corner < solid_hi - 1e-9
+
+    @property
+    def cell_count(self) -> int:
+        return self.lattice.cell_count
+
+    @cached_property
+    def _signed_edt(self) -> npt.NDArray[np.float32]:
+        lat = self.lattice
+        u, v, w = lat.axis(0), lat.axis(1), lat.axis(2)
+        w_mid, h_scale, pk = self.morph.plane_terms(u[:, None], v[None, :])
+        phi = ((w[None, None, :] - w_mid[..., None]) / h_scale[..., None]) ** 2 + (
+            pk[..., None] - 1.0
+        )
+        inside = phi <= 0.0
+        sampling = tuple(float(s) for s in lat.spacing)
+        d_out = ndimage.distance_transform_edt(~inside, sampling=sampling)
+        d_in = ndimage.distance_transform_edt(inside, sampling=sampling)
+        return np.asarray(d_out - d_in, dtype=np.float32)
+
+    def certified_clearance(self, local: FloatArray) -> FloatArray:
+        """Certified lower-bound clearance at LOCAL points; NaN outside the
+        window (the caller keeps its coarse certification there)."""
+        p = np.asarray(local, dtype=np.float64).reshape(-1, 3)
+        lat = self.lattice
+        upper = lat.origin + (np.asarray(lat.shape, dtype=np.float64) - 1.0) * lat.spacing
+        inside_window = np.all((p >= lat.origin) & (p <= upper), axis=1)
+        out = np.full(p.shape[0], np.nan)
+        if not np.any(inside_window):
+            return out
+        q = p[inside_window]
+        frac = (q - lat.origin) / lat.spacing
+        edt = ndimage.map_coordinates(self._signed_edt, frac.T, order=1, mode="nearest").astype(
+            np.float64
+        )
+        d_face = np.full(q.shape[0], np.inf)
+        for axis in range(3):
+            if self._clamp_lo[axis]:
+                d_face = np.minimum(d_face, q[:, axis] - lat.origin[axis])
+            if self._clamp_hi[axis]:
+                d_face = np.minimum(d_face, upper[axis] - q[:, axis])
+        out[inside_window] = np.minimum(edt, d_face) - self.error_bound
+        return out
+
+    def info(self) -> dict[str, Any]:
+        return {
+            "latticeSpacing": self.lattice.spacing.tolist(),
+            "shape": list(self.lattice.shape),
+            "cellCount": self.cell_count,
+            "errorBound": self.error_bound,
+        }
+
+
+# --------------------------------------------------------------------------- #
 # Orebody
 # --------------------------------------------------------------------------- #
 
@@ -536,6 +639,22 @@ class WarpedVeinOrebody(ImplicitOrebody):
 
     def clearance_info(self) -> dict[str, Any]:
         return self.derived.clearance_info()
+
+    def refined_clearance_window(
+        self, world_points: FloatArray, padding: float, factor: int, max_cells: int
+    ) -> RefinedClearanceWindow | None:
+        """Phase 20B.1 C-2: one LOCAL clearance window at ``base spacing /
+        factor`` covering ``world_points`` plus ``padding`` (m, every local
+        axis), clipped to the derived-geometry box. ``None`` when the window
+        would exceed ``max_cells`` — the caller keeps the coarse
+        certification and reports the skip; never a failure."""
+        local = self.to_local(np.asarray(world_points, dtype=np.float64)).reshape(-1, 3)
+        lo = local.min(axis=0) - padding
+        hi = local.max(axis=0) + padding
+        window = RefinedClearanceWindow(self.morphology, self.derived.lattice, lo, hi, factor)
+        if window.cell_count > max_cells:
+            return None
+        return window
 
     def mesh(self) -> tuple[FloatArray, IntArray]:
         """Derived render mesh in world coordinates, vertices rounded to

@@ -36,11 +36,14 @@ demo (D0) is **deferred** and is no longer the next phase.
 | 22 | Analysis / Economics / Compliance | production, development, cost, revenue, cashflow + rule compliance + layout comparison |
 | 23 | External Simulation Bridge | Ventsim, AnyLogic, blast, support, Unreal adapters |
 
-Follow-up change (not a phase, scheduled after the Phase 20B closeout):
-
-| Item | Purpose | Key change |
-| --- | --- | --- |
-| S1 | Ramp / Footwall / Access Standoff Semantics Rationalization | audit where `RampConstraints.clearance` is actually used and whether it duplicates `DesignConfig.orebody_exclusion_buffer`; define the main-ramp permanent-infrastructure stand-off, the level-development anchor stand-off and the envelope-inclusive distance basis; decide the WARPED conservative error-bound handling and per-method stand-off needs; separate user-adjustable values from internal derived ones; only then fix the engineering defaults and their relationships (CLAUDE.md rule 168) |
+Follow-up S1 (Ramp / Footwall / Access Standoff Semantics Rationalization)
+was executed by Phase 20B.1 commit C: the audit table lives in
+`docs/algorithms.md` ("Phase 20B.1 — stand-off / clearance semantics
+audit"); `RampConstraints.clearance` is documented UNWIRED/RESERVED, the
+main-ramp corridor stand-off gained its own audited default
+(`footwall_access_offset + 6 × tunnel_width`), the WARPED conservative
+bound is narrowed only by the stage-4 local lattice refinement, and
+per-method stand-off needs remain with the Phase 21 mining-method work.
 
 Deferred deployment item (not scheduled):
 

@@ -125,7 +125,10 @@ class ExactClearance:
 
 @dataclass(frozen=True)
 class ConservativeClearance:
-    """CONSERVATIVE basis for implicit bodies (Phase 20A, rule 146):
+    """COARSE_CONSERVATIVE basis for implicit bodies (Phase 20A rule 146;
+    renamed from CONSERVATIVE in Phase 20B.1 C-3 — the underlying distance
+    is a derived approximation, so no basis of an implicit body is ever
+    named EXACT):
 
         safe_clearance = approximate_clearance − error_bound
 
@@ -136,18 +139,21 @@ class ConservativeClearance:
     cell of the true φ = 0 surface, so the cell-to-cell distance differs from
     the true distance to the surface by at most one cell diagonal; (2) the
     distance field is 1-Lipschitz, so trilinear interpolation between
-    centers adds at most half a diagonal. The factor 1.5 covers both terms.
-    Slivers thinner than the across-thickness spacing are the only feature
-    the lattice cannot see; the Phase 19 lattice keeps ≥ 3 cells across the
-    guaranteed interior thickness floor, so only the vanishing taper rim
-    (< 1 m wide in plan) is affected, well inside one in-plane cell. The
-    bound is exercised empirically in ``tests/test_layout_v2.py`` against
-    the dense mesh surface. Subtracting the bound only ever makes a point
-    LESS clear, so no accepted design can rely on optimistic distance."""
+    centers adds at most half a diagonal. The factor 1.5 covers both terms
+    and is DERIVED, not tuned — narrowing the bound legitimately means
+    shrinking the spacing (see ``RefinedConservativeClearance``), never
+    lowering the factor. Slivers thinner than the across-thickness spacing
+    are the only feature the lattice cannot see; the Phase 19 lattice keeps
+    ≥ 3 cells across the guaranteed interior thickness floor, so only the
+    vanishing taper rim (< 1 m wide in plan) is affected, well inside one
+    in-plane cell. The bound is exercised empirically in
+    ``tests/test_layout_v2.py`` against the dense mesh surface. Subtracting
+    the bound only ever makes a point LESS clear, so no accepted design can
+    rely on optimistic distance."""
 
     orebody: ImplicitOrebody
     error_bound: float
-    basis: str = "CONSERVATIVE"
+    basis: str = "COARSE_CONSERVATIVE"
 
     @classmethod
     def for_orebody(cls, orebody: ImplicitOrebody) -> ConservativeClearance:
@@ -159,7 +165,38 @@ class ConservativeClearance:
         return np.asarray(self.orebody.approximate_clearance(points) - self.error_bound)
 
 
-ClearancePolicy = ExactClearance | ConservativeClearance
+@dataclass(frozen=True)
+class RefinedConservativeClearance:
+    """REFINED_CONSERVATIVE basis (Phase 20B.1 C-2): the coarse policy plus
+    one LOCALLY refined clearance window (``world/warped_vein.py::
+    RefinedClearanceWindow``) built for one stage-4 candidate. Both terms
+    are certified lower bounds of the true signed clearance — the coarse
+    one by the 1.5 × ‖spacing‖ derivation above, the refined one by the SAME
+    derivation on the refined spacing plus a window-boundary clamp (solid
+    outside the window can never be closer than the window face) — so their
+    pointwise maximum is a certified lower bound too, and points outside the
+    window simply keep the coarse certification. The bound is narrowed ONLY
+    by the smaller spacing; the factor 1.5 and the formal guarantee are
+    unchanged."""
+
+    coarse: ConservativeClearance
+    window: Any  # RefinedClearanceWindow (kept untyped to avoid an import cycle)
+    error_bound: float  # 1.5 × ‖refined spacing‖ — the window's bound
+    basis: str = "REFINED_CONSERVATIVE"
+
+    @property
+    def orebody(self) -> ImplicitOrebody:
+        return self.coarse.orebody
+
+    def signed_clearance(self, points: FloatArray) -> FloatArray:
+        base = self.coarse.signed_clearance(points)
+        local = self.coarse.orebody.to_local(np.asarray(points, dtype=np.float64)).reshape(-1, 3)
+        refined = self.window.certified_clearance(local)  # NaN outside the window
+        refined = refined.reshape(base.shape)
+        return np.asarray(np.where(np.isnan(refined), base, np.maximum(base, refined)))
+
+
+ClearancePolicy = ExactClearance | ConservativeClearance | RefinedConservativeClearance
 
 
 def clearance_policy_for(orebody: Orebody) -> ClearancePolicy:

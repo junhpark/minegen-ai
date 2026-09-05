@@ -697,7 +697,8 @@ level development starts).
   explicit NEAREST_TO_RAMP policy (backbone point closest to the ramp's
   level reference, clamped inside the extent), the terminal heading along
   the backbone toward its centre, the mining method and diagnostics. Under
-  a CONSERVATIVE clearance policy the stand-off is raised to
+  a conservative clearance policy (COARSE_CONSERVATIVE, or the stage-4
+  REFINED_CONSERVATIVE window) the stand-off is raised to
   `required + errorBound + 1 m` so the entry itself is clear.
 * `plan_level_accesses` — per serviceable level: a finite lattice of ramp
   junction candidates every `junctionSearchSpacing` (10 m) whose ramp

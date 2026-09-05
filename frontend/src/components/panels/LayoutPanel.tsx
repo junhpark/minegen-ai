@@ -215,7 +215,7 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
             </span>
             <span>
               clearance {catalogue.clearanceBasis}
-              {catalogue.clearanceBasis === 'CONSERVATIVE'
+              {catalogue.clearanceBasis !== 'EXACT'
                 ? ` (−${catalogue.clearanceErrorBound.toFixed(1)} m)`
                 : ''}{' '}
               ≥ {catalogue.requiredClearance.toFixed(1)} m

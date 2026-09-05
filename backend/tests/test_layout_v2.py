@@ -3,7 +3,7 @@
 Covers the directive §51 backend test list: required-level reuse, the level
 service predicate, frozen finite enumeration, family coupling
 (spiral radius, switchback leg length, non-uniform levels), delivered
-centerline validation, family-signature diagnostics, EXACT vs CONSERVATIVE
+centerline validation, family-signature diagnostics, EXACT vs COARSE/REFINED_CONSERVATIVE
 clearance (including an empirical bound check), WARPED_VEIN acceptance
 through layout-v2 while the legacy pipeline stays unchanged, effective-ramp
 splitting at level connection points, determinism and finite serialization.
@@ -54,6 +54,7 @@ from minegen.layout.search import (
     CandidateStatus,
     LayoutSearchResult,
     LayoutV2Search,
+    Stage,
     cheap_checks,
     level_service,
     materialize_effective_ramp,
@@ -373,7 +374,12 @@ def test_spiral_radius_is_derived_from_gradient_and_level_interval(
 ) -> None:
     sc, world = tabular
     search, _ = tabular_search
-    ctx = _context(sc, world, search)
+    # the subject is the R = dZ/(2*pi*g*n) coupling, not the corridor default:
+    # pin the pre-audit stand-off so every (n, g) combination still builds in
+    # this small world (the 20B.1 rule-170 default pushes the helix out far
+    # enough that some combinations become APPROACH_INFEASIBLE here, which the
+    # search reports as a typed failure rather than a wrong radius)
+    ctx = _context(sc, world, search, footwall_standoff=20.0)
     dz = ctx.levels[0].elevation - ctx.levels[1].elevation
     for n, g in [(1.0, 0.12), (1.5, 0.12), (1.0, 0.10)]:
         p = CandidateParams(
@@ -602,12 +608,12 @@ def test_conservative_clearance_bound_is_derived_and_empirically_safe(
     assert isinstance(ob, ImplicitOrebody)
     policy = ConservativeClearance.for_orebody(ob)
     spacing = np.asarray(ob.clearance_info()["latticeSpacing"], dtype=np.float64)
-    assert policy.basis == "CONSERVATIVE"
+    assert policy.basis == "COARSE_CONSERVATIVE"
     assert math.isclose(
         policy.error_bound, CONSERVATIVE_CLEARANCE_DIAGONAL_FACTOR * float(np.linalg.norm(spacing))
     )
     assert policy.error_bound > 0.0
-    assert clearance_policy_for(ob).basis == "CONSERVATIVE"
+    assert clearance_policy_for(ob).basis == "COARSE_CONSERVATIVE"
     # empirical check on the derived surface mesh (vertices lie on φ = 0
     # within lattice resolution): the approximate clearance there is inside
     # ±error_bound, so the conservative clearance is ≤ 0 on the surface
@@ -638,7 +644,7 @@ def test_warped_vein_is_accepted_by_layout_v2_but_not_by_the_legacy_pipeline(
     _, res = warped_search
     with pytest.raises(ExactDistanceRequiredError):
         DesignCostEvaluator(world, sc.design)
-    assert res.clearance_basis == "CONSERVATIVE"
+    assert res.clearance_basis == "COARSE_CONSERVATIVE"
     assert res.clearance_error_bound > 0.0
     assert math.isclose(
         res.required_clearance,
@@ -651,8 +657,16 @@ def test_warped_vein_is_accepted_by_layout_v2_but_not_by_the_legacy_pipeline(
     assert validated
     for c in validated:
         cl = c.clearance
-        assert cl is not None and cl.basis == "CONSERVATIVE"
-        assert cl.error_bound == res.clearance_error_bound
+        # stage 4 refines the window by default (C-2): a validated candidate
+        # carries the refined basis and its SMALLER bound; a skipped
+        # refinement keeps the coarse basis
+        assert cl is not None and cl.basis in ("COARSE_CONSERVATIVE", "REFINED_CONSERVATIVE")
+        assert cl.refinement is not None
+        if cl.basis == "REFINED_CONSERVATIVE":
+            assert cl.refinement["applied"] is True
+            assert cl.error_bound is not None and cl.error_bound < res.clearance_error_bound
+        else:
+            assert cl.error_bound == res.clearance_error_bound
         assert cl.approximate_minimum is not None
         assert math.isclose(cl.approximate_minimum - cl.error_bound, cl.conservative_minimum)
         assert cl.satisfied == (cl.conservative_minimum >= cl.required - 1e-9)
@@ -734,13 +748,27 @@ def test_group_weights_reorder_the_ranking_deterministically(
     )
     res = LayoutV2Search(heavy, world).run()
     base = LayoutV2Search(sc, world).run()
-    assert set(res.ranking) == set(base.ranking)  # feasibility is weight-independent
+    # The cheap proxy is a lower bound of the WEIGHTED total (rule 165), so the
+    # bounded shortlist — hence the validated set — legitimately depends on the
+    # weights. Per-candidate feasibility does not: every candidate that was
+    # detailed-validated under both weightings reaches the same verdict.
+    both = {c.candidate_id for c in res.candidates if c.shortlisted} & {
+        c.candidate_id for c in base.candidates if c.shortlisted
+    }
+    assert both
+    for cid in sorted(both):
+        a, b = res.candidate(cid), base.candidate(cid)
+        assert a is not None and b is not None
+        assert a.status == b.status
+    totals: list[float] = []
     for cid in res.ranking:
         c = res.candidate(cid)
         assert c is not None and c.scores is not None
         assert math.isclose(
             c.scores.total, c.scores.development + c.scores.geology + 50.0 * c.scores.geometry
         )
+        totals.append(c.scores.total)
+    assert totals == sorted(totals)  # heavy ranking is ordered by its own reweighted total
 
 
 def test_progress_events_are_emitted_and_never_change_the_result(
@@ -931,8 +959,10 @@ def test_effective_ramp_for_warped_vein_reports_conservative_clearance(
     winner = res.candidate(res.winner_id)
     assert winner is not None
     ramp = materialize_effective_ramp(res, winner, search.evaluator, "rev-wv")
-    assert ramp["clearance"]["clearanceBasis"] == "CONSERVATIVE"
-    assert ramp["clearance"]["clearanceErrorBound"] == res.clearance_error_bound
+    assert ramp["clearance"]["clearanceBasis"] in ("COARSE_CONSERVATIVE", "REFINED_CONSERVATIVE")
+    # the materialized winner carries its STAGE-4 bound: the refined window's
+    # smaller bound when refinement applied (C-2), else the coarse one
+    assert ramp["clearance"]["clearanceErrorBound"] <= res.clearance_error_bound
     assert ramp["clearance"]["conservativeMinimumClearance"] >= res.required_clearance - 1e-9
     assert len(ramp["rampJunctions"]) == len(res.serviceable_ids)
     accesses = materialize_level_accesses(res, winner, "rev-wv", "LONGHOLE_OPEN_STOPING")
@@ -1077,3 +1107,212 @@ def test_exhaustive_diagnostic_mode_validates_every_cheap_feasible_candidate(
         c.candidate_id for c in exhaustive.candidates if c.status == CandidateStatus.FEASIBLE
     }
     assert feasible_n <= feasible_x
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20B.1 commit C — stand-off audit default and local refinement
+# --------------------------------------------------------------------------- #
+
+
+def test_corridor_standoff_default_separates_ramp_from_level_development() -> None:
+    """C-1 (roadmap S1): the PERMANENT main-ramp corridor default stands
+    clear of the level-development plane by an explicit spatial margin —
+    before the audit both stand-offs resolved to the same 20 m."""
+    from minegen.core.models import LayoutV2Config, RampConstraints
+    from minegen.layout.families import (
+        RAMP_CORRIDOR_MARGIN_WIDTHS,
+        effective_footwall_standoff,
+    )
+
+    ramp = RampConstraints()
+    value, source = effective_footwall_standoff(LayoutV2Config(), ramp)
+    assert source == "DEFAULT_OFFSET_PLUS_CORRIDOR_MARGIN"
+    assert value == pytest.approx(
+        ramp.footwall_access_offset + RAMP_CORRIDOR_MARGIN_WIDTHS * ramp.tunnel_width
+    )
+    assert value > ramp.footwall_access_offset  # never collinear by default
+    explicit, source2 = effective_footwall_standoff(LayoutV2Config(footwall_standoff=22.0), ramp)
+    assert (explicit, source2) == (22.0, "EXPLICIT")
+
+
+def test_refined_clearance_window_is_certified_and_local(
+    warped: tuple[Scenario, SyntheticWorld],
+) -> None:
+    """C-2: the refined window keeps the SAME 1.5 × ‖spacing‖ derivation on
+    the halved spacing, its certified value is a lower bound of the distance
+    to the surface mesh (an upper bound of the true distance), and outside
+    the window the query is NaN so the coarse certification survives."""
+    _, world = warped
+    ob = world.orebody
+    assert isinstance(ob, ImplicitOrebody)
+    coarse = ConservativeClearance.for_orebody(ob)
+    lo, hi = ob.bounding_box()
+    rng = np.random.default_rng(21)
+    pts = rng.uniform(lo - 30.0, hi + 30.0, size=(3000, 3))
+    window = ob.refined_clearance_window(pts, padding=15.0, factor=2, max_cells=10_000_000)
+    assert window is not None
+    assert window.error_bound == pytest.approx(coarse.error_bound / 2.0)
+    from minegen.design.cost_field import RefinedConservativeClearance
+
+    refined = RefinedConservativeClearance(
+        coarse=coarse, window=window, error_bound=window.error_bound
+    )
+    assert refined.basis == "REFINED_CONSERVATIVE"
+    verts, _ = ob.mesh()
+    from scipy.spatial import cKDTree
+
+    tree = cKDTree(verts)
+    outside = ~ob.contains(pts)
+    nearest, _ = tree.query(pts[outside])
+    certified = refined.signed_clearance(pts[outside])
+    # never over-promises: certified <= distance to the nearest mesh vertex
+    assert np.all(certified <= nearest + 1e-9)
+    # tighter than coarse (never looser)
+    assert np.all(certified >= coarse.signed_clearance(pts[outside]) - 1e-9)
+    # inside stays negative (sign agreement with membership, rule 134)
+    assert np.all(refined.signed_clearance(pts[~outside]) < 0.0)
+    # surface vertices certify as <= 0
+    assert np.all(refined.signed_clearance(verts) <= 0.0)
+    # a query far outside the window keeps the coarse certification
+    far = np.asarray([[lo[0] - 500.0, lo[1] - 500.0, lo[2] - 500.0]])
+    assert refined.signed_clearance(far) == pytest.approx(coarse.signed_clearance(far))
+
+
+def test_empirical_clearance_error_ratio_is_reported_and_within_bound(
+    warped: tuple[Scenario, SyntheticWorld],
+) -> None:
+    """C-4 (reference metric only, never a reason to lower the 1.5 factor):
+    the measured |approximate − mesh| error over surface + near-surface
+    samples, as a fraction of ‖spacing‖, stays at or below the derived 1.5 —
+    including the pinch / taper rim (extreme |u| band of the body)."""
+    _, world = warped
+    ob = world.orebody
+    assert isinstance(ob, ImplicitOrebody)
+    spacing = float(np.linalg.norm(np.asarray(ob.clearance_info()["latticeSpacing"])))
+    verts, _ = ob.mesh()
+    approx = ob.approximate_clearance(verts)
+    ratio_surface = float(np.max(np.abs(approx))) / spacing
+    # taper rim: the 10 % extreme along the local u (strike) axis
+    local = ob.to_local(verts)
+    u = local[:, 0]
+    rim = (u <= np.quantile(u, 0.05)) | (u >= np.quantile(u, 0.95))
+    ratio_rim = float(np.max(np.abs(approx[rim]))) / spacing
+    assert ratio_surface <= CONSERVATIVE_CLEARANCE_DIAGONAL_FACTOR + 1e-9
+    assert ratio_rim <= CONSERVATIVE_CLEARANCE_DIAGONAL_FACTOR + 1e-9
+    # keep the measured ratios visible in -rA output (reference only)
+    print(
+        f"empirical max|error|/spacing: surface {ratio_surface:.3f}, "
+        f"taper rim {ratio_rim:.3f} (derived bound {CONSERVATIVE_CLEARANCE_DIAGONAL_FACTOR})"
+    )
+
+
+def test_geometry_score_prices_the_family_signature(
+    tabular: tuple[Scenario, SyntheticWorld],
+    tabular_search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
+    """Phase 20B.1 D-2: the geometry group carries the three curvature
+    components with the documented coefficients — recomputable exactly from
+    the candidate's own diagnostics, for every validated candidate."""
+    from minegen.layout.search import (
+        GEOM_CLEARANCE_COEF,
+        GEOM_CURVATURE_COEF,
+        GEOM_HAIRPIN_COEF,
+        GEOM_REVERSAL_COEF,
+        GEOM_TURNING_COEF,
+    )
+
+    _, res = tabular_search
+    validated = [c for c in res.candidates if c.scores is not None and c.diagnostics is not None]
+    assert validated
+    saw_reversals = False
+    for c in validated:
+        s, d = c.scores, c.diagnostics
+        comp = s.components
+        assert comp["meanCurvatureRadPerM"] == pytest.approx(
+            math.radians(d.cumulative_heading_change_deg) / d.length3d
+        )
+        assert comp["headingReversalCount"] == d.heading_reversal_count
+        assert comp["hairpinRunCount"] == d.hairpin_run_count
+        expected = (
+            comp["unusedGradient"]
+            + GEOM_TURNING_COEF * comp["turningFraction"]
+            + comp["maxAccessRatio"]
+            + GEOM_CLEARANCE_COEF * comp["clearanceHeadroom"]
+            + GEOM_CURVATURE_COEF * comp["meanCurvatureRadPerM"]
+            + GEOM_REVERSAL_COEF * comp["headingReversalCount"]
+            + GEOM_HAIRPIN_COEF * comp["hairpinRunCount"]
+        )
+        assert s.geometry == pytest.approx(expected)
+        saw_reversals = saw_reversals or d.heading_reversal_count > 0
+    # the fixture validates both hairpin (switchback) and non-hairpin shapes
+    assert saw_reversals
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20B.1-v2 — 1.1 reconstruction determinism, 1.3 shortlist floor
+# --------------------------------------------------------------------------- #
+
+
+def test_candidate_policy_reconstruction_is_deterministic(
+    warped: tuple[Scenario, SyntheticWorld],
+    warped_search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
+    """1.1: the stage-4 candidate policy is rebuilt bit-for-bit from the
+    same inputs — on the search that ran (cache hit) and on a brand-new
+    search over the same world (what a fresh process does)."""
+    sc, world = warped
+    search, res = warped_search
+    assert res.winner_id is not None
+    cand = res.candidate(res.winner_id)
+    assert cand is not None and cand.clearance is not None and cand.points is not None
+    _, policy, refinement = search.candidate_policy(res, res.winner_id)
+    assert policy.basis == cand.clearance.basis
+    assert float(policy.error_bound) == pytest.approx(cand.clearance.error_bound or 0.0)
+    assert refinement == cand.clearance.refinement
+    assert float(np.min(policy.signed_clearance(cand.points))) == pytest.approx(
+        cand.clearance.conservative_minimum, abs=1e-9
+    )
+    fresh = LayoutV2Search(sc, world)
+    res2 = fresh.run()
+    _, policy2, refinement2 = fresh.candidate_policy(res2, res.winner_id)
+    assert policy2.basis == policy.basis and refinement2 == refinement
+    assert np.array_equal(
+        policy2.signed_clearance(cand.points), policy.signed_clearance(cand.points)
+    )
+    with pytest.raises(KeyError):
+        search.candidate_policy(res, "NO-SUCH-CANDIDATE")
+
+
+def test_shortlist_size_floor_is_the_family_count() -> None:
+    """1.3: the bounded shortlist AND the per-family reserved slot hold
+    together only when the bound is at least the number of declared
+    families; the floor is sized from FAMILY_ORDER, never a literal."""
+    from pydantic import ValidationError
+
+    from minegen.core.enums import FAMILY_ORDER
+
+    assert LayoutV2Config(shortlist_size=len(FAMILY_ORDER)).shortlist_size == len(FAMILY_ORDER)
+    with pytest.raises(ValidationError, match="declared ramp families"):
+        LayoutV2Config(shortlist_size=len(FAMILY_ORDER) - 1)
+
+
+def test_shortlist_with_family_reservation_stays_bounded(
+    tabular: tuple[Scenario, SyntheticWorld],
+) -> None:
+    from minegen.core.enums import FAMILY_ORDER
+
+    sc, world = tabular
+    n = len(FAMILY_ORDER)
+    tight = sc.model_copy(update={"layout": sc.layout.model_copy(update={"shortlist_size": n})})
+    res = LayoutV2Search(tight, world).run()
+    assert 0 < len(res.shortlist) <= n
+    # cheap-feasible = reached detailed validation OR left NOT_VALIDATED by
+    # the bounded shortlist; a cheap-stage failure is INFEASIBLE at stage CHEAP
+    cheap_ok = {
+        c.params.family
+        for c in res.candidates
+        if c.stage_reached == Stage.DETAILED or c.status == CandidateStatus.NOT_VALIDATED
+    }
+    listed = {res.candidate(cid).params.family for cid in res.shortlist}  # type: ignore[union-attr]
+    # every family with a cheap-feasible member holds a slot, within the bound
+    assert cheap_ok <= listed
