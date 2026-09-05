@@ -41,7 +41,7 @@ import numpy.typing as npt
 from minegen.core.models import LevelAccessConfig, RampConstraints
 from minegen.design.constraints import RejectionReason
 from minegen.design.cost_field import DesignCostEvaluator
-from minegen.design.profile import ProfileShape, boundary_points
+from minegen.design.profile import ProfileShape, boundary_points, gravity_frames
 from minegen.design.targets import footwall_candidate_position
 from minegen.design.validation import evaluate_and_validate
 from minegen.layout.families import FootwallTrack
@@ -656,10 +656,13 @@ def _max_or_none(values: Any) -> float | None:
     return float(max(xs)) if xs else None
 
 
-def min_distance_to_polyline(points: FloatArray, polyline: FloatArray) -> FloatArray:
-    """Minimum 3-D distance from each of ``points`` (N, 3) to the segments of
-    ``polyline`` (M, 3). Exact point-to-segment distances, fully vectorized
-    (N × M pairs; the access branch has tens of samples)."""
+def nearest_on_polyline(
+    points: FloatArray, polyline: FloatArray
+) -> tuple[FloatArray, FloatArray, npt.NDArray[np.intp]]:
+    """Closest-centerline pair for each of ``points`` (N, 3) against the
+    segments of ``polyline`` (M, 3): (distance, closest point, segment index).
+    Exact point-to-segment distances, fully vectorized (N × M pairs; an
+    access branch has tens of samples)."""
     p = np.asarray(points, dtype=np.float64).reshape(-1, 3)
     a, b = polyline[:-1], polyline[1:]
     ab = b - a
@@ -668,7 +671,56 @@ def min_distance_to_polyline(points: FloatArray, polyline: FloatArray) -> FloatA
     ap = p[:, None, :] - a[None, :, :]
     t = np.clip(np.einsum("nmd,md->nm", ap, ab) / denom, 0.0, 1.0)
     closest = a[None, :, :] + t[:, :, None] * ab[None, :, :]
-    return np.asarray(np.linalg.norm(p[:, None, :] - closest, axis=2).min(axis=1))
+    dist = np.linalg.norm(p[:, None, :] - closest, axis=2)
+    seg = np.argmin(dist, axis=1)
+    rows = np.arange(p.shape[0])
+    return dist[rows, seg], closest[rows, seg], seg
+
+
+def min_distance_to_polyline(points: FloatArray, polyline: FloatArray) -> FloatArray:
+    """Minimum 3-D distance from each of ``points`` to ``polyline``."""
+    return nearest_on_polyline(points, polyline)[0]
+
+
+def local_tangents(points: FloatArray) -> FloatArray:
+    """Unit tangent at every vertex of a polyline (central differences,
+    one-sided at the ends; a degenerate vertex inherits its predecessor)."""
+    pts = np.asarray(points, dtype=np.float64)
+    if pts.shape[0] < 2:
+        return np.tile(np.array([1.0, 0.0, 0.0]), (pts.shape[0], 1))
+    t = np.empty_like(pts)
+    t[0] = pts[1] - pts[0]
+    t[-1] = pts[-1] - pts[-2]
+    if pts.shape[0] > 2:
+        t[1:-1] = pts[2:] - pts[:-2]
+    n = np.linalg.norm(t, axis=1)
+    for i in range(pts.shape[0]):
+        if n[i] < 1e-12:
+            t[i] = t[i - 1] if i > 0 else np.array([1.0, 0.0, 0.0])
+            n[i] = np.linalg.norm(t[i])
+    return t / n[:, None]
+
+
+def profile_support(
+    shape: ProfileShape, tangents: FloatArray, directions: FloatArray
+) -> FloatArray:
+    """Support function of the gravity-aligned excavation cross-section:
+    for each (tunnel tangent, unit direction) the largest extent of the
+    profile — its vertices placed at ``x·right + y·up`` in the rule-26 frame
+    of that tangent — measured along the direction. The floor-centerline
+    D-profile is asymmetric: ``width/2`` sideways, ``height`` upward, 0
+    downward (the floor is the centerline), so a vertically stacked pair
+    reads ``height + 0`` where a horizontal pair reads ``width/2 + width/2``.
+    Components of the direction along the tangent contribute nothing: this
+    is the CROSS-SECTION support at one centerline sample, not the support
+    of the swept tube."""
+    t = np.asarray(tangents, dtype=np.float64).reshape(-1, 3)
+    u = np.asarray(directions, dtype=np.float64).reshape(-1, 3)
+    right, up = gravity_frames(t)
+    dr = np.einsum("nd,nd->n", right, u)
+    du = np.einsum("nd,nd->n", up, u)
+    x, y = shape.points[:, 0], shape.points[:, 1]
+    return np.asarray(np.max(x[None, :] * dr[:, None] + y[None, :] * du[:, None], axis=1))
 
 
 def turnout_heading_change_deg(
@@ -697,31 +749,56 @@ def turnout_heading_change_deg(
 def gated_separation(
     branch_points: FloatArray,
     ramp_points: FloatArray,
-    tunnel_width: float,
+    shape: ProfileShape,
     taper_arc: float,
 ) -> tuple[float, float]:
-    """(centerline distance, excavation separation) of a branch against the
-    full main-ramp polyline, over branch samples at least ``taper_arc``
-    ALONG THE BRANCH from the junction — the TERMINAL sample is always
-    included, so a branch shorter than the taper is judged at its entry.
-    The excavation separation (rock pillar) subtracts BOTH lateral
-    half-spans about the floor centerlines (``tunnel_width/2`` each — branch
-    and main ramp are driven with the same ``RampConstraints`` profile;
-    envelope-to-envelope separation by definition, never a generic
-    ``− tunnel_width`` rule)."""
+    """(minimum centerline distance, minimum excavation separation) of a
+    branch against the full main-ramp polyline, over branch samples at
+    least ``taper_arc`` ALONG THE BRANCH from the junction — the TERMINAL
+    sample is always included, so a branch shorter than the taper is judged
+    at its entry.
+
+    The excavation separation is the DIRECTION-AWARE sampled envelope gap
+    (Phase 20B.1-v2 1.2): at every post-taper sample the closest-centerline
+    pair (branch sample, nearest ramp point) is found, ``u`` is the unit
+    vector branch → ramp, and each tunnel's gravity-aligned cross-section
+    (``shape``, the shared ``RampConstraints`` profile) contributes its
+    support along ``u``::
+
+        gap = d_centerline − support_branch(+u) − support_ramp(−u)
+
+    Horizontal parallel drives therefore read ``d − width/2 − width/2``
+    (the former fixed rule, unchanged), while a tunnel driven BELOW another
+    reads ``d − height − 0``: the lower profile reaches ``height`` up to the
+    upper floor centerline, which has no downward extent. This is a
+    cross-section support at the sampled closest pair — not an exact
+    swept-surface / mesh-to-mesh distance — but it follows the profile
+    orientation, which the width-only rule could not, and it is what the
+    B-2 rock-pillar gate means by sound rock."""
     pts = np.asarray(branch_points, dtype=np.float64)
     arc = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
     mask = arc >= taper_arc
     mask[-1] = True  # the terminal is always judged
-    d = float(np.min(min_distance_to_polyline(pts[mask], ramp_points)))
-    return d, d - (tunnel_width / 2.0 + tunnel_width / 2.0)
+    judged = pts[mask]
+    d, closest, seg = nearest_on_polyline(judged, ramp_points)
+    ramp_dir = ramp_points[seg + 1] - ramp_points[seg]
+    ramp_t = ramp_dir / np.maximum(np.linalg.norm(ramp_dir, axis=1, keepdims=True), 1e-12)
+    branch_t = local_tangents(pts)[mask]
+    reach = float(np.linalg.norm(shape.points, axis=1).max())
+    safe = d > 1e-9
+    u = np.zeros_like(judged)
+    u[safe] = (closest[safe] - judged[safe]) / d[safe, None]
+    r_branch = profile_support(shape, branch_t, u)
+    r_ramp = profile_support(shape, ramp_t, -u)
+    gap = np.where(safe, d - r_branch - r_ramp, -2.0 * reach)
+    return float(np.min(d)), float(np.min(gap))
 
 
 def fill_separation_metrics(
     access: LevelAccess,
     ramp_points: FloatArray,
     ramp_chainage: FloatArray,
-    tunnel_width: float,
+    shape: ProfileShape,
     taper_arc: float = SEPARATION_TAPER_EXCLUSION_ARC,
 ) -> None:
     """Phase 20B.1 O-1/O-2 observability of a SELECTED access — reporting
@@ -730,7 +807,8 @@ def fill_separation_metrics(
     * ``junction_to_entry_plan_sep`` / ``junction_to_entry_dist3d``: straight
       horizontal / 3-D distance junction → level entry.
     * ``ramp_centerline_distance`` / ``excavation_separation``: see
-      ``gated_separation``. Commit B: the planner passes the geometry-derived
+      ``gated_separation`` (direction-aware profile support since
+      20B.1-v2 1.2). Commit B: the planner passes the geometry-derived
       ``gate_taper_arc`` as ``taper_arc`` so the reported metric and the B-2
       gate share ONE definition (commit O used a fixed 15 m exclusion and
       ``None`` for shorter branches; the terminal is now always judged).
@@ -743,7 +821,7 @@ def fill_separation_metrics(
     j = np.asarray(access.junction_position, dtype=np.float64)
     access.junction_to_entry_plan_sep = float(np.hypot(*(entry[:2] - j[:2])))
     access.junction_to_entry_dist3d = float(np.linalg.norm(entry - j))
-    d, sep = gated_separation(pts, ramp_points, tunnel_width, taper_arc)
+    d, sep = gated_separation(pts, ramp_points, shape, taper_arc)
     access.ramp_centerline_distance = d
     access.excavation_separation = sep
     if access.junction_chainage is not None:
@@ -896,7 +974,7 @@ def _search_level(
             # turnout taper (terminal always judged) — a branch that runs
             # alongside any part of the ramp with a thin skin is rejected,
             # whatever its length
-            _, exc_sep = gated_separation(pts, ramp_points, ctx.ramp.tunnel_width, ctx.taper_arc)
+            _, exc_sep = gated_separation(pts, ramp_points, ctx.shape, ctx.taper_arc)
             if exc_sep < ctx.exc_sep_min - SEPARATION_TOLERANCE:
                 reject(AccessFailure.INSUFFICIENT_RAMP_PILLAR)
                 continue
@@ -1071,7 +1149,7 @@ def plan_level_accesses(
         chosen.candidates_valid = valid
         chosen.rejection_counts = rejections
         # observability of the SELECTED branch — same taper as the B-2 gate
-        fill_separation_metrics(chosen, ramp_points, ctx.ramp_ch, ramp.tunnel_width, taper)
+        fill_separation_metrics(chosen, ramp_points, ctx.ramp_ch, ctx.shape, taper)
         used.append(float(chosen.junction_chainage or 0.0))
         accesses.append(chosen)
     return LevelAccessPlan(

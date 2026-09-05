@@ -7,18 +7,23 @@
       "candidateCount": 68,
       "cheapFeasibleCount": 45,
       "feasibleExhaustive": [
+        "SPIRAL-n1-CW-e+0-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.100",
         "SWITCHBACK-k1-p-20-CCW-g0.100",
+        "SWITCHBACK-k1-p+0-CW-g0.100",
         "SWITCHBACK-k1-p+0-CCW-g0.120",
         "SWITCHBACK-k1-p+0-CCW-g0.100",
+        "SWITCHBACK-k1-p+20-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CCW-g0.100",
+        "SWITCHBACK-k2-p+0-CCW-g0.120",
         "SWITCHBACK-k2-p+0-CCW-g0.100",
         "SWITCHBACK-k2-p+20-CW-g0.120",
         "SWITCHBACK-k2-p+20-CW-g0.100",
         "SWITCHBACK-k2-p+20-CCW-g0.100"
       ],
       "feasibleNormal": [
+        "SPIRAL-n1-CW-e+0-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.100"
       ],
       "key": "TABULAR-REFERENCE",
@@ -27,10 +32,13 @@
       ],
       "missedFeasible": [
         "SWITCHBACK-k1-p-20-CCW-g0.100",
+        "SWITCHBACK-k1-p+0-CW-g0.100",
         "SWITCHBACK-k1-p+0-CCW-g0.120",
         "SWITCHBACK-k1-p+0-CCW-g0.100",
+        "SWITCHBACK-k1-p+20-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CCW-g0.100",
+        "SWITCHBACK-k2-p+0-CCW-g0.120",
         "SWITCHBACK-k2-p+0-CCW-g0.100",
         "SWITCHBACK-k2-p+20-CW-g0.120",
         "SWITCHBACK-k2-p+20-CW-g0.100",
@@ -38,11 +46,15 @@
       ],
       "note": "Phase 16 baseline mine",
       "rankingExhaustive": [
+        "SPIRAL-n1-CW-e+0-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.100",
         "SWITCHBACK-k1-p+0-CCW-g0.120",
+        "SWITCHBACK-k1-p+0-CW-g0.100",
         "SWITCHBACK-k1-p+0-CCW-g0.100",
+        "SWITCHBACK-k1-p+20-CCW-g0.120",
         "SWITCHBACK-k1-p-20-CCW-g0.100",
         "SWITCHBACK-k2-p+20-CW-g0.120",
+        "SWITCHBACK-k2-p+0-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CCW-g0.120",
         "SWITCHBACK-k2-p+20-CW-g0.100",
         "SWITCHBACK-k2-p+0-CCW-g0.100",
@@ -50,8 +62,8 @@
         "SWITCHBACK-k2-p+20-CCW-g0.100"
       ],
       "realized": true,
-      "secondsExhaustive": 108.51028778399996,
-      "secondsNormal": 26.41939341000034,
+      "secondsExhaustive": 142.19345857200005,
+      "secondsNormal": 37.653131065000025,
       "shortlist": [
         "SPIRAL-n1-CW-e-45-g0.120",
         "SPIRAL-n1-CCW-e+45-g0.120",
@@ -67,9 +79,9 @@
         "SWITCHBACK-k1-p-20-CW-g0.120"
       ],
       "shortlistSize": 12,
-      "winnerExhaustive": "SPIRAL-n1-CCW-e+0-g0.100",
+      "winnerExhaustive": "SPIRAL-n1-CW-e+0-g0.100",
       "winnerMissedByShortlist": false,
-      "winnerNormal": "SPIRAL-n1-CCW-e+0-g0.100"
+      "winnerNormal": "SPIRAL-n1-CW-e+0-g0.100"
     },
     {
       "candidateCount": 68,
@@ -136,8 +148,8 @@
         "SWITCHBACK-k2-p-20-CW-g0.100"
       ],
       "realized": true,
-      "secondsExhaustive": 135.46254491299987,
-      "secondsNormal": 35.05474115600009,
+      "secondsExhaustive": 146.23031910999998,
+      "secondsNormal": 40.03701203199989,
       "shortlist": [
         "SPIRAL-n1-CW-e-45-g0.120",
         "SPIRAL-n1-CCW-e+45-g0.100",
@@ -178,8 +190,8 @@
         "SWITCHBACK-k1-p+20-CW-g0.100"
       ],
       "realized": true,
-      "secondsExhaustive": 71.83487114499985,
-      "secondsNormal": 55.53599559600116,
+      "secondsExhaustive": 74.62647864099995,
+      "secondsNormal": 58.58870627600004,
       "shortlist": [
         "SPIRAL-n1-CW-e+45-g0.100",
         "SPIRAL-n1-CCW-e-45-g0.100",
@@ -210,8 +222,8 @@
       "note": "implicit body where the search honestly finds no feasible candidate",
       "rankingExhaustive": [],
       "realized": true,
-      "secondsExhaustive": 64.56981882400032,
-      "secondsNormal": 10.820769935000499,
+      "secondsExhaustive": 66.42595513199967,
+      "secondsNormal": 11.9404101490004,
       "shortlist": [
         "SPIRAL-n1-CCW-e+45-g0.120",
         "SPIRAL-n1-CCW-e+45-g0.100",
@@ -242,8 +254,8 @@
       "note": "deliberate access infeasibility: no branch can fit the 15-16 m length window",
       "rankingExhaustive": [],
       "realized": true,
-      "secondsExhaustive": 3.416352096000992,
-      "secondsNormal": 1.650761319000594,
+      "secondsExhaustive": 3.641623771000013,
+      "secondsNormal": 1.8708936880002511,
       "shortlist": [
         "SPIRAL-n1-CW-e-45-g0.120",
         "SPIRAL-n1-CCW-e+45-g0.120",
@@ -267,18 +279,23 @@
       "candidateCount": 68,
       "cheapFeasibleCount": 45,
       "feasibleExhaustive": [
+        "SPIRAL-n1-CW-e+0-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.100",
         "SWITCHBACK-k1-p-20-CCW-g0.100",
+        "SWITCHBACK-k1-p+0-CW-g0.100",
         "SWITCHBACK-k1-p+0-CCW-g0.120",
         "SWITCHBACK-k1-p+0-CCW-g0.100",
+        "SWITCHBACK-k1-p+20-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CCW-g0.100",
+        "SWITCHBACK-k2-p+0-CCW-g0.120",
         "SWITCHBACK-k2-p+0-CCW-g0.100",
         "SWITCHBACK-k2-p+20-CW-g0.120",
         "SWITCHBACK-k2-p+20-CW-g0.100",
         "SWITCHBACK-k2-p+20-CCW-g0.100"
       ],
       "feasibleNormal": [
+        "SPIRAL-n1-CW-e+0-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.100"
       ],
       "key": "CUT_AND_FILL",
@@ -287,10 +304,13 @@
       ],
       "missedFeasible": [
         "SWITCHBACK-k1-p-20-CCW-g0.100",
+        "SWITCHBACK-k1-p+0-CW-g0.100",
         "SWITCHBACK-k1-p+0-CCW-g0.120",
         "SWITCHBACK-k1-p+0-CCW-g0.100",
+        "SWITCHBACK-k1-p+20-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CCW-g0.100",
+        "SWITCHBACK-k2-p+0-CCW-g0.120",
         "SWITCHBACK-k2-p+0-CCW-g0.100",
         "SWITCHBACK-k2-p+20-CW-g0.120",
         "SWITCHBACK-k2-p+20-CW-g0.100",
@@ -298,11 +318,15 @@
       ],
       "note": "generic ramp junctions + level accesses for a reserved production method",
       "rankingExhaustive": [
+        "SPIRAL-n1-CW-e+0-g0.100",
         "SPIRAL-n1-CCW-e+0-g0.100",
         "SWITCHBACK-k1-p+0-CCW-g0.120",
+        "SWITCHBACK-k1-p+0-CW-g0.100",
         "SWITCHBACK-k1-p+0-CCW-g0.100",
+        "SWITCHBACK-k1-p+20-CCW-g0.120",
         "SWITCHBACK-k1-p-20-CCW-g0.100",
         "SWITCHBACK-k2-p+20-CW-g0.120",
+        "SWITCHBACK-k2-p+0-CCW-g0.120",
         "SWITCHBACK-k2-p-20-CCW-g0.120",
         "SWITCHBACK-k2-p+20-CW-g0.100",
         "SWITCHBACK-k2-p+0-CCW-g0.100",
@@ -310,8 +334,8 @@
         "SWITCHBACK-k2-p+20-CCW-g0.100"
       ],
       "realized": true,
-      "secondsExhaustive": 110.01948391600126,
-      "secondsNormal": 28.43503846800013,
+      "secondsExhaustive": 113.64444974800017,
+      "secondsNormal": 28.0952568900002,
       "shortlist": [
         "SPIRAL-n1-CW-e-45-g0.120",
         "SPIRAL-n1-CCW-e+45-g0.120",
@@ -327,9 +351,9 @@
         "SWITCHBACK-k1-p-20-CW-g0.120"
       ],
       "shortlistSize": 12,
-      "winnerExhaustive": "SPIRAL-n1-CCW-e+0-g0.100",
+      "winnerExhaustive": "SPIRAL-n1-CW-e+0-g0.100",
       "winnerMissedByShortlist": false,
-      "winnerNormal": "SPIRAL-n1-CCW-e+0-g0.100"
+      "winnerNormal": "SPIRAL-n1-CW-e+0-g0.100"
     },
     {
       "candidateCount": 68,
@@ -396,8 +420,8 @@
         "SWITCHBACK-k2-p-20-CW-g0.100"
       ],
       "realized": true,
-      "secondsExhaustive": 141.16651973099943,
-      "secondsNormal": 35.47992659299962,
+      "secondsExhaustive": 149.9375580169999,
+      "secondsNormal": 38.26086339199992,
       "shortlist": [
         "SPIRAL-n1-CCW-e+45-g0.100",
         "SPIRAL-n1-CW-e-45-g0.100",
@@ -418,9 +442,9 @@
       "winnerNormal": "SPIRAL-n1-CCW-e+0-g0.120"
     }
   ],
-  "gitHead": "387d13a44b18f016d03abe4aca56fcc4ccf6b1e9",
-  "label": "20b1-D-audit3",
+  "gitHead": "b5c51e8dc73c77432c25c226f26713deac274766",
+  "label": "20b1v2-audit",
   "semantics": "diagnostic shortlist-starvation audit: exhaustive detailed validation of every cheap-feasible candidate versus the bounded production shortlist; the production search is unchanged by this report",
   "suiteVersion": 1,
-  "totalRuntimeSeconds": 831.2561562690007
+  "totalRuntimeSeconds": 916.4407476249999
 }

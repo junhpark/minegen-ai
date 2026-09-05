@@ -18,7 +18,13 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
-from minegen.core.enums import AssetType, MiningMethodType, OrebodyType, ScenarioPreset
+from minegen.core.enums import (
+    FAMILY_ORDER,
+    AssetType,
+    MiningMethodType,
+    OrebodyType,
+    ScenarioPreset,
+)
 
 
 class ApiModel(BaseModel):
@@ -798,6 +804,20 @@ class LayoutV2Config(ApiModel):
     #: Phase 20B ramp-junction / level-access planning (rules 153–160)
     access: LevelAccessConfig = Field(default_factory=LevelAccessConfig)
     weights: LayoutScoreWeights = Field(default_factory=LayoutScoreWeights)
+
+    @model_validator(mode="after")
+    def _shortlist_holds_every_family(self) -> LayoutV2Config:
+        # Phase 20B.1-v2 1.3: the bounded shortlist AND the per-family reserved
+        # slot (rule 165) must both hold, so the bound can never be smaller
+        # than the number of declared families. Sized from FAMILY_ORDER, never
+        # a literal, so a Phase 20C family raises the floor automatically.
+        floor = len(FAMILY_ORDER)
+        if self.shortlist_size < floor:
+            raise ValueError(
+                f"shortlist_size ({self.shortlist_size}) must be at least the number of "
+                f"declared ramp families ({floor}) so every family keeps its reserved slot"
+            )
+        return self
 
 
 class ScenarioCreate(ApiModel):

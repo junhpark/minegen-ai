@@ -1311,8 +1311,8 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
 171. Level-access separation gates are HARD (Phase 20B.1 B). Every access
      candidate passes, typed and never clamped: junction → entry PLAN
      separation ≥ `minimumRampToEntryPlanSeparation` (None → 6 × width);
-     branch-to-ramp excavation separation (rock pillar, both half-spans
-     subtracted) ≥ `minimumExcavationSeparation` (None → 2 × width), judged
+     branch-to-ramp excavation separation (rock pillar) ≥
+     `minimumExcavationSeparation` (None → 2 × width), judged
      on the delivered branch beyond the geometry-derived turnout taper
      `s* = R·arccos(1 − (pillar + width)/R)` with the terminal always
      included; and turnout curvature — cumulative |Δheading| of the
@@ -1326,3 +1326,29 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      starvation is distinguishable from geometric infeasibility; the
      diagnostic never relaxes a constraint and never changes the result.
      These are engineering planning defaults, never statutory values.
+
+172. Direction-aware rock pillar and one certification per selected design
+     (Phase 20B.1-v2). The B-2 excavation separation is the DIRECTION-AWARE
+     sampled envelope gap: at every post-taper branch sample the
+     closest-centerline pair is found, `u` = branch → ramp, and each tunnel's
+     gravity-aligned cross-section (`ProfileShape`, `gravity_frames`)
+     contributes its support along `u` — `gap = d − support_branch(+u) −
+     support_ramp(−u)` — so horizontal parallel drives read
+     `width/2 + width/2` (unchanged) and a drive below another reads
+     `height + 0`. It is a cross-section support at the sampled closest
+     pair, never claimed as an exact swept-surface / mesh-to-mesh distance;
+     the isotropic `hypot(width/2, height)` on both sides is forbidden. The
+     taper `s*` is unchanged. Separately, the selected Effective Ramp, its
+     level accesses, the tunnel sweep and the development sweep are judged
+     under the SAME candidate-specific clearance certification that made the
+     candidate FEASIBLE in stage 4 (`LayoutV2Search.candidate_policy`,
+     rebuilt deterministically from `candidateId + layoutRevision` — no new
+     persisted field); LEGACY keeps the world policy. A stale selection or a
+     reconstruction that disagrees with the recorded stage-4 report fails
+     closed (409 `LAYOUT_V2_SELECTION_STALE` /
+     `LAYOUT_V2_CLEARANCE_MISMATCH`). `level_accesses.json` reports the
+     candidate's ACTUAL basis / bound / refinement; the catalogue's
+     `clearanceBasis` stays the whole-body search basis. The shortlist bound
+     is never smaller than `len(FAMILY_ORDER)` (schema-validated, sized from
+     the enumeration, never a literal), so the bound and the per-family
+     reserved slot (rule 165) hold together.

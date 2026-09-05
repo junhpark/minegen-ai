@@ -399,7 +399,12 @@ export interface LevelAccessesPayload {
   candidateId: string
   family: RampFamily
   miningMethod: string
+  /** the basis the selected candidate's accesses were actually validated
+   *  under (stage-4 REFINED_CONSERVATIVE when refinement applied), with its
+   *  bound / refinement diagnostic (Phase 20B.1-v2 1.1) */
   clearanceBasis: ClearanceBasis
+  clearanceErrorBound?: number | null
+  clearanceRefinement?: Record<string, unknown> | null
   requiredClearance: number
   anchors: (LevelDevelopmentAnchorPayload | null)[]
   accesses: LevelAccessPayload[]

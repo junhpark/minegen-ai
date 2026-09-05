@@ -43,6 +43,8 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from minegen.core.enums import FAMILY_ORDER as FAMILY_ORDER
+from minegen.core.enums import RampFamily as RampFamily
 from minegen.core.models import LayoutV2Config, RampConstraints
 from minegen.layout.levels import LevelSections, RequiredLevel, level_intervals
 from minegen.world.orebody import Orebody
@@ -76,20 +78,6 @@ def effective_footwall_standoff(cfg: LayoutV2Config, ramp: RampConstraints) -> t
         float(ramp.footwall_access_offset) + RAMP_CORRIDOR_MARGIN_WIDTHS * float(ramp.tunnel_width),
         "DEFAULT_OFFSET_PLUS_CORRIDOR_MARGIN",
     )
-
-
-class RampFamily(StrEnum):
-    SPIRAL = "SPIRAL"
-    LONGITUDINAL = "LONGITUDINAL"
-    SWITCHBACK = "SWITCHBACK"
-
-
-#: frozen family enumeration order (rule 142)
-FAMILY_ORDER: tuple[RampFamily, ...] = (
-    RampFamily.SPIRAL,
-    RampFamily.LONGITUDINAL,
-    RampFamily.SWITCHBACK,
-)
 
 
 class InfeasibleReason(StrEnum):

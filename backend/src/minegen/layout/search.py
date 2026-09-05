@@ -173,6 +173,38 @@ class LevelServiceRecord:
         }
 
 
+class ClearancePolicyReconstructionError(RuntimeError):
+    """The candidate-specific clearance policy could not be rebuilt to match
+    the candidate's recorded stage-4 report (Phase 20B.1-v2 1.1). Downstream
+    consumers fail closed instead of silently judging the design under a
+    different certification."""
+
+    code = "LAYOUT_V2_CLEARANCE_MISMATCH"
+
+    def __init__(self, candidate_id: str, detail: str) -> None:
+        super().__init__(
+            f"cannot reconstruct the stage-4 clearance policy of layout-v2 candidate "
+            f"'{candidate_id}': {detail}; regenerate the layout catalogue"
+        )
+        self.candidate_id = candidate_id
+
+
+def _refinement_key(refinement: dict[str, Any] | None) -> tuple[Any, ...]:
+    """Provenance of one stage-4 refinement decision, rounded so a rebuilt
+    window compares equal to its recorded (JSON round-tripped) report."""
+    r = refinement or {}
+    spacing = r.get("latticeSpacing")
+    return (
+        bool(r.get("applied")),
+        r.get("reason"),
+        int(r["factor"]) if r.get("factor") is not None else None,
+        tuple(round(float(v), 9) for v in spacing) if spacing else None,
+        tuple(int(v) for v in r["shape"]) if r.get("shape") else None,
+        int(r["cellCount"]) if r.get("cellCount") is not None else None,
+        round(float(r["errorBound"]), 9) if r.get("errorBound") is not None else None,
+    )
+
+
 @dataclass
 class ClearanceReport:
     basis: str
@@ -621,6 +653,9 @@ class LayoutV2Search:
         self.shape = build_profile(scenario.ramp, scenario.tunnel_profile)
         self._sections: LevelSections | None = None
         self._track: Any = None
+        #: the stage-4 LayoutContext of the last run — retained so the
+        #: candidate-specific clearance policy can be rebuilt after the fact
+        self._ctx: LayoutContext | None = None
 
     def anchor_standoff(self, required: float, policy: ClearancePolicy | None = None) -> float:
         """Level-entry stand-off from the footwall edge: the configured /
@@ -689,6 +724,7 @@ class LayoutV2Search:
             sc.world.size_x / 2.0,
             sc.world.size_y / 2.0,
         )
+        self._ctx = ctx
 
         # -- STAGE 1 + 2: construct and cheap-evaluate every candidate --------- #
         n = len(results)
@@ -862,6 +898,38 @@ class LayoutV2Search:
         else:
             cand.status = CandidateStatus.NOT_VALIDATED
 
+    def candidate_policy(
+        self, result: LayoutSearchResult, candidate_id: str
+    ) -> tuple[DesignCostEvaluator, ClearancePolicy, dict[str, Any]]:
+        """The candidate-specific stage-4 evaluator / clearance policy of a
+        DETAILED candidate, rebuilt deterministically from the same inputs
+        (Phase 20B.1-v2 1.1). Selection materialization, the tunnel sweep and
+        the development sweep call this so the downstream chain judges the
+        selected design under the SAME certification that made it FEASIBLE —
+        never the whole-body COARSE basis again. Fails closed
+        (``ClearancePolicyReconstructionError``) when the rebuilt refinement
+        provenance disagrees with the candidate's recorded stage-4 report."""
+        cand = result.candidate(candidate_id)
+        if cand is None:
+            raise KeyError(candidate_id)
+        if cand.stage_reached != Stage.DETAILED or cand.clearance is None or self._ctx is None:
+            raise ClearancePolicyReconstructionError(
+                candidate_id, "the candidate has no stage-4 clearance report to reconstruct"
+            )
+        evaluator, policy, refinement = self._candidate_policy(
+            cand, self._ctx, result.required_clearance
+        )
+        recorded = cand.clearance
+        if policy.basis != recorded.basis or _refinement_key(refinement) != _refinement_key(
+            recorded.refinement
+        ):
+            raise ClearancePolicyReconstructionError(
+                candidate_id,
+                f"rebuilt policy {policy.basis} {_refinement_key(refinement)} != recorded "
+                f"{recorded.basis} {_refinement_key(recorded.refinement)}",
+            )
+        return evaluator, policy, refinement
+
     def _candidate_policy(
         self, cand: CandidateResult, ctx: LayoutContext, req_clear: float
     ) -> tuple[DesignCostEvaluator, ClearancePolicy, dict[str, Any]]:
@@ -949,7 +1017,7 @@ class LayoutV2Search:
                 (
                     InfeasibleReason.OREBODY_CLEARANCE,
                     f"conservative minimum clearance {conservative_min:.2f} m < required "
-                    f"{req_clear:.2f} m ({self.policy.basis})",
+                    f"{req_clear:.2f} m ({policy.basis})",
                 )
             )
         # Phase 20B: explicit ramp-junction + level-access planning (rule 156).
@@ -1240,7 +1308,12 @@ def materialize_level_accesses(
         "candidateId": cand.candidate_id,
         "family": cand.params.family.value,
         "miningMethod": mining_method,
-        "clearanceBasis": result.clearance_basis,
+        # the basis the candidate's accesses were actually validated under
+        # (stage-4 REFINED_CONSERVATIVE when refinement applied), never the
+        # catalogue's whole-body search basis (Phase 20B.1-v2 1.1)
+        "clearanceBasis": cand.clearance.basis if cand.clearance else result.clearance_basis,
+        "clearanceErrorBound": cand.clearance.error_bound if cand.clearance else None,
+        "clearanceRefinement": cand.clearance.refinement if cand.clearance else None,
         "requiredClearance": result.required_clearance,
         "anchors": [a.to_dict() if a else None for a in cand.anchors],
         "accesses": [a.to_dict(include_points=True) for a in plan.accesses],

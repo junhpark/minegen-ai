@@ -110,9 +110,14 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      separation observability per access:
                                                      junctionToEntryPlanSep, junctionToEntryDist3d,
                                                      rampCenterlineDistance, excavationSeparation
-                                                     (envelope-to-envelope rock pillar; branch
-                                                     samples within the taper exclusion arc of the
-                                                     junction excluded) and turnoutHeadingChangeDeg
+                                                     (direction-aware rock pillar: centerline
+                                                     distance minus each gravity-aligned profile's
+                                                     support along the closest-pair direction —
+                                                     width/2 + width/2 for parallel drives,
+                                                     height + 0 for stacked ones; a sampled
+                                                     cross-section gap, not an exact swept-surface
+                                                     distance; branch samples within the taper arc
+                                                     of the junction excluded) and turnoutHeadingChangeDeg
                                                      (cumulative |Δheading| of the delivered main
                                                      ramp over junction ± 25 m chainage); summary
                                                      aggregates minJunctionToEntryPlanSep,
@@ -145,7 +150,15 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      LAYOUT_V2_NOT_SELECTED (LAYOUT_V2)
     (tunnel, levels, network, timeline, communication and sensors all consume
      the ACTIVE Effective Ramp; the scene's smoothedDecline is that ramp and
-     legacySmoothedDecline / rampSource / layoutV2 / layoutV2Selected are added)
+     legacySmoothedDecline / rampSource / layoutV2 / layoutV2Selected are added.
+     With LAYOUT_V2 active, tunnel / levels / development-mesh are judged under
+     the selected candidate's own stage-4 clearance certification, rebuilt from
+     candidateId + layoutRevision (Phase 20B.1-v2 1.1): 409
+     LAYOUT_V2_SELECTION_STALE when the selection belongs to another catalogue
+     revision, 409 LAYOUT_V2_CLEARANCE_MISMATCH when the rebuilt policy
+     disagrees with the recorded one. level_accesses.json carries the
+     candidate's actual clearanceBasis / clearanceErrorBound /
+     clearanceRefinement; the catalogue's clearanceBasis stays whole-body.)
     GET  /api/v1/jobs?scenario_id=                    job records (newest first, no result)
     (jobs fail with error.code JOB_INPUTS_CHANGED — nothing persisted — when
      scenario/world/targets were mutated while the job ran; rule 60)

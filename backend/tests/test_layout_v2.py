@@ -54,6 +54,7 @@ from minegen.layout.search import (
     CandidateStatus,
     LayoutSearchResult,
     LayoutV2Search,
+    Stage,
     cheap_checks,
     level_service,
     materialize_effective_ramp,
@@ -1245,3 +1246,73 @@ def test_geometry_score_prices_the_family_signature(
         saw_reversals = saw_reversals or d.heading_reversal_count > 0
     # the fixture validates both hairpin (switchback) and non-hairpin shapes
     assert saw_reversals
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20B.1-v2 — 1.1 reconstruction determinism, 1.3 shortlist floor
+# --------------------------------------------------------------------------- #
+
+
+def test_candidate_policy_reconstruction_is_deterministic(
+    warped: tuple[Scenario, SyntheticWorld],
+    warped_search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
+    """1.1: the stage-4 candidate policy is rebuilt bit-for-bit from the
+    same inputs — on the search that ran (cache hit) and on a brand-new
+    search over the same world (what a fresh process does)."""
+    sc, world = warped
+    search, res = warped_search
+    assert res.winner_id is not None
+    cand = res.candidate(res.winner_id)
+    assert cand is not None and cand.clearance is not None and cand.points is not None
+    _, policy, refinement = search.candidate_policy(res, res.winner_id)
+    assert policy.basis == cand.clearance.basis
+    assert float(policy.error_bound) == pytest.approx(cand.clearance.error_bound or 0.0)
+    assert refinement == cand.clearance.refinement
+    assert float(np.min(policy.signed_clearance(cand.points))) == pytest.approx(
+        cand.clearance.conservative_minimum, abs=1e-9
+    )
+    fresh = LayoutV2Search(sc, world)
+    res2 = fresh.run()
+    _, policy2, refinement2 = fresh.candidate_policy(res2, res.winner_id)
+    assert policy2.basis == policy.basis and refinement2 == refinement
+    assert np.array_equal(
+        policy2.signed_clearance(cand.points), policy.signed_clearance(cand.points)
+    )
+    with pytest.raises(KeyError):
+        search.candidate_policy(res, "NO-SUCH-CANDIDATE")
+
+
+def test_shortlist_size_floor_is_the_family_count() -> None:
+    """1.3: the bounded shortlist AND the per-family reserved slot hold
+    together only when the bound is at least the number of declared
+    families; the floor is sized from FAMILY_ORDER, never a literal."""
+    from pydantic import ValidationError
+
+    from minegen.core.enums import FAMILY_ORDER
+
+    assert LayoutV2Config(shortlist_size=len(FAMILY_ORDER)).shortlist_size == len(FAMILY_ORDER)
+    with pytest.raises(ValidationError, match="declared ramp families"):
+        LayoutV2Config(shortlist_size=len(FAMILY_ORDER) - 1)
+
+
+def test_shortlist_with_family_reservation_stays_bounded(
+    tabular: tuple[Scenario, SyntheticWorld],
+) -> None:
+    from minegen.core.enums import FAMILY_ORDER
+
+    sc, world = tabular
+    n = len(FAMILY_ORDER)
+    tight = sc.model_copy(update={"layout": sc.layout.model_copy(update={"shortlist_size": n})})
+    res = LayoutV2Search(tight, world).run()
+    assert 0 < len(res.shortlist) <= n
+    # cheap-feasible = reached detailed validation OR left NOT_VALIDATED by
+    # the bounded shortlist; a cheap-stage failure is INFEASIBLE at stage CHEAP
+    cheap_ok = {
+        c.params.family
+        for c in res.candidates
+        if c.stage_reached == Stage.DETAILED or c.status == CandidateStatus.NOT_VALIDATED
+    }
+    listed = {res.candidate(cid).params.family for cid in res.shortlist}  # type: ignore[union-attr]
+    # every family with a cheap-feasible member holds a slot, within the bound
+    assert cheap_ok <= listed

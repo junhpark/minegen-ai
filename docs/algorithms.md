@@ -645,10 +645,28 @@ turnout curvature — cumulative |Δheading| of the delivered ramp over
 junction ± 25 m ≤ 100° (rejects a turnout inside a near-minimum-radius
 turn; a true straight-insert requirement needs Phase 20C family support);
 junction → entry PLAN separation ≥ 6 × width (30 m default); rock pillar —
-branch-to-ramp envelope separation ≥ 2 × width (10 m default) on samples
+branch-to-ramp excavation separation ≥ 2 × width (10 m default) on samples
 beyond the geometry-derived taper `s* = R·arccos(1 − (pillar + width)/R)`
 (≈ 25.3 m for the defaults; quarter-turn + straight beyond one radius),
-terminal always judged. Selection among the survivors stays
+terminal always judged. Since 20B.1-v2 (1.2) that separation is the
+DIRECTION-AWARE sampled envelope gap (`layout/access.py::gated_separation`):
+for every judged branch sample the closest-centerline pair
+(`nearest_on_polyline`) gives `u` = branch → ramp, and each tunnel's
+gravity-aligned cross-section contributes its support along `u`
+(`profile_support`: the `ProfileShape` vertices at `x·right + y·up` in the
+rule-26 frame of that tunnel's tangent) —
+
+    gap = d_centerline − support_branch(+u) − support_ramp(−u)
+
+Horizontal parallel drives read `width/2 + width/2` (the former fixed rule,
+unchanged); a drive BELOW another reads `height + 0` (the lower profile
+reaches `height` up to the upper floor centerline, which has no downward
+extent), and a sloped pair reads `height·cos(slope)`. This is a cross-section
+support at the sampled closest pair — not an exact swept-surface /
+mesh-to-mesh distance (Phase 20D) — and a sample whose direction to the ramp
+runs along its own axis (an access driving straight away from the ramp)
+contributes 0 there, which the taper exclusion already covers. The isotropic
+`hypot(width/2, height)` on both sides (≈ 11.2 m) is deliberately not used. Selection among the survivors stays
 `(access_length_cost(L, P), L, junction chainage, sense)` (rule 163) — the
 length cost is SECONDARY to the gates. A level that fails with junction-
 spacing conflicts re-runs its search ignoring only the used spacing as the
@@ -701,6 +719,26 @@ certification (`max` of two lower bounds). Budget
 explicit per-candidate diagnostic; measured windows: WARPED-301 winner
 26 × 154 × 81 = 324 k cells (~0.35 s), bound 10.77 → 5.39 m, anchor
 stand-off 22.36 → 20.0 m, total access 1 025 → 611 m.
+
+One certification per selected design (20B.1-v2 1.1). The candidate-specific
+policy is NOT persisted: `LayoutV2Search.candidate_policy(result, id)`
+rebuilds it deterministically from the retained stage-4 context (the same
+`_candidate_policy` inputs — candidate points, serviceable levels, coarse
+policy, config) and fails closed when the rebuilt refinement provenance
+(applied / reason / factor / spacing / shape / cells / bound) differs from
+the candidate's recorded report. `DesignService._selected_candidate_policy`
+resolves the selection (`candidateId + layoutRevision`, stale → 409
+`LAYOUT_V2_SELECTION_STALE`), re-runs the search on a cache miss
+(`_layout_object`) and cross-checks the selection's persisted `clearance`
+block (basis / bound → 409 `LAYOUT_V2_CLEARANCE_MISMATCH`). Selection
+materialization, the Phase 06 tunnel sweep, the level builder and the
+development sweep all take `_active_clearance_policy` — the selected
+candidate's certification when LAYOUT_V2 is active, the world policy (EXACT
+for analytic bodies, numerically unchanged) for LEGACY. `level_accesses.json`
+reports the candidate's actual `clearanceBasis` / `clearanceErrorBound` /
+`clearanceRefinement`; the catalogue's top-level `clearanceBasis` keeps its
+whole-body search meaning. The shortlist bound is validated to be at least
+`len(FAMILY_ORDER)` (1.3) so the per-family reserved slot never exceeds it.
 
 `EXACT` remains the analytic-body basis only; an implicit body is never
 labelled EXACT (rule 134) — its bases are COARSE_CONSERVATIVE /

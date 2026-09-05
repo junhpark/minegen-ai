@@ -20,6 +20,26 @@ class ScenarioPreset(StrEnum):
     RANDOM_WARPED_VEIN = "RANDOM_WARPED_VEIN"
 
 
+class RampFamily(StrEnum):
+    """Layout-v2 parametric ramp families (rule 142). Lives in the
+    dependency-neutral core so schema validation can size the shortlist
+    floor from ``FAMILY_ORDER`` without importing the layout package
+    (Phase 20B.1-v2 1.3); ``layout/families.py`` re-exports both names."""
+
+    SPIRAL = "SPIRAL"
+    LONGITUDINAL = "LONGITUDINAL"
+    SWITCHBACK = "SWITCHBACK"
+
+
+#: frozen family enumeration order (rule 142); its length is the shortlist
+#: floor — every declared family holds one reserved slot (rule 165)
+FAMILY_ORDER: tuple[RampFamily, ...] = (
+    RampFamily.SPIRAL,
+    RampFamily.LONGITUDINAL,
+    RampFamily.SWITCHBACK,
+)
+
+
 class OrebodyType(StrEnum):
     TABULAR = "TABULAR"
     ELLIPSOID = "ELLIPSOID"
