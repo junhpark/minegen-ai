@@ -348,6 +348,10 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
         metrics["winnerMaxGradient"] = _r(d.max_abs_gradient)
         metrics["winnerMinPlanRadius"] = _r(d.min_plan_radius)
         metrics["winnerCumulativeHeadingDeg"] = _r(d.cumulative_heading_change_deg)
+        metrics["winnerMeanCurvatureRadPerM"] = _r(
+            math.radians(d.cumulative_heading_change_deg) / max(d.length3d, 1e-9)
+        )
+        metrics["winnerHairpinRuns"] = d.hairpin_run_count
         metrics["winnerTurnConsistency"] = _r(d.turn_direction_consistency)
         metrics["winnerTotalScore"] = _r(winner.scores.total)
         metrics["winnerDevelopment"] = _r(winner.scores.development)
@@ -462,6 +466,8 @@ METRIC_COLUMNS = (
     "winnerMaxGradient",
     "winnerMinPlanRadius",
     "winnerCumulativeHeadingDeg",
+    "winnerMeanCurvatureRadPerM",
+    "winnerHairpinRuns",
     "winnerTurnConsistency",
     "winnerTotalScore",
     "winnerDevelopment",

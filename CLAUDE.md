@@ -1217,7 +1217,16 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      case, the feasible candidates the shortlist never validated and whether
      the exhaustive winner or a feasible family is missed. A family-diverse
      shortlist or a cheap lower bound is added only when that audit shows
-     a missed winner / family.
+     a missed winner / family — which the Phase 20B.1-D audit did (under
+     the rule 171 gates the old length-only proxy missed exhaustive winners
+     at cheap ranks 40/62 and 22/26): the stage-3 proxy is now the cheap
+     LOWER BOUND of the weighted total (development without the
+     non-negative access length + the full geometry group without the
+     non-negative clearance headroom; geology ≥ 0 omitted), AND every
+     declared family's best cheap-feasible candidate holds a shortlist
+     slot (bound unchanged: the proxy tail is displaced, order stays
+     (proxy, family order, id)). The re-run audit is the acceptance
+     instrument.
 166. Development excavation meshes (closeout v3 §4). LEVEL_ACCESS / DRIFT /
      CROSSCUT are swept by `design/development_mesh.py` through the SAME
      Phase 06 machinery (`build_ring_chain` / `build_logical_mesh` /

@@ -576,8 +576,16 @@ show ≈ 2 400–6 200° cumulative change, consistency 1.0, 0 reversals;
 
 Search: cheap stage on every candidate (grade ≤ g_max + 1e-9, plan radius
 ≥ R_min − 0.05 m, inside the world, monotonic, all serviceable levels
-served), shortlist of 12 by `length / grade-limited ideal + 0.5 ·
-mean access / reach`, detailed stage through
+served), shortlist of 12 by the Phase 20B.1 D cheap LOWER BOUND of the
+weighted total (`w_dev·(L/L_ideal + 0.5·meanAccess/reach) +
+w_geom·(unusedGrade + 0.5·turningFrac + maxAccess/reach +
+20·meanCurvature + 0.05·reversals + 0.02·hairpinRuns)`; geology, the
+access length and the clearance headroom are the omitted non-negative
+terms — the rule 165 corrective after the audited proxy missed exhaustive
+winners at ranks 40/62 and 22/26; additionally every declared family's
+best cheap-feasible candidate holds a shortlist slot, displacing the
+proxy tail so the bound stays 12 and the order stays (proxy, family
+order, id)), detailed stage through
 `design/validation.evaluate_and_validate` + `accepted_mask` (rule 52
 portal transition), clearance report under the evaluator's policy,
 `design/exposure.measure_exposure`, scores:
@@ -585,17 +593,31 @@ portal transition), clearance report under the evaluator's policy,
     development = L/L_ideal + 0.5·meanAccess/reach
     geology     = 10·coreFrac + 3·damageFrac + 5·poorRockFrac + 0.1·crossings
     geometry    = unusedGrade + 0.5·turningFrac + maxAccess/reach + clearanceHeadroom
+                  + 20·meanCurvature(rad/m) + 0.05·reversals + 0.02·hairpinRuns
+                  (Phase 20B.1 D-2: the measured family signature priced in —
+                  a priori round coefficients, never reverse-engineered to
+                  crown a family)
     total       = w_dev·development + w_geo·geology + w_geom·geometry
 
 Ranking `(feasible, round(total, 1e-9), family order, id)`. Measured
-(defaults): TABULAR reference 68 candidates, 6 feasible, winner
-`SWITCHBACK-k2-p+0-CCW-g0.120` (3 825 m, 13/13 levels) in ≈ 3.3 s;
-WARPED_VEIN seed 301 6 feasible, winner `SPIRAL-n1-CCW-e+0-g0.120`
-(14/14 serviceable of 18 required, conservative clearance 20.0 m ≥ 10.6 m)
-in ≈ 9 s; geometry-stress (15 m levels, R_min 20 m) 3 feasible; WARPED_VEIN
-seed 307 honestly returns NO_FEASIBLE_CANDIDATE (all 68 typed). Effective
-Ramp materialization inserts the exact level-crossing vertices and splits
-there; boundary tangents are shared chord directions.
+(defaults, Phase 20B.1 D golden): TABULAR reference 68 candidates,
+1 feasible in the bounded search (exhaustive diagnostic: 10), winner
+`SPIRAL-n1-CCW-e+0-g0.100` (4 679 m, 13/13 levels, 0 reversals,
+0.0232 rad/m, total 3.85 vs 5.05 for the best k1 and 5.86 for the best k2
+switchback) in ≈ 27 s; WARPED_VEIN seed 301 3 feasible (exhaustive 16),
+winner `SPIRAL-n1-CCW-e+0-g0.120` (14/14 serviceable of 18 required) in
+≈ 36 s; geometry-stress (15 m levels, R_min 20 m) SUCCESS with
+`SWITCHBACK-k1-p+20-CCW-g0.100` (21/21 accesses, 27 reversals; the k2
+variants are infeasible on this geometry); WARPED_VEIN seed 307 honestly
+returns NO_FEASIBLE_CANDIDATE (all 68 typed). Shortlist audit (rule 165,
+`golden/phase20b1_shortlist_audit.json`): missedWinner = False on all 7
+golden cases; missedFamilies = [SWITCHBACK] persists on 4 because stage-4
+access feasibility is invisible to any cheap bound (the family slot
+validates the family's best cheap candidate, which can fail the detailed
+gates while a costlier family member would pass) — a recorded
+bounded-shortlist limitation, not relaxed and not outcome-tuned away.
+Effective Ramp materialization inserts the exact level-crossing vertices
+and splits there; boundary tangents are shared chord directions.
 
 ## Phase 20B — ramp junctions and level accesses (`layout/access.py`, rules 153–160)
 

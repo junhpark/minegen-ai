@@ -747,13 +747,27 @@ def test_group_weights_reorder_the_ranking_deterministically(
     )
     res = LayoutV2Search(heavy, world).run()
     base = LayoutV2Search(sc, world).run()
-    assert set(res.ranking) == set(base.ranking)  # feasibility is weight-independent
+    # The cheap proxy is a lower bound of the WEIGHTED total (rule 165), so the
+    # bounded shortlist — hence the validated set — legitimately depends on the
+    # weights. Per-candidate feasibility does not: every candidate that was
+    # detailed-validated under both weightings reaches the same verdict.
+    both = {c.candidate_id for c in res.candidates if c.shortlisted} & {
+        c.candidate_id for c in base.candidates if c.shortlisted
+    }
+    assert both
+    for cid in sorted(both):
+        a, b = res.candidate(cid), base.candidate(cid)
+        assert a is not None and b is not None
+        assert a.status == b.status
+    totals: list[float] = []
     for cid in res.ranking:
         c = res.candidate(cid)
         assert c is not None and c.scores is not None
         assert math.isclose(
             c.scores.total, c.scores.development + c.scores.geology + 50.0 * c.scores.geometry
         )
+        totals.append(c.scores.total)
+    assert totals == sorted(totals)  # heavy ranking is ordered by its own reweighted total
 
 
 def test_progress_events_are_emitted_and_never_change_the_result(
@@ -1189,3 +1203,45 @@ def test_empirical_clearance_error_ratio_is_reported_and_within_bound(
         f"empirical max|error|/spacing: surface {ratio_surface:.3f}, "
         f"taper rim {ratio_rim:.3f} (derived bound {CONSERVATIVE_CLEARANCE_DIAGONAL_FACTOR})"
     )
+
+
+def test_geometry_score_prices_the_family_signature(
+    tabular: tuple[Scenario, SyntheticWorld],
+    tabular_search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
+    """Phase 20B.1 D-2: the geometry group carries the three curvature
+    components with the documented coefficients — recomputable exactly from
+    the candidate's own diagnostics, for every validated candidate."""
+    from minegen.layout.search import (
+        GEOM_CLEARANCE_COEF,
+        GEOM_CURVATURE_COEF,
+        GEOM_HAIRPIN_COEF,
+        GEOM_REVERSAL_COEF,
+        GEOM_TURNING_COEF,
+    )
+
+    _, res = tabular_search
+    validated = [c for c in res.candidates if c.scores is not None and c.diagnostics is not None]
+    assert validated
+    saw_reversals = False
+    for c in validated:
+        s, d = c.scores, c.diagnostics
+        comp = s.components
+        assert comp["meanCurvatureRadPerM"] == pytest.approx(
+            math.radians(d.cumulative_heading_change_deg) / d.length3d
+        )
+        assert comp["headingReversalCount"] == d.heading_reversal_count
+        assert comp["hairpinRunCount"] == d.hairpin_run_count
+        expected = (
+            comp["unusedGradient"]
+            + GEOM_TURNING_COEF * comp["turningFraction"]
+            + comp["maxAccessRatio"]
+            + GEOM_CLEARANCE_COEF * comp["clearanceHeadroom"]
+            + GEOM_CURVATURE_COEF * comp["meanCurvatureRadPerM"]
+            + GEOM_REVERSAL_COEF * comp["headingReversalCount"]
+            + GEOM_HAIRPIN_COEF * comp["hairpinRunCount"]
+        )
+        assert s.geometry == pytest.approx(expected)
+        saw_reversals = saw_reversals or d.heading_reversal_count > 0
+    # the fixture validates both hairpin (switchback) and non-hairpin shapes
+    assert saw_reversals

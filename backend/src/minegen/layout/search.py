@@ -107,6 +107,19 @@ GEO_CROSSING_COEF = 0.1
 #: fraction of reach, clearance headroom below twice the requirement
 GEOM_TURNING_COEF = 0.5
 GEOM_CLEARANCE_COEF = 1.0
+#: GEOMETRY curvature quality (Phase 20B.1 D-2): the diagnostics the
+#: family signature already measures become priced score components. Round
+#: planning coefficients chosen A PRIORI — never reverse-engineered to
+#: crown a family (D-4); a mine whose scale genuinely favours k2 or a
+#: helix must still be able to win.
+#: × mean |Δheading| per metre of 3-D length (rad/m): overall turniness —
+#: a constant-R helix contributes ≈ 20/R, a switchback its hairpin share
+GEOM_CURVATURE_COEF = 20.0
+#: × count of 150–210° same-sense turning runs (switchback hairpins)
+GEOM_REVERSAL_COEF = 0.05
+#: × count of ≥ 150° same-sense turning runs (hairpins AND a spiral's
+#: continuous winding — one long run for a helix)
+GEOM_HAIRPIN_COEF = 0.02
 #: score ties within this tolerance fall through to the family-order and
 #: candidate-id tie-breaks (§28)
 SCORE_TIE_TOLERANCE = 1e-9
@@ -484,13 +497,34 @@ def level_screen_problems(
 def cheap_proxy(
     diag: CenterlineDiagnostics, records: list[LevelServiceRecord], ctx: LayoutContext
 ) -> float:
-    """Stage-3 ordering proxy: length ratio + mean access ratio (the
-    DEVELOPMENT group without the evaluator)."""
+    """Stage-3 ordering proxy (Phase 20B.1 D, rule 165 corrective): a cheap
+    LOWER BOUND of the final weighted total, computable at stage 2 with no
+    evaluator — the DEVELOPMENT group without its non-negative access-length
+    term, plus the FULL GEOMETRY group except its non-negative clearance
+    headroom; GEOLOGY (≥ 0) is omitted. The 20B.1-D shortlist audit showed
+    the old length-only proxy missing exhaustive winners (TABULAR rank
+    40/62, GEOMETRY-STRESS rank 22/26): under the hard gates the surviving
+    candidates are longer but geometrically calmer, which only a bound that
+    prices the measured curvature can rank."""
     drop = float(ctx.portal[2] - ctx.z_last)
     ideal = math.hypot(drop / ctx.ramp.max_gradient, drop)
     access = [r.access_distance for r in records if r.access_distance is not None]
     mean_access = float(np.mean(access)) if access else ctx.cfg.access_reach
-    return diag.length3d / ideal + DEV_ACCESS_COEF * mean_access / ctx.cfg.access_reach
+    max_access = float(np.max(access)) if access else ctx.cfg.access_reach
+    reach = ctx.cfg.access_reach
+    dev_lb = diag.length3d / ideal + DEV_ACCESS_COEF * mean_access / reach
+    total_len = max(diag.length3d, 1e-9)
+    unused_grade = max(0.0, 1.0 - diag.mean_abs_gradient / ctx.ramp.max_gradient)
+    geom_lb = (
+        unused_grade
+        + GEOM_TURNING_COEF * diag.turning_length / total_len
+        + max_access / reach
+        + GEOM_CURVATURE_COEF * math.radians(diag.cumulative_heading_change_deg) / total_len
+        + GEOM_REVERSAL_COEF * diag.heading_reversal_count
+        + GEOM_HAIRPIN_COEF * diag.hairpin_run_count
+    )
+    w = ctx.cfg.weights
+    return w.development * dev_lb + w.geometry * geom_lb
 
 
 def score_candidate(
@@ -523,11 +557,19 @@ def score_candidate(
     turning_frac = diag.turning_length / total_len
     req = cand.clearance.required
     headroom = max(0.0, 1.0 - cand.clearance.conservative_minimum / (2.0 * req)) if req > 0 else 0.0
+    # Phase 20B.1 D-2: curvature quality — the measured family signature
+    # priced into the geometry group (documented coefficients above)
+    mean_curvature = math.radians(diag.cumulative_heading_change_deg) / total_len
+    reversals = float(diag.heading_reversal_count)
+    hairpin_runs = float(diag.hairpin_run_count)
     geometry = (
         unused_grade
         + GEOM_TURNING_COEF * turning_frac
         + max_access / reach
         + GEOM_CLEARANCE_COEF * headroom
+        + GEOM_CURVATURE_COEF * mean_curvature
+        + GEOM_REVERSAL_COEF * reversals
+        + GEOM_HAIRPIN_COEF * hairpin_runs
     )
     total = (
         weights.development * development + weights.geology * geology + weights.geometry * geometry
@@ -550,6 +592,9 @@ def score_candidate(
             "unusedGradient": unused_grade,
             "turningFraction": turning_frac,
             "clearanceHeadroom": headroom,
+            "meanCurvatureRadPerM": mean_curvature,
+            "headingReversalCount": reversals,
+            "hairpinRunCount": hairpin_runs,
         },
     )
 
@@ -667,7 +712,27 @@ class LayoutV2Search:
         # -- STAGE 3: bounded shortlist --------------------------------------- #
         cheap_ok = [c for c in results if c.status == CandidateStatus.NOT_VALIDATED]
         cheap_ok.sort(key=lambda c: (c.cheap_proxy or math.inf, _family_rank(c), c.candidate_id))
-        shortlist = cheap_ok if detailed_all else cheap_ok[: self.cfg.shortlist_size]
+        if detailed_all:
+            shortlist = cheap_ok
+        else:
+            shortlist = cheap_ok[: self.cfg.shortlist_size]
+            # rule 165 family diversity (Phase 20B.1 D): every family's best
+            # cheap-feasible candidate holds a slot, displacing the proxy
+            # tail — the bound stays `shortlist_size`, the order stays
+            # deterministic (proxy, family order, id)
+            missing = [
+                fam for fam in FAMILY_ORDER if not any(c.params.family is fam for c in shortlist)
+            ]
+            extras = [
+                best
+                for fam in missing
+                if (best := next((c for c in cheap_ok if c.params.family is fam), None)) is not None
+            ]
+            if extras:
+                shortlist = shortlist[: max(0, self.cfg.shortlist_size - len(extras))] + extras
+                shortlist.sort(
+                    key=lambda c: (c.cheap_proxy or math.inf, _family_rank(c), c.candidate_id)
+                )
         for c in shortlist:
             c.shortlisted = True
         perf["shortlistSize"] = len(shortlist)
