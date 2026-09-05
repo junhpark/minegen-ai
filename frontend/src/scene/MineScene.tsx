@@ -70,12 +70,21 @@ export function MineScene() {
 
   return (
     <>
-      <ambientLight intensity={walkthroughActive ? 0.32 : 0.4} />
-      {walkthroughActive ? <hemisphereLight args={['#8f99a3', '#3a332b', 0.4]} /> : null}
-      {walkthroughActive ? null : (
+      {/* Phase 20B.2-D: ORBIT / 4D readability is a LIGHTING change only —
+          the shared TUNNEL_MATERIAL / applyRockTexture path and the Phase 15
+          walkthrough rig (0.32 ambient + hemisphere) are untouched. The
+          orbit rig gains a sky/ground hemisphere and a stronger low fill so
+          the excavation meshes (lit mostly from below the terrain) read
+          against the dark background. */}
+      <ambientLight intensity={walkthroughActive ? 0.32 : 0.55} />
+      {walkthroughActive ? (
+        <hemisphereLight args={['#8f99a3', '#3a332b', 0.4]} />
+      ) : (
         <>
-          <directionalLight position={mineToThree(-400, -600, baseZ + 900)} intensity={1.1} />
-          <directionalLight position={mineToThree(500, 300, baseZ - 800)} intensity={0.25} />
+          <hemisphereLight args={['#aab4bf', '#4a423a', 0.45]} />
+          <directionalLight position={mineToThree(-400, -600, baseZ + 900)} intensity={1.3} />
+          <directionalLight position={mineToThree(500, 300, baseZ - 800)} intensity={0.55} />
+          <directionalLight position={mineToThree(-700, 500, baseZ - 400)} intensity={0.35} />
         </>
       )}
 
