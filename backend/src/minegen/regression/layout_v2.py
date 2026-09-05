@@ -332,6 +332,17 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
         ]
         metrics["winnerAccessLengths"] = [_r(a.length3d) for a in plan.accesses]
         metrics["winnerAccessGradients"] = [_r(a.max_gradient) for a in plan.accesses]
+        # Phase 20B.1 O-1/O-2 separation observability (per level, winner)
+        metrics["winnerAccessPlanSeparations"] = [
+            _r(a.junction_to_entry_plan_sep) for a in plan.accesses
+        ]
+        metrics["winnerAccessDist3d"] = [_r(a.junction_to_entry_dist3d) for a in plan.accesses]
+        metrics["winnerExcavationSeparations"] = [
+            _r(a.excavation_separation) for a in plan.accesses
+        ]
+        metrics["winnerTurnoutHeadingChangesDeg"] = [
+            _r(a.turnout_heading_change_deg) for a in plan.accesses
+        ]
         metrics["winnerLength3d"] = _r(d.length3d)
         metrics["winnerVerticalDrop"] = _r(d.vertical_drop)
         metrics["winnerMaxGradient"] = _r(d.max_abs_gradient)
@@ -479,6 +490,12 @@ METRIC_NESTED = (
     "winnerLevelEntries",
     "winnerAccessLengths",
     "winnerAccessGradients",
+    # Phase 20B.1 O: separation observability (added fields; their first
+    # appearance against an older baseline reports as drift "None -> values")
+    "winnerAccessPlanSeparations",
+    "winnerAccessDist3d",
+    "winnerExcavationSeparations",
+    "winnerTurnoutHeadingChangesDeg",
 )
 RUNTIME_COLUMNS = ("realize", "world", "search", "materialize", "total")
 

@@ -555,3 +555,114 @@ def test_preferred_selection_is_deterministic(
             y.connector_word,
         )
     assert a.to_dict() == b.to_dict()
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20B.1 commit O — separation observability (reporting only)
+# --------------------------------------------------------------------------- #
+
+
+def test_separation_metrics_on_synthetic_geometry() -> None:
+    """The four O-1 metrics and the O-2 turnout diagnostic on hand-built
+    geometry with known answers. The excavation separation is envelope
+    separation: centerline distance minus BOTH lateral half-spans
+    (tunnel_width/2 each for the shared profile), with the first
+    SEPARATION_TAPER_EXCLUSION_ARC metres of the branch excluded."""
+    from minegen.layout.access import (
+        SEPARATION_TAPER_EXCLUSION_ARC,
+        LevelAccess,
+        fill_separation_metrics,
+        min_distance_to_polyline,
+        turnout_heading_change_deg,
+    )
+    from minegen.layout.geometry import chainage
+
+    # straight ramp along +Y, descending at 0.12
+    y = np.arange(0.0, 200.0 + 1e-9, 5.0)
+    ramp = np.column_stack([np.zeros_like(y), y, -0.12 * y])
+    ramp_ch = chainage(ramp)
+    j = ramp[20].copy()  # y = 100
+    # branch: straight line perpendicular to the ramp, 30 m to +X at level z
+    n = 16
+    t = np.linspace(0.0, 1.0, n)
+    entry = j + np.array([30.0, 0.0, 0.0])
+    pts = j[None, :] + t[:, None] * (entry - j)[None, :]
+    access = LevelAccess(
+        "L01",
+        float(entry[2]),
+        "OK",
+        None,
+        junction_chainage=float(ramp_ch[20]),
+        junction_position=j,
+        points=pts,
+    )
+    fill_separation_metrics(access, ramp, ramp_ch, tunnel_width=5.0)
+    assert access.junction_to_entry_plan_sep == pytest.approx(30.0)
+    assert access.junction_to_entry_dist3d == pytest.approx(30.0)
+    # nearest far-sample to the ramp is the first sample at arc >= exclusion
+    arc = chainage(pts)
+    far = pts[arc >= SEPARATION_TAPER_EXCLUSION_ARC]
+    expected = float(np.min(min_distance_to_polyline(far, ramp)))
+    assert access.ramp_centerline_distance == pytest.approx(expected)
+    assert expected == pytest.approx(float(far[0, 0]), abs=0.2)  # ~ its x offset
+    assert access.excavation_separation == pytest.approx(expected - 5.0)
+    # straight ramp: zero heading change through the turnout window
+    assert access.turnout_heading_change_deg == pytest.approx(0.0, abs=1e-9)
+
+    # turnout inside a curve: an R = 18 m arc accumulates ~2*25/18 rad over
+    # the +-25 m window (the arc is 72 m long so the window never truncates)
+    ang = np.linspace(0.0, 4.0, 321)  # rad along the arc
+    arc_pts = np.column_stack([18.0 * np.sin(ang), 18.0 * (1 - np.cos(ang)), -2.16 * ang])
+    arc_ch = chainage(arc_pts)
+    mid = float(arc_ch[160])
+    got = turnout_heading_change_deg(arc_pts, arc_ch, mid)
+    assert got == pytest.approx(math.degrees(50.0 / 18.0), rel=0.05)
+
+    # branch shorter than the taper exclusion: separation is None, not 0
+    short = LevelAccess(
+        "L02",
+        0.0,
+        "OK",
+        None,
+        junction_chainage=float(ramp_ch[20]),
+        junction_position=j,
+        points=pts[:4],  # 6 m
+    )
+    fill_separation_metrics(short, ramp, ramp_ch, tunnel_width=5.0)
+    assert short.excavation_separation is None
+    assert short.ramp_centerline_distance is None
+    assert short.junction_to_entry_plan_sep == pytest.approx(6.0)
+
+
+def test_separation_metrics_reported_for_every_selected_access(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    """O-1/O-3: every OK access of a real plan carries the four metrics and
+    the payload / summary expose them; the metrics never gate feasibility in
+    commit O (an access with a sub-width pillar is still OK here)."""
+    sc, world = tabular
+    s, res = search
+    _, plan = _plan(sc, world, s, res)
+    assert plan.feasible
+    for a in plan.accesses:
+        assert a.junction_to_entry_plan_sep is not None and a.junction_to_entry_plan_sep > 0.0
+        assert a.junction_to_entry_dist3d is not None
+        assert a.junction_to_entry_dist3d >= a.junction_to_entry_plan_sep - 1e-9
+        assert a.turnout_heading_change_deg is not None
+        assert a.turnout_heading_change_deg >= 0.0
+        # branches are ~25-30 m >= the 15 m exclusion, so the pillar exists
+        assert a.excavation_separation is not None
+        assert a.ramp_centerline_distance is not None
+        assert a.excavation_separation == pytest.approx(a.ramp_centerline_distance - 5.0)
+        d = a.to_dict(include_points=False)
+        assert {
+            "junctionToEntryPlanSep",
+            "junctionToEntryDist3d",
+            "rampCenterlineDistance",
+            "excavationSeparation",
+            "turnoutHeadingChangeDeg",
+        } <= set(d)
+    summary = plan.summary()
+    assert summary["minJunctionToEntryPlanSep"] is not None
+    assert summary["minExcavationSeparation"] is not None
+    assert summary["maxTurnoutHeadingChangeDeg"] is not None

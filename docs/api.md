@@ -106,7 +106,18 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      lengthDeviationFromPreferred and selectionCost;
                                                      the summary carries the preferred length, its
                                                      source (DEFAULT_6X_TUNNEL_WIDTH | EXPLICIT) and
-                                                     the mean / max |ΔP| (rule 163)
+                                                     the mean / max |ΔP| (rule 163). Phase 20B.1 O
+                                                     separation observability per access:
+                                                     junctionToEntryPlanSep, junctionToEntryDist3d,
+                                                     rampCenterlineDistance, excavationSeparation
+                                                     (envelope-to-envelope rock pillar; branch
+                                                     samples within the taper exclusion arc of the
+                                                     junction excluded) and turnoutHeadingChangeDeg
+                                                     (cumulative |Δheading| of the delivered main
+                                                     ramp over junction ± 25 m chainage); summary
+                                                     aggregates minJunctionToEntryPlanSep,
+                                                     minExcavationSeparation,
+                                                     maxTurnoutHeadingChangeDeg
                                                      409 LEVEL_ACCESSES_NOT_GENERATED if missing
     GET  …/design/ramp-source                        {activeSource, owningArtifact, available, …}
     PUT  …/design/ramp-source {activeSource}         LEGACY | LAYOUT_V2 (409 LAYOUT_V2_NOT_SELECTED

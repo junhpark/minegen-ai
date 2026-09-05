@@ -75,6 +75,15 @@ PREFERRED_ACCESS_WIDTH_FACTOR = 6.0
 #: planning coefficient (closeout v3 §2.D) — provisional, tuned against manual
 #: acceptance, NOT a permanent engineering invariant and NOT a user weight.
 LONG_ACCESS_COEF = 0.5
+#: Phase 20B.1 O-1 observability: branch samples closer than this ALONG THE
+#: BRANCH (3-D arc, m) to the junction are excluded from the excavation-
+#: separation metric — the taper there is physically attached to the ramp by
+#: construction, so including it would always report 0
+SEPARATION_TAPER_EXCLUSION_ARC = 15.0
+#: Phase 20B.1 O-2 observability: ramp-chainage half-window (m) around a
+#: junction over which the delivered main ramp's cumulative heading change is
+#: reported (diagnostic only in commit O; commit B gates on it)
+TURNOUT_STRAIGHT_BUFFER = 25.0
 
 
 def effective_preferred_access_length(
@@ -444,6 +453,14 @@ class LevelAccess:
     preferred_length: float | None = None
     length_deviation: float | None = None
     selection_cost: float | None = None
+    #: Phase 20B.1 O-1/O-2 observability (reporting only, never selection):
+    #: junction ↔ entry separations, the rock pillar to the main ramp and the
+    #: turnout straightness — see ``fill_separation_metrics``
+    junction_to_entry_plan_sep: float | None = None
+    junction_to_entry_dist3d: float | None = None
+    ramp_centerline_distance: float | None = None
+    excavation_separation: float | None = None
+    turnout_heading_change_deg: float | None = None
 
     @property
     def ok(self) -> bool:
@@ -487,6 +504,11 @@ class LevelAccess:
             "effectivePreferredAccessLength": self.preferred_length,
             "lengthDeviationFromPreferred": self.length_deviation,
             "selectionCost": self.selection_cost,
+            "junctionToEntryPlanSep": self.junction_to_entry_plan_sep,
+            "junctionToEntryDist3d": self.junction_to_entry_dist3d,
+            "rampCenterlineDistance": self.ramp_centerline_distance,
+            "excavationSeparation": self.excavation_separation,
+            "turnoutHeadingChangeDeg": self.turnout_heading_change_deg,
         }
         if include_points and self.points is not None:
             d["centerline"] = {
@@ -542,6 +564,12 @@ class LevelAccessPlan:
             "maxAbsDeviationFromPreferred": (
                 max(abs(a.length_deviation or 0.0) for a in ok) if ok else None
             ),
+            # Phase 20B.1 O-1/O-2 observability aggregates (None until stage 4
+            # selected the access, or when a branch is shorter than the taper
+            # exclusion arc)
+            "minJunctionToEntryPlanSep": _min_or_none(a.junction_to_entry_plan_sep for a in ok),
+            "minExcavationSeparation": _min_or_none(a.excavation_separation for a in ok),
+            "maxTurnoutHeadingChangeDeg": _max_or_none(a.turnout_heading_change_deg for a in ok),
         }
 
     def to_dict(self, *, include_points: bool = True) -> dict[str, Any]:
@@ -549,6 +577,100 @@ class LevelAccessPlan:
             "summary": self.summary(),
             "accesses": [a.to_dict(include_points=include_points) for a in self.accesses],
         }
+
+
+def _min_or_none(values: Any) -> float | None:
+    xs = [v for v in values if v is not None]
+    return float(min(xs)) if xs else None
+
+
+def _max_or_none(values: Any) -> float | None:
+    xs = [v for v in values if v is not None]
+    return float(max(xs)) if xs else None
+
+
+def min_distance_to_polyline(points: FloatArray, polyline: FloatArray) -> FloatArray:
+    """Minimum 3-D distance from each of ``points`` (N, 3) to the segments of
+    ``polyline`` (M, 3). Exact point-to-segment distances, fully vectorized
+    (N × M pairs; the access branch has tens of samples)."""
+    p = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    a, b = polyline[:-1], polyline[1:]
+    ab = b - a
+    denom = np.einsum("md,md->m", ab, ab)
+    denom = np.where(denom < 1e-12, 1.0, denom)
+    ap = p[:, None, :] - a[None, :, :]
+    t = np.clip(np.einsum("nmd,md->nm", ap, ab) / denom, 0.0, 1.0)
+    closest = a[None, :, :] + t[:, :, None] * ab[None, :, :]
+    return np.asarray(np.linalg.norm(p[:, None, :] - closest, axis=2).min(axis=1))
+
+
+def turnout_heading_change_deg(
+    ramp_points: FloatArray,
+    ramp_chainage: FloatArray,
+    junction_chainage: float,
+    half_window: float = TURNOUT_STRAIGHT_BUFFER,
+) -> float:
+    """Cumulative |Δheading| (degrees) of the DELIVERED main-ramp centerline
+    over the chainage window ``junction ± half_window`` (O-2). 0.0 for a
+    straight window; a junction inside a curve or next to a hairpin reports
+    the turn it sits in. Diagnostic in commit O; commit B gates on it."""
+    lo, hi = junction_chainage - half_window, junction_chainage + half_window
+    # edges overlapping the window: edge i spans [ch[i], ch[i+1]]
+    i0 = int(np.searchsorted(ramp_chainage, lo, side="right") - 1)
+    i1 = int(np.searchsorted(ramp_chainage, hi, side="left"))
+    i0 = max(i0, 0)
+    i1 = min(i1, ramp_points.shape[0] - 1)
+    if i1 - i0 < 2:
+        return 0.0
+    az = headings(ramp_points[i0 : i1 + 1])
+    delta = unwrap_delta(az) if az.shape[0] > 1 else np.zeros(0)
+    return float(math.degrees(np.sum(np.abs(delta))))
+
+
+def fill_separation_metrics(
+    access: LevelAccess,
+    ramp_points: FloatArray,
+    ramp_chainage: FloatArray,
+    tunnel_width: float,
+) -> None:
+    """Phase 20B.1 O-1/O-2 observability of a SELECTED access — reporting
+    only, never part of candidate selection (commit O changes no behavior).
+
+    * ``junction_to_entry_plan_sep`` / ``junction_to_entry_dist3d``: straight
+      horizontal / 3-D distance junction → level entry.
+    * ``ramp_centerline_distance``: minimum 3-D distance from the branch
+      centerline to the FULL main-ramp centerline polyline, over branch
+      samples at least ``SEPARATION_TAPER_EXCLUSION_ARC`` m ALONG THE BRANCH
+      from the junction (the taper right at the turnout is physically
+      attached to the ramp by construction and would always report 0).
+    * ``excavation_separation`` (the rock pillar): the distance above minus
+      the sum of the two lateral excavation half-spans about their floor
+      centerlines. Branch and main ramp are driven with the SAME
+      ``RampConstraints`` profile here, so the sum is
+      ``tunnel_width/2 + tunnel_width/2``; the metric is defined as
+      envelope-to-envelope separation, NOT as a generic ``− tunnel_width``
+      rule. ``None`` when every branch sample lies inside the taper
+      exclusion (branch shorter than the exclusion arc).
+    * ``turnout_heading_change_deg``: see ``turnout_heading_change_deg``.
+    """
+    if access.points is None or access.junction_position is None:
+        return
+    pts = access.points
+    entry = pts[-1]
+    j = np.asarray(access.junction_position, dtype=np.float64)
+    access.junction_to_entry_plan_sep = float(np.hypot(*(entry[:2] - j[:2])))
+    access.junction_to_entry_dist3d = float(np.linalg.norm(entry - j))
+    arc = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
+    far = pts[arc >= SEPARATION_TAPER_EXCLUSION_ARC]
+    if far.shape[0]:
+        d = float(np.min(min_distance_to_polyline(far, ramp_points)))
+        access.ramp_centerline_distance = d
+        half_span_sum = tunnel_width / 2.0 + tunnel_width / 2.0
+        access.excavation_separation = d - half_span_sum
+    if access.junction_chainage is not None:
+        access.turnout_heading_change_deg = turnout_heading_change_deg(
+            ramp_points, ramp_chainage, float(access.junction_chainage)
+        )
 
 
 _REASON_MAP = {
@@ -624,6 +746,7 @@ def plan_level_accesses(
     g_max = cfg.max_gradient if cfg.max_gradient is not None else ramp.max_gradient
     r_min = cfg.min_turn_radius if cfg.min_turn_radius is not None else ramp.min_turn_radius
     preferred, preferred_source = effective_preferred_access_length(cfg, ramp)
+    ramp_ch = chainage(ramp_points)  # O-2 turnout window (observability only)
     used: list[float] = []
     accesses: list[LevelAccess] = []
     for lv, anchor in zip(levels, anchors, strict=True):
@@ -771,6 +894,9 @@ def plan_level_accesses(
         chosen.candidates_tried = access.candidates_tried
         chosen.candidates_valid = access.candidates_valid
         chosen.rejection_counts = rejections
+        # O-1/O-2 observability of the SELECTED branch only — computed after
+        # the selection so it can never influence it (commit O contract)
+        fill_separation_metrics(chosen, ramp_points, ramp_ch, ramp.tunnel_width)
         used.append(float(chosen.junction_chainage or 0.0))
         accesses.append(chosen)
     return LevelAccessPlan(
