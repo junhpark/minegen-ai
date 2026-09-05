@@ -602,6 +602,13 @@ def batch_render(swept: list[_Swept]) -> RenderMesh:
                         "levelId": s.spec.level_id,
                         "indexOffset": cursor,
                         "indexCount": int(idx.shape[0]),
+                        # Phase 20B.2-F: the piece's own progressive-reveal
+                        # metadata (ring-interval index stride + ring chainage
+                        # fractions) survives batching so a viewer can cut the
+                        # piece at its last completed ring (visualization only)
+                        "indexStride": prim.extras["indexStride"],
+                        "ringIntervalCount": prim.extras["ringIntervalCount"],
+                        "ringChainageFractions": prim.extras["ringChainageFractions"],
                     }
                 )
                 tube_idx[kind].append(idx)

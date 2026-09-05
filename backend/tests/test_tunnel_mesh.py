@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 
 import numpy as np
 import pytest
@@ -389,3 +390,60 @@ def test_launchability_rejects_trapped_terminal_pose() -> None:
     assert all(e is None for e in evals)  # trapped: not launchable
     a0 = HybridAStar(ev0, sc.ramp, sc.design.search)
     assert any(e is not None for e in a0.evaluate_primitives(prims, True, True))
+
+
+# -- Phase 20B.2-F progressive-reveal metadata (visualization only) -----------
+
+
+def test_segment_primitive_index_prefix_is_a_chainage_prefix() -> None:
+    """The SEGMENT primitive extras carry ``indexStride`` (indices per ring
+    interval), ``ringIntervalCount`` and ``ringChainageFractions`` (0 → 1 per
+    ring); the first ``m × indexStride`` indices reference only the first
+    ``m + 1`` rings, so a viewer can cut the tube at the last completed ring
+    of a chainage progress fraction without regenerating geometry."""
+    ramp = RampConstraints()
+    profile = TunnelProfile()
+    shape = build_profile(ramp, profile)
+    p1, t1 = _straight(np.array([0.0, 0.0, -40.0]), 0.3, -0.10, 60.0, n=7)
+    p2, t2 = _straight(p1[-1], 0.3, -0.10, 45.0, n=5)
+    chain = build_ring_chain([_seg(p1, t1, t1, "L01"), _seg(p2, t2, t2, "L02")], 4.0)
+    mesh = build_logical_mesh(chain, shape)
+    render = build_render_mesh(
+        mesh,
+        chain,
+        shape,
+        profile.crease_angle_deg,
+        [
+            {"levelId": "L01", "effectiveSource": "SMOOTHED"},
+            {"levelId": "L02", "effectiveSource": "SMOOTHED"},
+        ],
+    )
+    segs = [p for p in render.primitives if p.extras["role"] == "SEGMENT"]
+    assert [p.extras["segmentId"] for p in segs] == ["L01", "L02"]
+    for s, prim in enumerate(segs):
+        stride = prim.extras["indexStride"]
+        n_int = prim.extras["ringIntervalCount"]
+        fr = prim.extras["ringChainageFractions"]
+        assert stride == 6 * mesh.k
+        assert prim.indices.shape[0] == n_int * stride
+        assert len(fr) == n_int + 1 and fr[0] == 0.0 and fr[-1] == 1.0
+        assert all(b > a for a, b in pairwise(fr))
+        # ring chainage fractions follow the ACTUAL ring chainage of the chain
+        b0, b1 = int(chain.boundary_rings[s]), int(chain.boundary_rings[s + 1])
+        expect = (chain.chainage[b0 : b1 + 1] - chain.chainage[b0]) / (
+            chain.chainage[b1] - chain.chainage[b0]
+        )
+        np.testing.assert_allclose(fr, expect, atol=1e-6)
+        # prefix property: the first m intervals touch only rings b0..b0+m —
+        # render vertices are laid out ring by ring, so every referenced
+        # vertex position must equal one of those rings' profile points
+        ring_pos = mesh.positions[: mesh.ring_count * mesh.k].reshape(mesh.ring_count, mesh.k, 3)
+        for m in (1, n_int // 2, n_int):
+            used = render.positions[prim.indices[: m * stride]].astype(np.float64)
+            allowed = ring_pos[b0 : b0 + m + 1].reshape(-1, 3)
+            d = np.min(np.linalg.norm(used[:, None, :] - allowed[None, :, :], axis=2), axis=1)
+            assert float(d.max()) < 1e-5
+            beyond = ring_pos[b0 + m + 1 :].reshape(-1, 3)
+            if beyond.shape[0]:
+                d2 = np.min(np.linalg.norm(used[:, None, :] - beyond[None, :, :], axis=2), axis=1)
+                assert float(d2.min()) > 1e-3

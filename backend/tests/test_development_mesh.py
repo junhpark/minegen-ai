@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import math
+from itertools import pairwise
 
 import numpy as np
 import pytest
@@ -216,6 +217,15 @@ def test_every_development_receives_a_mesh_with_the_declared_endpoint_policy(
     }
     offsets = [r["indexOffset"] for r in ranges]
     assert offsets == sorted(offsets) and offsets[0] == 0
+    # Phase 20B.2-F: every batched piece keeps its progressive-reveal
+    # metadata (ring-interval index stride + ring chainage fractions) and the
+    # ranges tile the primitive's index buffer contiguously
+    for r in ranges:
+        assert r["indexCount"] == r["ringIntervalCount"] * r["indexStride"]
+        fr = r["ringChainageFractions"]
+        assert len(fr) == r["ringIntervalCount"] + 1 and fr[0] == 0.0 and fr[-1] == 1.0
+        assert all(b > a for a, b in pairwise(fr))
+    assert all(a["indexOffset"] + a["indexCount"] == b["indexOffset"] for a, b in pairwise(ranges))
     n_vertices = doc["accessors"][0]["count"]  # type: ignore[index]
     positions = np.frombuffer(binary[: n_vertices * 12], dtype=np.float32)
     assert np.all(np.isfinite(positions))

@@ -293,7 +293,14 @@ volumetric traversal is deliberately conservative — a decline segment is
 walkable exactly from its ACTIVE transition (`stateAt` exact-boundary at
 `progressEndDay`) and never before. Partially excavated tunnel volume is
 never fabricated; a future phase would need backend-authored temporally
-splittable mesh geometry to do better. Availability is resolved ONLY
+splittable mesh geometry to do better. Phase 20B.2-F delivered that for the
+4D ORBIT view only (rule 173): the ramp / development GLB SEGMENT
+primitives carry ring-interval reveal metadata and
+`scene/TemporalExcavationLayer.tsx` shows the actual excavation meshes cut
+at the last completed ring of the Phase 10 progress through draw ranges /
+draw groups over the shared loaded buffers (`timeline/excavationReveal.ts`,
+fail-closed mapping; unmapped developments keep their centerline). The
+walkthrough volumetric rule above is unchanged. Availability is resolved ONLY
 through each RAMP `DevelopmentTimeline.geometryRef` →
 `decline_smoothed.json` segmentIndex with exact runtime identity
 validation (`runtime.segmentId == smoothed.levelId`, counts equal, each

@@ -1359,3 +1359,23 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      is never smaller than `len(FAMILY_ORDER)` (schema-validated, sized from
      the enumeration, never a literal), so the bound and the per-family
      reserved slot (rule 165) hold together.
+
+173. Progressive excavation reveal is VISUALIZATION over shared buffers
+     (Phase 20B.2-F). Every SEGMENT primitive of the Phase 06 ramp GLB and
+     every batched piece range of the Phase 20B development GLB is emitted
+     ring interval by ring interval in chainage order and carries
+     `indexStride`, `ringIntervalCount` and `ringChainageFractions`; the 4D
+     view shows a DEVELOPING excavation as the index PREFIX of its last
+     COMPLETED ring for the Phase 10 progress (a draw range on a per-segment
+     primitive, draw groups on a batched primitive) over geometry that
+     shares the loaded vertex / index buffers. Nothing is re-swept,
+     re-generated or copied per day or per frame, the cached GLB scene is
+     never mutated, and the walkthrough / static layers are untouched. The
+     mapping is timeline-authoritative through each `geometryRef`'s OWNING
+     artifact (RAMP → primitive `segmentId`, LEVEL_ACCESS → piece
+     `LEVEL_ACCESS:<levelId>`, DRIFT / CROSSCUT → the levels.json
+     development id) and fails CLOSED per development: an unmapped
+     development keeps its centerline rendering, never a guessed mesh. The
+     revealed volume is a display cut aligned to backend rings — not
+     engineering excavation geometry and never persisted (rule 115 analogue).
+     Batched caps are shown only once every piece of their kind is complete.

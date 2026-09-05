@@ -1,4 +1,4 @@
-import { Suspense } from 'react'
+import { Suspense, useCallback, useState } from 'react'
 import { API_BASE_URL } from '@/api/client'
 import { Grid, Text } from '@react-three/drei'
 import { mineToThree } from '@/geometry/coordinateTransform'
@@ -21,6 +21,7 @@ import { LevelDevelopmentLayer } from './LevelDevelopmentLayer'
 import { NetworkLayer } from './NetworkLayer'
 import { StopeLayer } from './StopeLayer'
 import { TimelineDevelopmentLayer } from './TimelineDevelopmentLayer'
+import { TemporalExcavationLayer } from './TemporalExcavationLayer'
 import { TimelineStopeLayer } from './TimelineStopeLayer'
 import { CommunicationRouterLayer } from './CommunicationRouterLayer'
 import { CommunicationCoverageLayer } from './CommunicationCoverageLayer'
@@ -54,6 +55,22 @@ export function MineScene() {
       ? temporalActiveSegmentIds(scene?.timeline, scene?.smoothedDecline, walkthroughSnapshotDay)
       : null
   const timelineActive = mode === '4D' && scene?.timeline?.status === 'SUCCESS'
+  // Phase 20B.2-F: edge ids the progressive excavation layer covers (their
+  // centerlines are not duplicated); empty when the layer is not mounted
+  const [excavationCovered, setExcavationCovered] = useState<ReadonlySet<string>>(() => new Set())
+  const onExcavationCoverage = useCallback(
+    (ids: string[]) =>
+      setExcavationCovered((prev) =>
+        prev.size === ids.length && ids.every((id) => prev.has(id)) ? prev : new Set(ids),
+      ),
+    [],
+  )
+  const excavation4D =
+    timelineActive &&
+    scene?.tunnelMesh?.status === 'SUCCESS' &&
+    !!scene.tunnelMesh.meshUrl &&
+    !!scene.smoothedDecline &&
+    visible.has('tunnelMesh')
   // rules 88/91: INFRASTRUCTURE mode only; routers are never shown as
   // time-valid installed assets in 4D (installation timing is not modeled)
   const communicationActive = communicationLayersActive(mode, scene?.communication ?? null)
@@ -161,12 +178,30 @@ export function MineScene() {
       {sensorsActive && scene?.sensors && visible.has('sensorCoverage') ? (
         <SensorCoverageLayer sensors={scene.sensors} />
       ) : null}
+      {excavation4D && scene?.timeline && scene.smoothedDecline && scene.tunnelMesh?.meshUrl ? (
+        <Suspense fallback={null}>
+          <TemporalExcavationLayer
+            rampUrl={scene.tunnelMesh.meshUrl}
+            developmentUrl={
+              scene.developmentMesh?.status === 'SUCCESS' && visible.has('developmentMesh')
+                ? scene.developmentMesh.meshUrl
+                : null
+            }
+            timeline={scene.timeline}
+            smoothed={scene.smoothedDecline}
+            levels={scene.levels ?? null}
+            levelAccesses={scene.levelAccesses ?? null}
+            onCoverage={onExcavationCoverage}
+          />
+        </Suspense>
+      ) : null}
       {timelineActive && scene?.timeline && scene.smoothedDecline && scene.levels ? (
         <TimelineDevelopmentLayer
           timeline={scene.timeline}
           smoothed={scene.smoothedDecline}
           levels={scene.levels}
           levelAccesses={scene.levelAccesses}
+          skipEdgeIds={excavation4D ? excavationCovered : null}
         />
       ) : null}
       {timelineActive && scene?.timeline && scene.stopes ? (

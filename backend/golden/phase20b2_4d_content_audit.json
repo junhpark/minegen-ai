@@ -1,0 +1,307 @@
+{
+ "label": "phase20b2-e-4d-content-source-audit",
+ "purpose": "Phase 20B.2-E: what the 4D timeline payload actually contains on the manual-acceptance scenarios (A TABULAR LONGHOLE seed 42, B WARPED 301, C CUT_AND_FILL seed 42), full API chain world -> layout-v2 -> activate -> levels -> network -> stopes -> timeline; diagnostic evidence, not a golden contract",
+ "classification": {
+  "A": "timeline SUCCESS with RAMP 14 / LEVEL_ACCESS 13 / DRIFT 221 / CROSSCUT 221 developments (layout_v2_selected.json 14, level_accesses.json 13, levels.json 442), every geometryRef resolvable, scene.levels SUCCESS (442 developments), scene.levelAccesses SUCCESS 13/13, 4D layer mount condition true -> NOT class A/B; no class-C renderer defect found by content audit (the line layer resolves the same refs). Drifts / crosscuts appear in 4D only after their scheduled DEVELOPING start day.",
+  "B": "class B \u2014 levels FAILED typed (LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY, Phase 20B boundary), network FAILED (prerequisite levels), stopes 422 UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT, timeline 409 STOPES_NOT_GENERATED: no 4D at all for WARPED_VEIN; the design panel shows each typed failure; scene.levels is a FAILED payload (truthy) so the mount condition alone would not block \u2014 timeline absence does.",
+  "C": "class B \u2014 levels SUCCESS (26 backbone drifts, productionDevelopment UNSUPPORTED_METHOD), network SUCCESS, stopes FAILED (UNSUPPORTED_METHOD CUT_AND_FILL, rule 78), timeline FAILED (prerequisite stopes) with 0 developments: 4D unavailable by the CUT_AND_FILL v0.1 boundary, shown as the timeline failure reason in the design panel.",
+  "adit": "horizontal surface entries are not part of the PORTAL + decline structure; recorded as Phase 20C/20D backlog (docs/roadmap.md)"
+ },
+ "cases": {
+  "A": {
+   "scenarioId": "26c4a0fc1bfe",
+   "steps": {
+    "layout": [
+     200,
+     "SUCCESS",
+     "SPIRAL-n1-CW-e+0-g0.120"
+    ],
+    "activate": [
+     200,
+     null
+    ],
+    "levels": [
+     200,
+     "SUCCESS",
+     null,
+     null,
+     null
+    ],
+    "network": [
+     200,
+     "SUCCESS",
+     null,
+     null
+    ],
+    "stopes": [
+     200,
+     "SUCCESS",
+     null,
+     null
+    ],
+    "timeline": [
+     200,
+     "SUCCESS",
+     null,
+     null
+    ]
+   },
+   "sceneStatus": 200,
+   "scene": {
+    "levels": {
+     "status": "SUCCESS",
+     "entrySource": "LEVEL_ACCESS",
+     "developments": 442,
+     "byKind": {
+      "DRIFT": 221,
+      "CROSSCUT": 221
+     },
+     "production": "IMPLEMENTED"
+    },
+    "levelAccesses": {
+     "status": "SUCCESS",
+     "accesses": 13,
+     "ok": 13
+    },
+    "network": {
+     "status": "SUCCESS",
+     "nodes": 470,
+     "edges": 469
+    },
+    "stopes": {
+     "status": "SUCCESS",
+     "count": 204
+    },
+    "smoothedDecline": {
+     "status": "SUCCESS",
+     "sourceKind": "PARAMETRIC_V2",
+     "segments": 14
+    },
+    "rampSource": {
+     "activeSource": "LAYOUT_V2",
+     "owningArtifact": "layout_v2_selected.json",
+     "available": true,
+     "legacyAvailable": false,
+     "layoutV2Available": true,
+     "layoutV2Selected": true,
+     "sourceKind": "PARAMETRIC_V2",
+     "sourceRevision": "a7a396b74c7050cb",
+     "candidateId": "SPIRAL-n1-CW-e+0-g0.120",
+     "family": "SPIRAL",
+     "status": "SUCCESS",
+     "segmentCount": 14
+    },
+    "timeline": {
+     "status": "SUCCESS",
+     "developments": 469,
+     "byEdgeType": {
+      "RAMP": 14,
+      "LEVEL_ACCESS": 13,
+      "DRIFT": 221,
+      "CROSSCUT": 221
+     },
+     "byArtifact": {
+      "layout_v2_selected.json": 14,
+      "level_accesses.json": 13,
+      "levels.json": 442
+     },
+     "unresolvedGeometryRefs": [],
+     "stopes": 204,
+     "horizonDays": null
+    },
+    "layerMountCondition": {
+     "timelineActive && scene.timeline && scene.smoothedDecline && scene.levels": true
+    }
+   }
+  },
+  "B": {
+   "scenarioId": "c64bd55a0a65",
+   "steps": {
+    "layout": [
+     200,
+     "SUCCESS",
+     "SPIRAL-n1-CCW-e+0-g0.120"
+    ],
+    "activate": [
+     200,
+     null
+    ],
+    "levels": [
+     200,
+     "FAILED",
+     "LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY: level drifts / crosscuts for a non-TABULAR orebody are not implemented (Phase 20B boundary); ramp junctions and level accesses are available",
+     null,
+     null
+    ],
+    "network": [
+     200,
+     "FAILED",
+     "prerequisite levels artifact status 'FAILED' is not consumable (rule 74)",
+     null
+    ],
+    "stopes": [
+     422,
+     null,
+     null,
+     {
+      "code": "UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT",
+      "message": "orebody type 'WARPED_VEIN' is valid for Phase 17 world generation, but the current legacy decline/access layout supports TABULAR orebodies only; generalized mine layout is deferred to Phase 20 (Parametric Layout Family Search)"
+     }
+    ],
+    "timeline": [
+     409,
+     null,
+     null,
+     {
+      "code": "STOPES_NOT_GENERATED",
+      "message": "scenario 'c64bd55a0a65' has no planned stopes; POST \u2026/design/stopes first"
+     }
+    ]
+   },
+   "sceneStatus": 200,
+   "scene": {
+    "levels": {
+     "status": "FAILED",
+     "entrySource": "LEGACY_RAMP_SEGMENT",
+     "developments": 0,
+     "byKind": {
+      "DRIFT": 0,
+      "CROSSCUT": 0
+     },
+     "production": null
+    },
+    "levelAccesses": {
+     "status": "SUCCESS",
+     "accesses": 14,
+     "ok": 14
+    },
+    "network": {
+     "status": "FAILED",
+     "nodes": null,
+     "edges": null
+    },
+    "stopes": null,
+    "smoothedDecline": {
+     "status": "SUCCESS",
+     "sourceKind": "PARAMETRIC_V2",
+     "segments": 15
+    },
+    "rampSource": {
+     "activeSource": "LAYOUT_V2",
+     "owningArtifact": "layout_v2_selected.json",
+     "available": true,
+     "legacyAvailable": false,
+     "layoutV2Available": true,
+     "layoutV2Selected": true,
+     "sourceKind": "PARAMETRIC_V2",
+     "sourceRevision": "04cacc2e3a07845a",
+     "candidateId": "SPIRAL-n1-CCW-e+0-g0.120",
+     "family": "SPIRAL",
+     "status": "SUCCESS",
+     "segmentCount": 15
+    },
+    "timeline": null,
+    "layerMountCondition": {
+     "timelineActive && scene.timeline && scene.smoothedDecline && scene.levels": false
+    }
+   }
+  },
+  "C": {
+   "scenarioId": "90acea69b00e",
+   "steps": {
+    "layout": [
+     200,
+     "SUCCESS",
+     "SPIRAL-n1-CW-e+0-g0.120"
+    ],
+    "activate": [
+     200,
+     null
+    ],
+    "levels": [
+     200,
+     "SUCCESS",
+     null,
+     null,
+     null
+    ],
+    "network": [
+     200,
+     "SUCCESS",
+     null,
+     null
+    ],
+    "stopes": [
+     200,
+     "FAILED",
+     "UNSUPPORTED_METHOD: CUT_AND_FILL is reserved but not implemented in v0.1 \u2014 no silent fallback to LONGHOLE_OPEN_STOPING (rule 78)",
+     null
+    ],
+    "timeline": [
+     200,
+     "FAILED",
+     "prerequisite stopes artifact status 'FAILED' is not consumable \u2014 partial geometry is never scheduled",
+     null
+    ]
+   },
+   "sceneStatus": 200,
+   "scene": {
+    "levels": {
+     "status": "SUCCESS",
+     "entrySource": "LEVEL_ACCESS",
+     "developments": 26,
+     "byKind": {
+      "DRIFT": 26,
+      "CROSSCUT": 0
+     },
+     "production": "UNSUPPORTED_METHOD"
+    },
+    "levelAccesses": {
+     "status": "SUCCESS",
+     "accesses": 13,
+     "ok": 13
+    },
+    "network": {
+     "status": "SUCCESS",
+     "nodes": 54,
+     "edges": 53
+    },
+    "stopes": {
+     "status": "FAILED",
+     "count": 0
+    },
+    "smoothedDecline": {
+     "status": "SUCCESS",
+     "sourceKind": "PARAMETRIC_V2",
+     "segments": 14
+    },
+    "rampSource": {
+     "activeSource": "LAYOUT_V2",
+     "owningArtifact": "layout_v2_selected.json",
+     "available": true,
+     "legacyAvailable": false,
+     "layoutV2Available": true,
+     "layoutV2Selected": true,
+     "sourceKind": "PARAMETRIC_V2",
+     "sourceRevision": "bdae204831ade120",
+     "candidateId": "SPIRAL-n1-CW-e+0-g0.120",
+     "family": "SPIRAL",
+     "status": "SUCCESS",
+     "segmentCount": 14
+    },
+    "timeline": {
+     "status": "FAILED",
+     "developments": 0,
+     "byEdgeType": {},
+     "byArtifact": {},
+     "unresolvedGeometryRefs": [],
+     "stopes": 0,
+     "horizonDays": null
+    },
+    "layerMountCondition": {
+     "timelineActive && scene.timeline && scene.smoothedDecline && scene.levels": true
+    }
+   }
+  }
+ }
+}
