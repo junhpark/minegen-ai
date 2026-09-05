@@ -331,6 +331,15 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
             for a in accesses["accesses"]
         ]
         metrics["winnerAccessLengths"] = [_r(a.length3d) for a in plan.accesses]
+        # Phase 20B.2-A one-turn CS observability (per level, winner)
+        metrics["winnerAccessTerminalHeadingMismatchDeg"] = [
+            _r(a.terminal_heading_mismatch_deg) for a in plan.accesses
+        ]
+        metrics["winnerAccessTurnoutArcLengths"] = [_r(a.turnout_arc_length) for a in plan.accesses]
+        metrics["winnerAccessStraightLengths"] = [_r(a.straight_length) for a in plan.accesses]
+        metrics["winnerAccessPathToChordRatios"] = [
+            _r(a.path_to_chord_ratio) for a in plan.accesses
+        ]
         metrics["winnerAccessGradients"] = [_r(a.max_gradient) for a in plan.accesses]
         # Phase 20B.1 O-1/O-2 separation observability (per level, winner)
         metrics["winnerAccessPlanSeparations"] = [

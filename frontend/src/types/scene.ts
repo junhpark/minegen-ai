@@ -366,6 +366,14 @@ export interface LevelAccessPayload {
   effectivePreferredAccessLength?: number | null
   lengthDeviationFromPreferred?: number | null
   selectionCost?: number | null
+  /** Phase 20B.2-A one-turn CS connector observability (reported, never
+   * gated): terminal heading vs the drift AXIS (0–90°), turnout arc and
+   * final straight lengths, delivered plan length / junction→entry plan
+   * separation */
+  terminalHeadingMismatchDeg?: number | null
+  turnoutArcLength?: number | null
+  straightLength?: number | null
+  pathToChordRatio?: number | null
 }
 
 export interface LevelAccessSummary {
@@ -386,6 +394,11 @@ export interface LevelAccessSummary {
   longAccessCoefficient?: number
   meanAbsDeviationFromPreferred?: number | null
   maxAbsDeviationFromPreferred?: number | null
+  /** Phase 20B.2-A one-turn CS observability aggregates */
+  maxTerminalHeadingMismatchDeg?: number | null
+  maxTurnoutArcLength?: number | null
+  maxPathToChordRatio?: number | null
+  connectorWords?: Record<string, number>
 }
 
 /** derived/level_accesses.json (rule 157) */

@@ -628,12 +628,27 @@ implicit bodies the section covariance eigenvector and the footwall-side
 extent along its normal.
 
 Junction lattice: chainages `k·10 m` with `z_ramp − z_L ∈ [−10, +45] m` and
-horizontal distance to the anchor ≤ 300 m. Connector: Dubins CSC with
-R = R_min from the junction pose (ramp heading) to the anchor pose
-(backbone heading, both senses); `α = θ0 − φ`, `β = θ1 − φ`, `d = |Δxy|/R`
-in the Shkel–Lumelsky normalization; the shortest admissible word is
-sampled every 2 m with points exactly on their circles; z is linear in
-delivered chord length (constant edge gradient `Δz / Σchord`).
+horizontal distance to the anchor ≤ 300 m. Connector (Phase 20B.2-A,
+`build_cs_connectors`): ONE-TURN CS from the junction pose (ramp heading
+θ0) to the anchor POINT P — for each sense s ∈ {L = +1, R = −1} the turning
+circle `C = J − s·R·(sin θ0, −cos θ0)` (math angles), `ℓ = sqrt(|C→P|² −
+R²)`, tangent-point angle `γ = atan2(P − C) − s·atan2(ℓ, R)`, sweep
+`t = mod2π(s·(γ − γ0))` with `γ0 = θ0 − s·π/2`; the word is `S` when
+`t < 1e-9`, `LS`/`RS` otherwise, refused (`None`) when `|C→P| < R` or
+`t > MAX_TURNOUT_SWEEP = π`. Both senses are always sampled (every 2 m,
+arc points exactly on the circle), a pure straight is reported once, and the
+planner judges every delivered polyline. The former Dubins CSC (LSL / RSR /
+LSR / RSL to the anchor POSE) forced a second, terminal arc — often a
+near-loop — so that the access met the drift heading exactly; that
+G1-heading weld was never an engineering requirement (a T/Y junction into
+the drift is), so the terminal heading is now the actual final-straight
+heading, the weld at the level entry is position-only and
+`terminalHeadingMismatchDeg = ∠(terminal heading, drift AXIS) ∈ [0°, 90°]`
+is reported per access (never gated). Per-access observability adds
+`turnoutArcLength`, `straightLength` and `pathToChordRatio =
+horizontalLength / junctionToEntryPlanSep` (a diagnostic — a ratio of 1
+is NOT an acceptance criterion). z is linear in delivered chord length
+(constant edge gradient `Δz / Σchord`).
 
 Acceptance on the delivered branch: `|g| ≤ g_max + 1e-9`, circumradius
 ≥ R_min − 0.05 m, 15 m ≤ L ≤ 300 m, `evaluate_and_validate` with cover
@@ -667,7 +682,8 @@ mesh-to-mesh distance (Phase 20D) — and a sample whose direction to the ramp
 runs along its own axis (an access driving straight away from the ramp)
 contributes 0 there, which the taper exclusion already covers. The isotropic
 `hypot(width/2, height)` on both sides (≈ 11.2 m) is deliberately not used. Selection among the survivors stays
-`(access_length_cost(L, P), L, junction chainage, sense)` (rule 163) — the
+`(access_length_cost(L, P), L, junction chainage, sense S < LS < RS)`
+(rule 163; the sense rank is `CONNECTOR_SENSE_ORDER`) — the
 length cost is SECONDARY to the gates. A level that fails with junction-
 spacing conflicts re-runs its search ignoring only the used spacing as the
 B-5 assignment diagnostic (starvation vs geometry); nothing is relaxed for

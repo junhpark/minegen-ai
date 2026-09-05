@@ -31,14 +31,15 @@ from minegen.world.synthetic_world import generate_world
 def _decisive_warped_create() -> ScenarioCreate:
     """WARPED seed 301 with the exclusion buffer raised into the window where
     the level-access branches certify ONLY under the refined bound (the
-    coarse whole-body bound alone leaves them below the requirement), and
-    the explicit access-length / reach limits widened so clearance — not the
-    access-length window — is the deciding constraint. Refinement factor at
-    its schema maximum (the bound narrows only by shrinking the spacing)."""
+    coarse whole-body bound alone leaves them below the requirement).
+    Refinement factor at its schema maximum (the bound narrows only by
+    shrinking the spacing). Buffer 12 m (Phase 20B.2-A re-scan under the
+    one-turn CS access: required 17.59 m, coarse-certified minimum 12.55 m,
+    2 feasible candidates; the pre-20B.2 value 28 m relied on CSC-loop
+    accesses and is NO_FEASIBLE_CANDIDATE under CS — every buffer ≥ 18 m
+    fails on GRADE_LIMIT, not on clearance)."""
     raw = realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 301, 1).model_dump()
-    raw["design"]["orebody_exclusion_buffer"] = 28.0
-    raw["layout"]["access"]["maximum_access_length"] = 400.0
-    raw["layout"]["access_reach"] = 120.0
+    raw["design"]["orebody_exclusion_buffer"] = 12.0
     raw["layout"]["clearance_refinement_factor"] = 4
     return ScenarioCreate(**raw)
 

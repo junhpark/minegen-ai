@@ -104,6 +104,16 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      with the selection; rule 157). Each access
                                                      carries effectivePreferredAccessLength,
                                                      lengthDeviationFromPreferred and selectionCost;
+                                                     Phase 20B.2-A one-turn CS connector: connector
+                                                     ∈ S | LS | RS, terminalHeadingDeg is the actual
+                                                     final-straight heading (position-only weld at
+                                                     the entry), terminalHeadingMismatchDeg (vs the
+                                                     drift axis, 0–90, reported never gated),
+                                                     turnoutArcLength, straightLength,
+                                                     pathToChordRatio; summary adds
+                                                     maxTerminalHeadingMismatchDeg,
+                                                     maxTurnoutArcLength, maxPathToChordRatio and
+                                                     connectorWords {S, LS, RS} counts;
                                                      the summary carries the preferred length, its
                                                      source (DEFAULT_6X_TUNNEL_WIDTH | EXPLICIT) and
                                                      the mean / max |ΔP| (rule 163). Phase 20B.1 O

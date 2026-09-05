@@ -1137,11 +1137,18 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      failures are never score penalties.
 157. Level-access planning is finite and deterministic: junction candidates
      on a `junctionSearchSpacing` chainage lattice inside the
-     `junctionWindowAbove/Below` elevation window; a G1 Dubins CSC connector
-     (R = minTurnRadius) from the junction pose to the anchor pose with a
-     chord-exact constant gradient; selection = min (length, junction
-     chainage, terminal sense); `minimumRampJunctionSpacing` is a hard
-     rule (JUNCTION_SPACING_CONFLICT). Every candidate branch is judged on
+     `junctionWindowAbove/Below` elevation window; a G1 ONE-TURN CS
+     connector (Phase 20B.2-A: S, L+S or R+S — one turnout arc of
+     R = minTurnRadius tangent to the ramp heading, then one straight to
+     the anchor POINT; no terminal arc, no ARC+STRAIGHT+ARC, sweep ≤ π so
+     loops are structurally impossible; a target inside the turning circle
+     is CONNECTOR_UNAVAILABLE) with a chord-exact constant gradient. The
+     anchor heading stays the drift direction; the access's
+     `terminalHeading` is the ACTUAL final-straight heading and the weld at
+     the level entry is position-only (`terminalHeadingMismatchDeg` is
+     reported, never gated). Selection = min (selection cost, length,
+     junction chainage, connector sense S < LS < RS);
+     `minimumRampJunctionSpacing` is a hard rule (JUNCTION_SPACING_CONFLICT). Every candidate branch is judged on
      the DELIVERED polyline (gradient, circumradius, world, cover,
      restricted zones, clearance under the evaluator's policy, excavation
      envelope). Nothing is clamped; an impossible access is typed.
