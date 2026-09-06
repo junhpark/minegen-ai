@@ -172,7 +172,8 @@ export interface IndexGroup {
  * Draw groups for a batched primitive: each piece contributes the revealed
  * PREFIX of its own index range; consecutive fully-revealed ranges coalesce
  * into one group so draw calls stay near the number of active headings, not
- * the number of pieces. Ranges are visited in buffer order.
+ * the number of pieces. Ranges are visited in buffer order. A range without
+ * reveal metadata is skipped entirely (20B.3-1.3 fail-closed).
  */
 export function planIndexGroups(
   ranges: readonly PieceRange[],
@@ -183,12 +184,10 @@ export function planIndexGroups(
   for (const r of sorted) {
     const p = progressByPiece.get(r.pieceId)
     if (p === undefined || !(p > 0)) continue
-    const count =
-      p >= 1 || r.meta === null
-        ? p >= 1
-          ? r.indexCount
-          : 0
-        : Math.min(r.indexCount, revealedIndexCount(r.meta, p))
+    // 20B.3-1.3: no metadata → never revealed (the edge is not covered, so
+    // its centerline fallback keeps rendering instead)
+    if (r.meta === null) continue
+    const count = p >= 1 ? r.indexCount : Math.min(r.indexCount, revealedIndexCount(r.meta, p))
     if (count <= 0) continue
     const last = groups[groups.length - 1]
     if (last && last.start + last.count === r.indexOffset) last.count += count
@@ -226,6 +225,59 @@ export function readPieceRanges(
       indexCount: o.indexCount as number,
       meta: meta(o.pieceId),
     })
+  }
+  return out
+}
+
+/**
+ * Phase 20B.3-1.2: which 4D excavation layers mount for a layer-toggle
+ * state. The ramp reveal is bound to the `tunnelMesh` toggle and the
+ * development reveal to the `developmentMesh` toggle INDEPENDENTLY — turning
+ * one off never disables the other's progressive reveal. Pure; the scene
+ * evaluates it and mounts accordingly.
+ */
+export interface ExcavationMountPlan {
+  /** the Phase 06 ramp GLB is shown progressively */
+  ramp: boolean
+  /** the Phase 20B development GLB is shown progressively */
+  development: boolean
+  /** the temporal excavation layer mounts at all */
+  mounted: boolean
+}
+
+export function excavationMountPlan(input: {
+  timelineActive: boolean
+  hasSmoothed: boolean
+  rampMeshAvailable: boolean
+  developmentMeshAvailable: boolean
+  tunnelMeshVisible: boolean
+  developmentMeshVisible: boolean
+}): ExcavationMountPlan {
+  const base = input.timelineActive && input.hasSmoothed
+  const ramp = base && input.rampMeshAvailable && input.tunnelMeshVisible
+  const development = base && input.developmentMeshAvailable && input.developmentMeshVisible
+  return { ramp, development, mounted: ramp || development }
+}
+
+/**
+ * Phase 20B.3-1.3: the edge ids a reveal plan actually COVERS with a mesh.
+ * Covered means the development resolved to a mesh identity that carries
+ * VALID reveal metadata; a segment / piece without metadata (an older GLB,
+ * malformed extras) is never covered — its mesh stays hidden and the
+ * centerline fallback keeps rendering, so nothing silently disappears.
+ */
+export function coveredEdgeIds(
+  reveals: readonly DevelopmentReveal[],
+  rampMetaBySegment: ReadonlyMap<string, RevealMeta | null>,
+  pieceMetaByPiece: ReadonlyMap<string, RevealMeta | null>,
+): string[] {
+  const out: string[] = []
+  for (const r of reveals) {
+    const meta =
+      r.target.kind === 'RAMP'
+        ? rampMetaBySegment.get(r.target.segmentId)
+        : pieceMetaByPiece.get(r.target.pieceId)
+    if (meta) out.push(r.edgeId)
   }
   return out
 }

@@ -22,6 +22,7 @@ import { NetworkLayer } from './NetworkLayer'
 import { StopeLayer } from './StopeLayer'
 import { TimelineDevelopmentLayer } from './TimelineDevelopmentLayer'
 import { TemporalExcavationLayer } from './TemporalExcavationLayer'
+import { excavationMountPlan } from '@/timeline/excavationReveal'
 import { TimelineStopeLayer } from './TimelineStopeLayer'
 import { CommunicationRouterLayer } from './CommunicationRouterLayer'
 import { CommunicationCoverageLayer } from './CommunicationCoverageLayer'
@@ -65,12 +66,18 @@ export function MineScene() {
       ),
     [],
   )
-  const excavation4D =
-    timelineActive &&
-    scene?.tunnelMesh?.status === 'SUCCESS' &&
-    !!scene.tunnelMesh.meshUrl &&
-    !!scene.smoothedDecline &&
-    visible.has('tunnelMesh')
+  // 20B.3-1.2: ramp reveal ↔ `tunnelMesh`, development reveal ↔
+  // `developmentMesh`, independently (either alone still reveals as mesh)
+  const excavationPlan = excavationMountPlan({
+    timelineActive,
+    hasSmoothed: !!scene?.smoothedDecline,
+    rampMeshAvailable: scene?.tunnelMesh?.status === 'SUCCESS' && !!scene.tunnelMesh.meshUrl,
+    developmentMeshAvailable:
+      scene?.developmentMesh?.status === 'SUCCESS' && !!scene.developmentMesh.meshUrl,
+    tunnelMeshVisible: visible.has('tunnelMesh'),
+    developmentMeshVisible: visible.has('developmentMesh'),
+  })
+  const excavation4D = excavationPlan.mounted
   // rules 88/91: INFRASTRUCTURE mode only; routers are never shown as
   // time-valid installed assets in 4D (installation timing is not modeled)
   const communicationActive = communicationLayersActive(mode, scene?.communication ?? null)
@@ -180,14 +187,12 @@ export function MineScene() {
       {sensorsActive && scene?.sensors && visible.has('sensorCoverage') ? (
         <SensorCoverageLayer sensors={scene.sensors} />
       ) : null}
-      {excavation4D && scene?.timeline && scene.smoothedDecline && scene.tunnelMesh?.meshUrl ? (
+      {excavation4D && scene?.timeline && scene.smoothedDecline ? (
         <Suspense fallback={null}>
           <TemporalExcavationLayer
-            rampUrl={scene.tunnelMesh.meshUrl}
+            rampUrl={excavationPlan.ramp ? (scene.tunnelMesh?.meshUrl ?? null) : null}
             developmentUrl={
-              scene.developmentMesh?.status === 'SUCCESS' && visible.has('developmentMesh')
-                ? scene.developmentMesh.meshUrl
-                : null
+              excavationPlan.development ? (scene.developmentMesh?.meshUrl ?? null) : null
             }
             timeline={scene.timeline}
             smoothed={scene.smoothedDecline}

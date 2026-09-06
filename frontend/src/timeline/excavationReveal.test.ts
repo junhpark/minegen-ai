@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  coveredEdgeIds,
+  excavationMountPlan,
   planIndexGroups,
   readPieceRanges,
   readRevealMeta,
@@ -160,10 +162,10 @@ describe('batched draw groups', () => {
       { start: 288, count: 96 },
     ])
   })
-  it('never reveals a piece without metadata unless it is complete', () => {
+  it('never reveals a piece without metadata — not even a complete one (20B.3-1.3)', () => {
     const r = [{ ...ranges[0]!, meta: null }]
     expect(planIndexGroups(r, new Map([['a', 0.9]]))).toEqual([])
-    expect(planIndexGroups(r, new Map([['a', 1]]))).toEqual([{ start: 0, count: 96 }])
+    expect(planIndexGroups(r, new Map([['a', 1]]))).toEqual([])
   })
   it('reads GLB range extras and rejects a malformed list whole', () => {
     const good = readPieceRanges(
@@ -176,5 +178,109 @@ describe('batched draw groups', () => {
     expect(good[0]!.meta).toEqual(META)
     expect(readPieceRanges({ ranges: [{ pieceId: 'a' }] }, () => null)).toEqual([])
     expect(readPieceRanges(null, () => null)).toEqual([])
+  })
+})
+
+describe('20B.3-1.2 independent 4D mount toggles', () => {
+  const base = {
+    timelineActive: true,
+    hasSmoothed: true,
+    rampMeshAvailable: true,
+    developmentMeshAvailable: true,
+  }
+  it('pins the four toggle combinations', () => {
+    expect(
+      excavationMountPlan({ ...base, tunnelMeshVisible: true, developmentMeshVisible: true }),
+    ).toEqual({ ramp: true, development: true, mounted: true })
+    expect(
+      excavationMountPlan({ ...base, tunnelMeshVisible: true, developmentMeshVisible: false }),
+    ).toEqual({ ramp: true, development: false, mounted: true })
+    expect(
+      excavationMountPlan({ ...base, tunnelMeshVisible: false, developmentMeshVisible: true }),
+    ).toEqual({ ramp: false, development: true, mounted: true })
+    expect(
+      excavationMountPlan({ ...base, tunnelMeshVisible: false, developmentMeshVisible: false }),
+    ).toEqual({ ramp: false, development: false, mounted: false })
+  })
+  it('never mounts outside an active 4D timeline or without a mesh artifact', () => {
+    expect(
+      excavationMountPlan({
+        ...base,
+        timelineActive: false,
+        tunnelMeshVisible: true,
+        developmentMeshVisible: true,
+      }).mounted,
+    ).toBe(false)
+    expect(
+      excavationMountPlan({
+        ...base,
+        rampMeshAvailable: false,
+        developmentMeshAvailable: false,
+        tunnelMeshVisible: true,
+        developmentMeshVisible: true,
+      }).mounted,
+    ).toBe(false)
+    expect(
+      excavationMountPlan({
+        ...base,
+        rampMeshAvailable: false,
+        tunnelMeshVisible: true,
+        developmentMeshVisible: true,
+      }),
+    ).toEqual({ ramp: false, development: true, mounted: true })
+  })
+})
+
+describe('20B.3-1.3 metadata-less GLB keeps the centerline fallback', () => {
+  it('an edge whose mesh has no reveal metadata is NOT covered', () => {
+    const reveals = [
+      {
+        edgeId: 'RAMP:0',
+        edgeType: 'RAMP',
+        target: { kind: 'RAMP' as const, segmentId: 'S0' },
+        progress: 1,
+      },
+      {
+        edgeId: 'RAMP:1',
+        edgeType: 'RAMP',
+        target: { kind: 'RAMP' as const, segmentId: 'S1' },
+        progress: 1,
+      },
+      {
+        edgeId: 'DRIFT:e',
+        edgeType: 'DRIFT',
+        target: { kind: 'DEVELOPMENT' as const, pieceId: 'D1' },
+        progress: 0.5,
+      },
+      {
+        edgeId: 'XC:e',
+        edgeType: 'CROSSCUT',
+        target: { kind: 'DEVELOPMENT' as const, pieceId: 'X1' },
+        progress: 1,
+      },
+    ]
+    // an old GLB: S1 and X1 carry no extras (readRevealMeta → null); S0 / D1 do
+    const rampMeta = new Map([
+      ['S0', META],
+      ['S1', null],
+    ])
+    const pieceMeta = new Map([
+      ['D1', META],
+      ['X1', null],
+    ])
+    expect(coveredEdgeIds(reveals, rampMeta, pieceMeta)).toEqual(['RAMP:0', 'DRIFT:e'])
+    // identities that are not in the mesh at all are not covered either
+    expect(coveredEdgeIds(reveals, new Map(), new Map())).toEqual([])
+  })
+  it('a fixture without extras yields no mesh groups at any progress', () => {
+    const noExtras = readPieceRanges(
+      {
+        ranges: [{ pieceId: 'a', developmentId: 'D', levelId: 'L', indexOffset: 0, indexCount: 6 }],
+      },
+      () => null,
+    )
+    expect(noExtras[0]!.meta).toBeNull()
+    expect(planIndexGroups(noExtras, new Map([['a', 1]]))).toEqual([])
+    expect(readRevealMeta(undefined)).toBeNull()
   })
 })
