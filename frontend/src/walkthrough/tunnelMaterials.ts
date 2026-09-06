@@ -11,14 +11,14 @@
 import { DoubleSide, MeshStandardMaterial, type Texture } from 'three'
 
 export const TUNNEL_MATERIAL = new MeshStandardMaterial({
-  color: '#c9c2b6',
+  color: '#e2dbcf', // 20B.3: '#c9c2b6' → '#e2dbcf' (material × texture was too dark in ORBIT / 4D)
   roughness: 0.95,
   metalness: 0.0,
   side: DoubleSide, // visible from inside the void too
 })
 
 export const CAP_MATERIAL = new MeshStandardMaterial({
-  color: '#8f877a',
+  color: '#a99f91', // 20B.3: '#8f877a' → '#a99f91'
   roughness: 1.0,
   metalness: 0.0,
   side: DoubleSide,

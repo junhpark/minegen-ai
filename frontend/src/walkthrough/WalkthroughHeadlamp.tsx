@@ -28,11 +28,15 @@ export function WalkthroughHeadlamp({ config }: { config: WalkthroughConfig }) {
   return (
     <>
       <primitive object={target} />
-      <pointLight ref={fill} intensity={30} distance={45} decay={1.15} color="#efe6d4" />
+      {/* 20B.3: the shared tunnel material / rock texture were lightened for
+          ORBIT readability; the walkthrough rig comes down by the same
+          factor (fill 30 → 22, beam 70 → 52) so the Phase 15 "no
+          overexposed beige" balance is preserved */}
+      <pointLight ref={fill} intensity={22} distance={45} decay={1.15} color="#efe6d4" />
       <spotLight
         ref={beam}
         target={target}
-        intensity={70}
+        intensity={52}
         distance={config.headlampRangeM}
         angle={0.95}
         penumbra={0.9}

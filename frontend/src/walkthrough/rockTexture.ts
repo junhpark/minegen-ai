@@ -34,7 +34,9 @@ export interface JointFamilySpec {
 export interface RockTextureSpec {
   seed: number
   sizePx: number
-  /** dark grey-brown base, css color */
+  /** mid grey-brown base, css color (Phase 20B.3: lightened one step —
+   * the texture is MULTIPLIED into the material colour, so its darkness
+   * compounds with the material base) */
   baseColor: string
   /** low-frequency mottle blob count + amplitude */
   mottleBlobs: number
@@ -56,19 +58,19 @@ export function rockTextureSpec(seed: number): RockTextureSpec {
       angleDeg: angle,
       spacingPx: 46 + rng() * 60,
       jitter: 0.35 + rng() * 0.3,
-      strength: 0.16 + rng() * 0.12,
+      strength: 0.11 + rng() * 0.09, // 20B.3: 0.16 + rng·0.12 → 0.11 + rng·0.09
     })
     angle += 45 + rng() * 55 // clearly distinct orientations
   }
   return {
     seed: Math.floor(seed) || 1,
     sizePx: 512,
-    baseColor: '#6d6459',
+    baseColor: '#8c8276', // 20B.3: '#6d6459' → '#8c8276'
     mottleBlobs: 130,
-    mottleStrength: 0.16,
+    mottleStrength: 0.11, // 20B.3: 0.16 → 0.11
     jointFamilies,
     floorBandU: [0.72, 1.0],
-    floorDarken: 0.12,
+    floorDarken: 0.09, // 20B.3: 0.12 → 0.09
   }
 }
 
@@ -105,7 +107,7 @@ export function paintRockTexture(
     const r = S * (0.06 + rng() * 0.16)
     const dark = rng() < 0.5
     ctx.globalAlpha = spec.mottleStrength * (0.35 + rng() * 0.65)
-    ctx.fillStyle = dark ? '#4c453d' : '#7d7466'
+    ctx.fillStyle = dark ? '#5e564c' : '#a0968a' // 20B.3: '#4c453d' / '#7d7466' lightened with the base
     for (const ox of [-S, 0, S]) {
       for (const oy of [-S, 0, S]) {
         ctx.beginPath()

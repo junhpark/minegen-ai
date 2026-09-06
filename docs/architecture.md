@@ -675,7 +675,7 @@ PARAMETRIC_V2 segments amber with `L01…` connection labels,
 `LayoutSelectedLayer` previews a selected-but-inactive candidate,
 `temporalPlan.rampOwningArtifact` resolves RAMP refs through the owning
 artifact. Golden: `python -m minegen.regression layout-v2` (4 cases,
-baseline `golden/phase20a_layout_v2.json`, smoke in CI) alongside the
+baseline `golden/phase20a_layout_v2.json` at the time — retired to its CSV summary under the Phase 20B.3 retention policy below; smoke in CI) alongside the
 untouched legacy suite (`golden/phase20a_full.json`, comparison
 `golden/phase20a_vs_phase19.md`).
 
@@ -759,7 +759,7 @@ labels), RAMP_JUNCTION / RAMP_END / LEVEL_ACCESS in the network and 4D
 layers, ramp segment labels "turnout" / "ramp end", `LayoutPanel` access
 summaries (accessible levels, total / worst access, max gradient, min
 radius, per-level junction chainage or failure), `rampSegmentId` identity
-for the walkthrough / minimap. Golden: `golden/phase20b_layout_v2.json`
+for the walkthrough / minimap. Golden: `golden/phase20b_layout_v2.json` (full JSON retired to `phase20b_layout_v2.csv` + comparison files, Phase 20B.3 policy)
 (6 cases incl. ACCESS-INFEASIBLE and CUT_AND_FILL) records junction
 chainages, entries, access lengths / gradients / radii and typed failures;
 `golden/phase20b_full.json` re-runs the legacy suite.
@@ -847,3 +847,26 @@ chainages, entries, access lengths / gradients / radii and typed failures;
    watertight union and walkthrough / collider integration for the
    development meshes (Phase 20D — the walkthrough traverses the Phase 06
    ramp tunnel only).
+
+## Golden retention policy (Phase 20B.3)
+
+The full detailed layout-v2 JSON of one phase is ≈ 90,000 lines; keeping
+every phase's copy makes the repository heavy while diff / review — the
+whole point of a golden — happens on the CSV summary and the comparison
+files. Git LFS is deliberately not used. Policy:
+
+- Only the LATEST phase keeps its full detailed layout-v2 / warped-vein JSON
+  (`golden/phase20b2_layout_v2.json`, `golden/phase20a_warped_vein.json`).
+- Every earlier phase keeps its CSV summary plus the comparison / audit JSON
+  files (`*_vs_*_layout.json`, `*_shortlist_audit.json`, `*_turning_burden_audit.json`,
+  …); its full JSON is deleted when the next phase's baseline lands.
+- A golden a test references is exempt from deletion (grep `backend/tests`
+  before deleting — `phase17_baseline.json`, `phase19_warped_vein.json`,
+  `phase20b2_layout_v2.json` are referenced today).
+- The legacy 22-case golden files (`phase17_baseline`, `phase18_after_migration`,
+  `phase19_full`, `phase20a_full`, `phase20b_full`, `phase20b_closeout_full`)
+  are the regression lock of rule 132 and are NEVER deleted.
+
+Phase 20B.3 applied it: `phase20a_layout_v2.json`, `phase20b_layout_v2.json`,
+`phase20b_closeout_layout_v2.json` and `phase20b1_layout_v2.json` were removed
+(13 MB → 3.9 MB); their CSVs and comparisons stay.

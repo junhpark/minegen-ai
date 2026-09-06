@@ -4,6 +4,7 @@ import { BufferGeometry, Mesh, Object3D } from 'three'
 import { API_BASE_URL } from '@/api/client'
 import { useTimelineStore } from '@/stores/timelineStore'
 import {
+  coveredEdgeIds,
   planIndexGroups,
   readPieceRanges,
   readRevealMeta,
@@ -140,7 +141,10 @@ export function TemporalExcavationLayer({
   levelAccesses,
   onCoverage,
 }: {
-  rampUrl: string
+  /** Phase 06 ramp GLB, or null when the `tunnelMesh` toggle is off
+   * (20B.3-1.2: ramp and development reveals are independent) */
+  rampUrl: string | null
+  /** Phase 20B development GLB, or null when `developmentMesh` is off */
   developmentUrl: string | null
   timeline: TimelinePayload
   smoothed: SmoothedDeclinePayload
@@ -152,12 +156,14 @@ export function TemporalExcavationLayer({
   const currentDay = useTimelineStore((s) => s.currentDay)
   const rock = useRockTexture()
   useMemo(() => applyRockTexture(rock), [rock])
-  const rampGltf = useGLTF(`${API_BASE_URL}${rampUrl}`)
-  const devGltf = useGLTF(
-    developmentUrl ? `${API_BASE_URL}${developmentUrl}` : `${API_BASE_URL}${rampUrl}`,
-  )
+  // hooks are unconditional: an absent side loads the other side's (cached)
+  // GLB and is simply not prepared / rendered; the caller guarantees at
+  // least one url (excavationMountPlan.mounted)
+  const anyUrl = rampUrl ?? developmentUrl ?? ''
+  const rampGltf = useGLTF(`${API_BASE_URL}${rampUrl ?? anyUrl}`)
+  const devGltf = useGLTF(`${API_BASE_URL}${developmentUrl ?? anyUrl}`)
 
-  const ramp = useMemo(() => prepareRamp(rampGltf.scene), [rampGltf])
+  const ramp = useMemo(() => (rampUrl ? prepareRamp(rampGltf.scene) : null), [rampGltf, rampUrl])
   const dev = useMemo(
     () => (developmentUrl ? prepareDevelopment(devGltf.scene) : null),
     [devGltf, developmentUrl],
@@ -170,24 +176,25 @@ export function TemporalExcavationLayer({
     [timeline, smoothed, levels, levelAccesses, currentDay],
   )
 
-  const rampIds = useMemo(
-    () => new Set(ramp.prims.filter((p) => p.segmentId).map((p) => p.segmentId)),
+  // 20B.3-1.3: coverage is decided by VALID reveal metadata — a segment /
+  // piece without it is hidden AND left to the centerline fallback
+  const rampMeta = useMemo(
+    () =>
+      new Map(
+        (ramp?.prims ?? [])
+          .filter((p) => p.role === 'SEGMENT' && p.segmentId !== null)
+          .map((p) => [p.segmentId as string, p.meta] as const),
+      ),
     [ramp],
   )
-  const pieceIds = useMemo(
-    () => new Set((dev?.prims ?? []).flatMap((p) => p.ranges.map((r) => r.pieceId))),
+  const pieceMeta = useMemo(
+    () =>
+      new Map((dev?.prims ?? []).flatMap((p) => p.ranges.map((r) => [r.pieceId, r.meta] as const))),
     [dev],
   )
   const covered = useMemo(
-    () =>
-      plan.reveals
-        .filter((r) =>
-          r.target.kind === 'RAMP'
-            ? rampIds.has(r.target.segmentId)
-            : pieceIds.has(r.target.pieceId),
-        )
-        .map((r) => r.edgeId),
-    [plan, rampIds, pieceIds],
+    () => coveredEdgeIds(plan.reveals, rampMeta, pieceMeta),
+    [plan, rampMeta, pieceMeta],
   )
   useEffect(() => {
     onCoverage?.(covered)
@@ -201,23 +208,26 @@ export function TemporalExcavationLayer({
       if (r.target.kind === 'RAMP') rampProgress.set(r.target.segmentId, r.progress)
       else pieceProgress.set(r.target.pieceId, r.progress)
     }
-    let allRampComplete = ramp.prims.some((p) => p.role === 'SEGMENT')
+    const rampPrims = ramp?.prims ?? []
+    let allRampComplete = rampPrims.some((p) => p.role === 'SEGMENT')
     let anyRamp = false
-    for (const p of ramp.prims) {
+    for (const p of rampPrims) {
       if (p.role !== 'SEGMENT') continue
       const progress = p.segmentId !== null ? (rampProgress.get(p.segmentId) ?? 0) : 0
+      // 20B.3-1.3: without reveal metadata the segment is never shown (its
+      // edge is not covered, the centerline fallback renders instead)
       const count =
-        progress >= 1
-          ? p.indexCount
-          : p.meta
-            ? Math.min(p.indexCount, revealedIndexCount(p.meta, progress))
-            : 0
+        p.meta === null
+          ? 0
+          : progress >= 1
+            ? p.indexCount
+            : Math.min(p.indexCount, revealedIndexCount(p.meta, progress))
       p.mesh.visible = count > 0
       p.mesh.geometry.setDrawRange(0, count)
       anyRamp = anyRamp || count > 0
       allRampComplete = allRampComplete && count >= p.indexCount
     }
-    for (const p of ramp.prims) {
+    for (const p of rampPrims) {
       if (p.role === 'PORTAL_CAP') p.mesh.visible = anyRamp
       else if (p.role === 'TERMINAL_CAP') p.mesh.visible = allRampComplete
     }
@@ -244,7 +254,7 @@ export function TemporalExcavationLayer({
 
   return (
     <group rotation={[-Math.PI / 2, 0, 0]}>
-      <primitive object={ramp.root} />
+      {ramp ? <primitive object={ramp.root} /> : null}
       {dev ? <primitive object={dev.root} /> : null}
     </group>
   )
