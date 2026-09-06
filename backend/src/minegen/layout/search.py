@@ -69,6 +69,7 @@ from minegen.layout.families import (
     build_footwall_track,
     effective_footwall_standoff,
     enumerate_candidates,
+    resolved_station_lengths,
 )
 from minegen.layout.geometry import (
     CenterlineDiagnostics,
@@ -672,6 +673,13 @@ class LayoutV2Search:
             clearance=self.policy,
         )
         self.shape = build_profile(scenario.ramp, scenario.tunnel_profile)
+        #: Phase 20C.1-S: the longest declared hairpin station (+ one sample
+        #: spacing) is the straight a same-sense turning run may bridge and
+        #: still count as ONE reversal; None when no station is declared
+        stations = resolved_station_lengths(self.cfg)
+        self.station_merge_bound: float | None = (
+            max(stations) + float(self.cfg.sample_spacing) if max(stations) > 0.0 else None
+        )
         self._sections: LevelSections | None = None
         self._track: Any = None
         #: the stage-4 LayoutContext of the last run — retained so the
@@ -897,7 +905,7 @@ class LayoutV2Search:
         cand.points = built.points
         cand.pieces = built.pieces
         cand.derived = built.derived
-        diag = analyze_centerline(built.points)
+        diag = analyze_centerline(built.points, station_merge_max_m=self.station_merge_bound)
         cand.diagnostics = diag
         problems = cheap_checks(diag, built.points, ctx.ramp, ctx.world_half_x, ctx.world_half_y)
         records, crossings = level_service(

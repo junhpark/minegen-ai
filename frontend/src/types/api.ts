@@ -270,6 +270,9 @@ export interface LayoutV2Config {
     legsPerLevel: number[]
     principalOrientationsDeg: number[]
     initialTurnSenses: ('CW' | 'CCW')[]
+    /** Phase 20C.1-S hairpin station lengths (m); null → backend default
+     * [0, 2 × minimumTurnoutStraightBuffer] */
+    stationLengthsM?: number[] | null
   }
   weights: LayoutScoreWeights
 }

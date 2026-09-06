@@ -1395,3 +1395,18 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      calculations inherit it. A start node that is not welded to a
      centerline endpoint fails the timeline explicitly; the frontend never
      decides direction from the camera or by patching individual edges.
+175. Switchback hairpin station (Phase 20C.1-S). The station length is a
+     DECLARED finite grid axis (`layout.switchback.stationLengthsM`, `None`
+     → `[0, 2 × access.minimumTurnoutStraightBuffer]`; 50 m is a planning
+     default, never statutory) enumerated between turn sense and gradient
+     (family order frozen, ids of station-0 candidates unchanged, `-s<m>`
+     appended for a station). A station hairpin is arc(π/2) + straight(s) +
+     arc(π/2) at the minimum radius with leg spacing `2·R_min + s` and the
+     station subtracted from the derived leg (rule 143); it competes on the
+     unchanged score under every unchanged hard constraint — no threshold,
+     coefficient, buffer or gate changes with it. Diagnostics treat one
+     arc–straight–arc hairpin as ONE reversal / hairpin run (station merge,
+     bounded by `max(stations) + sampleSpacing`, merging only sub-150° runs)
+     so the turning-burden score cannot be escaped by a station. A level
+     that still fails with a station is a real constraint, reported with
+     the per-level typed reason and numbers, never a relaxed gate.

@@ -96,7 +96,12 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      COARSE/REFINED_CONSERVATIVE clearance). Persists
                                                      derived/layout_v2.json; deletes a stale
                                                      selection and, if LAYOUT_V2 is active, the
-                                                     ramp-derived chain (rule 151)
+                                                     ramp-derived chain (rule 151). Phase 20C.1-S:
+                                                     `scenario.layout.switchback.stationLengthsM`
+                                                     (null → [0, 2 × minimumTurnoutStraightBuffer])
+                                                     adds arc–straight–arc hairpin-station
+                                                     candidates (`-s<m>` in the id, stationLengthM
+                                                     in params, derived.stationLength / legSpacing)
     GET  …/design/layout-v2                          catalogue · 409 LAYOUT_V2_NOT_GENERATED
     POST …/design/layout-v2/select {candidateId}     materialize a FEASIBLE candidate as
                                                      derived/layout_v2_selected.json (source unchanged)

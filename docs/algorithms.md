@@ -560,17 +560,70 @@ gradient never exceeds g):
 - LONGITUDINAL: one-direction along-strike corridor tilted by the footwall
   drift per metre of descent, clipped to the world margin, extended at most
   `longitudinalExtension` past the body.
-- SWITCHBACK: `k` legs per level of equal length `ΔZ/(k·g) − π·R_min`
+- SWITCHBACK: `k` legs per level of equal length `ΔZ/(k·g) − π·R_min − s`
   joined by constant-sense minimum-radius hairpins; the pair drift of the
   footwall is absorbed by bulging the hairpin (`R_min + |drift|/2`); a
   landing straight closes the last cycle exactly on the deepest level.
+  Phase 20C.1-S hairpin STATION `s`: a declared finite axis
+  (`switchback.stationLengthsM`, `None` → `[0, 2 × minimumTurnoutStraightBuffer]`
+  = {0, 50 m}; 50 m is a planning default — twice the turnout straight
+  buffer so a turnout centred on the station keeps its ± buffer inside the
+  straight — never a statutory value). With `s > 0` every hairpin is
+  arc(π/2) + straight(`s`) + arc(π/2) (pieces `HAIRPIN_c_IN`, `STATION_c`,
+  `HAIRPIN_c_OUT`), the station runs perpendicular to the legs so the leg
+  spacing becomes `2·R_min + s` (`derived.legSpacing`), and the station's
+  horizontal travel is subtracted from the leg (rule 143 coupling: a station
+  makes `LEG_TOO_SHORT` earlier, exactly as the arc does). Candidate ids
+  gain `-s<m>` only for `s > 0`, so every pre-20C.1 id is unchanged; station
+  candidates compete on the same score with no threshold change.
+
+  Measured (commit S, `golden/phase20c1_s_layout_v2.json`, 92 candidates,
+  `phase20c1_s_vs_20b2_layout.json`): every winner, ranking and feasible
+  count of the 7 golden cases is unchanged and no metric drifts; the only
+  contract change besides the enumeration (68 → 92, cheap-feasible +12 per
+  TABULAR case, +6 on GEOMETRY-STRESS) is the GEOMETRY-STRESS shortlist
+  order. Station diagnostics are consistent with the plain hairpins they
+  replace (TABULAR k1: 16 reversals / 16 hairpin runs / ≈ 3 000° for both
+  `s = 0` and `s = 50`; 3D length identical because the station is taken
+  from the leg). Every k2 station candidate is `LEG_TOO_SHORT`
+  (ΔZ/(2·g) − π·R_min − 50 < 20 m on all cases), and on GEOMETRY-STRESS
+  (15 m levels, R_min 20 m) so is every k1 station candidate at g = 0.12
+  (leg 125 − 62.8 − 50 = 12.2 m). NO station candidate entered the
+  production shortlist of 12 on any case: the stage-3 lower-bound proxy
+  ranks it below its plain twin (the far leg sits `s` further from the
+  ore, so more levels exceed the stage-2 reach heuristic), and the rule 165
+  per-family slot is taken by the plain k1 switchback. The S golden
+  therefore still reports GEOMETRY-STRESS = NO_FEASIBLE_CANDIDATE — a
+  shortlist starvation, not a geometric constraint: the exhaustive
+  diagnostic (`golden/phase20c1_s_stress_station_diagnosis.json`,
+  `LayoutV2Search.run(detailed_all=True)`, 51.6 s) validates every
+  switchback and finds `SWITCHBACK-k1-p+20-CW-s50-g0.100` FEASIBLE with
+  21/21 level accesses (all LS connectors, max access gradient 0.1197 ≤
+  0.12, min plan radius 20.0 m, min pillar 11.8 m ≥ 10 m, min plan
+  separation 40.1 m ≥ 30 m, max turnout heading change 69.8° ≤ 100°,
+  access lengths 43–60 m plus 100.6 m on L21, total score 8.546) — the
+  first feasible layout this case has ever had. The other five g = 0.10
+  station candidates fail 2–11 levels, all typed `GRADE_LIMIT` (one
+  `JUNCTION_SPACING_CONFLICT`), against 8–13 failed levels on their plain
+  twins (`TURNOUT_NOT_STRAIGHT` dominant), i.e. the station removes the
+  turnout-straightness failure exactly as intended. Getting that candidate
+  into the production result is the Phase 20C.1-Q shortlist-yield action,
+  not a threshold change here.
 
 Delivered-centerline diagnostics: per-edge gradient, chord-based plan
 radius at interior vertices (exact for uniformly sampled arcs), unwrapped
 heading change; family signature = cumulative / signed heading change,
 turning length (R < 500 m), hairpin runs (same-sense runs ≥ 150°),
 reversals (runs within 150°–210°), dominant folded azimuths (15° bins),
-turn-direction consistency. Measured on the TABULAR reference: spirals
+turn-direction consistency. Station merge (Phase 20C.1-S,
+`analyze_centerline(..., station_merge_max_m)`): two same-sense runs that
+are each BELOW 150° and separated only by straight edges totalling at most
+the bound are ONE run, so an arc–straight–arc hairpin counts as one
+reversal / hairpin run / half-turn pair like the plain hairpin it replaces
+(the turning-burden score is not escaped by inserting a station). The
+search passes `max(stationLengths) + sampleSpacing`; two full hairpins
+around a short leg are never merged (each is already ≥ 150°); `None`
+keeps the plain rule. Measured on the TABULAR reference: spirals
 show ≈ 2 400–6 200° cumulative change, consistency 1.0, 0 reversals;
 2-leg switchbacks 13 reversals; longitudinal ≈ 150° with ≤ 1.
 

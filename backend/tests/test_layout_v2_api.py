@@ -52,9 +52,9 @@ def test_layout_requires_world_and_catalogue_contract(client: TestClient) -> Non
     r = client.get(f"/api/v1/scenarios/{sid}/design/layout-v2")
     assert r.status_code == 409 and r.json()["detail"]["code"] == "LAYOUT_V2_NOT_GENERATED"
     cat = _generate_layout(client, sid)
-    assert cat["layoutVersion"] == 1 and cat["candidateCount"] == 68
+    assert cat["layoutVersion"] == 1 and cat["candidateCount"] == 92
     assert cat["clearanceBasis"] == "EXACT" and cat["requiredClearance"] > 0
-    assert len(cat["candidates"]) == 68 and cat["feasibleCount"] >= 1
+    assert len(cat["candidates"]) == 92 and cat["feasibleCount"] >= 1
     assert cat["ranking"][0] == cat["winnerId"]
     for c in cat["candidates"]:
         assert c["status"] in ("FEASIBLE", "INFEASIBLE", "NOT_VALIDATED")
