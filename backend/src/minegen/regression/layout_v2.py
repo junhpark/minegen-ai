@@ -615,16 +615,55 @@ YIELD_AUC_CORRELATED = 0.6
 YIELD_MIN_PAIRS = 5
 
 
-def _rank_auc(pass_ranks: list[int], fail_ranks: list[int]) -> tuple[float | None, int]:
-    """Mann–Whitney rank AUC: P(pass rank < fail rank) with ties counted ½."""
+def _rank_wins(pass_ranks: list[int], fail_ranks: list[int]) -> tuple[float, int]:
+    """Mann–Whitney concordant weight and pair count of ONE case: how many
+    (pass, fail) pairs the pass ranks ahead of, ties counted ½."""
     pairs = len(pass_ranks) * len(fail_ranks)
     if pairs == 0:
-        return None, 0
+        return 0.0, 0
     wins = 0.0
     for a in pass_ranks:
         for b in fail_ranks:
             wins += 1.0 if a < b else (0.5 if a == b else 0.0)
-    return wins / pairs, pairs
+    return wins, pairs
+
+
+def _rank_auc(pass_ranks: list[int], fail_ranks: list[int]) -> tuple[float | None, int]:
+    """Mann–Whitney rank AUC of ONE case: P(pass rank < fail rank), ties ½."""
+    wins, pairs = _rank_wins(pass_ranks, fail_ranks)
+    return (None, 0) if pairs == 0 else (wins / pairs, pairs)
+
+
+def pooled_rank_auc(per_case: list[tuple[list[int], list[int]]]) -> dict[str, Any]:
+    """PAIR-WEIGHTED WITHIN-CASE pooling (Phase 20C.1 closeout A-1).
+
+    Family-internal ranks restart at 1 in every case, so concatenating the
+    rank lists and scoring one AUC over the union compares different scales
+    (case A's pass rank 2 against case B's fail rank 5). The pooled statistic
+    is instead ``Σ wins / Σ pairs`` over the per-case Mann–Whitney counts,
+    which only ever compares ranks inside one case. Cases with no pass/fail
+    pair contribute nothing and are excluded from ``casesUsed``."""
+    wins_total = 0.0
+    pairs_total = 0
+    used = 0
+    for pass_ranks, fail_ranks in per_case:
+        wins, pairs = _rank_wins(pass_ranks, fail_ranks)
+        if pairs == 0:
+            continue
+        wins_total += wins
+        pairs_total += pairs
+        used += 1
+    auc = wins_total / pairs_total if pairs_total else None
+    return {
+        "rankAuc": _r(auc),
+        "rankPairs": pairs_total,
+        "casesUsed": used,
+        "casesWithoutPairs": len(per_case) - used,
+        "correlated": (
+            auc is not None and pairs_total >= YIELD_MIN_PAIRS and auc >= YIELD_AUC_CORRELATED
+        ),
+        "pooling": "PAIR_WEIGHTED_WITHIN_CASE",
+    }
 
 
 def _spearman(x: list[float], y: list[float]) -> float | None:
@@ -678,7 +717,8 @@ def audit_yield(cases: list[LayoutCase], label: str) -> dict[str, Any]:
     which the family's best feasible candidate sits — the number an audited
     per-family top-N reservation would have to reach."""
     records: list[dict[str, Any]] = []
-    pooled: dict[str, dict[str, list[int]]] = {}
+    #: family → per-case (pass ranks, fail ranks); never concatenated
+    pooled: dict[str, list[tuple[list[int], list[int]]]] = {}
     t_all = time.perf_counter()
     for case in cases:
         rec: dict[str, Any] = {"key": case.key, "note": case.note}
@@ -740,9 +780,9 @@ def audit_yield(cases: list[LayoutCase], label: str) -> dict[str, Any]:
                 [float(x["cheapProxy"]) for x in passes if x["cheapProxy"] is not None],
                 [float(x["total"]) for x in passes if x["cheapProxy"] is not None],
             )
-            pooled.setdefault(fam, {"pass": [], "fail": []})
-            pooled[fam]["pass"] += pass_ranks
-            pooled[fam]["fail"] += fail_ranks
+            # closeout A-1: keep the per-case rank lists SEPARATE — ranks are
+            # only comparable inside one case
+            pooled.setdefault(fam, []).append((list(pass_ranks), list(fail_ranks)))
             families[fam] = {
                 "cheapFeasible": len(members),
                 "shortlisted": sum(1 for x in rows if x["shortlisted"]),
@@ -805,17 +845,11 @@ def audit_yield(cases: list[LayoutCase], label: str) -> dict[str, Any]:
         )
         records.append(rec)
     pooled_out: dict[str, Any] = {}
-    for fam, pf in pooled.items():
-        auc, pairs = _rank_auc(pf["pass"], pf["fail"])
-        pooled_out[fam] = {
-            "rankAuc": _r(auc),
-            "rankPairs": pairs,
-            "correlated": (
-                auc is not None and pairs >= YIELD_MIN_PAIRS and auc >= YIELD_AUC_CORRELATED
-            ),
-            "passCount": len(pf["pass"]),
-            "failCount": len(pf["fail"]),
-        }
+    for fam, per_case in pooled.items():
+        out = pooled_rank_auc(per_case)
+        out["passCount"] = sum(len(p) for p, _ in per_case)
+        out["failCount"] = sum(len(f) for _, f in per_case)
+        pooled_out[fam] = out
     realized = [r for r in records if r.get("realized")]
     top_n_needed = max(
         (

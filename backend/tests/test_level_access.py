@@ -1086,9 +1086,20 @@ def test_shortlist_is_exactly_the_reconstructed_bounded_selection(
     s, res = search
     expected = _reconstruct_shortlist(res, s.cfg.shortlist_size)
     assert res.shortlist == expected
-    # the reconstruction is sensitive: a wrong key order gives a different list
-    wrong = _reconstruct_shortlist(res, s.cfg.shortlist_size, key=lambda c: c.candidate_id)
-    assert wrong != expected
+    assert len(expected) == s.cfg.shortlist_size
+    # RED-FIXTURE PROOF (closeout A-3): with a deliberately wrong key the same
+    # assertion FAILS, so the comparison above really constrains the result —
+    # the assertion it replaced (`... or c.params.family is not None`) was
+    # true for every candidate and constrained nothing.
+    for wrong_key in (
+        lambda c: c.candidate_id,  # id only: ignores screen and proxy
+        lambda c: (c.cheap_proxy or math.inf,),  # proxy only: ignores the screen prefix
+        lambda c: (-c.screen_blocked, c.cheap_proxy or math.inf),  # prefix inverted
+    ):
+        wrong = _reconstruct_shortlist(res, s.cfg.shortlist_size, key=wrong_key)
+        assert wrong != res.shortlist, wrong_key
+    # and a wrong BOUND fails too
+    assert _reconstruct_shortlist(res, s.cfg.shortlist_size - 1) != res.shortlist
 
 
 def _reconstruct_shortlist(res: LayoutSearchResult, bound: int, key: Any = None) -> list[str]:

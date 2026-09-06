@@ -6833,27 +6833,37 @@
   "label": "20c1q-yield-before",
   "pooled": {
     "LONGITUDINAL": {
+      "casesUsed": 0,
+      "casesWithoutPairs": 7,
       "correlated": false,
       "failCount": 0,
       "passCount": 0,
+      "pooling": "PAIR_WEIGHTED_WITHIN_CASE",
       "rankAuc": null,
       "rankPairs": 0
     },
     "SPIRAL": {
+      "casesUsed": 4,
+      "casesWithoutPairs": 3,
       "correlated": true,
       "failCount": 102,
       "passCount": 14,
-      "rankAuc": 0.665266,
-      "rankPairs": 1428
+      "pooling": "PAIR_WEIGHTED_WITHIN_CASE",
+      "rankAuc": 0.673469,
+      "rankPairs": 196
     },
     "SWITCHBACK": {
+      "casesUsed": 5,
+      "casesWithoutPairs": 2,
       "correlated": false,
       "failCount": 187,
       "passCount": 47,
-      "rankAuc": 0.488963,
-      "rankPairs": 8789
+      "pooling": "PAIR_WEIGHTED_WITHIN_CASE",
+      "rankAuc": 0.506702,
+      "rankPairs": 1119
     }
   },
+  "pooledCorrection": "Phase 20C.1 closeout A-2: the `pooled` block was recomputed from this file's own per-case rows with pair-weighted within-case pooling (\u03a3 wins / \u03a3 pairs). The production search was NOT re-run; every per-case value, row and diagnostic is the original measurement.",
   "semantics": "Phase 20C.1-Q diagnostic shortlist-yield audit: family-internal cheap rank (stage-3 proxy) versus exhaustive detailed outcome; the production search is unchanged by this report",
   "suiteVersion": 1,
   "topNNeededForBestFeasible": 15,

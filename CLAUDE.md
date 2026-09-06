@@ -1414,7 +1414,10 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      20C.1-Q). The shortlist-yield audit (`python -m minegen.regression
      layout-v2-yield`, a priori rule: pooled rank AUC ≥ 0.6 over ≥ 5 pairs =
      "correlated") showed the rule 165 lower-bound proxy predicts SPIRAL
-     detailed outcomes (AUC 0.665) but not SWITCHBACK ones (AUC 0.489): the
+     detailed outcomes (pooled AUC 0.673) but not SWITCHBACK ones (0.507 —
+     the closeout A-1 pair-weighted within-case values; the Q commit quoted
+     0.665 / 0.489 from a pooling that concatenated per-case ranks, and both
+     verdicts are unchanged by the correction): the
      proxy bounds the SCORE and cannot see level-access feasibility. The
      corrective is not a coefficient: every cheap-feasible candidate runs the
      evaluator-free stage-4 access gates (`geometric_access_screen` —

@@ -850,13 +850,22 @@ numbers (`YIELD_AUC_CORRELATED = 0.6`, `YIELD_MIN_PAIRS = 5`): a correlated
 family gets an audited top-N reservation, an uncorrelated one gets its
 proxy term fixed.
 
-Measured on the commit-S search (7 cases, 92 candidates each):
+Measured on the commit-S search (7 cases, 92 candidates each), with the
+CORRECTED pair-weighted within-case pooling (closeout A-1; the Q values are
+kept in brackets — the pooling bug never touched a per-case AUC):
 
-| family | pooled rank AUC | pairs | pass / fail | verdict |
-|---|---|---|---|---|
-| SPIRAL | 0.665 | 1 428 | 14 / 102 | correlated |
-| SWITCHBACK | 0.489 | 8 789 | 47 / 187 | NOT correlated |
-| LONGITUDINAL | — | 0 | 0 / 0 | no cheap-feasible candidate on any case |
+| family | pooled rank AUC | pairs | cases used | pass / fail | verdict |
+|---|---|---|---|---|---|
+| SPIRAL | **0.673** (Q reported 0.665) | 196 (was 1 428) | 4 of 7 | 14 / 102 | correlated |
+| SWITCHBACK | **0.507** (Q reported 0.489) | 1 119 (was 8 789) | 5 of 7 | 47 / 187 | NOT correlated |
+| LONGITUDINAL | — | 0 | 0 of 7 | 0 / 0 | no cheap-feasible candidate on any case |
+
+Both verdicts, and therefore the Q action, are unchanged by the correction:
+SPIRAL stays above the a priori 0.6 threshold and SWITCHBACK stays below it
+(0.507 is barely better than the 0.5 of a coin). The pair counts shrink
+because the discarded pooling counted every cross-case pair — comparing a
+rank-1 candidate of one case with a rank-6 candidate of another, which are
+different scales.
 
 Among feasible switchbacks the proxy orders the TOTAL well (Spearman
 0.93–0.98), so it is a sound score bound; what it cannot see is level-access
@@ -996,3 +1005,33 @@ see level-access feasibility — is a Phase 20C.2 candidate, recorded, not
 attempted here. Post-revert the production search is bit-identical to the
 merged 20C.1 baseline (`phase20c1_closeout_vs_q_layout.json`: 0 contract
 regressions, 0 metric drift).
+
+### Closeout A — the pooled AUC was mis-pooled, and the shortlist test proved nothing
+
+A-1. `audit_yield` concatenated each family's per-case rank lists and scored
+one Mann–Whitney AUC over the union. Family-internal ranks restart at 1 in
+every case, so that compares different scales (case A's pass rank 2 against
+case B's fail rank 5). `pooled_rank_auc` now pools PAIR-WEIGHTED WITHIN CASE
+(`Σ wins / Σ pairs` over per-case counts), records `casesUsed` /
+`casesWithoutPairs` / `rankPairs`, and is unit-tested against a fixture where
+two internally PERFECT cases (AUC 1.0 each) pool to 1.0 correctly while the
+concatenated statistic answers 0.75. The corrected numbers are in the table
+above: the Q conclusion holds.
+
+A-2. `phase20c1_q_yield_before.json` / `_after.json` are historical artifacts
+(the commit-S and commit-Q searches). Re-running the production search now
+would fold closeout B into them, so `python -m minegen.regression.repool`
+recomputes ONLY the `pooled` block from each file's own per-case rows —
+`familyRank` and `detailedPass` are all the Mann–Whitney counts need — and
+stamps `pooledCorrection`. Verified: `cases[]` is byte-identical before and
+after, the only key changes are `pooled` and the added `pooledCorrection`.
+
+A-3. `test_shortlist_is_ordered_by_screen_then_proxy` ended in
+`assert (...) >= worst or c.params.family is not None`; every candidate has a
+family, so the clause was always true and the test constrained nothing. It is
+replaced by `test_shortlist_is_exactly_the_reconstructed_bounded_selection`,
+which re-implements stage 3 from the candidate results (policy-aware key,
+bound, rule 165 family reservation, re-sort) and compares candidate ids
+exactly, plus a RED-FIXTURE PROOF: with the key reduced to the id, to the
+proxy alone, or with the screen prefix inverted — or with the bound off by
+one — the same assertion fails.
