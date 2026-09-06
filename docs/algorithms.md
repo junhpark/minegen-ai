@@ -930,7 +930,7 @@ target of the 20C.1 directive, reported as such, not gated.
 ### W — WARPED_VEIN multi-seed feasibility survey (diagnostic only)
 
 Instrument: `python -m minegen.regression warped-seeds`
-(`golden/phase20c1_w_warped_seed_survey.json`), the PRODUCTION layout-v2
+(`golden/phase20c1_closeout_warped_seed_survey.json`), the PRODUCTION layout-v2
 search on `RANDOM_WARPED_VEIN` seeds 301–332 (32 seeds, one fault, the
 fixed list `WARPED_SURVEY_SEEDS`), recording per seed the outcome, the
 funnel (cheap-feasible / shortlist / detailed feasible), the dominant typed
@@ -1035,3 +1035,41 @@ bound, rule 165 family reservation, re-sort) and compares candidate ids
 exactly, plus a RED-FIXTURE PROOF: with the key reduced to the id, to the
 proxy alone, or with the screen prefix inverted — or with the bound off by
 one — the same assertion fails.
+
+### Closeout R — the 32-seed survey re-run on the closeout tree
+
+`python -m minegen.regression warped-seeds` was re-run on the closeout-B tree
+over the same fixed seeds 301–332
+(`golden/phase20c1_closeout_warped_seed_survey.json`, compared in
+`phase20c1_closeout_warped_seed_before_after.json`). Closeout B reverted its
+ordering change, so the production search is unchanged and an identical
+result is the expected — and confirming — outcome. Measured: **32 / 32 seeds
+identical** on every tracked field (status, winner, cheap-feasible /
+shortlist / detailed-feasible counts, dominant failure and its stage,
+dominant level-access reason, serviceable vs accessible levels, clearance
+basis / bound / required, per-seed level-access reason histogram). Aggregates
+therefore also hold: 9 / 32 SUCCESS, dominant stage-4 failure
+`LEVEL_ACCESS_INFEASIBLE` 18 / `ABOVE_TERRAIN` 5, level-access reasons
+`GRADE_LIMIT` 695 · `INSUFFICIENT_RAMP_PILLAR` 256 · `TURNOUT_NOT_STRAIGHT`
+84 · `OREBODY_CLEARANCE` 55 · `CONNECTOR_UNAVAILABLE` 7 ·
+`JUNCTION_SPACING_CONFLICT` 3. Because nothing moved, there is no
+`GRADE_LIMIT` change to attribute — and had there been one, the first
+explanation would have been a change in which candidates reached stage 4,
+not a change in refinement, which closeout B does not touch.
+
+Clearance (R-4, confirmation not suspicion): all 32 seeds report
+`bestClearanceBasis = REFINED_CONSERVATIVE` with `refinement.applied = true`,
+factor 2, resolved lattice spacing (2.5, 2.5, 0.625) m and per-seed cell
+counts spanning 74 400 – 1 251 292. The identical `errorBound` 5.3855 m on
+every seed is the CONSEQUENCE of one factor and one resolved spacing, not a
+sign that refinement was skipped. No seed is COARSE-only and none has
+`applied = false`.
+
+Runtime: the survey took 1 048 s before and 707 s now. Since the search is
+byte-identical, that is machine load, not a code effect — the W baseline ran
+concurrently with the PR #22 gate and the 22-case legacy golden on the same
+four cores. TABULAR-REFERENCE re-measured on the closeout tree: **15.8 s**
+unloaded (stage 1 + 2 including the screen 10.1 s), against 23.4 s measured
+under load during 20C.1-Q; both are the same code, so the ≤ 20 s target is
+not claimed as met by any change in this closeout — runtime work stays a
+Phase 20C.2 item.
