@@ -1379,3 +1379,19 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      revealed volume is a display cut aligned to backend rings — not
      engineering excavation geometry and never persisted (rule 115 analogue).
      Batched caps are shown only once every piece of their kind is complete.
+
+174. Excavation direction contract (Phase 20C.1-V). Every
+     `DevelopmentTimeline` names the network node it is excavated FROM
+     (`excavationStartNode`: the portal side of a ramp segment, the junction
+     of a level access, the endpoint reached first from the level entry for
+     drifts / crosscuts) and `progressDirection ∈ {+1, −1}` along the OWNING
+     centerline's point order: progress p reveals chainage fractions [0, p]
+     for +1 and [1 − p, 1] for −1. Chainage fraction 0 of PROGRESS is always
+     the start end and 1 the face; the reveal grows monotonically start →
+     face. `pointChainageFractions` stay geometry-ordered (rule 83) and the
+     centerline geometry is never reordered (colliders, mesh extras and
+     network edge direction depend on it) — the direction lives in the
+     fraction-semantics layer, and lines, meshes and future face
+     calculations inherit it. A start node that is not welded to a
+     centerline endpoint fails the timeline explicitly; the frontend never
+     decides direction from the camera or by patching individual edges.

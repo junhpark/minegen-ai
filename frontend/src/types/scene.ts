@@ -795,6 +795,12 @@ export interface DevelopmentTimeline {
   progressStartDay: number
   progressEndDay: number
   pointChainageFractions: number[]
+  /** Phase 20C.1-V (rule 174): the network node the excavation starts from
+   * and the direction of progress along the point order (+1: fraction 0 is
+   * the start, progress p reveals [0, p]; −1: the LAST point is the start,
+   * progress reveals [1 − p, 1]). Optional for pre-20C.1 artifacts (+1). */
+  excavationStartNode?: string
+  progressDirection?: 1 | -1
 }
 
 export interface StopeTimeline {

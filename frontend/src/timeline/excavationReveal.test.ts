@@ -7,6 +7,7 @@ import {
   readRevealMeta,
   resolveExcavationReveal,
   revealedIndexCount,
+  revealedIndexRange,
   type PieceRange,
   type RevealMeta,
 } from '@/timeline/excavationReveal'
@@ -239,24 +240,28 @@ describe('20B.3-1.3 metadata-less GLB keeps the centerline fallback', () => {
         edgeType: 'RAMP',
         target: { kind: 'RAMP' as const, segmentId: 'S0' },
         progress: 1,
+        direction: 1 as const,
       },
       {
         edgeId: 'RAMP:1',
         edgeType: 'RAMP',
         target: { kind: 'RAMP' as const, segmentId: 'S1' },
         progress: 1,
+        direction: 1 as const,
       },
       {
         edgeId: 'DRIFT:e',
         edgeType: 'DRIFT',
         target: { kind: 'DEVELOPMENT' as const, pieceId: 'D1' },
         progress: 0.5,
+        direction: 1 as const,
       },
       {
         edgeId: 'XC:e',
         edgeType: 'CROSSCUT',
         target: { kind: 'DEVELOPMENT' as const, pieceId: 'X1' },
         progress: 1,
+        direction: 1 as const,
       },
     ]
     // an old GLB: S1 and X1 carry no extras (readRevealMeta → null); S0 / D1 do
@@ -282,5 +287,55 @@ describe('20B.3-1.3 metadata-less GLB keeps the centerline fallback', () => {
     expect(noExtras[0]!.meta).toBeNull()
     expect(planIndexGroups(noExtras, new Map([['a', 1]]))).toEqual([])
     expect(readRevealMeta(undefined)).toBeNull()
+  })
+})
+
+describe('20C.1-V progress direction (rule 174)', () => {
+  it('a −1 development reveals the index SUFFIX from the end ring', () => {
+    expect(revealedIndexRange(META, 0, -1)).toEqual({ start: 0, count: 0 })
+    // intervals [0,.2] [.2,.5] [.5,.8] [.8,1]; from the end: interval 3 is
+    // complete once 1 − p <= .8 (p >= .2), interval 2 once p >= .5 …
+    expect(revealedIndexRange(META, 0.1, -1)).toEqual({ start: 96, count: 0 })
+    expect(revealedIndexRange(META, 0.2, -1)).toEqual({ start: 72, count: 24 })
+    expect(revealedIndexRange(META, 0.49, -1)).toEqual({ start: 72, count: 24 })
+    expect(revealedIndexRange(META, 0.5, -1)).toEqual({ start: 48, count: 48 })
+    expect(revealedIndexRange(META, 0.8, -1)).toEqual({ start: 24, count: 72 })
+    expect(revealedIndexRange(META, 1, -1)).toEqual({ start: 0, count: 96 })
+    // +1 is the prefix, identical to revealedIndexCount
+    expect(revealedIndexRange(META, 0.5, 1)).toEqual({
+      start: 0,
+      count: revealedIndexCount(META, 0.5),
+    })
+  })
+  it('a reversed piece contributes a range anchored at its END inside the batch', () => {
+    const ranges: PieceRange[] = [
+      { pieceId: 'a', developmentId: 'D', indexOffset: 0, indexCount: 96, meta: META },
+      { pieceId: 'b', developmentId: 'D', indexOffset: 96, indexCount: 96, meta: META },
+    ]
+    const groups = planIndexGroups(
+      ranges,
+      new Map([
+        ['a', { progress: 1, direction: -1 as const }],
+        ['b', { progress: 0.5, direction: -1 as const }],
+      ]),
+    )
+    expect(groups).toEqual([
+      { start: 0, count: 96 },
+      { start: 96 + 48, count: 48 },
+    ])
+  })
+  it('resolveExcavationReveal carries the backend direction (default +1)', () => {
+    const tl = {
+      status: 'SUCCESS',
+      developments: [
+        { ...dev('RAMP:0', 'RAMP', 'layout_v2_selected.json', 0, 0, 10) },
+        { ...dev('DRIFT:e', 'DRIFT', 'levels.json', 0, 0, 10), progressDirection: -1 },
+      ],
+    } as unknown as TimelinePayload
+    const plan = resolveExcavationReveal(tl, smoothed, levels, accesses, 5)
+    expect(plan.reveals.map((r) => [r.edgeId, r.direction])).toEqual([
+      ['RAMP:0', 1],
+      ['DRIFT:e', -1],
+    ])
   })
 })

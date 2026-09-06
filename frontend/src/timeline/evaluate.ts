@@ -29,21 +29,46 @@ export function developmentProgress(dev: DevelopmentTimeline, day: number): numb
   return Math.min(1, Math.max(0, (day - s) / (e - s)))
 }
 
+/** Phase 20C.1-V: progress direction of a development along its point
+ * order (rule 174); pre-20C.1 artifacts carry none and mean +1. */
+export function progressDirectionOf(dev: Pick<DevelopmentTimeline, 'progressDirection'>): 1 | -1 {
+  return dev.progressDirection === -1 ? -1 : 1
+}
+
 /**
- * Clip a flat [x,y,z,…] centerline to chainage [0, progress] using the
- * backend pointChainageFractions (aligned 1:1 with the points). Returns the
- * kept vertices plus ONE linearly interpolated cut point between the two
- * bracketing backend vertices — never a vertex beyond the cut (rule 31).
+ * Clip a flat [x,y,z,…] centerline to the revealed chainage window using the
+ * backend pointChainageFractions (aligned 1:1 with the points): [0, progress]
+ * when progress runs with the point order (direction +1), [1 − progress, 1]
+ * when the excavation starts at the LAST point (direction −1, rule 174).
+ * Returns the kept vertices plus ONE linearly interpolated cut point between
+ * the two bracketing backend vertices — never a vertex beyond the cut
+ * (rule 31). The returned polyline keeps the geometry's point order.
  */
 export function clipPolylineByFractions(
   points: number[],
   fractions: number[],
   progress: number,
+  direction: 1 | -1 = 1,
 ): number[] {
   const n = fractions.length
   if (n < 2 || points.length !== n * 3) return []
   if (progress <= 0) return []
   if (progress >= 1) return points.slice()
+  if (direction === -1) {
+    // mirror: reverse the point order and fractions, clip the prefix, un-mirror
+    const rp: number[] = []
+    const rf: number[] = []
+    for (let i = n - 1; i >= 0; i -= 1) {
+      rp.push(points[i * 3]!, points[i * 3 + 1]!, points[i * 3 + 2]!)
+      rf.push(1 - fractions[i]!)
+    }
+    const clipped = clipPolylineByFractions(rp, rf, progress, 1)
+    const back: number[] = []
+    for (let i = clipped.length / 3 - 1; i >= 0; i -= 1) {
+      back.push(clipped[i * 3]!, clipped[i * 3 + 1]!, clipped[i * 3 + 2]!)
+    }
+    return back
+  }
   const out: number[] = []
   let i = 0
   while (i < n && fractions[i]! <= progress) {

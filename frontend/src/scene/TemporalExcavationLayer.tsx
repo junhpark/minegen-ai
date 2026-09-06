@@ -8,8 +8,9 @@ import {
   planIndexGroups,
   readPieceRanges,
   readRevealMeta,
-  revealedIndexCount,
+  revealedIndexRange,
   resolveExcavationReveal,
+  type PieceProgress,
   type PieceRange,
   type RevealMeta,
 } from '@/timeline/excavationReveal'
@@ -202,28 +203,32 @@ export function TemporalExcavationLayer({
 
   // apply the day's reveal: draw ranges / groups only — no geometry work
   useEffect(() => {
-    const rampProgress = new Map<string, number>()
-    const pieceProgress = new Map<string, number>()
+    const rampProgress = new Map<string, PieceProgress>()
+    const pieceProgress = new Map<string, PieceProgress>()
     for (const r of plan.reveals) {
-      if (r.target.kind === 'RAMP') rampProgress.set(r.target.segmentId, r.progress)
-      else pieceProgress.set(r.target.pieceId, r.progress)
+      const pp = { progress: r.progress, direction: r.direction }
+      if (r.target.kind === 'RAMP') rampProgress.set(r.target.segmentId, pp)
+      else pieceProgress.set(r.target.pieceId, pp)
     }
     const rampPrims = ramp?.prims ?? []
     let allRampComplete = rampPrims.some((p) => p.role === 'SEGMENT')
     let anyRamp = false
     for (const p of rampPrims) {
       if (p.role !== 'SEGMENT') continue
-      const progress = p.segmentId !== null ? (rampProgress.get(p.segmentId) ?? 0) : 0
+      const pp = p.segmentId !== null ? rampProgress.get(p.segmentId) : undefined
+      const progress = pp?.progress ?? 0
       // 20B.3-1.3: without reveal metadata the segment is never shown (its
-      // edge is not covered, the centerline fallback renders instead)
-      const count =
+      // edge is not covered, the centerline fallback renders instead).
+      // 20C.1-V: the revealed window follows the progress direction (rule 174)
+      const win =
         p.meta === null
-          ? 0
+          ? { start: 0, count: 0 }
           : progress >= 1
-            ? p.indexCount
-            : Math.min(p.indexCount, revealedIndexCount(p.meta, progress))
+            ? { start: 0, count: p.indexCount }
+            : revealedIndexRange(p.meta, progress, pp?.direction ?? 1)
+      const count = Math.min(p.indexCount - win.start, win.count)
       p.mesh.visible = count > 0
-      p.mesh.geometry.setDrawRange(0, count)
+      p.mesh.geometry.setDrawRange(win.start, count)
       anyRamp = anyRamp || count > 0
       allRampComplete = allRampComplete && count >= p.indexCount
     }

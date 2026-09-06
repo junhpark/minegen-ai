@@ -75,6 +75,17 @@ class DevelopmentTimeline(ApiModel):
     # points (rule 83): first 0, last 1, monotonic. The timeline never copies
     # geometry coordinates.
     point_chainage_fractions: list[float]
+    #: Phase 20C.1-V excavation direction contract (rule 174): the network
+    #: node the excavation STARTS from (the endpoint reached first from the
+    #: portal / level entry) and the direction of progress along the owning
+    #: centerline's point order: +1 when the first point is that start
+    #: (progress p reveals chainage fractions [0, p]), −1 when the LAST point
+    #: is (progress reveals [1 − p, 1], i.e. the geometry is traversed
+    #: backwards). Geometry order is never changed; only the semantics of
+    #: progress are made explicit so lines, meshes and future face
+    #: calculations inherit one direction.
+    excavation_start_node: str = ""
+    progress_direction: Literal[1, -1] = 1
 
 
 class StopeTimeline(ApiModel):

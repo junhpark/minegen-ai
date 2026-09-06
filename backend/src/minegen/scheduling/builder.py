@@ -26,7 +26,7 @@ from __future__ import annotations
 import heapq
 import math
 from itertools import pairwise
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -45,6 +45,10 @@ from minegen.scheduling.models import (
 )
 
 LENGTH_SYNC_TOLERANCE = 1e-6  # m — recomputed centerline length vs edge scalar
+#: Phase 20C.1-V: the excavation start node must coincide with one owning
+#: centerline endpoint (the network welds nodes onto centerline endpoints)
+START_NODE_WELD_TOLERANCE = 1e-3
+
 DAY_TOLERANCE = 1e-9
 
 _DEV_TASK_TYPE = {
@@ -301,11 +305,16 @@ class MineTimelineBuilder:
             )
         ramp_task_by_entry: dict[str, str] = {}
         prev_task: str | None = None
+        # Phase 20C.1-V: the node every development is excavated FROM (rule
+        # 174) — the portal side of each ramp segment, the junction of each
+        # access, the endpoint reached first for level development
+        start_node_by_edge: dict[str, str] = {}
         for e in chain:
             tid = dev_task_by_edge[e["id"]]
             if prev_task is not None:
                 tasks[tid].dependencies.append(prev_task)
             ramp_task_by_entry[e["toNode"]] = tid
+            start_node_by_edge[e["id"]] = str(e["fromNode"])
             prev_task = tid
 
         # -- Phase 20B level accesses: RAMP_JUNCTION → LEVEL_ENTRY (rule 157) --- #
@@ -322,6 +331,7 @@ class MineTimelineBuilder:
             tid = dev_task_by_edge[e["id"]]
             tasks[tid].dependencies.append(ramp_task)
             ramp_task_by_entry[e["toNode"]] = tid
+            start_node_by_edge[e["id"]] = str(e["fromNode"])
 
         # -- level-development access precedence (§7, rule 85) --------------- #
         level_edges = [e for e in edges if e["type"] in ("DRIFT", "CROSSCUT")]
@@ -378,6 +388,7 @@ class MineTimelineBuilder:
                 tid = dev_task_by_edge[e["id"]]
                 if launch == entry_id or launch_pred is None:
                     dep = ramp_task
+                    start_node_by_edge[e["id"]] = str(launch)
                 elif launch_pred["id"] == e["id"]:
                     # the edge itself established access to this endpoint: its
                     # OTHER endpoint's predecessor provides the launch access
@@ -388,8 +399,10 @@ class MineTimelineBuilder:
                         if other == entry_id or other_pred is None
                         else dev_task_by_edge[other_pred["id"]]
                     )
+                    start_node_by_edge[e["id"]] = str(other)
                 else:
                     dep = dev_task_by_edge[launch_pred["id"]]
+                    start_node_by_edge[e["id"]] = str(launch)
                 if dep != tid:
                     tasks[tid].dependencies.append(dep)
 
@@ -585,6 +598,24 @@ class MineTimelineBuilder:
                 )
             total_dev_len += total
             task = tasks[dev_task_by_edge[e["id"]]]
+            # Phase 20C.1-V (rule 174): progress direction from the excavation
+            # start node — the owning centerline endpoint welded to that node
+            # is the fraction-0 end of progress; the other endpoint is the face
+            start_id = start_node_by_edge.get(e["id"])
+            if start_id is None or start_id not in nodes:
+                return _failed(source_revision, f"edge {e['id']} has no excavation start node")
+            start_pos = np.asarray(nodes[start_id]["position"], dtype=np.float64)
+            pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+            d_first = float(np.linalg.norm(pts[0] - start_pos))
+            d_last = float(np.linalg.norm(pts[-1] - start_pos))
+            if min(d_first, d_last) > START_NODE_WELD_TOLERANCE:
+                return _failed(
+                    source_revision,
+                    f"edge {e['id']}: excavation start node {start_id} is "
+                    f"{min(d_first, d_last):.3f} m from both centerline endpoints "
+                    f"(> {START_NODE_WELD_TOLERANCE} m, rule 174)",
+                )
+            direction: Literal[1, -1] = 1 if d_first <= d_last else -1
             developments.append(
                 DevelopmentTimeline(
                     edge_id=e["id"],
@@ -600,6 +631,8 @@ class MineTimelineBuilder:
                     progress_start_day=task.start_day,
                     progress_end_day=task.end_day,
                     point_chainage_fractions=fractions,
+                    excavation_start_node=start_id,
+                    progress_direction=direction,
                 )
             )
 

@@ -208,6 +208,10 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      regeneration touches nothing upstream, rule 86)
     GET  /api/v1/scenarios/{id}/design/timeline      Phase 10: persisted typed TimelinePayload
                                                      (409 TIMELINE_NOT_GENERATED after invalidation)
+                                                     20C.1-V (rule 174): every development also
+                                                     carries excavationStartNode +
+                                                     progressDirection (+1 / −1) beside its
+                                                     geometry-ordered pointChainageFractions
     POST /api/v1/scenarios/{id}/network/generate     Phase 07/08: synchronous MineNetwork rebuild
                                                      (typed NetworkPayload; 409 SMOOTHED_NOT_GENERATED /
                                                      LEVELS_NOT_GENERATED without prerequisites)

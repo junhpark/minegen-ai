@@ -300,7 +300,14 @@ primitives carry ring-interval reveal metadata and
 at the last completed ring of the Phase 10 progress through draw ranges /
 draw groups over the shared loaded buffers (`timeline/excavationReveal.ts`,
 fail-closed mapping; unmapped developments keep their centerline). The
-walkthrough volumetric rule above is unchanged. Availability is resolved ONLY
+walkthrough volumetric rule above is unchanged. Phase 20C.1-V added the
+excavation direction contract (rule 174): the −u-side drift pieces of every
+level are stored in +u point order (face → entry), so before 20C.1 their
+reveal grew from the face toward the ramp (117 of 221 DRIFT edges on the
+acceptance scenario; RAMP / LEVEL_ACCESS / CROSSCUT were already correct).
+The timeline now names each development's `excavationStartNode` and
+`progressDirection`; `clipPolylineByFractions` and `revealedIndexRange`
+reveal the suffix for −1 developments, geometry untouched. Availability is resolved ONLY
 through each RAMP `DevelopmentTimeline.geometryRef` →
 `decline_smoothed.json` segmentIndex with exact runtime identity
 validation (`runtime.segmentId == smoothed.levelId`, counts equal, each
