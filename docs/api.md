@@ -102,7 +102,13 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      adds arc–straight–arc hairpin-station
                                                      candidates (`-s<m>` in the id, stationLengthM
                                                      in params, derived.stationLength / legSpacing)
-    GET  …/design/layout-v2                          catalogue · 409 LAYOUT_V2_NOT_GENERATED
+    GET  …/design/layout-v2                          catalogue · 409 LAYOUT_V2_NOT_GENERATED.
+                                                     Phase 20C.1-Q: every cheap-feasible candidate
+                                                     carries `accessScreen` {blockedLevelIds,
+                                                     blockedCount, levels{blocked, reason,
+                                                     rejectionCounts}} — the evaluator-free
+                                                     stage-4 access gates (rule 176), the stage-3
+                                                     ordering prefix, never a rejection
     POST …/design/layout-v2/select {candidateId}     materialize a FEASIBLE candidate as
                                                      derived/layout_v2_selected.json (source unchanged)
                                                      404 LAYOUT_V2_CANDIDATE_NOT_FOUND ·

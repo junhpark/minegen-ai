@@ -964,3 +964,71 @@ def test_pillar_gate_uses_the_directional_support(
         _, gap = gated_separation(a.points, winner.points, SHAPE, plan.gate_taper_arc_m)
         assert a.excavation_separation == pytest.approx(gap)
         assert gap >= plan.excavation_separation_required - SEPARATION_TOLERANCE - 1e-9
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20C.1-Q: geometric access screen (stage-3 ordering prefix, rule 176)
+# --------------------------------------------------------------------------- #
+
+
+def test_nearest_on_polyline_with_tree_is_bit_identical() -> None:
+    from scipy.spatial import cKDTree
+
+    from minegen.layout.access import nearest_on_polyline
+
+    rng = np.random.default_rng(7)
+    # a wandering polyline with a short segment mix and a compact query cloud
+    t = np.linspace(0.0, 12.0, 400)
+    poly = np.column_stack([40 * np.sin(t), 40 * np.cos(t) + 3 * t, -4 * t])
+    pts = rng.uniform(-60, 60, size=(25, 3))
+    d0, c0, s0 = nearest_on_polyline(pts, poly)
+    d1, c1, s1 = nearest_on_polyline(pts, poly, cKDTree(poly))
+    np.testing.assert_array_equal(d0, d1)
+    np.testing.assert_array_equal(c0, c1)
+    np.testing.assert_array_equal(s0, s1)
+    # a query exactly on a shared vertex ties two segments: the lower index wins both ways
+    on_vertex = poly[[10, 200]]
+    _, _, sa = nearest_on_polyline(on_vertex, poly)
+    _, _, sb = nearest_on_polyline(on_vertex, poly, cKDTree(poly))
+    np.testing.assert_array_equal(sa, sb)
+
+
+def test_geometric_screen_is_a_necessary_condition_of_stage_four(
+    search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
+    _, res = search
+    detailed = [c for c in res.candidates if c.access_plan is not None]
+    assert detailed
+    for c in detailed:
+        assert c.access_screen is not None
+        failed = {a.level_id for a in c.access_plan.accesses if not a.ok}
+        blocked = set(c.access_screen["blockedLevelIds"])
+        # a level the screen proves unservable never becomes OK in stage 4
+        assert blocked <= failed, (c.candidate_id, blocked - failed)
+        if c.status == "FEASIBLE":
+            assert c.screen_blocked == 0
+        for lid, entry in c.access_screen["levels"].items():
+            assert entry["blocked"] == (lid in blocked)
+            if entry["blocked"]:
+                assert entry["reason"] is not None
+    # every cheap-feasible candidate carries the screen; cheap-infeasible ones do not
+    for c in res.candidates:
+        if c.stage_reached == "CONSTRUCT" or (c.failure_reasons and c.stage_reached == "CHEAP"):
+            assert c.access_screen is None
+        elif c.stage_reached in ("CHEAP", "DETAILED"):
+            assert c.access_screen is not None
+
+
+def test_shortlist_is_ordered_by_screen_then_proxy(
+    search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
+    _, res = search
+    by_id = {c.candidate_id: c for c in res.candidates}
+    keys = [(by_id[i].screen_blocked, by_id[i].cheap_proxy) for i in res.shortlist]
+    assert keys == sorted(keys)
+    # no NOT_VALIDATED candidate with fewer blocked levels than a shortlisted
+    # one was left out unless its proxy is worse (the per-family slot excepted)
+    left = [c for c in res.candidates if c.status == "NOT_VALIDATED"]
+    worst = max(keys)
+    for c in left:
+        assert (c.screen_blocked, c.cheap_proxy) >= worst or c.params.family is not None

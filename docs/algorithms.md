@@ -832,3 +832,76 @@ whole-body search meaning. The shortlist bound is validated to be at least
 labelled EXACT (rule 134) — its bases are COARSE_CONSERVATIVE /
 REFINED_CONSERVATIVE, both carrying their actual `latticeSpacing` and
 `errorBound` in the candidate report.
+
+## Phase 20C.1 — hairpin station, shortlist yield, WARPED seed survey
+
+### Q — shortlist-yield audit and the geometric access screen (rule 176)
+
+Instrument: `python -m minegen.regression layout-v2-yield` (diagnostic,
+`golden/phase20c1_q_yield_before.json` on the commit-S search,
+`_after.json` on the commit-Q search). For every golden case and family it
+records each cheap-feasible candidate's FAMILY-INTERNAL cheap rank (stage-3
+lower-bound proxy), production shortlist membership, exhaustive detailed
+outcome, typed failure reasons and per-level access failure reasons, and
+per family a Mann–Whitney rank AUC (proxy rank vs detailed pass), the
+Spearman correlation of proxy vs detailed total among passes and the family
+rank of the best feasible candidate. The decision rule was fixed BEFORE the
+numbers (`YIELD_AUC_CORRELATED = 0.6`, `YIELD_MIN_PAIRS = 5`): a correlated
+family gets an audited top-N reservation, an uncorrelated one gets its
+proxy term fixed.
+
+Measured on the commit-S search (7 cases, 92 candidates each):
+
+| family | pooled rank AUC | pairs | pass / fail | verdict |
+|---|---|---|---|---|
+| SPIRAL | 0.665 | 1 428 | 14 / 102 | correlated |
+| SWITCHBACK | 0.489 | 8 789 | 47 / 187 | NOT correlated |
+| LONGITUDINAL | — | 0 | 0 / 0 | no cheap-feasible candidate on any case |
+
+Among feasible switchbacks the proxy orders the TOTAL well (Spearman
+0.93–0.98), so it is a sound score bound; what it cannot see is level-access
+feasibility, which decides every switchback detailed failure
+(`LEVEL_ACCESS_INFEASIBLE`: TURNOUT_NOT_STRAIGHT 65 / 67 level failures on
+WARPED-301 / GEOMETRY-STRESS, GRADE_LIMIT 52 / 84, INSUFFICIENT_RAMP_PILLAR
+40 on TABULAR). Consequences before the action: GEOMETRY-STRESS's only
+feasible candidate (the commit-S station switchback) sat at family rank
+15 / 18 (global 18 / 21) and was never validated (`winnerMissedByShortlist`
+= true); WARPED-301's first feasible switchback sat at family rank 5 with 4
+switchback slots (`missedFamilies = [SWITCHBACK]`, 9 feasible switchbacks
+exhaustive, 0 in production); TABULAR's shortlist validated 12 candidates
+of which 5 passed.
+
+Action ("fix the proxy term" branch, no coefficient): the stage-3 order
+gains an exact prefix. `geometric_access_screen` runs, for every
+cheap-feasible candidate, the evaluator-free stage-4 access gates on the
+delivered polyline through the SAME `_search_level` code path
+(`geometric_only=True`): the junction lattice, B-3 turnout curvature, B-1
+plan separation, connector availability, gradient, length, plan radius and
+the B-2 direction-aware rock pillar, with the junction-spacing assignment
+ignored and coarse-stand-off anchors. A level with no passing candidate is
+BLOCKED — a necessary condition of stage 4 (the tabular test pins
+`blocked ⊆ failed` for every detailed candidate and `blocked = 0` for every
+FEASIBLE one). Order = `(blockedLevels, proxy, family, id)`; nothing is
+rejected, the bound (12) and the per-family slot (rule 165) are unchanged,
+`accessScreen` is shipped per candidate. Under a conservative policy the
+refined stage-4 anchor may move, which is why the screen orders and never
+gates.
+
+Measured after (`golden/phase20c1_q_layout_v2.json`,
+`phase20c1_q_vs_s_layout.json`, `phase20c1_q_shortlist_audit.json`): winner
+unchanged on the 6 previously decided cases with ZERO metric drift (the
+KD-tree vertex pre-filter in `nearest_on_polyline` is bit-identical, tested
+on random and on-vertex tie queries); GEOMETRY-STRESS becomes SUCCESS in the
+PRODUCTION search with `SWITCHBACK-k1-p+20-CW-s50-g0.100` (21 / 21
+accesses); feasible counts 5 → 12 (TABULAR, CUT_AND_FILL), 3 → 10
+(WARPED-301), 5 → 10 (IRREGULAR); shortlist yield TABULAR 12 / 12 validated
+pass (9 switchbacks), WARPED-301 10 / 12, GEOMETRY-STRESS 1 / 12;
+`winnerMissedByShortlist` false 7 / 7 and `missedFamilies = []` 7 / 7
+(exhaustive feasible 17 / 13 / 1 vs production 12 / 10 / 1 on TABULAR /
+301 / STRESS — the remaining gap is the bound, not a missed family or
+winner). The screen's family AUC numbers are unchanged by construction (the
+proxy itself was not touched). Cost: the screen adds the evaluator-free gate
+sweep to stage 2; TABULAR-REFERENCE production search measured 23.4 s
+unloaded (stage 1+2 incl. screen 15.5 s, stage 4 7.8 s; 14.2 s before
+20C.1, 12 candidates validated instead of 5) — above the ≤ 20 s report
+target of the 20C.1 directive, reported as such, not gated.

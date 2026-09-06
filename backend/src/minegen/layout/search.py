@@ -56,6 +56,7 @@ from minegen.layout.access import (
     LevelAccessPlan,
     LevelDevelopmentAnchor,
     build_anchor,
+    geometric_access_screen,
     plan_level_accesses,
 )
 from minegen.layout.families import (
@@ -284,6 +285,9 @@ class CandidateResult:
     crossings: list[Crossing | None] = field(default_factory=list)
     shortlisted: bool = False
     cheap_proxy: float | None = None
+    #: Phase 20C.1-Q geometric access screen (evaluator-free stage-4 gates,
+    #: spacing ignored; a necessary condition, never a rejection)
+    access_screen: dict[str, Any] | None = None
     rank: int | None = None
 
     @property
@@ -294,6 +298,11 @@ class CandidateResult:
     def screened_count(self) -> int:
         """Levels passing the cheap access-potential screen."""
         return sum(1 for r in self.level_service if r.within_reach)
+
+    @property
+    def screen_blocked(self) -> int:
+        """Levels the geometric access screen proves unservable (0 before it ran)."""
+        return int(self.access_screen["blockedCount"]) if self.access_screen else 0
 
     @property
     def accessible_count(self) -> int | None:
@@ -331,6 +340,7 @@ class CandidateResult:
             "derived": _finite_dict(self.derived),
             "pieces": self.pieces,
             "cheapProxy": self.cheap_proxy,
+            "accessScreen": self.access_screen,
         }
         if include_points and self.points is not None:
             d["centerline"] = {
@@ -767,7 +777,7 @@ class LayoutV2Search:
                     _event(ProgressStage.CANDIDATE_COMPLETED, i, n, cand.candidate_id, cand.status)
                 )
                 continue
-            self._cheap_stage(cand, built, ctx)
+            self._cheap_stage(cand, built, ctx, req_clear)
             on_progress(
                 _event(ProgressStage.CANDIDATE_COMPLETED, i, n, cand.candidate_id, cand.status)
             )
@@ -776,7 +786,7 @@ class LayoutV2Search:
 
         # -- STAGE 3: bounded shortlist --------------------------------------- #
         cheap_ok = [c for c in results if c.status == CandidateStatus.NOT_VALIDATED]
-        cheap_ok.sort(key=lambda c: (c.cheap_proxy or math.inf, _family_rank(c), c.candidate_id))
+        cheap_ok.sort(key=_shortlist_key)
         if detailed_all:
             shortlist = cheap_ok
         else:
@@ -795,9 +805,7 @@ class LayoutV2Search:
             ]
             if extras:
                 shortlist = shortlist[: max(0, self.cfg.shortlist_size - len(extras))] + extras
-                shortlist.sort(
-                    key=lambda c: (c.cheap_proxy or math.inf, _family_rank(c), c.candidate_id)
-                )
+                shortlist.sort(key=_shortlist_key)
         for c in shortlist:
             c.shortlisted = True
         perf["shortlistSize"] = len(shortlist)
@@ -899,7 +907,7 @@ class LayoutV2Search:
     # -- stages ------------------------------------------------------------- #
 
     def _cheap_stage(
-        self, cand: CandidateResult, built: FamilyGeometry, ctx: LayoutContext
+        self, cand: CandidateResult, built: FamilyGeometry, ctx: LayoutContext, req_clear: float
     ) -> None:
         cand.stage_reached = Stage.CHEAP
         cand.points = built.points
@@ -926,6 +934,26 @@ class LayoutV2Search:
             cand.failure_detail = "; ".join(p[1] for p in problems)
         else:
             cand.status = CandidateStatus.NOT_VALIDATED
+            # Phase 20C.1-Q: evaluator-free geometric access screen on the
+            # delivered polyline (coarse-stand-off anchors) — the stage-3
+            # ordering prefix (rule 176); it never rejects, stage 4 decides
+            assert self._sections is not None and self._track is not None
+            standoff = self.anchor_standoff(req_clear, self.policy)
+            anchors = [
+                build_anchor(
+                    self.world.orebody,
+                    lv,
+                    self._sections,
+                    self._track,
+                    built.points,
+                    standoff,
+                    self.scenario.mining.method.value,
+                )
+                for lv in ctx.levels
+            ]
+            cand.access_screen = geometric_access_screen(
+                built.points, anchors, ctx.levels, self.cfg.access, ctx.ramp, self.shape
+            )
 
     def candidate_policy(
         self, result: LayoutSearchResult, candidate_id: str
@@ -1122,6 +1150,13 @@ def _map_reason(reason: str) -> InfeasibleReason:
 
 def _family_rank(c: CandidateResult) -> int:
     return FAMILY_ORDER.index(c.params.family)
+
+
+def _shortlist_key(c: CandidateResult) -> tuple[int, float, int, str]:
+    """Stage-3 order (rule 176): geometric-screen blocked levels first (a
+    provably unservable level can never become FEASIBLE in stage 4), then the
+    cheap lower-bound proxy (rule 165), family order, id."""
+    return (c.screen_blocked, c.cheap_proxy or math.inf, _family_rank(c), c.candidate_id)
 
 
 def _rank_key(c: CandidateResult) -> tuple[int, float, int, str]:

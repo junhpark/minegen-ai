@@ -1410,3 +1410,22 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      so the turning-burden score cannot be escaped by a station. A level
      that still fails with a station is a real constraint, reported with
      the per-level typed reason and numbers, never a relaxed gate.
+176. Geometric access screen as the stage-3 ORDER, never a gate (Phase
+     20C.1-Q). The shortlist-yield audit (`python -m minegen.regression
+     layout-v2-yield`, a priori rule: pooled rank AUC ≥ 0.6 over ≥ 5 pairs =
+     "correlated") showed the rule 165 lower-bound proxy predicts SPIRAL
+     detailed outcomes (AUC 0.665) but not SWITCHBACK ones (AUC 0.489): the
+     proxy bounds the SCORE and cannot see level-access feasibility. The
+     corrective is not a coefficient: every cheap-feasible candidate runs the
+     evaluator-free stage-4 access gates (`geometric_access_screen` —
+     the SAME `_search_level` code path with `geometric_only=True`: junction
+     lattice, B-3 turnout curvature, B-1 plan separation, connector
+     availability, gradient, length, plan radius, B-2 rock pillar; junction
+     spacing ignored; coarse-stand-off anchors) and a level with no passing
+     candidate is BLOCKED — a necessary condition of stage 4, never a
+     rejection. Stage-3 order is `(blockedLevels, proxy, family order, id)`;
+     the shortlist bound, the per-family slot (rule 165) and stage 4 as the
+     final authority are unchanged, and `accessScreen` stays inspectable per
+     candidate. The B-2 pillar keeps its exact direction-aware semantics
+     (rule 172); the KD-tree vertex pre-filter in `nearest_on_polyline` is a
+     proven-identical cost reduction, not an approximation.

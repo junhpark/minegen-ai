@@ -573,6 +573,13 @@ export interface LayoutCandidateSummary {
   scores: LayoutScores | null
   clearance: LayoutClearanceReport | null
   cheapProxy: number | null
+  /** Phase 20C.1-Q geometric access screen (stage-3 ordering prefix, never a
+   * rejection): levels no stage-4 junction candidate can serve */
+  accessScreen?: {
+    blockedLevelIds: string[]
+    blockedCount: number
+    levels: Record<string, { blocked: boolean; reason: string | null }>
+  } | null
   /** shipped only by GET …/design/layout-v2 for shortlisted candidates */
   centerline?: { points: number[]; pointCount: number } | null
 }

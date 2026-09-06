@@ -85,7 +85,42 @@ def main(argv: list[str] | None = None) -> int:
     lva_p.add_argument("--label", required=True)
     lva_p.add_argument("--out", type=Path, default=Path("golden"))
 
+    lvy_p = sub.add_parser(
+        "layout-v2-yield",
+        help="Phase 20C.1-Q diagnostic: family-internal cheap rank vs detailed pass",
+    )
+    lvy_p.add_argument("--suite", choices=["full", "smoke"], default="full")
+    lvy_p.add_argument("--label", required=True)
+    lvy_p.add_argument("--out", type=Path, default=Path("golden"))
+
     args = parser.parse_args(argv)
+    if args.command == "layout-v2-yield":
+        yld = layout_v2.audit_yield(layout_v2.suite(args.suite), args.label)
+        yld["gitHead"] = _git_head()
+        for rec in yld["cases"]:
+            fams = rec.get("families", {})
+            print(
+                f"  {rec['key']}: winner={rec.get('winnerNormal')} exhaustive="
+                f"{rec.get('winnerExhaustive')} (family rank "
+                f"{rec.get('winnerExhaustiveFamilyRank')}, global "
+                f"{rec.get('winnerExhaustiveGlobalRank')}) missedWinner="
+                f"{rec.get('winnerMissedByShortlist')} missedFamilies={rec.get('missedFamilies')}"
+            )
+            for fam, f in fams.items():
+                print(
+                    f"      {fam}: cheap={f['cheapFeasible']} shortlisted={f['shortlisted']} "
+                    f"pass={f['detailedPass']} (shortlisted pass {f['shortlistedPass']}) "
+                    f"bestRank={f['bestFeasibleFamilyRank']} maxPassRank={f['maxPassFamilyRank']} "
+                    f"auc={f['rankAuc']} ({f['rankPairs']} pairs) "
+                    f"spearman={f['spearmanProxyVsTotalAmongPasses']}"
+                )
+        print(f"  pooled: {json.dumps(yld['pooled'])}")
+        print(f"  topNNeededForBestFeasible={yld['topNNeededForBestFeasible']}")
+        args.out.mkdir(parents=True, exist_ok=True)
+        yield_path = args.out / f"{args.label}.json"
+        yield_path.write_text(json.dumps(yld, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"wrote {yield_path} ({yld['totalRuntimeSeconds']:.1f} s)")
+        return 0
     if args.command == "layout-v2":
         lv_cases = layout_v2.suite(args.suite)
         print(f"layout-v2 suite={args.suite} cases={len(lv_cases)}")
