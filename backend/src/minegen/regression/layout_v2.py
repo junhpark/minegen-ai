@@ -849,6 +849,141 @@ def audit_yield(cases: list[LayoutCase], label: str) -> dict[str, Any]:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Phase 20C.1-W: WARPED_VEIN multi-seed feasibility diagnosis (diagnostic only)
+# --------------------------------------------------------------------------- #
+
+#: the fixed deterministic seed list of the W survey (never sampled at run
+#: time; a new seed is a code change). 301 and 307 are the golden seeds.
+WARPED_SURVEY_SEEDS: tuple[int, ...] = tuple(range(301, 333))
+WARPED_SURVEY_FAULT_COUNT = 1
+
+
+def warped_seed_survey(seeds: tuple[int, ...], label: str) -> dict[str, Any]:
+    """Run the production layout-v2 search on RANDOM_WARPED_VEIN scenarios of
+    the fixed seed list and record, per seed: outcome, funnel counts, the
+    dominant typed failure reason with its stage, the clearance picture
+    (required vs certified conservative minimum vs error bound, COARSE /
+    REFINED basis) and the serviceable / accessible level counts. Nothing
+    is changed, tuned or persisted by this survey."""
+    rows: list[dict[str, Any]] = []
+    t_all = time.perf_counter()
+    for seed in seeds:
+        row: dict[str, Any] = {"seed": seed}
+        t0 = time.perf_counter()
+        try:
+            create = realize_scenario(
+                ScenarioPreset.RANDOM_WARPED_VEIN, seed, WARPED_SURVEY_FAULT_COUNT
+            )
+        except ScenarioRealizationError as exc:
+            row.update({"realized": False, "realizationError": str(exc)})
+            row["seconds"] = time.perf_counter() - t0
+            rows.append(row)
+            continue
+        sc = Scenario(**create.model_dump())
+        world = generate_world(sc)
+        res = LayoutV2Search(sc, world).run()
+        detailed = [c for c in res.candidates if c.stage_reached == "DETAILED"]
+        feasible = [c for c in detailed if c.status == "FEASIBLE"]
+        # failure histogram: (stage, first typed reason) over every candidate
+        # that FAILED a stage (NOT_VALIDATED is the shortlist bound, not a
+        # failure, and is counted separately)
+        hist: dict[str, int] = {}
+        not_validated = 0
+        for c in res.candidates:
+            if c.status == "FEASIBLE":
+                continue
+            if c.status == "NOT_VALIDATED":
+                not_validated += 1
+                continue
+            reason = c.failure_reasons[0] if c.failure_reasons else c.status
+            k = f"{c.stage_reached}:{reason}"
+            hist[k] = hist.get(k, 0) + 1
+        level_hist: dict[str, int] = {}
+        for c in detailed:
+            for k, v in _level_failure_histogram(c).items():
+                level_hist[k] = level_hist.get(k, 0) + v
+        # dominant failure: among DETAILED (stage-4) failures when any candidate
+        # reached stage 4, else among stage-1/2 failures
+        detailed_hist = {k: v for k, v in hist.items() if k.startswith("DETAILED:")}
+        pool = detailed_hist or hist
+        dominant = max(pool.items(), key=lambda kv: (kv[1], kv[0]))[0] if pool else None
+        dominant_level = (
+            max(level_hist.items(), key=lambda kv: (kv[1], kv[0]))[0] if level_hist else None
+        )
+        validated = [(c, c.clearance) for c in detailed if c.clearance is not None]
+        best_pair = (
+            max(validated, key=lambda cc: (cc[1].conservative_minimum, cc[0].candidate_id))
+            if validated
+            else None
+        )
+        best_clear = best_pair[0] if best_pair else None
+        best_rep = best_pair[1] if best_pair else None
+        winner = res.candidate(res.winner_id) if res.winner_id else None
+        best_access = max((c.accessible_count or 0 for c in detailed), default=None)
+        row.update(
+            {
+                "realized": True,
+                "status": "SUCCESS" if res.winner_id else "NO_FEASIBLE_CANDIDATE",
+                "winnerId": res.winner_id,
+                "winnerFamily": winner.params.family.value if winner else None,
+                "candidateCount": len(res.candidates),
+                "cheapFeasibleCount": int(res.performance.get("cheapFeasibleCount", 0)),
+                "shortlistSize": len(res.shortlist),
+                "detailedFeasibleCount": len(feasible),
+                "dominantFailure": dominant,
+                "dominantLevelAccessFailure": dominant_level,
+                "failureHistogram": hist,
+                "notValidatedCount": not_validated,
+                "detailedCount": len(detailed),
+                "levelAccessFailureReasons": level_hist,
+                "requiredLevelCount": len(res.levels),
+                "serviceableLevelCount": len(res.serviceable_ids),
+                "bestAccessibleLevels": best_access,
+                "winnerAccessibleLevels": winner.accessible_count if winner else None,
+                "clearanceBasisSearch": res.clearance_basis,
+                "clearanceErrorBoundSearch": _r(res.clearance_error_bound),
+                "requiredClearance": _r(res.required_clearance),
+                "bestConservativeClearance": (
+                    _r(best_rep.conservative_minimum) if best_rep else None
+                ),
+                "bestApproximateClearance": (
+                    _r(best_rep.approximate_minimum) if best_rep else None
+                ),
+                "bestClearanceBasis": best_rep.basis if best_rep else None,
+                "bestClearanceErrorBound": _r(best_rep.error_bound) if best_rep else None,
+                "bestClearanceRefinement": best_rep.refinement if best_rep else None,
+                "bestClearanceCandidateId": best_clear.candidate_id if best_clear else None,
+                "orebodyVolumeM3": _r(world.orebody.volume(), 1),
+                "seconds": time.perf_counter() - t0,
+            }
+        )
+        rows.append(row)
+    realized = [r for r in rows if r.get("realized")]
+    success = [r for r in realized if r["status"] == "SUCCESS"]
+    dom_hist: dict[str, int] = {}
+    for r in realized:
+        if r["status"] != "SUCCESS" and r["dominantFailure"]:
+            dom_hist[r["dominantFailure"]] = dom_hist.get(r["dominantFailure"], 0) + 1
+    return {
+        "suiteVersion": SUITE_VERSION,
+        "label": label,
+        "semantics": (
+            "Phase 20C.1-W diagnostic WARPED_VEIN multi-seed feasibility survey on the "
+            "production layout-v2 search; nothing is tuned, changed or persisted"
+        ),
+        "seeds": list(seeds),
+        "faultCount": WARPED_SURVEY_FAULT_COUNT,
+        "seedCount": len(seeds),
+        "realizedCount": len(realized),
+        "successCount": len(success),
+        "noFeasibleCount": len(realized) - len(success),
+        "dominantFailureHistogram": dom_hist,
+        "totalRuntimeSeconds": time.perf_counter() - t_all,
+        "rows": rows,
+    }
+
+
 def write_report(report: dict[str, Any], out_dir: Path, name: str) -> tuple[Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / f"{name}.json"

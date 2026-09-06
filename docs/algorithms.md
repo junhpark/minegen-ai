@@ -905,3 +905,42 @@ sweep to stage 2; TABULAR-REFERENCE production search measured 23.4 s
 unloaded (stage 1+2 incl. screen 15.5 s, stage 4 7.8 s; 14.2 s before
 20C.1, 12 candidates validated instead of 5) — above the ≤ 20 s report
 target of the 20C.1 directive, reported as such, not gated.
+
+### W — WARPED_VEIN multi-seed feasibility survey (diagnostic only)
+
+Instrument: `python -m minegen.regression warped-seeds`
+(`golden/phase20c1_w_warped_seed_survey.json`), the PRODUCTION layout-v2
+search on `RANDOM_WARPED_VEIN` seeds 301–332 (32 seeds, one fault, the
+fixed list `WARPED_SURVEY_SEEDS`), recording per seed the outcome, the
+funnel (cheap-feasible / shortlist / detailed feasible), the dominant typed
+failure with its stage (among stage-4 failures when any candidate reached
+stage 4), the dominant per-level access failure, the clearance picture
+(required vs the best certified conservative minimum, error bound,
+COARSE / REFINED basis) and the serviceable / accessible level counts.
+Nothing is tuned, changed or persisted by the survey.
+
+Measured (commit W): 32 / 32 seeds realize; **9 / 32 SUCCESS** (301, 305,
+317, 318, 319, 326, 328, 329, 332 — 6 spiral winners, 3 switchback) and
+23 NO_FEASIBLE_CANDIDATE. Every seed reaches stage 4 with 3–59 cheap-feasible
+candidates (12 shortlisted, 3 on seed 302 whose ramps leave the world), so
+the funnel is never starved at stage 2. Dominant stage-4 failure on the 23
+failing seeds: `LEVEL_ACCESS_INFEASIBLE` 18, `ABOVE_TERRAIN` 5 (the main
+ramp breaks the surface — bodies that sit high under relief); the dominant
+level-access reason is `GRADE_LIMIT` 17 and `INSUFFICIENT_RAMP_PILLAR` 4
+(2 seeds have no access failure at all because no candidate survived the
+centerline stage). Clearance is NEVER the binding constraint: the best
+certified conservative minimum is 22.7–116.8 m against the 10.59 m
+requirement on every seed, with the stage-4 REFINED_CONSERVATIVE basis
+(error bound 5.39 m) applied on all 32. Serviceable levels are 7–14 of
+9–18 required (implicit bodies leave 1–6 required levels without an
+orebody section, reported and excluded per rule 141); the best candidate
+reaches 0–14 accessible levels, and on 9 failing seeds it serves all but
+1–3 levels. Reading: for irregular bodies the loss is concentrated in the
+level-access connector (a one-turn CS branch with a chord-exact gradient
+from a junction lattice inside the elevation window to a footwall anchor
+placed on the numerical section's principal axis) — the entry's elevation
+and horizontal offset from the ramp exceed what 0.12 can bridge inside the
+window on 17 seeds. That points at the Phase 20C.2 WARPED level-development
+contract (section(z) local frame, anchor placement following the local
+trace) and NOT at clearance, the shortlist or the ramp families; no
+threshold, policy or default is changed by this phase.

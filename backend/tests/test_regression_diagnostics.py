@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from minegen.regression.layout_v2 import (
+    WARPED_SURVEY_SEEDS,
     YIELD_AUC_CORRELATED,
     YIELD_MIN_PAIRS,
     _rank_auc,
@@ -37,4 +38,11 @@ def test_spearman_handles_ties_and_degenerate_input() -> None:
 
 
 def test_yield_decision_rule_constants_are_sane() -> None:
+    assert 0.5 < YIELD_AUC_CORRELATED < 1.0 and YIELD_MIN_PAIRS >= 1
+
+
+def test_survey_seed_list_is_fixed_and_large_enough() -> None:
+    assert len(WARPED_SURVEY_SEEDS) >= 30
+    assert len(set(WARPED_SURVEY_SEEDS)) == len(WARPED_SURVEY_SEEDS)
+    assert 301 in WARPED_SURVEY_SEEDS and 307 in WARPED_SURVEY_SEEDS  # the golden seeds
     assert 0.5 < YIELD_AUC_CORRELATED < 1.0 and YIELD_MIN_PAIRS >= 1
