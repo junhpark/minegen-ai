@@ -288,7 +288,8 @@ class CandidateResult:
     shortlisted: bool = False
     cheap_proxy: float | None = None
     #: Phase 20C.1-Q geometric access screen (evaluator-free stage-4 gates,
-    #: spacing ignored; a necessary condition, never a rejection)
+    #: spacing ignored; NECESSARY_CONDITION under EXACT, HEURISTIC under
+    #: conservative clearance; never a rejection)
     access_screen: dict[str, Any] | None = None
     rank: int | None = None
 
