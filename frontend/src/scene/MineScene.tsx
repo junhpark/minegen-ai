@@ -93,9 +93,11 @@ export function MineScene() {
           orbit rig gains a sky/ground hemisphere and a stronger low fill so
           the excavation meshes (lit mostly from below the terrain) read
           against the dark background. */}
-      <ambientLight intensity={walkthroughActive ? 0.32 : 0.55} />
+      {/* 20B.3: walkthrough ambient 0.32 → 0.24 and hemisphere 0.4 → 0.3
+          compensate the lightened shared material (headlamp rig too) */}
+      <ambientLight intensity={walkthroughActive ? 0.24 : 0.55} />
       {walkthroughActive ? (
-        <hemisphereLight args={['#8f99a3', '#3a332b', 0.4]} />
+        <hemisphereLight args={['#8f99a3', '#3a332b', 0.3]} />
       ) : (
         <>
           <hemisphereLight args={['#aab4bf', '#4a423a', 0.45]} />
