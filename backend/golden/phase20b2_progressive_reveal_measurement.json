@@ -1,0 +1,128 @@
+{
+ "scenarioId": "aa7f0cab45ad",
+ "tunnelReport": {
+  "status": "SUCCESS",
+  "triangleCount": 119282,
+  "ringCount": 3139,
+  "renderVertexCount": 65959
+ },
+ "developmentReport": {
+  "status": "SUCCESS",
+  "developmentCount": 247,
+  "triangleCount": 144441,
+  "renderVertexCount": 89921,
+  "primitiveCount": 5,
+  "byKind": {
+   "LEVEL_ACCESS": {
+    "developmentCount": 13,
+    "ringCount": 274,
+    "triangleCount": 5742,
+    "length3d": 495.0651974760999,
+    "nominalExcavationVolume": 11048.606179197799,
+    "surfaceArea": 8812.267994437172,
+    "endpointPolicies": [
+     "OPEN-OPEN"
+    ]
+   },
+   "DRIFT": {
+    "developmentCount": 13,
+    "ringCount": 3763,
+    "triangleCount": 82786,
+    "length3d": 7280.000000000011,
+    "nominalExcavationVolume": 162471.23286916804,
+    "surfaceArea": 130184.04600213387,
+    "endpointPolicies": [
+     "CAP-CAP"
+    ]
+   },
+   "CROSSCUT": {
+    "developmentCount": 221,
+    "ringCount": 2652,
+    "triangleCount": 55913,
+    "length3d": 4703.665754343532,
+    "nominalExcavationVolume": 104973.9524880052,
+    "surfaceArea": 88619.07017409704,
+    "endpointPolicies": [
+     "OPEN-CAP"
+    ]
+   }
+  }
+ },
+ "staticDrawCalls": {
+  "ramp": 16,
+  "development": 5
+ },
+ "rampSegments": 14,
+ "developmentPieces": 455,
+ "timelineDevelopments": 469,
+ "days": 401,
+ "rampDrawCalls": {
+  "min": 0,
+  "median": 7,
+  "max": 16
+ },
+ "developmentGroups": {
+  "min": 0,
+  "median": 6,
+  "max": 9
+ },
+ "developmentDrawCalls": {
+  "min": 0,
+  "median": 6,
+  "max": 10
+ },
+ "concurrentlyVisibleDevelopments": {
+  "min": 0,
+  "median": 135,
+  "max": 455
+ },
+ "concurrentlyDevelopingDevelopments": {
+  "min": 0,
+  "median": 3,
+  "max": 7
+ },
+ "unmappedEdgeIds": {
+  "min": 0,
+  "median": 0,
+  "max": 0
+ },
+ "planMsPerDayChange": {
+  "max": 4.2728290000000015,
+  "median": 0.23447799999996732
+ },
+ "timing": {
+  "levels": [
+   200,
+   "SUCCESS",
+   0.3
+  ],
+  "network": [
+   200,
+   "SUCCESS",
+   7.2
+  ],
+  "stopes": [
+   200,
+   "SUCCESS",
+   0.5
+  ],
+  "timeline": [
+   200,
+   "SUCCESS",
+   0.4
+  ],
+  "tunnel": [
+   200,
+   "SUCCESS",
+   12
+  ],
+  "developmentMesh": [
+   200,
+   "SUCCESS",
+   10.6
+  ]
+ },
+ "label": "phase20b2-f-progressive-reveal-measurement",
+ "purpose": "Phase 20B.2-F: draw groups / draw calls of the shared-buffer progressive excavation reveal measured with the real ramp + development GLB reveal metadata and the real Phase 10 timeline of the manual-acceptance scenario A (BASELINE seed 42, LONGHOLE, layout-v2 winner) over 401 sampled days; diagnostic evidence, not a golden contract",
+ "method": "timeline/excavationReveal.ts resolveExcavationReveal + planIndexGroups executed under vitest on the exported GLB extras; static draw calls = GLB primitives; 4D ramp draw calls = visible SEGMENT primitives + caps; 4D development draw calls = coalesced index groups + visible kind caps; planMs = per day-change CPU of the mapping + grouping (no geometry work)"
+}

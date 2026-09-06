@@ -475,18 +475,40 @@ def build_render_mesh(
     lengths = np.linalg.norm(normals, axis=1, keepdims=True)
     normals = normals / np.maximum(lengths, 1e-12)
 
-    prims = [
-        RenderPrimitive(
-            name=str(meta.get("segmentId") or meta.get("levelId")),
-            extras={
-                "role": "SEGMENT",
-                "segmentId": (meta.get("segmentId") or meta.get("levelId")),
-                "effectiveSource": meta["effectiveSource"],
-            },
-            indices=np.asarray(seg_tris[s], dtype=np.uint32).ravel(),
+    # Phase 20B.2-F progressive-reveal metadata (visualization only): the
+    # tube triangles of a segment are emitted ring interval by ring interval
+    # in chainage order (loop above), so the first ``m × indexStride``
+    # indices are exactly the first ``m`` intervals. ``ringChainageFractions``
+    # (one per ring, 0 → 1 along the segment's 3-D chainage) lets a viewer cut
+    # the excavation at the last COMPLETED ring for a chainage progress
+    # fraction without touching geometry (rule 31 partial DEVELOPING render).
+    stride = 6 * k  # 2 triangles × 3 indices per profile edge per interval
+    prims = []
+    for s, meta in enumerate(segments_meta):
+        b0, b1 = int(chain.boundary_rings[s]), int(chain.boundary_rings[s + 1])
+        span = float(chain.chainage[b1] - chain.chainage[b0])
+        fractions = (
+            (chain.chainage[b0 : b1 + 1] - chain.chainage[b0]) / span
+            if span > 1e-12
+            else np.linspace(0.0, 1.0, b1 - b0 + 1)
         )
-        for s, meta in enumerate(segments_meta)
-    ] + cap_prims
+        indices = np.asarray(seg_tris[s], dtype=np.uint32).ravel()
+        assert indices.shape[0] == (b1 - b0) * stride
+        prims.append(
+            RenderPrimitive(
+                name=str(meta.get("segmentId") or meta.get("levelId")),
+                extras={
+                    "role": "SEGMENT",
+                    "segmentId": (meta.get("segmentId") or meta.get("levelId")),
+                    "effectiveSource": meta["effectiveSource"],
+                    "indexStride": stride,
+                    "ringIntervalCount": b1 - b0,
+                    "ringChainageFractions": [round(float(f), 6) for f in fractions],
+                },
+                indices=indices,
+            )
+        )
+    prims += cap_prims
 
     closed = all(caps) and _geometrically_closed(positions[:cursor], prims)
     return RenderMesh(

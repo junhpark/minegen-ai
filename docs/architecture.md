@@ -293,7 +293,14 @@ volumetric traversal is deliberately conservative — a decline segment is
 walkable exactly from its ACTIVE transition (`stateAt` exact-boundary at
 `progressEndDay`) and never before. Partially excavated tunnel volume is
 never fabricated; a future phase would need backend-authored temporally
-splittable mesh geometry to do better. Availability is resolved ONLY
+splittable mesh geometry to do better. Phase 20B.2-F delivered that for the
+4D ORBIT view only (rule 173): the ramp / development GLB SEGMENT
+primitives carry ring-interval reveal metadata and
+`scene/TemporalExcavationLayer.tsx` shows the actual excavation meshes cut
+at the last completed ring of the Phase 10 progress through draw ranges /
+draw groups over the shared loaded buffers (`timeline/excavationReveal.ts`,
+fail-closed mapping; unmapped developments keep their centerline). The
+walkthrough volumetric rule above is unchanged. Availability is resolved ONLY
 through each RAMP `DevelopmentTimeline.geometryRef` →
 `decline_smoothed.json` segmentIndex with exact runtime identity
 validation (`runtime.segmentId == smoothed.levelId`, counts equal, each
@@ -704,15 +711,18 @@ level development starts).
   junction candidates every `junctionSearchSpacing` (10 m) whose ramp
   elevation lies within `junctionWindowAbove` (45 m) / `junctionWindowBelow`
   (10 m) of the level and within `maximumAccessLength` of the anchor; for
-  each candidate and both terminal senses a G1 Dubins CSC connector
-  (LSL/RSR/LSR/RSL, R = minTurnRadius, exact endpoints, z linear in
-  delivered chord length so every edge carries one gradient); rejection
-  reasons NO_JUNCTION_IN_WINDOW, GRADE_LIMIT, TURN_RADIUS, ACCESS_TOO_SHORT /
-  LONG, WORLD_BOUNDS, SURFACE_COVER, RESTRICTED_ZONE, OREBODY_CLEARANCE,
+  each candidate and both turnout senses a G1 one-turn CS connector
+  (Phase 20B.2-A: S / L+S / R+S — one arc of R = minTurnRadius tangent to
+  the ramp heading, then one straight to the anchor point; terminal heading
+  free, sweep ≤ π, exact endpoints, z linear in delivered chord length so
+  every edge carries one gradient); rejection reasons NO_JUNCTION_IN_WINDOW,
+  CONNECTOR_UNAVAILABLE (entry inside the turning circle / behind the
+  junction), GRADE_LIMIT, TURN_RADIUS, ACCESS_TOO_SHORT / LONG,
+  WORLD_BOUNDS, SURFACE_COVER, RESTRICTED_ZONE, OREBODY_CLEARANCE,
   ENVELOPE_INVALID (profile boundary points through `envelope_masks`),
   JUNCTION_SPACING_CONFLICT (`minimumRampJunctionSpacing`, 40 m);
-  deterministic selection = min (length, junction chainage, sense). No
-  clamping, no optimizer, no randomness.
+  deterministic selection = min (selection cost, length, junction chainage,
+  sense S < LS < RS). No clamping, no optimizer, no randomness.
 * Search integration (`layout/search.py`): stage 4 plans accesses for every
   validated shortlisted main ramp; a level without a valid access makes the
   candidate INFEASIBLE (LEVEL_ACCESS_INFEASIBLE); Development score counts

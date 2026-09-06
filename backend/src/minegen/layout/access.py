@@ -15,18 +15,24 @@ and this module plans it deterministically:
   implicit bodies use the authoritative numerical level section (local
   principal axis, footwall-side extent) — never a frontend reconstruction.
 * ``plan_level_accesses`` — for every serviceable level: a finite lattice of
-  ramp-junction candidates inside a chainage / elevation window, a G1
-  Dubins CSC connector (arc–straight–arc, R = R_min) from the junction pose
-  to the anchor pose, chord-exact constant vertical gradient, and hard
-  validation of the DELIVERED polyline (gradient, plan circumradius, world,
-  cover, restricted zones, orebody clearance under the evaluator's policy,
-  excavation envelope). Junction spacing is a hard rule. Every failure is a
-  typed reason; nothing is clamped.
+  ramp-junction candidates inside a chainage / elevation window, a ONE-TURN
+  CS connector (Phase 20B.2-A: one arc of R = R_min, left or right, then a
+  straight — or a pure straight when the junction already faces the entry)
+  from the junction pose to the anchor POINT with a free terminal heading,
+  chord-exact constant vertical gradient, and hard validation of the
+  DELIVERED polyline (gradient, plan circumradius, world, cover, restricted
+  zones, orebody clearance under the evaluator's policy, excavation
+  envelope, plan separation, direction-aware pillar). Junction spacing is a
+  hard rule. Every failure is a typed reason; nothing is clamped. The old
+  Dubins CSC (arc–straight–arc, G1 to the drift heading) is gone: a level
+  access meets the footwall drift at a T/Y junction and the drift absorbs
+  the direction change, so the second arc only ever added a loop.
 
   Among the candidates that pass EVERY hard check, selection minimizes
-  ``(access_length_cost(L, P), L, junction chainage, terminal sense)`` with
+  ``(access_length_cost(L, P), L, junction chainage, connector sense)`` with
   ``P`` = the effective PREFERRED access length (rule 163) — not the shortest
-  branch. Hard limits are never traded against that cost.
+  branch — and the connector sense ordered ``S < LS < RS``
+  (``CONNECTOR_SENSE_ORDER``). Hard limits are never traded against that cost.
 """
 
 from __future__ import annotations
@@ -67,6 +73,12 @@ WELD_TOLERANCE = 1e-6  # m
 BACKBONE_END_MARGIN = GENERIC_BACKBONE_END_CLEARANCE
 #: minimum clear length below which a connector is degenerate
 MIN_CONNECTOR_LENGTH = 1.0
+#: Phase 20B.2-A: a turnout arc never sweeps past a U-turn. A one-turn CS
+#: solution whose arc would exceed this is refused for that sense
+#: (CONNECTOR_UNAVAILABLE) — that is the structural ban on loops.
+MAX_TURNOUT_SWEEP = math.pi
+#: deterministic connector-sense order of the selection key (last element)
+CONNECTOR_SENSE_ORDER: tuple[str, ...] = ("S", "LS", "RS")
 #: default PREFERRED access length = this factor × tunnel width (planning
 #: default, closeout v3 §2: usable turnout development, room for future sump /
 #: services / ore-pass connections — never a statutory value)
@@ -319,7 +331,7 @@ def build_anchor(
 
 
 # --------------------------------------------------------------------------- #
-# Dubins CSC connector (plan) with chord-exact vertical
+# One-turn CS connector (plan) with chord-exact vertical (Phase 20B.2-A)
 # --------------------------------------------------------------------------- #
 
 
@@ -327,57 +339,15 @@ def _mod2pi(a: float) -> float:
     return a - 2.0 * math.pi * math.floor(a / (2.0 * math.pi))
 
 
-def _dubins_csc(
-    alpha: float, beta: float, d: float
-) -> list[tuple[str, tuple[float, float, float], float]]:
-    """Normalized Dubins CSC words (Shkel & Lumelsky): (word, (t, p, q), L)."""
-    out: list[tuple[str, tuple[float, float, float], float]] = []
-    sa, sb, ca, cb = math.sin(alpha), math.sin(beta), math.cos(alpha), math.cos(beta)
-    c_ab = math.cos(alpha - beta)
-    # LSL
-    tmp = 2.0 + d * d - 2.0 * c_ab + 2.0 * d * (sa - sb)
-    if tmp >= 0.0:
-        p = math.sqrt(tmp)
-        th = math.atan2(cb - ca, d + sa - sb)
-        t = _mod2pi(-alpha + th)
-        q = _mod2pi(beta - th)
-        out.append(("LSL", (t, p, q), t + p + q))
-    # RSR
-    tmp = 2.0 + d * d - 2.0 * c_ab + 2.0 * d * (sb - sa)
-    if tmp >= 0.0:
-        p = math.sqrt(tmp)
-        th = math.atan2(ca - cb, d - sa + sb)
-        t = _mod2pi(alpha - th)
-        q = _mod2pi(-beta + th)
-        out.append(("RSR", (t, p, q), t + p + q))
-    # LSR
-    tmp = -2.0 + d * d + 2.0 * c_ab + 2.0 * d * (sa + sb)
-    if tmp >= 0.0:
-        p = math.sqrt(tmp)
-        th = math.atan2(-ca - cb, d + sa + sb) - math.atan2(-2.0, p)
-        t = _mod2pi(-alpha + th)
-        q = _mod2pi(-_mod2pi(beta) + th)
-        out.append(("LSR", (t, p, q), t + p + q))
-    # RSL
-    tmp = d * d - 2.0 + 2.0 * c_ab - 2.0 * d * (sa + sb)
-    if tmp >= 0.0:
-        p = math.sqrt(tmp)
-        th = math.atan2(ca + cb, d - sa - sb) - math.atan2(2.0, p)
-        t = _mod2pi(alpha - th)
-        q = _mod2pi(beta - th)
-        out.append(("RSL", (t, p, q), t + p + q))
-    return out
-
-
 def _sample_word(
     start_xy: FloatArray,
     theta0: float,
     word: str,
-    tpq: tuple[float, float, float],
+    tpq: tuple[float, ...],
     radius: float,
     spacing: float,
 ) -> tuple[FloatArray, list[dict[str, Any]]]:
-    """Sample a Dubins word from the start pose (math angle θ0). Arc points
+    """Sample a connector word from the start pose (math angle θ0). Arc points
     lie exactly on their circles; pieces share their boundary vertex."""
     pts: list[FloatArray] = [np.asarray(start_xy, dtype=np.float64)]
     pieces: list[dict[str, Any]] = []
@@ -416,45 +386,77 @@ def _sample_word(
     return np.asarray(pts, dtype=np.float64), pieces
 
 
+def _cs_solution(
+    start_xy: FloatArray, theta0: float, end_xy: FloatArray, radius: float, kind: str
+) -> tuple[str, tuple[float, ...], float] | None:
+    """Analytic one-turn tangent geometry for ONE sense (``kind`` = L or R):
+    the turning circle of the start pose, the tangent from it through the
+    target point, the arc sweep ``t`` to the tangent point and the straight
+    ``ℓ = sqrt(|C→P|² − R²)``. Returns ``(word, normalized pieces, terminal
+    math angle)`` or ``None`` when the target lies inside the turning circle
+    or the sweep would exceed ``MAX_TURNOUT_SWEEP``. A vanishing sweep
+    collapses to the pure straight ``S``."""
+    sgn = 1.0 if kind == "L" else -1.0
+    cx = float(start_xy[0]) - sgn * radius * math.sin(theta0)
+    cy = float(start_xy[1]) + sgn * radius * math.cos(theta0)
+    dx, dy = float(end_xy[0]) - cx, float(end_xy[1]) - cy
+    d_c = math.hypot(dx, dy)
+    if d_c < radius - 1e-12:
+        return None
+    ell = math.sqrt(max(d_c * d_c - radius * radius, 0.0))
+    psi = math.atan2(dy, dx)
+    gamma = psi - sgn * math.atan2(ell, radius)  # tangent point angle on the circle
+    gamma0 = theta0 - sgn * math.pi / 2.0  # start point angle on the circle
+    t = _mod2pi(sgn * (gamma - gamma0))
+    if t > MAX_TURNOUT_SWEEP + 1e-9:
+        return None
+    if t < 1e-9:
+        return "S", (ell / radius,), theta0
+    return kind + "S", (t, ell / radius), theta0 + sgn * t
+
+
 @dataclass
 class Connector:
-    word: str
+    word: str  # S | LS | RS
     points: FloatArray  # (N, 3) delivered polyline
     pieces: list[dict[str, Any]]
     horizontal_length: float
     length3d: float
     gradient: float  # signed Δz / chord length (constant along the branch)
+    #: compass heading (rad, clockwise from +Y) of the final straight — the
+    #: access's ACTUAL terminal heading, free of the drift direction
+    terminal_heading: float
+    #: CCW | CW | None (pure straight)
+    sense: str | None
+    #: position of ``word`` in CONNECTOR_SENSE_ORDER — the selection tie-break
+    sense_rank: int
+    arc_length: float
+    straight_length: float
 
 
 def build_connector(
     start: FloatArray,
     start_heading: float,
     end: FloatArray,
-    end_heading: float,
     radius: float,
     spacing: float,
+    kind: str = "L",
 ) -> Connector | None:
-    """Shortest CSC Dubins connector (plan) from ``start`` heading
-    ``start_heading`` to ``end`` heading ``end_heading`` with turning radius
-    ``radius``; z is assigned linearly in delivered CHORD length so every
-    edge carries the same gradient. Endpoints are exact. ``None`` when no
-    CSC word exists (only for degenerate coincident poses)."""
+    """One-turn CS connector of sense ``kind`` (L = CCW, R = CW) from
+    ``start`` heading ``start_heading`` (compass) to the POINT ``end``; the
+    terminal heading is free. z is assigned linearly in delivered CHORD
+    length so every edge carries the same gradient. Endpoints are exact.
+    ``None`` when no tangent exists for that sense (target inside the turning
+    circle, sweep past a U-turn, or a degenerate coincident pose)."""
     dxy = np.asarray(end[:2], dtype=np.float64) - np.asarray(start[:2], dtype=np.float64)
-    dist = float(np.linalg.norm(dxy))
-    if dist < MIN_CONNECTOR_LENGTH:
+    if float(np.linalg.norm(dxy)) < MIN_CONNECTOR_LENGTH:
         return None
-    # math angles (counter-clockwise from +X)
-    th0 = math.pi / 2.0 - start_heading
-    th1 = math.pi / 2.0 - end_heading
-    phi = math.atan2(float(dxy[1]), float(dxy[0]))
-    alpha = _mod2pi(th0 - phi)
-    beta = _mod2pi(th1 - phi)
-    words = _dubins_csc(alpha, beta, dist / radius)
-    if not words:
+    th0 = math.pi / 2.0 - start_heading  # math angle, counter-clockwise from +X
+    sol = _cs_solution(np.asarray(start[:2], dtype=np.float64), th0, end[:2], radius, kind)
+    if sol is None:
         return None
-    words.sort(key=lambda w: (w[2], w[0]))
-    word, tpq, _ = words[0]
-    xy, pieces = _sample_word(np.asarray(start[:2]), th0, word, tpq, radius, spacing)
+    word, tp, th_end = sol
+    xy, pieces = _sample_word(np.asarray(start[:2]), th0, word, tp, radius, spacing)
     xy[-1] = end[:2]  # exact terminal (analytic error ≈ 1e-9)
     chord = np.linalg.norm(np.diff(xy, axis=0), axis=1)
     total = float(np.sum(chord))
@@ -466,7 +468,48 @@ def build_connector(
     z[-1] = float(end[2])
     pts = np.column_stack([xy, z])
     length3d = float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
-    return Connector(word, pts, pieces, total, length3d, grad)
+    arc_len = sum(p["angleDeg"] / 180.0 * math.pi * radius for p in pieces if p["kind"] == "ARC")
+    straight = sum(float(p["length"]) for p in pieces if p["kind"] == "STRAIGHT")
+    sense = None if word == "S" else ("CCW" if word[0] == "L" else "CW")
+    return Connector(
+        word,
+        pts,
+        pieces,
+        total,
+        length3d,
+        grad,
+        terminal_heading=_mod2pi(math.pi / 2.0 - th_end),
+        sense=sense,
+        sense_rank=CONNECTOR_SENSE_ORDER.index(word),
+        arc_length=float(arc_len),
+        straight_length=float(straight),
+    )
+
+
+def build_cs_connectors(
+    start: FloatArray, start_heading: float, end: FloatArray, radius: float, spacing: float
+) -> list[Connector]:
+    """Every distinct one-turn CS connector from the junction pose to the
+    entry point, in deterministic sense order (L then R; a pure straight is
+    reported once). Both senses are always evaluated — the planner judges
+    each on its delivered polyline and picks by the selection key."""
+    out: list[Connector] = []
+    for kind in ("L", "R"):
+        conn = build_connector(start, start_heading, end, radius, spacing, kind)
+        if conn is None:
+            continue
+        if conn.word == "S" and any(c.word == "S" for c in out):
+            continue
+        out.append(conn)
+    return out
+
+
+def heading_axis_mismatch_deg(heading: float, axis_heading: float) -> float:
+    """Angle (deg, 0–90) between a heading and an UNDIRECTED axis — the
+    access terminal heading against the drift axis it meets at the level
+    entry (either drift direction is a valid T/Y junction)."""
+    d = abs(_mod2pi(heading - axis_heading + math.pi) - math.pi)
+    return math.degrees(min(d, math.pi - d))
 
 
 # --------------------------------------------------------------------------- #
@@ -484,8 +527,14 @@ class LevelAccess:
     junction_position: FloatArray | None = None
     junction_heading: float | None = None
     junction_edge_index: int | None = None
+    #: Phase 20B.2-A: the access's ACTUAL final straight heading (free of the
+    #: drift direction) and its angle to the drift axis it meets
     terminal_heading: float | None = None
+    terminal_heading_mismatch_deg: float | None = None
     connector_word: str | None = None
+    turnout_arc_length: float | None = None
+    straight_length: float | None = None
+    path_to_chord_ratio: float | None = None
     pieces: list[dict[str, Any]] = field(default_factory=list)
     points: FloatArray | None = None
     length3d: float = 0.0
@@ -542,7 +591,11 @@ class LevelAccess:
             "terminalHeadingDeg": (
                 math.degrees(self.terminal_heading) if self.terminal_heading is not None else None
             ),
+            "terminalHeadingMismatchDeg": self.terminal_heading_mismatch_deg,
             "connector": self.connector_word,
+            "turnoutArcLength": self.turnout_arc_length,
+            "straightLength": self.straight_length,
+            "pathToChordRatio": self.path_to_chord_ratio,
             "pieces": self.pieces,
             "length3d": self.length3d,
             "horizontalLength": self.horizontal_length,
@@ -631,6 +684,15 @@ class LevelAccessPlan:
             "minJunctionToEntryPlanSep": _min_or_none(a.junction_to_entry_plan_sep for a in ok),
             "minExcavationSeparation": _min_or_none(a.excavation_separation for a in ok),
             "maxTurnoutHeadingChangeDeg": _max_or_none(a.turnout_heading_change_deg for a in ok),
+            # Phase 20B.2-A one-turn CS observability
+            "maxTerminalHeadingMismatchDeg": _max_or_none(
+                a.terminal_heading_mismatch_deg for a in ok
+            ),
+            "maxTurnoutArcLength": _max_or_none(a.turnout_arc_length for a in ok),
+            "maxPathToChordRatio": _max_or_none(a.path_to_chord_ratio for a in ok),
+            "connectorWords": {
+                w: sum(1 for a in ok if a.connector_word == w) for w in CONNECTOR_SENSE_ORDER
+            },
             # Phase 20B.1 B: the resolved hard gates this plan enforced
             "minimumPlanSeparationRequired": self.plan_separation_required,
             "minimumExcavationSeparationRequired": self.excavation_separation_required,
@@ -939,19 +1001,15 @@ def _search_level(
         if plan_sep < ctx.plan_sep_min - SEPARATION_TOLERANCE:
             reject(AccessFailure.INSUFFICIENT_RAMP_TO_ENTRY_SEPARATION)
             continue
-        for sense_k, term in enumerate((anchor.heading, anchor.heading + math.pi)):
+        conns = build_cs_connectors(
+            cand.position, cand.heading, anchor.position, ctx.r_min, cfg.access_sampling_spacing
+        )
+        if not conns:
             tried += 1
-            conn = build_connector(
-                cand.position,
-                cand.heading,
-                anchor.position,
-                term,
-                ctx.r_min,
-                cfg.access_sampling_spacing,
-            )
-            if conn is None:
-                reject(AccessFailure.CONNECTOR_UNAVAILABLE)
-                continue
+            reject(AccessFailure.CONNECTOR_UNAVAILABLE)
+            continue
+        for conn in conns:
+            tried += 1
             if abs(conn.gradient) > ctx.g_max + GRADIENT_TOLERANCE:
                 reject(AccessFailure.GRADE_LIMIT)
                 continue
@@ -1003,7 +1061,7 @@ def _search_level(
             seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
             field_cost = float(np.sum(0.5 * (finite[:-1] + finite[1:]) * seg))
             cost = access_length_cost(conn.length3d, ctx.preferred, ctx.long_access_coef)
-            key = (cost, conn.length3d, cand.chainage, sense_k)
+            key = (cost, conn.length3d, cand.chainage, conn.sense_rank)
             if best is None or key < best[0]:
                 chosen = LevelAccess(
                     lv.level_id,
@@ -1014,8 +1072,16 @@ def _search_level(
                     junction_position=cand.position,
                     junction_heading=cand.heading,
                     junction_edge_index=cand.edge_index,
-                    terminal_heading=term,
+                    terminal_heading=conn.terminal_heading,
+                    terminal_heading_mismatch_deg=heading_axis_mismatch_deg(
+                        conn.terminal_heading, anchor.heading
+                    ),
                     connector_word=conn.word,
+                    turnout_arc_length=conn.arc_length,
+                    straight_length=conn.straight_length,
+                    path_to_chord_ratio=(
+                        conn.horizontal_length / plan_sep if plan_sep > 1e-9 else None
+                    ),
                     pieces=conn.pieces,
                     points=pts,
                     length3d=conn.length3d,
@@ -1060,7 +1126,7 @@ def plan_level_accesses(
     rock pillar on the delivered branch beyond the geometric turnout taper
     (B-2) — typed rejections, nothing clamped. Among the VALID candidates of
     a level the selection minimizes ``(access_length_cost(L, P), L, junction
-    chainage, terminal sense)`` (closeout v3 §2, kept as the SECONDARY
+    chainage, connector sense S < LS < RS)`` (closeout v3 §2, kept as the SECONDARY
     ordering under the gates). A level failing with junction-spacing
     conflicts records the B-5 assignment diagnostic (re-run ignoring only
     the used-junction spacing) so greedy starvation is distinguishable from

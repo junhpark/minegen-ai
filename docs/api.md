@@ -68,7 +68,11 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      409 TUNNEL_NOT_GENERATED if missing
     GET  …/design/tunnel/mesh.glb                    binary glTF, model/gltf-binary,
                                                      immutable cache headers; use the report's
-                                                     cache-busted meshUrl (?v=<sha16>)
+                                                     cache-busted meshUrl (?v=<sha16>). Every
+                                                     SEGMENT primitive's extras carry
+                                                     indexStride / ringIntervalCount /
+                                                     ringChainageFractions (Phase 20B.2-F
+                                                     progressive-reveal metadata, rule 173)
     POST …/design/development-mesh                   Phase 20B closeout: LEVEL_ACCESS / DRIFT /
                                                      CROSSCUT excavation meshes swept on their
                                                      owning centerlines (kind DEVELOPMENT_MESH)
@@ -81,8 +85,11 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      (draw calls), glbBytes, generationSeconds
     GET  …/design/development-mesh                   409 DEVELOPMENT_MESH_NOT_GENERATED if missing
     GET  …/design/development-mesh/mesh.glb          binary glTF (one tube + one cap primitive per
-                                                     kind, `ranges` extras → development ids);
-                                                     deleted with levels.json / the ramp chain
+                                                     kind, `ranges` extras → development / piece
+                                                     ids, each range with its own indexStride /
+                                                     ringIntervalCount / ringChainageFractions,
+                                                     rule 173); deleted with levels.json / the
+                                                     ramp chain
     POST …/design/layout-v2                          Phase 20A parametric family search
                                                      (kind LAYOUT_V2) → 202 {jobId, …}; ?sync=true
                                                      runs inline. Every orebody type (EXACT or
@@ -104,6 +111,16 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      with the selection; rule 157). Each access
                                                      carries effectivePreferredAccessLength,
                                                      lengthDeviationFromPreferred and selectionCost;
+                                                     Phase 20B.2-A one-turn CS connector: connector
+                                                     ∈ S | LS | RS, terminalHeadingDeg is the actual
+                                                     final-straight heading (position-only weld at
+                                                     the entry), terminalHeadingMismatchDeg (vs the
+                                                     drift axis, 0–90, reported never gated),
+                                                     turnoutArcLength, straightLength,
+                                                     pathToChordRatio; summary adds
+                                                     maxTerminalHeadingMismatchDeg,
+                                                     maxTurnoutArcLength, maxPathToChordRatio and
+                                                     connectorWords {S, LS, RS} counts;
                                                      the summary carries the preferred length, its
                                                      source (DEFAULT_6X_TUNNEL_WIDTH | EXPLICIT) and
                                                      the mean / max |ΔP| (rule 163). Phase 20B.1 O

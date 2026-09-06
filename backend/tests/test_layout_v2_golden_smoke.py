@@ -22,7 +22,7 @@ from minegen.regression.layout_v2 import (
 )
 
 GOLDEN_DIR = Path(__file__).resolve().parents[1] / "golden"
-BASELINE = GOLDEN_DIR / "phase20b1_layout_v2.json"
+BASELINE = GOLDEN_DIR / "phase20b2_layout_v2.json"
 
 
 def test_layout_v2_baseline_is_committed() -> None:

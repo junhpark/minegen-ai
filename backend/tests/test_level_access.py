@@ -23,6 +23,7 @@ from minegen.layout.access import (
     access_length_cost,
     build_anchor,
     build_connector,
+    build_cs_connectors,
     effective_preferred_access_length,
     plan_level_accesses,
 )
@@ -68,35 +69,100 @@ def _winner(search: LayoutV2Search, res: LayoutSearchResult):  # type: ignore[no
 # --------------------------------------------------------------------------- #
 
 
-def test_connector_is_g1_exact_at_both_ends_with_constant_chord_gradient() -> None:
+def _compass(d: np.ndarray) -> float:
+    return math.atan2(d[0], d[1]) % (2.0 * math.pi)
+
+
+@pytest.mark.parametrize("kind", ["L", "R"])
+def test_connector_is_one_turn_cs_with_constant_chord_gradient(kind: str) -> None:
+    """Phase 20B.2-A: a level access is ONE turnout arc followed by ONE
+    straight (or a pure straight). The terminal heading is FREE — it is the
+    heading of the final straight, not a prescribed drift direction — so no
+    second (terminal) arc exists."""
     start = np.array([0.0, 0.0, 10.0])
-    end = np.array([80.0, 35.0, 4.0])
-    conn = build_connector(start, math.radians(20.0), end, math.radians(110.0), 18.0, 2.0)
+    # the target sits on the turn side (compass 66° for R, −26° for L from a
+    # 20° start heading); the opposite sense would need more than a half-turn
+    end = np.array([80.0, 35.0, 4.0]) if kind == "R" else np.array([-35.0, 80.0, 4.0])
+    conn = build_connector(start, math.radians(20.0), end, 18.0, 2.0, kind)
     assert conn is not None
+    other = build_connector(start, math.radians(20.0), end, 18.0, 2.0, "L" if kind == "R" else "R")
+    assert other is None
     pts = conn.points
     np.testing.assert_allclose(pts[0], start)
     np.testing.assert_allclose(pts[-1], end, atol=1e-9)
     # initial direction = start heading (tangent continuity with the ramp)
     d0 = pts[1] - pts[0]
-    assert math.isclose(math.atan2(d0[0], d0[1]), math.radians(20.0), abs_tol=0.12)
-    # terminal direction = end heading
+    assert math.isclose(_compass(d0), math.radians(20.0), abs_tol=0.12)
+    # pieces: at most one ARC, then exactly one STRAIGHT — never a terminal arc
+    kinds = [p["kind"] for p in conn.pieces]
+    assert kinds in (["STRAIGHT"], ["ARC", "STRAIGHT"])
+    assert conn.word in ("S", "LS", "RS") and conn.word[-1] == "S"
+    # the final straight's heading IS the reported terminal heading (exact)
     d1 = pts[-1] - pts[-2]
-    assert math.isclose(math.atan2(d1[0], d1[1]), math.radians(110.0), abs_tol=0.12)
+    assert math.isclose(_compass(d1), conn.terminal_heading, abs_tol=1e-9)
+    # heading is constant over the whole straight (post-turnout variation 0)
+    n_straight = max(2, int(conn.straight_length / 2.0))
+    tail = np.diff(pts[-n_straight:], axis=0)
+    heads = np.array([_compass(d) for d in tail])
+    assert float(np.max(np.abs(np.unwrap(heads) - np.unwrap(heads)[0]))) < 1e-9
     # every edge carries the same chord gradient
     seg = np.diff(pts, axis=0)
     grads = seg[:, 2] / np.hypot(seg[:, 0], seg[:, 1])
     np.testing.assert_allclose(grads, grads[0], rtol=1e-9)
-    assert math.isclose(abs(grads[0]), 6.0 / conn.horizontal_length * 1.0, rel_tol=1e-6)
-    # arcs deliver EXACTLY the turning radius (circumradius) and nothing tighter
+    assert math.isclose(abs(grads[0]), 6.0 / conn.horizontal_length, rel_tol=1e-6)
+    # the arc delivers EXACTLY the turning radius (circumradius), nothing tighter
     r = plan_radii(pts)
     assert float(np.min(r)) >= 18.0 - 1e-6
     assert np.all(np.isfinite(pts)) and np.all(np.linalg.norm(seg, axis=1) > 1e-6)
-    assert conn.word in ("LSL", "RSR", "LSR", "RSL")
+    # analytic arc + straight vs delivered chord length (chords are shorter)
+    analytic = conn.arc_length + conn.straight_length
+    assert conn.horizontal_length <= analytic + 1e-9
+    assert math.isclose(analytic, conn.horizontal_length, rel_tol=1e-3)
+    assert conn.sense == ("CCW" if kind == "L" else "CW")
+
+
+def test_connector_pure_straight_when_target_is_dead_ahead() -> None:
+    start = np.array([0.0, 0.0, 0.0])
+    end = np.array([0.0, 60.0, -3.0])  # exactly along heading 0 (north)
+    for kind in ("L", "R"):
+        conn = build_connector(start, 0.0, end, 18.0, 2.0, kind)
+        assert conn is not None
+        assert conn.word == "S" and conn.pieces[0]["kind"] == "STRAIGHT"
+        assert conn.sense is None and conn.arc_length == 0.0
+        assert math.isclose(conn.straight_length, 60.0, rel_tol=1e-9)
+        assert math.isclose(conn.terminal_heading, 0.0, abs_tol=1e-12)
+    # the pair helper reports the straight ONCE
+    conns = build_cs_connectors(start, 0.0, end, 18.0, 2.0)
+    assert [c.word for c in conns] == ["S"]
+
+
+def test_connector_refuses_target_inside_turning_circle_and_behind() -> None:
+    start = np.array([0.0, 0.0, 0.0])
+    # inside the left turning circle (centre (-18, 0) for heading north)
+    inside = np.array([-18.0, 5.0, 0.0])
+    assert build_connector(start, 0.0, inside, 18.0, 2.0, "L") is None
+    # straight behind: both senses would need more than a half-turn -> refused
+    behind = np.array([0.0, -60.0, 0.0])
+    assert build_cs_connectors(start, 0.0, behind, 18.0, 2.0) == []
+    # off to one side: only the matching sense stays within a half-turn
+    conns = build_cs_connectors(start, 0.0, np.array([60.0, 5.0, 0.0]), 18.0, 2.0)
+    words = [c.word for c in conns]
+    assert "RS" in words and all(w in ("S", "LS", "RS") for w in words)
 
 
 def test_connector_refuses_degenerate_poses() -> None:
     p = np.array([0.0, 0.0, 0.0])
-    assert build_connector(p, 0.0, p + np.array([0.2, 0.0, 0.0]), 0.0, 18.0, 2.0) is None
+    assert build_connector(p, 0.0, p + np.array([0.2, 0.0, 0.0]), 18.0, 2.0) is None
+
+
+def test_heading_axis_mismatch_is_undirected() -> None:
+    from minegen.layout.access import heading_axis_mismatch_deg
+
+    assert math.isclose(heading_axis_mismatch_deg(0.0, 0.0), 0.0, abs_tol=1e-12)
+    assert math.isclose(heading_axis_mismatch_deg(0.0, math.pi), 0.0, abs_tol=1e-9)
+    assert math.isclose(heading_axis_mismatch_deg(math.radians(30.0), 0.0), 30.0, abs_tol=1e-9)
+    assert math.isclose(heading_axis_mismatch_deg(math.radians(150.0), 0.0), 30.0, abs_tol=1e-9)
+    assert math.isclose(heading_axis_mismatch_deg(math.radians(90.0), 0.0), 90.0, abs_tol=1e-9)
 
 
 # --------------------------------------------------------------------------- #
@@ -220,7 +286,10 @@ def test_typed_access_failures(
     assert not plan.feasible
     failed = [a for a in plan.accesses if not a.ok]
     assert failed and all(a.rejection_counts.get(AccessFailure.GRADE_LIMIT, 0) > 0 for a in failed)
-    # turning radius impossible: a huge access radius
+    # turning radius impossible: a huge access radius. Since 20B.2-A the
+    # connector is one-turn CS: an entry INSIDE the 400 m turning circle has
+    # no tangent at all (CONNECTOR_UNAVAILABLE — the structural loop ban),
+    # instead of a Dubins loop failing later on length or radius.
     _, plan = _plan(sc, world, s, res, min_turn_radius=400.0)
     assert not plan.feasible
     failed = [a for a in plan.accesses if not a.ok]
@@ -231,6 +300,7 @@ def test_typed_access_failures(
             AccessFailure.GRADE_LIMIT,
             AccessFailure.WORLD_BOUNDS,
             AccessFailure.TURN_RADIUS,
+            AccessFailure.CONNECTOR_UNAVAILABLE,
         )
         for a in failed
     )

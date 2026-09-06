@@ -399,8 +399,13 @@ export function DesignPanel() {
             <div className="mt-1 text-danger">{network.failureReason}</div>
           )}
           <div className="mt-1 text-mute">
-            RAMP + LEVEL_ACCESS + DRIFT + CROSSCUT graph rebuilt from the owning artifacts (rules
-            68–74, 160)
+            Mine network — the mine as a graph of PORTAL, RAMP_JUNCTION, RAMP_END, LEVEL_ENTRY,
+            JUNCTION and STOPE_ACCESS nodes joined by RAMP, LEVEL_ACCESS, DRIFT and CROSSCUT edges.
+            It answers connectivity / surface-egress questions and is the topology the schedule,
+            communication and sensor planning build on.
+          </div>
+          <div className="mt-1 text-mute">
+            rebuilt from the owning centerline artifacts, never patched (rules 68–74, 160)
           </div>
         </div>
       ) : null}

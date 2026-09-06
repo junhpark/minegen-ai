@@ -1137,11 +1137,18 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      failures are never score penalties.
 157. Level-access planning is finite and deterministic: junction candidates
      on a `junctionSearchSpacing` chainage lattice inside the
-     `junctionWindowAbove/Below` elevation window; a G1 Dubins CSC connector
-     (R = minTurnRadius) from the junction pose to the anchor pose with a
-     chord-exact constant gradient; selection = min (length, junction
-     chainage, terminal sense); `minimumRampJunctionSpacing` is a hard
-     rule (JUNCTION_SPACING_CONFLICT). Every candidate branch is judged on
+     `junctionWindowAbove/Below` elevation window; a G1 ONE-TURN CS
+     connector (Phase 20B.2-A: S, L+S or R+S — one turnout arc of
+     R = minTurnRadius tangent to the ramp heading, then one straight to
+     the anchor POINT; no terminal arc, no ARC+STRAIGHT+ARC, sweep ≤ π so
+     loops are structurally impossible; a target inside the turning circle
+     is CONNECTOR_UNAVAILABLE) with a chord-exact constant gradient. The
+     anchor heading stays the drift direction; the access's
+     `terminalHeading` is the ACTUAL final-straight heading and the weld at
+     the level entry is position-only (`terminalHeadingMismatchDeg` is
+     reported, never gated). Selection = min (selection cost, length,
+     junction chainage, connector sense S < LS < RS);
+     `minimumRampJunctionSpacing` is a hard rule (JUNCTION_SPACING_CONFLICT). Every candidate branch is judged on
      the DELIVERED polyline (gradient, circumradius, world, cover,
      restricted zones, clearance under the evaluator's policy, excavation
      envelope). Nothing is clamped; an impossible access is typed.
@@ -1352,3 +1359,23 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      is never smaller than `len(FAMILY_ORDER)` (schema-validated, sized from
      the enumeration, never a literal), so the bound and the per-family
      reserved slot (rule 165) hold together.
+
+173. Progressive excavation reveal is VISUALIZATION over shared buffers
+     (Phase 20B.2-F). Every SEGMENT primitive of the Phase 06 ramp GLB and
+     every batched piece range of the Phase 20B development GLB is emitted
+     ring interval by ring interval in chainage order and carries
+     `indexStride`, `ringIntervalCount` and `ringChainageFractions`; the 4D
+     view shows a DEVELOPING excavation as the index PREFIX of its last
+     COMPLETED ring for the Phase 10 progress (a draw range on a per-segment
+     primitive, draw groups on a batched primitive) over geometry that
+     shares the loaded vertex / index buffers. Nothing is re-swept,
+     re-generated or copied per day or per frame, the cached GLB scene is
+     never mutated, and the walkthrough / static layers are untouched. The
+     mapping is timeline-authoritative through each `geometryRef`'s OWNING
+     artifact (RAMP → primitive `segmentId`, LEVEL_ACCESS → piece
+     `LEVEL_ACCESS:<levelId>`, DRIFT / CROSSCUT → the levels.json
+     development id) and fails CLOSED per development: an unmapped
+     development keeps its centerline rendering, never a guessed mesh. The
+     revealed volume is a display cut aligned to backend rings — not
+     engineering excavation geometry and never persisted (rule 115 analogue).
+     Batched caps are shown only once every piece of their kind is complete.

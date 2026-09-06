@@ -44,17 +44,22 @@ export function TimelineDevelopmentLayer({
   smoothed,
   levels,
   levelAccesses = null,
+  skipEdgeIds = null,
 }: {
   timeline: TimelinePayload
   smoothed: SmoothedDeclinePayload
   levels: LevelsPayload
   levelAccesses?: LevelAccessesPayload | null
+  /** Phase 20B.2-F: developments already shown as progressive excavation
+   * meshes keep no duplicate centerline; unmapped ones still draw here */
+  skipEdgeIds?: ReadonlySet<string> | null
 }) {
   const currentDay = useTimelineStore((s) => s.currentDay)
 
   const lines = useMemo(() => {
     const out: { key: string; color: string; positions: Float32Array }[] = []
     for (const dev of timeline.developments) {
+      if (skipEdgeIds?.has(dev.edgeId)) continue
       const state = stateAt(dev.initialState, dev.transitions, currentDay)
       if (state === 'NOT_BUILT') continue
       const ref = dev.geometryRef
@@ -82,7 +87,7 @@ export function TimelineDevelopmentLayer({
       })
     }
     return out
-  }, [timeline, smoothed, levels, levelAccesses, currentDay])
+  }, [timeline, smoothed, levels, levelAccesses, currentDay, skipEdgeIds])
 
   return (
     <group>
