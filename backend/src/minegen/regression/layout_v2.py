@@ -292,6 +292,7 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
                     {
                         "blockedCount": c.access_screen["blockedCount"],
                         "blockedLevelIds": list(c.access_screen["blockedLevelIds"]),
+                        "authority": c.access_screen["authority"],
                         "reasons": {
                             k: v["reason"]
                             for k, v in c.access_screen["levels"].items()
@@ -844,6 +845,118 @@ def audit_yield(cases: list[LayoutCase], label: str) -> dict[str, Any]:
         "topNNeededForBestFeasible": top_n_needed,
         "anyWinnerMissed": any(r.get("winnerMissedByShortlist") for r in records),
         "anyFamilyMissed": any(r.get("missedFamilies") for r in records),
+        "totalRuntimeSeconds": time.perf_counter() - t_all,
+        "cases": records,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20C.1 closeout B: geometric-screen AUTHORITY audit (false blocks)
+# --------------------------------------------------------------------------- #
+
+
+def _served_levels(cand: Any) -> set[str]:
+    if cand.access_plan is None:
+        return set()
+    return {a.level_id for a in cand.access_plan.accesses if a.ok}
+
+
+def audit_screen(cases: list[LayoutCase], label: str) -> dict[str, Any]:
+    """Closeout B measurement (diagnostic, never part of the production
+    search): does the stage-2 geometric access screen ever report a level
+    BLOCKED that stage 4 then SERVES?
+
+    Under an EXACT distance contract that cannot happen — the screen anchor
+    is the stage-4 anchor and the gates are the same, so ``blocked`` is a
+    necessary condition. Under a CONSERVATIVE contract the screen anchors
+    sit at the COARSE stand-off while stage 4 may refine the bound and move
+    the entry, so a false block is possible; this audit measures whether it
+    actually occurs and whether it changed the production shortlist. Every
+    cheap-feasible candidate is validated (``detailed_all=True``) so the
+    stage-4 answer exists for candidates the bounded shortlist never
+    reached."""
+    records: list[dict[str, Any]] = []
+    t_all = time.perf_counter()
+    for case in cases:
+        rec: dict[str, Any] = {"key": case.key, "note": case.note}
+        try:
+            sc = case.realize()
+        except ScenarioRealizationError as exc:
+            rec["realized"] = False
+            rec["realizationError"] = str(exc)
+            records.append(rec)
+            continue
+        world = generate_world(sc)
+        normal = LayoutV2Search(sc, world).run()
+        exhaustive = LayoutV2Search(sc, world).run(detailed_all=True)
+        shortlisted = set(normal.shortlist)
+        rows: list[dict[str, Any]] = []
+        false_blocks = 0
+        for c in exhaustive.candidates:
+            if c.access_screen is None or c.access_plan is None:
+                continue
+            blocked = set(c.access_screen["blockedLevelIds"])
+            served = _served_levels(c)
+            false_levels = sorted(blocked & served)
+            if false_levels:
+                false_blocks += len(false_levels)
+            rows.append(
+                {
+                    "candidateId": c.candidate_id,
+                    "family": c.params.family.value,
+                    "authority": c.access_screen["authority"],
+                    "screenBlockedLevelIds": sorted(blocked),
+                    "screenBlockedButStage4ServedLevelIds": false_levels,
+                    "stage4Status": c.status,
+                    "accessibleLevels": c.accessible_count,
+                    "requiredLevels": len(c.level_service),
+                    "inProductionShortlist": c.candidate_id in shortlisted,
+                    "clearanceBasis": c.clearance.basis if c.clearance else None,
+                    "clearanceRefinementApplied": (
+                        bool((c.clearance.refinement or {}).get("applied")) if c.clearance else None
+                    ),
+                }
+            )
+        affected = [r for r in rows if r["screenBlockedButStage4ServedLevelIds"]]
+        rec.update(
+            {
+                "realized": True,
+                "clearanceBasis": exhaustive.clearance_basis,
+                "screenAuthority": (rows[0]["authority"] if rows else None),
+                "validatedCandidateCount": len(rows),
+                "screenBlockedButStage4Served": false_blocks,
+                "affectedCandidateIds": [r["candidateId"] for r in affected],
+                "affectedLevelIds": sorted(
+                    {lid for r in affected for lid in r["screenBlockedButStage4ServedLevelIds"]}
+                ),
+                "affectedInProductionShortlist": [
+                    r["candidateId"] for r in affected if r["inProductionShortlist"]
+                ],
+                "shortlist": list(normal.shortlist),
+                "winnerNormal": normal.winner_id,
+                "winnerExhaustive": exhaustive.winner_id,
+                "candidates": rows,
+            }
+        )
+        records.append(rec)
+    return {
+        "suiteVersion": SUITE_VERSION,
+        "label": label,
+        "semantics": (
+            "Phase 20C.1 closeout B diagnostic: stage-2 geometric access screen versus "
+            "exhaustive stage-4 outcomes. A `screenBlockedButStage4Served` level is a "
+            "FALSE BLOCK — impossible under an EXACT distance contract, possible under a "
+            "CONSERVATIVE one because stage 4 may refine the bound and move the entry. "
+            "The production search is unchanged by this report"
+        ),
+        "caseCount": len(records),
+        "totalFalseBlocks": sum(int(r.get("screenBlockedButStage4Served", 0)) for r in records),
+        "casesWithFalseBlocks": [
+            r["key"] for r in records if r.get("screenBlockedButStage4Served")
+        ],
+        "falseBlocksInsideProductionShortlist": sum(
+            len(r.get("affectedInProductionShortlist", [])) for r in records
+        ),
         "totalRuntimeSeconds": time.perf_counter() - t_all,
         "cases": records,
     }

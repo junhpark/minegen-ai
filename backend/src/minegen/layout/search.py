@@ -53,6 +53,8 @@ from minegen.design.profile import build_profile
 from minegen.design.progress import ProgressCallback, ProgressEvent, ProgressStage, no_progress
 from minegen.design.targets import default_portal
 from minegen.layout.access import (
+    SCREEN_HEURISTIC,
+    SCREEN_NECESSARY_CONDITION,
     LevelAccessPlan,
     LevelDevelopmentAnchor,
     build_anchor,
@@ -301,8 +303,17 @@ class CandidateResult:
 
     @property
     def screen_blocked(self) -> int:
-        """Levels the geometric access screen proves unservable (0 before it ran)."""
+        """Levels the geometric access screen reports BLOCKED (0 before it ran).
+        What that PROVES depends on the clearance policy — see
+        ``screen_authority`` and ``access_screen["authority"]``: a necessary
+        condition under an exact distance contract, a heuristic under a
+        conservative one."""
         return int(self.access_screen["blockedCount"]) if self.access_screen else 0
+
+    @property
+    def screen_authority(self) -> str:
+        """``NECESSARY_CONDITION`` | ``HEURISTIC`` (empty before the screen ran)."""
+        return str(self.access_screen["authority"]) if self.access_screen else ""
 
     @property
     def accessible_count(self) -> int | None:
@@ -952,7 +963,13 @@ class LayoutV2Search:
                 for lv in ctx.levels
             ]
             cand.access_screen = geometric_access_screen(
-                built.points, anchors, ctx.levels, self.cfg.access, ctx.ramp, self.shape
+                built.points,
+                anchors,
+                ctx.levels,
+                self.cfg.access,
+                ctx.ramp,
+                self.shape,
+                screen_authority(self.policy),
             )
 
     def candidate_policy(
@@ -1152,10 +1169,46 @@ def _family_rank(c: CandidateResult) -> int:
     return FAMILY_ORDER.index(c.params.family)
 
 
+def screen_authority(policy: ClearancePolicy) -> str:
+    """What a BLOCKED level of the stage-2 geometric access screen proves,
+    decided by the CLEARANCE POLICY's distance contract (closeout B), never
+    by the orebody type. The screen's only policy dependence is the anchor
+    stand-off (``anchor_standoff``), which is raised above the configured
+    value exactly when ``basis != "EXACT"``: with an exact contract the
+    screen anchor IS the stage-4 anchor, so a blocked level is unservable in
+    stage 4 as well; with a conservative one stage 4 may refine the bound,
+    shrink the stand-off and move the entry, so the blocked count is only a
+    heuristic."""
+    return SCREEN_NECESSARY_CONDITION if policy.basis == "EXACT" else SCREEN_HEURISTIC
+
+
 def _shortlist_key(c: CandidateResult) -> tuple[int, float, int, str]:
-    """Stage-3 order (rule 176): geometric-screen blocked levels first (a
-    provably unservable level can never become FEASIBLE in stage 4), then the
-    cheap lower-bound proxy (rule 165), family order, id."""
+    """Stage-3 order (rule 176): geometric-screen blocked levels first, then
+    the cheap lower-bound proxy (rule 165), family order, id.
+
+    Under an EXACT distance contract a blocked level is a NECESSARY
+    CONDITION of a stage-4 failure (the screen anchor is the stage-4
+    anchor), so the prefix orders by something the candidate cannot
+    recover. Under a CONSERVATIVE contract it is only a HEURISTIC
+    (``screen_authority``): stage 4 may refine the bound, move the entry and
+    still serve a blocked level. The closeout-B measurement
+    (``golden/phase20c1_closeout_screen_audit.json``) quantified exactly
+    that — 0 false blocks on the four EXACT cases, 56 over the three
+    conservative ones (301: 27, 307: 2, IRREGULAR: 27), 6 of them on
+    candidates the production shortlist had validated.
+
+    Dropping the prefix on the conservative side was therefore ATTEMPTED and
+    REVERTED: it fails the family-yield acceptance
+    (``golden/phase20c1_closeout_ordering_attempt_shortlist_audit.json``) —
+    WARPED-301 loses the whole SWITCHBACK family again
+    (``missedFamilies`` [] → ['SWITCHBACK'], feasible 10 → 3), which is the
+    regression rule 176's screen was introduced to fix. The heuristic
+    prefix is kept there as an ORDERING HEURISTIC ONLY, never as authority:
+    it rejects nothing under either contract, the `blocked ⊆ failed`
+    contract is not claimed or tested on the conservative side, and stage 4
+    stays the final authority. Ordering the conservative side without a
+    heuristic that mis-blocks — by improving the proxy itself — is recorded
+    as a Phase 20C.2 candidate, not attempted here."""
     return (c.screen_blocked, c.cheap_proxy or math.inf, _family_rank(c), c.candidate_id)
 
 

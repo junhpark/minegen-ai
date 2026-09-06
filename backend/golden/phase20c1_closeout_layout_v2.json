@@ -6,6 +6,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -478,6 +479,7 @@
             "worstAccessLength": 38.25679029798645
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -749,6 +751,7 @@
             "worstAccessLength": 38.78654279639693
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -1169,6 +1172,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -1593,6 +1597,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -2065,6 +2070,7 @@
             "worstAccessLength": 38.674067898105235
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -2288,6 +2294,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -2710,6 +2717,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -2937,6 +2945,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -3164,6 +3173,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -3389,6 +3399,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -3811,6 +3822,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -4235,6 +4247,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -4659,6 +4672,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -4884,6 +4898,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -5111,6 +5126,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -5364,6 +5380,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -5617,6 +5634,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -5868,6 +5886,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -6344,6 +6363,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -6595,6 +6615,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -8092,6 +8113,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L01",
@@ -8350,6 +8372,7 @@
             "worstAccessLength": 84.8380982237083
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -8574,6 +8597,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L02",
@@ -8780,6 +8804,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L02",
@@ -8994,6 +9019,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L01",
@@ -9258,6 +9284,7 @@
             "worstAccessLength": 87.97120879302578
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -9482,6 +9509,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 3,
             "blockedLevelIds": [
               "L01",
@@ -9690,6 +9718,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L02",
@@ -9950,6 +9979,7 @@
             "worstAccessLength": 78.38424915154394
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -10174,6 +10204,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L01",
@@ -10388,6 +10419,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L01",
@@ -10604,6 +10636,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L02",
@@ -10866,6 +10899,7 @@
             "worstAccessLength": 86.00223200879105
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -11138,6 +11172,7 @@
             "worstAccessLength": 88.87654107230979
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -11410,6 +11445,7 @@
             "worstAccessLength": 136.4268981091422
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -11682,6 +11718,7 @@
             "worstAccessLength": 204.07693983386977
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -11906,6 +11943,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L01",
@@ -12120,6 +12158,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L01",
@@ -12334,6 +12373,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L01"
@@ -12538,6 +12578,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L01",
@@ -12802,6 +12843,7 @@
             "worstAccessLength": 102.4109558242517
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -13026,6 +13068,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L01",
@@ -13288,6 +13331,7 @@
             "worstAccessLength": 154.7935572382164
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -13512,6 +13556,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L01",
@@ -13724,6 +13769,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L01",
@@ -13940,6 +13986,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -14194,6 +14241,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -14394,6 +14442,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L01",
@@ -14654,6 +14703,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -14880,6 +14930,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -15134,6 +15185,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -15334,6 +15386,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -15616,6 +15669,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L01",
@@ -15836,6 +15890,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -16090,6 +16145,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 3,
             "blockedLevelIds": [
               "L01",
@@ -16298,6 +16354,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L01",
@@ -17450,15 +17507,15 @@
       "overrides": [],
       "preset": "BASELINE",
       "runtime": {
-        "materialize": 0.015611656000146468,
-        "realize": 0.0007629579999957059,
-        "search": 26.6792075379999,
-        "search.constructAndCheapSeconds": 18.150744594000116,
-        "search.detailedSeconds": 8.348347305999596,
-        "search.setupSeconds": 0.17906885399997918,
-        "search.totalSeconds": 26.67826400900003,
-        "total": 27.538532008999937,
-        "world": 0.8337859910002408
+        "materialize": 0.009671393000076023,
+        "realize": 0.0005437309999933859,
+        "search": 15.744959463999976,
+        "search.constructAndCheapSeconds": 10.260800172000017,
+        "search.detailedSeconds": 5.422228917999973,
+        "search.setupSeconds": 0.061303265999981704,
+        "search.totalSeconds": 15.744400368000015,
+        "total": 16.39422786199998,
+        "world": 0.6325201029999334
       },
       "seed": 42
     },
@@ -17467,6 +17524,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L04",
@@ -17704,6 +17762,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -17945,6 +18004,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L11",
@@ -18162,6 +18222,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L09",
@@ -18592,6 +18653,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -19042,6 +19104,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L04",
@@ -19328,6 +19391,7 @@
             "worstAccessLength": 48.91404752965297
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -19624,6 +19688,7 @@
             "worstAccessLength": 56.669444525675296
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -20080,6 +20145,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -20530,6 +20596,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -22234,6 +22301,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -22919,6 +22987,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -23656,6 +23725,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -23923,6 +23993,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L03",
@@ -24188,6 +24259,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -25705,6 +25777,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L05",
@@ -25980,6 +26053,7 @@
             "worstAccessLength": 82.42862711143826
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -26277,6 +26351,7 @@
             "worstAccessLength": 132.19805329593117
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -26525,6 +26600,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L04",
@@ -26751,6 +26827,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L05",
@@ -26977,6 +27054,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L05",
@@ -27201,6 +27279,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L07",
@@ -27423,6 +27502,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L09",
@@ -27641,6 +27721,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L10",
@@ -27859,6 +27940,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 3,
             "blockedLevelIds": [
               "L08",
@@ -28079,6 +28161,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L10",
@@ -28297,6 +28380,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L09",
@@ -28521,6 +28605,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L07",
@@ -28792,6 +28877,7 @@
             "worstAccessLength": 94.30126487491056
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L11"
@@ -29095,6 +29181,7 @@
             "worstAccessLength": 155.9341058902956
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L16"
@@ -29398,6 +29485,7 @@
             "worstAccessLength": 143.66526810547876
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L11"
@@ -29650,6 +29738,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L04",
@@ -29925,6 +30014,7 @@
             "worstAccessLength": 67.92588588795124
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -30173,6 +30263,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 3,
             "blockedLevelIds": [
               "L08",
@@ -30393,6 +30484,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L03",
@@ -30621,6 +30713,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L06",
@@ -30898,6 +30991,7 @@
             "worstAccessLength": 97.01871340002758
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L11"
@@ -31152,6 +31246,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L04",
@@ -31380,6 +31475,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L11",
@@ -31598,6 +31694,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -31889,6 +31986,7 @@
             "worstAccessLength": 110.62277502755003
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -32191,6 +32289,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L03",
@@ -32480,6 +32579,7 @@
             "worstAccessLength": 67.23965944800418
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -32782,6 +32882,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L04",
@@ -33020,6 +33121,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L04",
@@ -33312,6 +33414,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 11,
             "blockedLevelIds": [
               "L05",
@@ -33597,6 +33700,7 @@
             "worstAccessLength": 54.42723407436806
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L11"
@@ -33903,6 +34007,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L04",
@@ -34141,6 +34246,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L03",
@@ -34435,6 +34541,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L08",
@@ -34657,6 +34764,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 10,
             "blockedLevelIds": [
               "L05",
@@ -35902,15 +36010,15 @@
       "overrides": [],
       "preset": "RANDOM_WARPED_VEIN",
       "runtime": {
-        "materialize": 0.026716983999904187,
-        "realize": 0.01211557599981461,
-        "search": 40.564561680000224,
-        "search.constructAndCheapSeconds": 24.37069391399973,
-        "search.detailedSeconds": 13.932364103000054,
-        "search.setupSeconds": 2.2606050100002903,
-        "search.totalSeconds": 40.56375111300031,
-        "total": 41.04125340399969,
-        "world": 0.4283356930000082
+        "materialize": 0.01587021700004243,
+        "realize": 0.009066168999993351,
+        "search": 24.848838979999982,
+        "search.constructAndCheapSeconds": 14.17693718299995,
+        "search.detailedSeconds": 9.240847370999973,
+        "search.setupSeconds": 1.4303816330000245,
+        "search.totalSeconds": 24.84825677899994,
+        "total": 25.144190654,
+        "world": 0.26349183000002085
       },
       "seed": 301
     },
@@ -35945,6 +36053,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 21,
             "blockedLevelIds": [
               "L01",
@@ -36707,6 +36816,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 21,
             "blockedLevelIds": [
               "L01",
@@ -37098,6 +37208,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 21,
             "blockedLevelIds": [
               "L01",
@@ -40608,6 +40719,7 @@
             "worstAccessLength": 56.16743242235896
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 10,
             "blockedLevelIds": [
               "L02",
@@ -41018,6 +41130,7 @@
             "worstAccessLength": 55.7809829166436
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L01",
@@ -41387,6 +41500,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 11,
             "blockedLevelIds": [
               "L01",
@@ -41707,6 +41821,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -42098,6 +42213,7 @@
             "worstAccessLength": 83.02906241879866
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 10,
             "blockedLevelIds": [
               "L01",
@@ -42530,6 +42646,7 @@
             "worstAccessLength": 81.06656097103372
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L02",
@@ -42929,6 +43046,7 @@
             "worstAccessLength": 41.248876757129366
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 10,
             "blockedLevelIds": [
               "L02",
@@ -43273,6 +43391,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 21,
             "blockedLevelIds": [
               "L01",
@@ -43640,6 +43759,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 10,
             "blockedLevelIds": [
               "L01",
@@ -43958,6 +44078,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 11,
             "blockedLevelIds": [
               "L01",
@@ -44345,6 +44466,7 @@
             "worstAccessLength": 67.28524734779559
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 10,
             "blockedLevelIds": [
               "L01",
@@ -44716,6 +44838,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 10,
             "blockedLevelIds": [
               "L02",
@@ -45101,6 +45224,7 @@
             "worstAccessLength": 66.61388206081047
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 10,
             "blockedLevelIds": [
               "L02",
@@ -45445,6 +45569,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -45850,6 +45975,7 @@
             "worstAccessLength": 100.64992919968644
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -46237,6 +46363,7 @@
             "worstAccessLength": 103.7956612522015
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 10,
             "blockedLevelIds": [
               "L01",
@@ -46643,6 +46770,7 @@
             "worstAccessLength": 76.47869707748625
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L02",
@@ -47064,6 +47192,7 @@
             "worstAccessLength": 82.76700002095261
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 3,
             "blockedLevelIds": [
               "L04",
@@ -49271,15 +49400,15 @@
       ],
       "preset": "BASELINE",
       "runtime": {
-        "materialize": 0.021960801999739488,
-        "realize": 0.0007183599996096746,
-        "search": 26.935725059000106,
-        "search.constructAndCheapSeconds": 14.375639236000097,
-        "search.detailedSeconds": 12.385347819999879,
-        "search.setupSeconds": 0.17400785299969357,
-        "search.totalSeconds": 26.93503960299995,
-        "total": 27.30679341699988,
-        "world": 0.34121694799978286
+        "materialize": 0.013380774000097517,
+        "realize": 0.0005462500000703585,
+        "search": 16.504075715,
+        "search.constructAndCheapSeconds": 8.34282870800007,
+        "search.detailedSeconds": 8.080167339999889,
+        "search.setupSeconds": 0.08049193900001228,
+        "search.totalSeconds": 16.503522401000055,
+        "total": 16.880043896000075,
+        "world": 0.3573256050000282
       },
       "seed": 42
     },
@@ -49437,6 +49566,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -49662,6 +49792,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -49905,6 +50036,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -50745,6 +50877,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -50988,6 +51121,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -51177,6 +51311,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -51348,6 +51483,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -51519,6 +51655,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -51690,6 +51827,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -52010,6 +52148,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -52330,6 +52469,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -52650,6 +52790,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -52970,6 +53111,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -53141,6 +53283,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -53312,6 +53455,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -53509,6 +53653,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -53706,6 +53851,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 8,
             "blockedLevelIds": [
               "L02",
@@ -54076,6 +54222,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -54273,6 +54420,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 8,
             "blockedLevelIds": [
               "L02",
@@ -54468,6 +54616,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -55545,6 +55694,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L03",
@@ -55707,6 +55857,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L03",
@@ -55869,6 +56020,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L03",
@@ -56031,6 +56183,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L03",
@@ -56193,6 +56346,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L03",
@@ -56351,6 +56505,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L03",
@@ -56513,6 +56668,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 3,
             "blockedLevelIds": [
               "L03",
@@ -56673,6 +56829,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L09"
@@ -56867,6 +57024,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L02",
@@ -57029,6 +57187,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L02",
@@ -57249,6 +57408,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -57493,6 +57653,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -57683,6 +57844,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L03",
@@ -57845,6 +58007,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L03",
@@ -58003,6 +58166,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L02",
@@ -58167,6 +58331,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L02",
@@ -58329,6 +58494,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L02",
@@ -58493,6 +58659,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L02",
@@ -58711,6 +58878,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -58955,6 +59123,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -59145,6 +59314,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L02",
@@ -59309,6 +59479,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L02",
@@ -59473,6 +59644,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L02",
@@ -59637,6 +59809,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L02",
@@ -59801,6 +59974,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -59973,6 +60147,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -60199,6 +60374,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 8,
             "blockedLevelIds": [
               "L02",
@@ -60369,6 +60545,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 8,
             "blockedLevelIds": [
               "L02",
@@ -60593,6 +60770,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -60765,6 +60943,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L02",
@@ -60991,6 +61170,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 8,
             "blockedLevelIds": [
               "L02",
@@ -61161,6 +61341,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 8,
             "blockedLevelIds": [
               "L02",
@@ -61438,6 +61619,7 @@
             "worstAccessLength": 71.0383227046324
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -61628,6 +61810,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 3,
             "blockedLevelIds": [
               "L02",
@@ -61895,6 +62078,7 @@
             "worstAccessLength": 55.875779535048515
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -62138,6 +62322,7 @@
             "worstAccessLength": 63.52301064669705
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -62902,14 +63087,14 @@
       "overrides": [],
       "preset": "RANDOM_WARPED_VEIN",
       "runtime": {
-        "realize": 0.006156195000130538,
-        "search": 23.904461379000168,
-        "search.constructAndCheapSeconds": 16.858684832000108,
-        "search.detailedSeconds": 6.369426520999696,
-        "search.setupSeconds": 0.6755690240001968,
-        "search.totalSeconds": 23.903714513000068,
-        "total": 24.44823620299985,
-        "world": 0.530701266000051
+        "realize": 0.004552122000177405,
+        "search": 14.90011226899992,
+        "search.constructAndCheapSeconds": 10.326440448999847,
+        "search.detailedSeconds": 4.118121437000127,
+        "search.setupSeconds": 0.4550094349999654,
+        "search.totalSeconds": 14.899587161999989,
+        "total": 15.389370420000205,
+        "world": 0.4803923929998746
       },
       "seed": 307
     },
@@ -62980,6 +63165,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -63492,6 +63678,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -63807,6 +63994,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -64319,6 +64507,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -64831,6 +65020,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -65343,6 +65533,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -65658,6 +65849,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -66108,6 +66300,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -66335,6 +66528,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -66562,6 +66756,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -66789,6 +66984,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -67213,6 +67409,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -67637,6 +67834,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -68061,6 +68259,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -68288,6 +68487,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -68515,6 +68715,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -68768,6 +68969,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -69021,6 +69223,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -69274,6 +69477,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -69750,6 +69954,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -70003,6 +70208,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -71562,6 +71768,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -71816,6 +72023,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -72044,6 +72252,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -72272,6 +72481,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -72500,6 +72710,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -72728,6 +72939,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -72956,6 +73168,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -73184,6 +73397,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -73474,6 +73688,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -73790,6 +74005,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -74044,6 +74260,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -74272,6 +74489,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -74562,6 +74780,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -74816,6 +75035,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -75044,6 +75264,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -75272,6 +75493,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -75562,6 +75784,7 @@
             "worstAccessLength": 0.0
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -75816,6 +76039,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -76044,6 +76268,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -76272,6 +76497,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -76500,6 +76726,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -76728,6 +76955,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -76956,6 +77184,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -77184,6 +77413,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -77412,6 +77642,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -77640,6 +77871,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -77922,6 +78154,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -78150,6 +78383,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -78432,6 +78666,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -78660,6 +78895,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -78942,6 +79178,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -79170,6 +79407,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -79452,6 +79690,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -79680,6 +79919,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -79962,6 +80202,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -80190,6 +80431,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -81008,14 +81250,14 @@
       ],
       "preset": "BASELINE",
       "runtime": {
-        "realize": 0.0008443870001428877,
-        "search": 5.827666029999818,
-        "search.constructAndCheapSeconds": 4.783110566000232,
-        "search.detailedSeconds": 0.9368012330000965,
-        "search.setupSeconds": 0.10699431399962123,
-        "search.totalSeconds": 5.826935857999615,
-        "total": 6.432503048000399,
-        "world": 0.5960397509998074
+        "realize": 0.0005354669999633188,
+        "search": 2.26553137399992,
+        "search.constructAndCheapSeconds": 1.8215265239998644,
+        "search.detailedSeconds": 0.38299561300004825,
+        "search.setupSeconds": 0.060562546000028306,
+        "search.totalSeconds": 2.2650986959999955,
+        "total": 2.704042243999993,
+        "world": 0.4323448060001738
       },
       "seed": 42
     },
@@ -81024,6 +81266,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -81496,6 +81739,7 @@
             "worstAccessLength": 38.25679029798645
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -81767,6 +82011,7 @@
             "worstAccessLength": 38.78654279639693
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -82187,6 +82432,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -82611,6 +82857,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -83083,6 +83330,7 @@
             "worstAccessLength": 38.674067898105235
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -83306,6 +83554,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -83728,6 +83977,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -83955,6 +84205,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -84182,6 +84433,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -84407,6 +84659,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -84829,6 +85082,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -85253,6 +85507,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -85677,6 +85932,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -85902,6 +86158,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -86129,6 +86386,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -86382,6 +86640,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -86635,6 +86894,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -86886,6 +87146,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -87362,6 +87623,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -87613,6 +87875,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -89110,6 +89373,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L01",
@@ -89368,6 +89632,7 @@
             "worstAccessLength": 84.8380982237083
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -89592,6 +89857,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L02",
@@ -89798,6 +90064,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L02",
@@ -90012,6 +90279,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L01",
@@ -90276,6 +90544,7 @@
             "worstAccessLength": 87.97120879302578
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -90500,6 +90769,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 3,
             "blockedLevelIds": [
               "L01",
@@ -90708,6 +90978,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L02",
@@ -90968,6 +91239,7 @@
             "worstAccessLength": 78.38424915154394
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -91192,6 +91464,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L01",
@@ -91406,6 +91679,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L01",
@@ -91622,6 +91896,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L02",
@@ -91884,6 +92159,7 @@
             "worstAccessLength": 86.00223200879105
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -92156,6 +92432,7 @@
             "worstAccessLength": 88.87654107230979
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -92428,6 +92705,7 @@
             "worstAccessLength": 136.4268981091422
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -92700,6 +92978,7 @@
             "worstAccessLength": 204.07693983386977
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -92924,6 +93203,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L01",
@@ -93138,6 +93418,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L01",
@@ -93352,6 +93633,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L01"
@@ -93556,6 +93838,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L01",
@@ -93820,6 +94103,7 @@
             "worstAccessLength": 102.4109558242517
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -94044,6 +94328,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L01",
@@ -94306,6 +94591,7 @@
             "worstAccessLength": 154.7935572382164
           },
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -94530,6 +94816,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L01",
@@ -94742,6 +95029,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L01",
@@ -94958,6 +95246,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -95212,6 +95501,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -95412,6 +95702,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L01",
@@ -95672,6 +95963,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L01",
@@ -95898,6 +96190,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -96152,6 +96445,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -96352,6 +96646,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L01",
@@ -96634,6 +96929,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 9,
             "blockedLevelIds": [
               "L01",
@@ -96854,6 +97150,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -97108,6 +97405,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 3,
             "blockedLevelIds": [
               "L01",
@@ -97316,6 +97614,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "NECESSARY_CONDITION",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L01",
@@ -98473,15 +98772,15 @@
       ],
       "preset": "BASELINE",
       "runtime": {
-        "materialize": 0.015539091999926313,
-        "realize": 0.0006620690001000185,
-        "search": 25.91298298999982,
-        "search.constructAndCheapSeconds": 17.37545071600016,
-        "search.detailedSeconds": 8.447162212999956,
-        "search.setupSeconds": 0.0896062259998871,
-        "search.totalSeconds": 25.912322227999994,
-        "total": 26.416824029000054,
-        "world": 0.4782813219999298
+        "materialize": 0.009253497999907268,
+        "realize": 0.0005549009999867849,
+        "search": 16.00578965999989,
+        "search.constructAndCheapSeconds": 10.516751140999986,
+        "search.detailedSeconds": 5.429539402000046,
+        "search.setupSeconds": 0.05900193299999046,
+        "search.totalSeconds": 16.005362329000036,
+        "total": 16.464876067999967,
+        "world": 0.4426351749998503
       },
       "seed": 42
     },
@@ -98490,6 +98789,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L04",
@@ -98727,6 +99027,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -98968,6 +99269,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L11",
@@ -99185,6 +99487,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L09",
@@ -99615,6 +99918,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -100065,6 +100369,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L04",
@@ -100351,6 +100656,7 @@
             "worstAccessLength": 48.91404752965297
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -100647,6 +100953,7 @@
             "worstAccessLength": 56.669444525675296
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -101103,6 +101410,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -101553,6 +101861,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -103257,6 +103566,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -103942,6 +104252,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -104679,6 +104990,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -104946,6 +105258,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L03",
@@ -105211,6 +105524,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -106728,6 +107042,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L05",
@@ -107003,6 +107318,7 @@
             "worstAccessLength": 82.42862711143826
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -107300,6 +107616,7 @@
             "worstAccessLength": 132.19805329593117
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -107548,6 +107865,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L04",
@@ -107774,6 +108092,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L05",
@@ -108000,6 +108319,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L05",
@@ -108224,6 +108544,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L07",
@@ -108446,6 +108767,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L09",
@@ -108664,6 +108986,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L10",
@@ -108882,6 +109205,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 3,
             "blockedLevelIds": [
               "L08",
@@ -109102,6 +109426,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L10",
@@ -109320,6 +109645,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 5,
             "blockedLevelIds": [
               "L09",
@@ -109544,6 +109870,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L07",
@@ -109815,6 +110142,7 @@
             "worstAccessLength": 94.30126487491056
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L11"
@@ -110118,6 +110446,7 @@
             "worstAccessLength": 155.9341058902956
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L16"
@@ -110421,6 +110750,7 @@
             "worstAccessLength": 143.66526810547876
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L11"
@@ -110673,6 +111003,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L04",
@@ -110948,6 +111279,7 @@
             "worstAccessLength": 67.92588588795124
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -111196,6 +111528,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 3,
             "blockedLevelIds": [
               "L08",
@@ -111416,6 +111749,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L03",
@@ -111644,6 +111978,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 6,
             "blockedLevelIds": [
               "L06",
@@ -111921,6 +112256,7 @@
             "worstAccessLength": 97.01871340002758
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L11"
@@ -112175,6 +112511,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 7,
             "blockedLevelIds": [
               "L04",
@@ -112403,6 +112740,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 2,
             "blockedLevelIds": [
               "L11",
@@ -112621,6 +112959,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 14,
             "blockedLevelIds": [
               "L03",
@@ -112912,6 +113251,7 @@
             "worstAccessLength": 110.62277502755003
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -113214,6 +113554,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L03",
@@ -113503,6 +113844,7 @@
             "worstAccessLength": 67.23965944800418
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 0,
             "blockedLevelIds": [],
             "reasons": {}
@@ -113805,6 +114147,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L04",
@@ -114043,6 +114386,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L04",
@@ -114335,6 +114679,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 11,
             "blockedLevelIds": [
               "L05",
@@ -114620,6 +114965,7 @@
             "worstAccessLength": 54.42723407436806
           },
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 1,
             "blockedLevelIds": [
               "L11"
@@ -114926,6 +115272,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 12,
             "blockedLevelIds": [
               "L04",
@@ -115164,6 +115511,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 13,
             "blockedLevelIds": [
               "L03",
@@ -115458,6 +115806,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 4,
             "blockedLevelIds": [
               "L08",
@@ -115680,6 +116029,7 @@
         {
           "access": null,
           "accessScreen": {
+            "authority": "HEURISTIC",
             "blockedCount": 10,
             "blockedLevelIds": [
               "L05",
@@ -116930,22 +117280,22 @@
       ],
       "preset": "RANDOM_WARPED_VEIN",
       "runtime": {
-        "materialize": 0.026529697000114538,
-        "realize": 0.011442854000051739,
-        "search": 39.905063130000144,
-        "search.constructAndCheapSeconds": 23.07285517399987,
-        "search.detailedSeconds": 14.20864880199997,
-        "search.setupSeconds": 2.6225736750002397,
-        "search.totalSeconds": 39.90422622300002,
-        "total": 40.46102542300014,
-        "world": 0.5081265960002384
+        "materialize": 0.019592536999880394,
+        "realize": 0.00816863199997897,
+        "search": 24.77870089199996,
+        "search.constructAndCheapSeconds": 14.026426637999975,
+        "search.detailedSeconds": 9.32370164300005,
+        "search.setupSeconds": 1.427955534000148,
+        "search.totalSeconds": 24.77818291000017,
+        "total": 25.235928535000085,
+        "world": 0.42239154200001394
       },
       "seed": 301
     }
   ],
-  "gitHead": "a6fd4cef8efc7c3d5edd6a49f2b8d1644c2beeaa",
-  "label": "20c1q-layout",
+  "gitHead": "baf18296c77b6a3850e674cd35e72ffeba643072",
+  "label": "20c1c-b-layout",
   "semantics": "layout-v2 parametric family search over synthetic worlds; candidate scores are interpretable planning group totals, never an optimality claim, never a cost estimate; runtimes are advisory",
   "suiteVersion": 1,
-  "totalRuntimeSeconds": 193.66447304800022
+  "totalRuntimeSeconds": 118.22888828600014
 }

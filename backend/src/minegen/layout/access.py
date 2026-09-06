@@ -1188,6 +1188,15 @@ def _plan_context(
     )
 
 
+#: What a BLOCKED level of the geometric access screen proves (Phase 20C.1
+#: closeout B). The screen runs the evaluator-free stage-4 gates on
+#: coarse-stand-off anchors, so its authority is decided by whether stage 4
+#: can still change the anchor — i.e. by the CLEARANCE POLICY's distance
+#: contract, never by the orebody type.
+SCREEN_NECESSARY_CONDITION = "NECESSARY_CONDITION"
+SCREEN_HEURISTIC = "HEURISTIC"
+
+
 def geometric_access_screen(
     ramp_points: FloatArray,
     anchors: list[LevelDevelopmentAnchor | None],
@@ -1195,6 +1204,7 @@ def geometric_access_screen(
     cfg: LevelAccessConfig,
     ramp: RampConstraints,
     shape: ProfileShape,
+    authority: str = SCREEN_HEURISTIC,
 ) -> dict[str, Any]:
     """Phase 20C.1-Q evaluator-free GEOMETRIC access screen: for every
     required level, whether at least one junction candidate of the stage-4
@@ -1202,13 +1212,22 @@ def geometric_access_screen(
     plan separation (B-1), connector availability, gradient, length, plan
     radius and the rock pillar (B-2) — with the junction-spacing assignment
     ignored. It is the SAME code path ``plan_level_accesses`` runs
-    (``_search_level(geometric_only=True)``), so a level reported BLOCKED
-    has no candidate that stage 4 could accept: a necessary condition, not
-    a heuristic. It never rejects a candidate; the search uses the blocked
-    count only as the stage-3 ordering prefix (rule 176) and stage 4 stays
-    the final authority. Under a CONSERVATIVE clearance policy the anchors
-    given here are the coarse-stand-off anchors; a refined stage-4 policy
-    may move an entry, which is why the screen orders and never gates."""
+    (``_search_level(geometric_only=True)``). It never rejects a candidate;
+    the search uses the blocked count only for stage-3 ordering (rule 176)
+    and stage 4 stays the final authority.
+
+    ``authority`` (closeout B) records what a BLOCKED level PROVES, and it
+    is decided by the caller's CLEARANCE POLICY, never by the orebody type:
+
+    ``NECESSARY_CONDITION`` — the policy's distance contract is exact, so
+        the anchor the screen used IS the anchor stage 4 will use and the
+        gates judged here are the same gates: a blocked level cannot become
+        served (``blocked ⊆ stage-4 failed``).
+    ``HEURISTIC`` — under a conservative (derived-approximate) contract the
+        anchors given here sit at the COARSE stand-off; stage 4 may refine
+        the bound, shrink the stand-off and move the entry, so a blocked
+        level can still be served. Nothing here is provable and the count
+        must not be treated as a necessary condition."""
     ctx = _plan_context(ramp_points, cfg, ramp, None, shape, 0.0, LONG_ACCESS_COEF)
     per_level: dict[str, dict[str, Any]] = {}
     blocked: list[str] = []
@@ -1233,7 +1252,12 @@ def geometric_access_screen(
         if entry["blocked"]:
             blocked.append(lv.level_id)
         per_level[lv.level_id] = entry
-    return {"blockedLevelIds": blocked, "blockedCount": len(blocked), "levels": per_level}
+    return {
+        "blockedLevelIds": blocked,
+        "blockedCount": len(blocked),
+        "authority": authority,
+        "levels": per_level,
+    }
 
 
 def plan_level_accesses(

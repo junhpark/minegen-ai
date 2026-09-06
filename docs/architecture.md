@@ -868,13 +868,13 @@ whole point of a golden — happens on the CSV summary and the comparison
 files. Git LFS is deliberately not used. Policy:
 
 - Only the LATEST phase keeps its full detailed layout-v2 / warped-vein JSON
-  (`golden/phase20c1_q_layout_v2.json`, `golden/phase20a_warped_vein.json`).
+  (`golden/phase20c1_closeout_layout_v2.json`, `golden/phase20a_warped_vein.json`).
 - Every earlier phase keeps its CSV summary plus the comparison / audit JSON
   files (`*_vs_*_layout.json`, `*_shortlist_audit.json`, `*_turning_burden_audit.json`,
   …); its full JSON is deleted when the next phase's baseline lands.
 - A golden a test references is exempt from deletion (grep `backend/tests`
   before deleting — `phase17_baseline.json`, `phase19_warped_vein.json`,
-  `phase20c1_q_layout_v2.json` are referenced today).
+  `phase20c1_closeout_layout_v2.json` are referenced today).
 - The legacy 22-case golden files (`phase17_baseline`, `phase18_after_migration`,
   `phase19_full`, `phase20a_full`, `phase20b_full`, `phase20b_closeout_full`)
   are the regression lock of rule 132 and are NEVER deleted.

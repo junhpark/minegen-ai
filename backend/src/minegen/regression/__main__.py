@@ -93,6 +93,14 @@ def main(argv: list[str] | None = None) -> int:
     lvy_p.add_argument("--label", required=True)
     lvy_p.add_argument("--out", type=Path, default=Path("golden"))
 
+    lvs_p = sub.add_parser(
+        "layout-v2-screen-audit",
+        help="closeout B diagnostic: geometric-screen blocked levels vs exhaustive stage 4",
+    )
+    lvs_p.add_argument("--suite", choices=["full", "smoke"], default="full")
+    lvs_p.add_argument("--label", required=True)
+    lvs_p.add_argument("--out", type=Path, default=Path("golden"))
+
     ws_p = sub.add_parser(
         "warped-seeds",
         help="Phase 20C.1-W diagnostic: WARPED_VEIN multi-seed layout-v2 feasibility survey",
@@ -101,6 +109,27 @@ def main(argv: list[str] | None = None) -> int:
     ws_p.add_argument("--out", type=Path, default=Path("golden"))
 
     args = parser.parse_args(argv)
+    if args.command == "layout-v2-screen-audit":
+        audit = layout_v2.audit_screen(layout_v2.suite(args.suite), args.label)
+        audit["gitHead"] = _git_head()
+        for rec in audit["cases"]:
+            print(
+                f"  {rec['key']}: basis={rec.get('clearanceBasis')} "
+                f"authority={rec.get('screenAuthority')} validated="
+                f"{rec.get('validatedCandidateCount')} falseBlocks="
+                f"{rec.get('screenBlockedButStage4Served')} affected="
+                f"{rec.get('affectedCandidateIds')} inShortlist="
+                f"{rec.get('affectedInProductionShortlist')}"
+            )
+        print(
+            f"  total false blocks {audit['totalFalseBlocks']}, inside the production "
+            f"shortlist {audit['falseBlocksInsideProductionShortlist']}"
+        )
+        args.out.mkdir(parents=True, exist_ok=True)
+        path = args.out / f"{args.label}.json"
+        path.write_text(json.dumps(audit, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"wrote {path} ({audit['totalRuntimeSeconds']:.1f} s)")
+        return 0
     if args.command == "layout-v2-yield":
         yld = layout_v2.audit_yield(layout_v2.suite(args.suite), args.label)
         yld["gitHead"] = _git_head()

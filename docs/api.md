@@ -105,10 +105,15 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  …/design/layout-v2                          catalogue · 409 LAYOUT_V2_NOT_GENERATED.
                                                      Phase 20C.1-Q: every cheap-feasible candidate
                                                      carries `accessScreen` {blockedLevelIds,
-                                                     blockedCount, levels{blocked, reason,
-                                                     rejectionCounts}} — the evaluator-free
-                                                     stage-4 access gates (rule 176), the stage-3
-                                                     ordering prefix, never a rejection
+                                                     blockedCount, authority, levels{blocked,
+                                                     reason, rejectionCounts}} — the
+                                                     evaluator-free stage-4 access gates
+                                                     (rule 176), the stage-3 ordering prefix,
+                                                     never a rejection. `authority` (closeout B)
+                                                     is NECESSARY_CONDITION under an EXACT
+                                                     clearance policy and HEURISTIC under a
+                                                     conservative one, where stage-4 refinement
+                                                     may still serve a blocked level
     POST …/design/layout-v2/select {candidateId}     materialize a FEASIBLE candidate as
                                                      derived/layout_v2_selected.json (source unchanged)
                                                      404 LAYOUT_V2_CANDIDATE_NOT_FOUND ·

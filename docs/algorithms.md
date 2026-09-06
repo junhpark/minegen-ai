@@ -879,13 +879,25 @@ delivered polyline through the SAME `_search_level` code path
 plan separation, connector availability, gradient, length, plan radius and
 the B-2 direction-aware rock pillar, with the junction-spacing assignment
 ignored and coarse-stand-off anchors. A level with no passing candidate is
-BLOCKED — a necessary condition of stage 4 (the tabular test pins
-`blocked ⊆ failed` for every detailed candidate and `blocked = 0` for every
-FEASIBLE one). Order = `(blockedLevels, proxy, family, id)`; nothing is
-rejected, the bound (12) and the per-family slot (rule 165) are unchanged,
-`accessScreen` is shipped per candidate. Under a conservative policy the
-refined stage-4 anchor may move, which is why the screen orders and never
-gates.
+BLOCKED. Order = `(blockedLevels, proxy, family, id)`; nothing is rejected,
+the bound (12) and the per-family slot (rule 165) are unchanged,
+`accessScreen` is shipped per candidate.
+
+What BLOCKED proves is decided by the CLEARANCE POLICY, never by the orebody
+type (closeout B), and every screen result declares it as
+`accessScreen.authority`. `anchor_standoff` raises the stand-off above the
+configured value exactly when `basis != "EXACT"`, so:
+
+- EXACT (`ExactClearance`): the screen anchor IS the stage-4 anchor and the
+  gates are the same gates — BLOCKED is a NECESSARY CONDITION, and the
+  tabular test pins `blocked ⊆ failed` for every detailed candidate and
+  `blocked = 0` for every FEASIBLE one.
+- CONSERVATIVE (`ConservativeClearance` / `RefinedConservativeClearance`):
+  the screen anchors sit at the COARSE stand-off while stage 4 may refine
+  the bound, shrink the stand-off and move the entry — BLOCKED is a
+  HEURISTIC. The subset contract is not applied and not tested there; the
+  warped test pins only the declared authority and that the prefix still
+  rejects nothing.
 
 Measured after (`golden/phase20c1_q_layout_v2.json`,
 `phase20c1_q_vs_s_layout.json`, `phase20c1_q_shortlist_audit.json`): winner
@@ -944,3 +956,43 @@ window on 17 seeds. That points at the Phase 20C.2 WARPED level-development
 contract (section(z) local frame, anchor placement following the local
 trace) and NOT at clearance, the shortlist or the ramp families; no
 threshold, policy or default is changed by this phase.
+
+### Closeout B — the screen's authority is the clearance policy's, and it was measured
+
+`python -m minegen.regression layout-v2-screen-audit`
+(`golden/phase20c1_closeout_screen_audit.json`) validates EVERY cheap-feasible
+candidate (`detailed_all=True`) and counts the levels the stage-2 screen
+reported BLOCKED that stage 4 then SERVED — a FALSE BLOCK. Measured:
+
+| case | basis | authority | validated | false blocks | inside the production shortlist |
+|---|---|---|---|---|---|
+| TABULAR-REFERENCE | EXACT | NECESSARY_CONDITION | 57 | 0 | 0 |
+| GEOMETRY-STRESS | EXACT | NECESSARY_CONDITION | 21 | 0 | 0 |
+| ACCESS-INFEASIBLE | EXACT | NECESSARY_CONDITION | 57 | 0 | 0 |
+| CUT_AND_FILL | EXACT | NECESSARY_CONDITION | 57 | 0 | 0 |
+| WARPED_VEIN-301 | COARSE_CONSERVATIVE | HEURISTIC | 48 | 27 | 3 |
+| WARPED_VEIN-307 | COARSE_CONSERVATIVE | HEURISTIC | 35 | 2 | 0 |
+| IRREGULAR-REACH-EXCEEDED | COARSE_CONSERVATIVE | HEURISTIC | 48 | 27 | 3 |
+
+Zero on every exact case is the necessary-condition contract holding; 56 on
+the conservative side is the coarse stand-off being wrong about levels the
+refined stage-4 policy can reach. The claim "provably unservable" is
+therefore removed from the conservative side of rule 176 and from the code,
+`accessScreen.authority` declares which contract applies, and the
+`blocked ⊆ failed` test is applied only under EXACT.
+
+Dropping the prefix on the conservative side was then ATTEMPTED (the key
+becomes proxy → family → id there) and REVERTED: it fails the family-yield
+acceptance
+(`golden/phase20c1_closeout_ordering_attempt_shortlist_audit.json`) —
+WARPED-301 loses the SWITCHBACK family again (`missedFamilies` [] →
+['SWITCHBACK'], production feasible 10 → 3), exactly the regression the Q
+screen was introduced to fix; the other three acceptance items held
+(`winnerMissedByShortlist` false 7 / 7, GEOMETRY-STRESS SUCCESS with 21 / 21
+accesses, the six decided winners unchanged). The heuristic prefix is kept
+on the conservative side as an ORDERING HEURISTIC ONLY. Ordering that side
+without a mis-blocking heuristic — by improving the stage-3 proxy so it can
+see level-access feasibility — is a Phase 20C.2 candidate, recorded, not
+attempted here. Post-revert the production search is bit-identical to the
+merged 20C.1 baseline (`phase20c1_closeout_vs_q_layout.json`: 0 contract
+regressions, 0 metric drift).

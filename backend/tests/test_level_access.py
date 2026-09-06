@@ -8,14 +8,15 @@ from __future__ import annotations
 
 import json
 import math
+from typing import Any
 
 import numpy as np
 import pytest
 
-from minegen.core.enums import MiningMethodType
+from minegen.core.enums import MiningMethodType, ScenarioPreset
 from minegen.core.models import RampConstraints, Scenario, TunnelProfile
 from minegen.design.constraints import DesignContext
-from minegen.design.cost_field import DesignCostEvaluator
+from minegen.design.cost_field import DesignCostEvaluator, clearance_policy_for
 from minegen.design.profile import build_profile
 from minegen.layout.access import (
     LONG_ACCESS_COEF,
@@ -39,6 +40,7 @@ from minegen.layout.search import (
 )
 from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
 from minegen.network.builder import MineNetworkBuilder
+from minegen.services.scenario_realizer import realize_scenario
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 
 from .conftest import small_scenario
@@ -993,17 +995,46 @@ def test_nearest_on_polyline_with_tree_is_bit_identical() -> None:
     np.testing.assert_array_equal(sa, sb)
 
 
-def test_geometric_screen_is_a_necessary_condition_of_stage_four(
+def test_screen_authority_follows_the_clearance_policy_not_the_orebody_type() -> None:
+    """Closeout B: the screen's authority is decided by the policy's distance
+    contract. EXACT (analytic body) → necessary condition; a conservative
+    basis (implicit body, and any refined variant of it) → heuristic."""
+    from minegen.design.cost_field import ConservativeClearance, ExactClearance
+    from minegen.layout.access import SCREEN_HEURISTIC, SCREEN_NECESSARY_CONDITION
+    from minegen.layout.search import screen_authority
+
+    class _Basis:
+        def __init__(self, basis: str, bound: float) -> None:
+            self.basis, self.error_bound = basis, bound
+
+    sc = small_scenario()
+    world = generate_world(sc)
+    assert isinstance(clearance_policy_for(world.orebody), ExactClearance)
+    assert screen_authority(clearance_policy_for(world.orebody)) == SCREEN_NECESSARY_CONDITION
+    for basis in ("COARSE_CONSERVATIVE", "REFINED_CONSERVATIVE"):
+        assert screen_authority(_Basis(basis, 5.4)) == SCREEN_HEURISTIC  # type: ignore[arg-type]
+    # the discriminator is the basis, not the class or the orebody
+    assert screen_authority(_Basis("EXACT", 0.0)) == SCREEN_NECESSARY_CONDITION  # type: ignore[arg-type]
+    assert ConservativeClearance.__name__  # the conservative policy exists as such
+
+
+def test_geometric_screen_is_a_necessary_condition_under_an_exact_contract(
     search: tuple[LayoutV2Search, LayoutSearchResult],
 ) -> None:
+    """EXACT policy only (closeout B): the screen anchor IS the stage-4
+    anchor, so a blocked level cannot be served. This subset contract is
+    NOT asserted under a conservative policy — see
+    ``test_conservative_screen_is_a_heuristic_and_carries_no_subset_contract``."""
     _, res = search
+    assert res.clearance_basis == "EXACT"
     detailed = [c for c in res.candidates if c.access_plan is not None]
     assert detailed
     for c in detailed:
         assert c.access_screen is not None
+        assert c.screen_authority == "NECESSARY_CONDITION"
         failed = {a.level_id for a in c.access_plan.accesses if not a.ok}
         blocked = set(c.access_screen["blockedLevelIds"])
-        # a level the screen proves unservable never becomes OK in stage 4
+        # a level the screen blocks never becomes OK in stage 4
         assert blocked <= failed, (c.candidate_id, blocked - failed)
         if c.status == "FEASIBLE":
             assert c.screen_blocked == 0
@@ -1019,16 +1050,67 @@ def test_geometric_screen_is_a_necessary_condition_of_stage_four(
             assert c.access_screen is not None
 
 
-def test_shortlist_is_ordered_by_screen_then_proxy(
+def test_conservative_screen_is_a_heuristic_and_carries_no_subset_contract() -> None:
+    """Closeout B: under a conservative contract the screen anchors sit at the
+    COARSE stand-off while stage 4 may refine the bound and move the entry, so
+    `blocked` is only a heuristic. The test pins the DECLARED authority and
+    that the ordering prefix still never rejects a candidate; it deliberately
+    does NOT assert `blocked ⊆ failed` (the measurement of whether a false
+    block actually occurs lives in
+    `golden/phase20c1_closeout_screen_audit.json`)."""
+    sc = Scenario(
+        **realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 301, fault_count=1).model_dump()
+    )
+    world = generate_world(sc)
+    search = LayoutV2Search(sc, world)
+    assert search.policy.basis != "EXACT" and search.policy.error_bound > 0.0
+    res = search.run()
+    assert res.clearance_basis == "COARSE_CONSERVATIVE"
+    screened = [c for c in res.candidates if c.access_screen is not None]
+    assert screened
+    for c in screened:
+        assert c.screen_authority == "HEURISTIC"
+        # never a rejection: a blocked candidate is still NOT_VALIDATED /
+        # FEASIBLE / INFEASIBLE on its own merits, never refused by the screen
+        assert c.status in ("NOT_VALIDATED", "FEASIBLE", "INFEASIBLE")
+        assert "SCREEN" not in " ".join(c.failure_reasons)
+    assert any(c.screen_blocked > 0 for c in screened)
+
+
+def test_shortlist_is_exactly_the_reconstructed_bounded_selection(
     search: tuple[LayoutV2Search, LayoutSearchResult],
 ) -> None:
-    _, res = search
-    by_id = {c.candidate_id: c for c in res.candidates}
-    keys = [(by_id[i].screen_blocked, by_id[i].cheap_proxy) for i in res.shortlist]
-    assert keys == sorted(keys)
-    # no NOT_VALIDATED candidate with fewer blocked levels than a shortlisted
-    # one was left out unless its proxy is worse (the per-family slot excepted)
-    left = [c for c in res.candidates if c.status == "NOT_VALIDATED"]
-    worst = max(keys)
-    for c in left:
-        assert (c.screen_blocked, c.cheap_proxy) >= worst or c.params.family is not None
+    """Closeout B/A: reconstruct the production shortlist from its inputs and
+    compare candidate ids exactly — the previous assertion was vacuous
+    (`... or c.params.family is not None` is always true)."""
+    s, res = search
+    expected = _reconstruct_shortlist(res, s.cfg.shortlist_size)
+    assert res.shortlist == expected
+    # the reconstruction is sensitive: a wrong key order gives a different list
+    wrong = _reconstruct_shortlist(res, s.cfg.shortlist_size, key=lambda c: c.candidate_id)
+    assert wrong != expected
+
+
+def _reconstruct_shortlist(res: LayoutSearchResult, bound: int, key: Any = None) -> list[str]:
+    """Pure re-implementation of stage 3 (rule 165 family reservation +
+    rule 176 ordering prefix) from the candidate results."""
+    from minegen.layout.families import FAMILY_ORDER
+    from minegen.layout.search import _shortlist_key
+
+    k = key or _shortlist_key
+    survived = [
+        c
+        for c in res.candidates
+        if c.stage_reached in ("CHEAP", "DETAILED") and not c.failure_reasons
+    ]
+    cheap_ok = sorted(survived, key=k)
+    base = cheap_ok[:bound]
+    missing = [f for f in FAMILY_ORDER if not any(c.params.family is f for c in base)]
+    extras = [
+        best
+        for f in missing
+        if (best := next((c for c in cheap_ok if c.params.family is f), None)) is not None
+    ]
+    if extras:
+        base = sorted(base[: max(0, bound - len(extras))] + extras, key=k)
+    return [c.candidate_id for c in base]
