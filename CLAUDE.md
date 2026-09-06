@@ -1414,18 +1414,57 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      20C.1-Q). The shortlist-yield audit (`python -m minegen.regression
      layout-v2-yield`, a priori rule: pooled rank AUC ≥ 0.6 over ≥ 5 pairs =
      "correlated") showed the rule 165 lower-bound proxy predicts SPIRAL
-     detailed outcomes (AUC 0.665) but not SWITCHBACK ones (AUC 0.489): the
+     detailed outcomes (pooled AUC 0.673) but not SWITCHBACK ones (0.507 —
+     the closeout A-1 pair-weighted within-case values; the Q commit quoted
+     0.665 / 0.489 from a pooling that concatenated per-case ranks, and both
+     verdicts are unchanged by the correction): the
      proxy bounds the SCORE and cannot see level-access feasibility. The
      corrective is not a coefficient: every cheap-feasible candidate runs the
      evaluator-free stage-4 access gates (`geometric_access_screen` —
      the SAME `_search_level` code path with `geometric_only=True`: junction
      lattice, B-3 turnout curvature, B-1 plan separation, connector
      availability, gradient, length, plan radius, B-2 rock pillar; junction
-     spacing ignored; coarse-stand-off anchors) and a level with no passing
-     candidate is BLOCKED — a necessary condition of stage 4, never a
-     rejection. Stage-3 order is `(blockedLevels, proxy, family order, id)`;
-     the shortlist bound, the per-family slot (rule 165) and stage 4 as the
-     final authority are unchanged, and `accessScreen` stays inspectable per
-     candidate. The B-2 pillar keeps its exact direction-aware semantics
-     (rule 172); the KD-tree vertex pre-filter in `nearest_on_polyline` is a
-     proven-identical cost reduction, not an approximation.
+     spacing ignored) and a level with no passing candidate is BLOCKED —
+     never a rejection. Stage-3 order is `(blockedLevels, proxy, family
+     order, id)`; the shortlist bound, the per-family slot (rule 165) and
+     stage 4 as the final authority are unchanged, and `accessScreen` stays
+     inspectable per candidate. The B-2 pillar keeps its exact
+     direction-aware semantics (rule 172); the KD-tree vertex pre-filter in
+     `nearest_on_polyline` is a proven-identical cost reduction, not an
+     approximation.
+
+     What a BLOCKED level PROVES is decided by the CLEARANCE POLICY's
+     distance contract, never by the orebody type (Phase 20C.1 closeout B),
+     and every screen result declares it as `accessScreen.authority`:
+
+     - EXACT contract (`ExactClearance`, currently the analytic bodies): the
+       screen anchors sit at the SAME stand-off stage 4 uses
+       (`anchor_standoff` raises it only when `basis != "EXACT"`) and the
+       gates are the same gates, so BLOCKED is a NECESSARY CONDITION —
+       `blocked ⊆ stage-4 failed` holds and is tested.
+     - CONSERVATIVE contract (`ConservativeClearance` /
+       `RefinedConservativeClearance`, currently WARPED_VEIN): the screen
+       anchors sit at the COARSE stand-off while stage 4 may refine the
+       bound, shrink the stand-off and move the entry, so BLOCKED is a
+       HEURISTIC. It is never called "provably unservable" or a necessary
+       condition, and the `blocked ⊆ failed` contract is NOT applied (nor
+       tested) there. Three separate statements, none of which implies
+       another:
+       (i) the screen never REMOVES a candidate, under either contract;
+       (ii) BLOCKED is not a FEASIBILITY authority — stage 4 decides, and a
+       coarse-blocked level can still be served;
+       (iii) `screen_blocked` IS nevertheless used as the primary key of the
+       current bounded search's stage-3 order — a NON-AUTHORITATIVE ORDERING
+       HEURISTIC, exactly as `_shortlist_key` implements it.
+       The reason it is kept is not that it is free: the closeout-B
+       measurement (`golden/phase20c1_closeout_screen_audit.json`,
+       `python -m minegen.regression layout-v2-screen-audit`) found 56 false
+       blocks on the conservative side (WARPED-301 27, WARPED-307 2,
+       IRREGULAR 27), 6 of them on candidates the production shortlist had
+       validated, against 0 on every EXACT case. It is kept because removing
+       it REGRESSES the family-yield acceptance of the current golden suite
+       (measured: WARPED-301 `missedFamilies` [] → ['SWITCHBACK'], production
+       feasible 10 → 3), and that false-block behaviour stays a documented
+       Phase 20C.2 limitation. Any change to this ordering must preserve
+       `missedFamilies = []` and `winnerMissedByShortlist` false on every
+       golden case.

@@ -578,6 +578,9 @@ export interface LayoutCandidateSummary {
   accessScreen?: {
     blockedLevelIds: string[]
     blockedCount: number
+    /** closeout B: what a blocked level PROVES, decided by the clearance
+     * policy — a necessary condition of stage 4 only under EXACT */
+    authority?: 'NECESSARY_CONDITION' | 'HEURISTIC'
     levels: Record<string, { blocked: boolean; reason: string | null }>
   } | null
   /** shipped only by GET …/design/layout-v2 for shortlisted candidates */

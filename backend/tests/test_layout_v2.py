@@ -67,6 +67,10 @@ from minegen.world.orebody import ImplicitOrebody
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 
 from .conftest import small_scenario
+from .shortlist_reconstruction import (
+    reconstruct_shortlist,
+    survivors_without_failed_detailed,
+)
 
 # --------------------------------------------------------------------------- #
 # fixtures
@@ -1474,3 +1478,31 @@ def test_station_hairpin_counts_as_one_reversal_only_within_the_bound() -> None:
     )
     two = analyze_centerline(np.vstack([leg, hp1, short, hp2]), station_merge_max_m=45.0)
     assert two.heading_reversal_count == 2 and two.hairpin_run_count == 2
+
+
+def test_shortlist_reconstruction_holds_on_a_conservative_case_with_failed_detailed(
+    warped_search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
+    """Follow-up §2 (b): the reconstruction must also match a REAL result whose
+    shortlist contains candidates stage 4 marked INFEASIBLE — the EXACT
+    fixture in ``test_level_access.py`` happens to have an all-feasible
+    shortlist, so it alone could not catch the discarded survivor filter."""
+    search, res = warped_search
+    assert res.clearance_basis == "COARSE_CONSERVATIVE"
+    shortlisted = {c.candidate_id for c in res.candidates if c.shortlisted}
+    failed_in_shortlist = [
+        c.candidate_id
+        for c in res.candidates
+        if c.candidate_id in shortlisted and c.status == CandidateStatus.INFEASIBLE
+    ]
+    # the case is DECISIVE only if stage 4 rejected part of the shortlist
+    assert failed_in_shortlist, "fixture no longer exercises detailed-INFEASIBLE shortlisting"
+    assert reconstruct_shortlist(res, search.cfg.shortlist_size) == res.shortlist
+    # the discarded filter drops exactly those candidates and gets it wrong
+    old = reconstruct_shortlist(
+        res,
+        search.cfg.shortlist_size,
+        survivors=survivors_without_failed_detailed(res),
+    )
+    assert old != res.shortlist
+    assert set(failed_in_shortlist) - set(old)

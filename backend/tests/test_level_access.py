@@ -12,10 +12,10 @@ import math
 import numpy as np
 import pytest
 
-from minegen.core.enums import MiningMethodType
+from minegen.core.enums import MiningMethodType, ScenarioPreset
 from minegen.core.models import RampConstraints, Scenario, TunnelProfile
 from minegen.design.constraints import DesignContext
-from minegen.design.cost_field import DesignCostEvaluator
+from minegen.design.cost_field import DesignCostEvaluator, clearance_policy_for
 from minegen.design.profile import build_profile
 from minegen.layout.access import (
     LONG_ACCESS_COEF,
@@ -39,9 +39,15 @@ from minegen.layout.search import (
 )
 from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
 from minegen.network.builder import MineNetworkBuilder
+from minegen.services.scenario_realizer import realize_scenario
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 
 from .conftest import small_scenario
+from .shortlist_reconstruction import (
+    reconstruct_shortlist,
+    stage3_survivors,
+    survivors_without_failed_detailed,
+)
 
 
 @pytest.fixture(scope="module")
@@ -993,17 +999,46 @@ def test_nearest_on_polyline_with_tree_is_bit_identical() -> None:
     np.testing.assert_array_equal(sa, sb)
 
 
-def test_geometric_screen_is_a_necessary_condition_of_stage_four(
+def test_screen_authority_follows_the_clearance_policy_not_the_orebody_type() -> None:
+    """Closeout B: the screen's authority is decided by the policy's distance
+    contract. EXACT (analytic body) → necessary condition; a conservative
+    basis (implicit body, and any refined variant of it) → heuristic."""
+    from minegen.design.cost_field import ConservativeClearance, ExactClearance
+    from minegen.layout.access import SCREEN_HEURISTIC, SCREEN_NECESSARY_CONDITION
+    from minegen.layout.search import screen_authority
+
+    class _Basis:
+        def __init__(self, basis: str, bound: float) -> None:
+            self.basis, self.error_bound = basis, bound
+
+    sc = small_scenario()
+    world = generate_world(sc)
+    assert isinstance(clearance_policy_for(world.orebody), ExactClearance)
+    assert screen_authority(clearance_policy_for(world.orebody)) == SCREEN_NECESSARY_CONDITION
+    for basis in ("COARSE_CONSERVATIVE", "REFINED_CONSERVATIVE"):
+        assert screen_authority(_Basis(basis, 5.4)) == SCREEN_HEURISTIC  # type: ignore[arg-type]
+    # the discriminator is the basis, not the class or the orebody
+    assert screen_authority(_Basis("EXACT", 0.0)) == SCREEN_NECESSARY_CONDITION  # type: ignore[arg-type]
+    assert ConservativeClearance.__name__  # the conservative policy exists as such
+
+
+def test_geometric_screen_is_a_necessary_condition_under_an_exact_contract(
     search: tuple[LayoutV2Search, LayoutSearchResult],
 ) -> None:
+    """EXACT policy only (closeout B): the screen anchor IS the stage-4
+    anchor, so a blocked level cannot be served. This subset contract is
+    NOT asserted under a conservative policy — see
+    ``test_conservative_screen_is_a_heuristic_and_carries_no_subset_contract``."""
     _, res = search
+    assert res.clearance_basis == "EXACT"
     detailed = [c for c in res.candidates if c.access_plan is not None]
     assert detailed
     for c in detailed:
         assert c.access_screen is not None
+        assert c.screen_authority == "NECESSARY_CONDITION"
         failed = {a.level_id for a in c.access_plan.accesses if not a.ok}
         blocked = set(c.access_screen["blockedLevelIds"])
-        # a level the screen proves unservable never becomes OK in stage 4
+        # a level the screen blocks never becomes OK in stage 4
         assert blocked <= failed, (c.candidate_id, blocked - failed)
         if c.status == "FEASIBLE":
             assert c.screen_blocked == 0
@@ -1019,16 +1054,129 @@ def test_geometric_screen_is_a_necessary_condition_of_stage_four(
             assert c.access_screen is not None
 
 
-def test_shortlist_is_ordered_by_screen_then_proxy(
+def test_conservative_screen_is_a_heuristic_and_carries_no_subset_contract() -> None:
+    """Closeout B: under a conservative contract the screen anchors sit at the
+    COARSE stand-off while stage 4 may refine the bound and move the entry, so
+    `blocked` is only a heuristic. The test pins the DECLARED authority and
+    that the ordering prefix still never rejects a candidate; it deliberately
+    does NOT assert `blocked ⊆ failed` (the measurement of whether a false
+    block actually occurs lives in
+    `golden/phase20c1_closeout_screen_audit.json`)."""
+    sc = Scenario(
+        **realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 301, fault_count=1).model_dump()
+    )
+    world = generate_world(sc)
+    search = LayoutV2Search(sc, world)
+    assert search.policy.basis != "EXACT" and search.policy.error_bound > 0.0
+    res = search.run()
+    assert res.clearance_basis == "COARSE_CONSERVATIVE"
+    screened = [c for c in res.candidates if c.access_screen is not None]
+    assert screened
+    for c in screened:
+        assert c.screen_authority == "HEURISTIC"
+        # never a rejection: a blocked candidate is still NOT_VALIDATED /
+        # FEASIBLE / INFEASIBLE on its own merits, never refused by the screen
+        assert c.status in ("NOT_VALIDATED", "FEASIBLE", "INFEASIBLE")
+        assert "SCREEN" not in " ".join(c.failure_reasons)
+    assert any(c.screen_blocked > 0 for c in screened)
+
+
+def test_shortlist_is_exactly_the_reconstructed_bounded_selection(
     search: tuple[LayoutV2Search, LayoutSearchResult],
 ) -> None:
-    _, res = search
-    by_id = {c.candidate_id: c for c in res.candidates}
-    keys = [(by_id[i].screen_blocked, by_id[i].cheap_proxy) for i in res.shortlist]
-    assert keys == sorted(keys)
-    # no NOT_VALIDATED candidate with fewer blocked levels than a shortlisted
-    # one was left out unless its proxy is worse (the per-family slot excepted)
-    left = [c for c in res.candidates if c.status == "NOT_VALIDATED"]
-    worst = max(keys)
-    for c in left:
-        assert (c.screen_blocked, c.cheap_proxy) >= worst or c.params.family is not None
+    """Closeout B/A: reconstruct the production shortlist from its inputs and
+    compare candidate ids exactly — the previous assertion was vacuous
+    (`... or c.params.family is not None` is always true)."""
+    s, res = search
+    expected = reconstruct_shortlist(res, s.cfg.shortlist_size)
+    assert res.shortlist == expected
+    assert len(expected) == s.cfg.shortlist_size
+    # RED-FIXTURE PROOF (closeout A-3): with a deliberately wrong key the same
+    # assertion FAILS, so the comparison above really constrains the result —
+    # the assertion it replaced (`... or c.params.family is not None`) was
+    # true for every candidate and constrained nothing.
+    for wrong_key in (
+        lambda c: c.candidate_id,  # id only: ignores screen and proxy
+        lambda c: (c.cheap_proxy or math.inf,),  # proxy only: ignores the screen prefix
+        lambda c: (-c.screen_blocked, c.cheap_proxy or math.inf),  # prefix inverted
+    ):
+        wrong = reconstruct_shortlist(res, s.cfg.shortlist_size, key=wrong_key)
+        assert wrong != res.shortlist, wrong_key
+    # and a wrong BOUND fails too
+    assert reconstruct_shortlist(res, s.cfg.shortlist_size - 1) != res.shortlist
+
+
+def _synthetic_result(
+    entries: list[tuple[str, str, str, list[str]]],
+) -> LayoutSearchResult:
+    """A LayoutSearchResult carrying only what stage-3 reconstruction reads:
+    (candidate label, stage_reached, status, failure_reasons) per candidate."""
+    from minegen.layout.families import CandidateParams, RampFamily
+    from minegen.layout.search import CandidateResult
+
+    cands = []
+    for i, (label, stage, status, reasons) in enumerate(entries):
+        params = CandidateParams(
+            RampFamily.SPIRAL,
+            0.1 + i / 1000.0,  # distinct ids and a deterministic proxy order
+            turns_per_level=1,
+            turn_sense="CW",
+            entry_orientation_deg=0.0,
+        )
+        c = CandidateResult(params)
+        c.stage_reached = stage
+        c.status = status
+        c.failure_reasons = list(reasons)
+        # 1-based: `_shortlist_key` reads `cheap_proxy or math.inf`, so an
+        # exact 0.0 would sort last — irrelevant in production (the proxy is a
+        # sum of positive terms) and not what this test is about
+        c.cheap_proxy = float(i) + 1.0
+        c.derived = {"label": label}
+        cands.append(c)
+    return LayoutSearchResult(
+        levels=[],
+        serviceable_ids=[],
+        track=None,
+        portal=np.zeros(3),
+        portal_generated=False,
+        candidates=cands,
+        shortlist=[],
+        ranking=[],
+        winner_id=None,
+        clearance_basis="EXACT",
+        clearance_error_bound=0.0,
+        required_clearance=0.0,
+        access_reach=0.0,
+        standoff=0.0,
+        performance={},
+        config={},
+    )
+
+
+def test_stage3_survivors_keep_shortlisted_candidates_that_stage_four_rejected() -> None:
+    """Follow-up §2: a candidate that reached DETAILED was a stage-3 survivor
+    whatever stage 4 decided. The discarded "no failure reasons" filter drops
+    exactly those, which is why it only looked right on a case whose whole
+    shortlist happened to be feasible."""
+    res = _synthetic_result(
+        [
+            ("A", "DETAILED", "FEASIBLE", []),
+            ("B", "DETAILED", "INFEASIBLE", ["LEVEL_ACCESS_INFEASIBLE"]),
+            ("C", "CHEAP", "NOT_VALIDATED", []),
+            ("D", "CHEAP", "INFEASIBLE", ["WORLD_BOUNDS"]),
+            ("E", "CONSTRUCT", "INFEASIBLE", ["LEG_TOO_SHORT"]),
+        ]
+    )
+    labels = {c.candidate_id: c.derived["label"] for c in res.candidates}
+    kept = {labels[c.candidate_id] for c in stage3_survivors(res)}
+    assert kept == {"A", "B", "C"}  # D fell out at CHEAP, E never built
+    # RED PROOF: the discarded filter loses B, so a reconstruction built on it
+    # would drop a candidate the production shortlist really contained
+    old = {labels[c.candidate_id] for c in survivors_without_failed_detailed(res)}
+    assert old == {"A", "C"} and "B" not in old
+    # and the reconstruction itself differs between the two survivor sets
+    ids = [c.candidate_id for c in res.candidates]
+    new_list = reconstruct_shortlist(res, 3)
+    old_list = reconstruct_shortlist(res, 3, survivors=survivors_without_failed_detailed(res))
+    assert new_list == [ids[0], ids[1], ids[2]]
+    assert old_list == [ids[0], ids[2]] and new_list != old_list

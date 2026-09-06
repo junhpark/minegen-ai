@@ -850,13 +850,22 @@ numbers (`YIELD_AUC_CORRELATED = 0.6`, `YIELD_MIN_PAIRS = 5`): a correlated
 family gets an audited top-N reservation, an uncorrelated one gets its
 proxy term fixed.
 
-Measured on the commit-S search (7 cases, 92 candidates each):
+Measured on the commit-S search (7 cases, 92 candidates each), with the
+CORRECTED pair-weighted within-case pooling (closeout A-1; the Q values are
+kept in brackets — the pooling bug never touched a per-case AUC):
 
-| family | pooled rank AUC | pairs | pass / fail | verdict |
-|---|---|---|---|---|
-| SPIRAL | 0.665 | 1 428 | 14 / 102 | correlated |
-| SWITCHBACK | 0.489 | 8 789 | 47 / 187 | NOT correlated |
-| LONGITUDINAL | — | 0 | 0 / 0 | no cheap-feasible candidate on any case |
+| family | pooled rank AUC | pairs | cases used | pass / fail | verdict |
+|---|---|---|---|---|---|
+| SPIRAL | **0.673** (Q reported 0.665) | 196 (was 1 428) | 4 of 7 | 14 / 102 | correlated |
+| SWITCHBACK | **0.507** (Q reported 0.489) | 1 119 (was 8 789) | 5 of 7 | 47 / 187 | NOT correlated |
+| LONGITUDINAL | — | 0 | 0 of 7 | 0 / 0 | no cheap-feasible candidate on any case |
+
+Both verdicts, and therefore the Q action, are unchanged by the correction:
+SPIRAL stays above the a priori 0.6 threshold and SWITCHBACK stays below it
+(0.507 is barely better than the 0.5 of a coin). The pair counts shrink
+because the discarded pooling counted every cross-case pair — comparing a
+rank-1 candidate of one case with a rank-6 candidate of another, which are
+different scales.
 
 Among feasible switchbacks the proxy orders the TOTAL well (Spearman
 0.93–0.98), so it is a sound score bound; what it cannot see is level-access
@@ -879,13 +888,25 @@ delivered polyline through the SAME `_search_level` code path
 plan separation, connector availability, gradient, length, plan radius and
 the B-2 direction-aware rock pillar, with the junction-spacing assignment
 ignored and coarse-stand-off anchors. A level with no passing candidate is
-BLOCKED — a necessary condition of stage 4 (the tabular test pins
-`blocked ⊆ failed` for every detailed candidate and `blocked = 0` for every
-FEASIBLE one). Order = `(blockedLevels, proxy, family, id)`; nothing is
-rejected, the bound (12) and the per-family slot (rule 165) are unchanged,
-`accessScreen` is shipped per candidate. Under a conservative policy the
-refined stage-4 anchor may move, which is why the screen orders and never
-gates.
+BLOCKED. Order = `(blockedLevels, proxy, family, id)`; nothing is rejected,
+the bound (12) and the per-family slot (rule 165) are unchanged,
+`accessScreen` is shipped per candidate.
+
+What BLOCKED proves is decided by the CLEARANCE POLICY, never by the orebody
+type (closeout B), and every screen result declares it as
+`accessScreen.authority`. `anchor_standoff` raises the stand-off above the
+configured value exactly when `basis != "EXACT"`, so:
+
+- EXACT (`ExactClearance`): the screen anchor IS the stage-4 anchor and the
+  gates are the same gates — BLOCKED is a NECESSARY CONDITION, and the
+  tabular test pins `blocked ⊆ failed` for every detailed candidate and
+  `blocked = 0` for every FEASIBLE one.
+- CONSERVATIVE (`ConservativeClearance` / `RefinedConservativeClearance`):
+  the screen anchors sit at the COARSE stand-off while stage 4 may refine
+  the bound, shrink the stand-off and move the entry — BLOCKED is a
+  HEURISTIC. The subset contract is not applied and not tested there; the
+  warped test pins only the declared authority and that the prefix still
+  rejects nothing.
 
 Measured after (`golden/phase20c1_q_layout_v2.json`,
 `phase20c1_q_vs_s_layout.json`, `phase20c1_q_shortlist_audit.json`): winner
@@ -909,7 +930,7 @@ target of the 20C.1 directive, reported as such, not gated.
 ### W — WARPED_VEIN multi-seed feasibility survey (diagnostic only)
 
 Instrument: `python -m minegen.regression warped-seeds`
-(`golden/phase20c1_w_warped_seed_survey.json`), the PRODUCTION layout-v2
+(`golden/phase20c1_closeout_warped_seed_survey.json`), the PRODUCTION layout-v2
 search on `RANDOM_WARPED_VEIN` seeds 301–332 (32 seeds, one fault, the
 fixed list `WARPED_SURVEY_SEEDS`), recording per seed the outcome, the
 funnel (cheap-feasible / shortlist / detailed feasible), the dominant typed
@@ -944,3 +965,134 @@ window on 17 seeds. That points at the Phase 20C.2 WARPED level-development
 contract (section(z) local frame, anchor placement following the local
 trace) and NOT at clearance, the shortlist or the ramp families; no
 threshold, policy or default is changed by this phase.
+
+### Closeout B — the screen's authority is the clearance policy's, and it was measured
+
+`python -m minegen.regression layout-v2-screen-audit`
+(`golden/phase20c1_closeout_screen_audit.json`) validates EVERY cheap-feasible
+candidate (`detailed_all=True`) and counts the levels the stage-2 screen
+reported BLOCKED that stage 4 then SERVED — a FALSE BLOCK. Measured:
+
+| case | basis | authority | validated | false blocks | inside the production shortlist |
+|---|---|---|---|---|---|
+| TABULAR-REFERENCE | EXACT | NECESSARY_CONDITION | 57 | 0 | 0 |
+| GEOMETRY-STRESS | EXACT | NECESSARY_CONDITION | 21 | 0 | 0 |
+| ACCESS-INFEASIBLE | EXACT | NECESSARY_CONDITION | 57 | 0 | 0 |
+| CUT_AND_FILL | EXACT | NECESSARY_CONDITION | 57 | 0 | 0 |
+| WARPED_VEIN-301 | COARSE_CONSERVATIVE | HEURISTIC | 48 | 27 | 3 |
+| WARPED_VEIN-307 | COARSE_CONSERVATIVE | HEURISTIC | 35 | 2 | 0 |
+| IRREGULAR-REACH-EXCEEDED | COARSE_CONSERVATIVE | HEURISTIC | 48 | 27 | 3 |
+
+Zero on every exact case is the necessary-condition contract holding; 56 on
+the conservative side is the coarse stand-off being wrong about levels the
+refined stage-4 policy can reach. The claim "provably unservable" is
+therefore removed from the conservative side of rule 176 and from the code,
+`accessScreen.authority` declares which contract applies, and the
+`blocked ⊆ failed` test is applied only under EXACT.
+
+Dropping the prefix on the conservative side was then ATTEMPTED (the key
+becomes proxy → family → id there) and REVERTED: it fails the family-yield
+acceptance
+(`golden/phase20c1_closeout_ordering_attempt_shortlist_audit.json`) —
+WARPED-301 loses the SWITCHBACK family again (`missedFamilies` [] →
+['SWITCHBACK'], production feasible 10 → 3), exactly the regression the Q
+screen was introduced to fix; the other three acceptance items held
+(`winnerMissedByShortlist` false 7 / 7, GEOMETRY-STRESS SUCCESS with 21 / 21
+accesses, the six decided winners unchanged). The prefix is therefore kept
+on the conservative side, and the three statements it sits between are kept
+apart: the screen never REMOVES a candidate; BLOCKED is not a FEASIBILITY
+authority (stage 4 decides); and `screen_blocked` IS still the primary key
+of the current bounded search's stage-3 order — a NON-AUTHORITATIVE ORDERING
+HEURISTIC, which is exactly what `_shortlist_key` implements. It is not kept
+because it costs nothing — it demonstrably mis-blocks 56 times, 6 of them
+inside the validated shortlist — but because removing it regresses the
+family yield of the current golden suite, and that mis-blocking stays a
+documented Phase 20C.2 limitation. Ordering that side without a mis-blocking
+heuristic — by improving the stage-3 proxy so it can see level-access
+feasibility — is a Phase 20C.2 candidate, recorded, not attempted here. Post-revert the production search is bit-identical to the
+merged 20C.1 baseline (`phase20c1_closeout_vs_q_layout.json`: 0 contract
+regressions, 0 metric drift).
+
+### Closeout A — the pooled AUC was mis-pooled, and the shortlist test proved nothing
+
+A-1. `audit_yield` concatenated each family's per-case rank lists and scored
+one Mann–Whitney AUC over the union. Family-internal ranks restart at 1 in
+every case, so that compares different scales (case A's pass rank 2 against
+case B's fail rank 5). `pooled_rank_auc` now pools PAIR-WEIGHTED WITHIN CASE
+(`Σ wins / Σ pairs` over per-case counts), records `casesUsed` /
+`casesWithoutPairs` / `rankPairs`, and is unit-tested against a fixture where
+two internally PERFECT cases (AUC 1.0 each) pool to 1.0 correctly while the
+concatenated statistic answers 0.75. The corrected numbers are in the table
+above: the Q conclusion holds.
+
+A-2. `phase20c1_q_yield_before.json` / `_after.json` are historical artifacts
+(the commit-S and commit-Q searches). Re-running the production search now
+would fold closeout B into them, so `python -m minegen.regression.repool`
+recomputes ONLY the `pooled` block from each file's own per-case rows —
+`familyRank` and `detailedPass` are all the Mann–Whitney counts need — and
+stamps `pooledCorrection`. Verified: `cases[]` is byte-identical before and
+after, the only key changes are `pooled` and the added `pooledCorrection`.
+
+A-3. `test_shortlist_is_ordered_by_screen_then_proxy` ended in
+`assert (...) >= worst or c.params.family is not None`; every candidate has a
+family, so the clause was always true and the test constrained nothing. It is
+replaced by `test_shortlist_is_exactly_the_reconstructed_bounded_selection`,
+which re-implements stage 3 from the candidate results (policy-aware key,
+bound, rule 165 family reservation, re-sort) and compares candidate ids
+exactly, plus a RED-FIXTURE PROOF: with the key reduced to the id, to the
+proxy alone, or with the screen prefix inverted — or with the bound off by
+one — the same assertion fails.
+
+Follow-up §2: the first version of that reconstruction still had a defect of
+its own — it took the stage-3 survivors to be the candidates with no failure
+reasons, which silently drops every shortlisted candidate stage 4 marked
+INFEASIBLE. It passed only because the EXACT fixture's whole shortlist
+happens to be feasible (12 / 12); measured against the audit it would have
+been wrong by 2 candidates on WARPED-301 and IRREGULAR, and by 12 on
+WARPED-307 and ACCESS-INFEASIBLE. `tests/shortlist_reconstruction.py` now
+derives survivors as `stage_reached == DETAILED` (a cheap survivor whatever
+stage 4 decided) or `CHEAP + NOT_VALIDATED`, and keeps the discarded filter
+beside it so two regressions can prove the difference: a synthetic case
+(cheap survivor → shortlisted → FEASIBLE / INFEASIBLE / outside the
+shortlist / cheap-INFEASIBLE) where the old filter demonstrably loses the
+detailed-INFEASIBLE candidate, and the REAL WARPED-301 result, whose
+shortlist contains detailed-INFEASIBLE candidates and which the old filter
+reconstructs incorrectly. The A-3 red-fixture proofs still hold.
+
+### Closeout R — the 32-seed survey re-run on the closeout tree
+
+`python -m minegen.regression warped-seeds` was re-run on the closeout-B tree
+over the same fixed seeds 301–332
+(`golden/phase20c1_closeout_warped_seed_survey.json`, compared in
+`phase20c1_closeout_warped_seed_before_after.json`). Closeout B reverted its
+ordering change, so the production search is unchanged and an identical
+result is the expected — and confirming — outcome. Measured: **32 / 32 seeds
+identical** on every tracked field (status, winner, cheap-feasible /
+shortlist / detailed-feasible counts, dominant failure and its stage,
+dominant level-access reason, serviceable vs accessible levels, clearance
+basis / bound / required, per-seed level-access reason histogram). Aggregates
+therefore also hold: 9 / 32 SUCCESS, dominant stage-4 failure
+`LEVEL_ACCESS_INFEASIBLE` 18 / `ABOVE_TERRAIN` 5, level-access reasons
+`GRADE_LIMIT` 695 · `INSUFFICIENT_RAMP_PILLAR` 256 · `TURNOUT_NOT_STRAIGHT`
+84 · `OREBODY_CLEARANCE` 55 · `CONNECTOR_UNAVAILABLE` 7 ·
+`JUNCTION_SPACING_CONFLICT` 3. Because nothing moved, there is no
+`GRADE_LIMIT` change to attribute — and had there been one, the first
+explanation would have been a change in which candidates reached stage 4,
+not a change in refinement, which closeout B does not touch.
+
+Clearance (R-4, confirmation not suspicion): all 32 seeds report
+`bestClearanceBasis = REFINED_CONSERVATIVE` with `refinement.applied = true`,
+factor 2, resolved lattice spacing (2.5, 2.5, 0.625) m and per-seed cell
+counts spanning 74 400 – 1 251 292. The identical `errorBound` 5.3855 m on
+every seed is the CONSEQUENCE of one factor and one resolved spacing, not a
+sign that refinement was skipped. No seed is COARSE-only and none has
+`applied = false`.
+
+Runtime: the survey took 1 048 s before and 707 s now. Since the search is
+byte-identical, that is machine load, not a code effect — the W baseline ran
+concurrently with the PR #22 gate and the 22-case legacy golden on the same
+four cores. TABULAR-REFERENCE re-measured on the closeout tree: **15.8 s**
+unloaded (stage 1 + 2 including the screen 10.1 s), against 23.4 s measured
+under load during 20C.1-Q; both are the same code, so the ≤ 20 s target is
+not claimed as met by any change in this closeout — runtime work stays a
+Phase 20C.2 item.

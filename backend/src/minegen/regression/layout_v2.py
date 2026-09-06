@@ -292,6 +292,7 @@ def run_case(case: LayoutCase) -> dict[str, Any]:
                     {
                         "blockedCount": c.access_screen["blockedCount"],
                         "blockedLevelIds": list(c.access_screen["blockedLevelIds"]),
+                        "authority": c.access_screen["authority"],
                         "reasons": {
                             k: v["reason"]
                             for k, v in c.access_screen["levels"].items()
@@ -614,16 +615,55 @@ YIELD_AUC_CORRELATED = 0.6
 YIELD_MIN_PAIRS = 5
 
 
-def _rank_auc(pass_ranks: list[int], fail_ranks: list[int]) -> tuple[float | None, int]:
-    """Mann–Whitney rank AUC: P(pass rank < fail rank) with ties counted ½."""
+def _rank_wins(pass_ranks: list[int], fail_ranks: list[int]) -> tuple[float, int]:
+    """Mann–Whitney concordant weight and pair count of ONE case: how many
+    (pass, fail) pairs the pass ranks ahead of, ties counted ½."""
     pairs = len(pass_ranks) * len(fail_ranks)
     if pairs == 0:
-        return None, 0
+        return 0.0, 0
     wins = 0.0
     for a in pass_ranks:
         for b in fail_ranks:
             wins += 1.0 if a < b else (0.5 if a == b else 0.0)
-    return wins / pairs, pairs
+    return wins, pairs
+
+
+def _rank_auc(pass_ranks: list[int], fail_ranks: list[int]) -> tuple[float | None, int]:
+    """Mann–Whitney rank AUC of ONE case: P(pass rank < fail rank), ties ½."""
+    wins, pairs = _rank_wins(pass_ranks, fail_ranks)
+    return (None, 0) if pairs == 0 else (wins / pairs, pairs)
+
+
+def pooled_rank_auc(per_case: list[tuple[list[int], list[int]]]) -> dict[str, Any]:
+    """PAIR-WEIGHTED WITHIN-CASE pooling (Phase 20C.1 closeout A-1).
+
+    Family-internal ranks restart at 1 in every case, so concatenating the
+    rank lists and scoring one AUC over the union compares different scales
+    (case A's pass rank 2 against case B's fail rank 5). The pooled statistic
+    is instead ``Σ wins / Σ pairs`` over the per-case Mann–Whitney counts,
+    which only ever compares ranks inside one case. Cases with no pass/fail
+    pair contribute nothing and are excluded from ``casesUsed``."""
+    wins_total = 0.0
+    pairs_total = 0
+    used = 0
+    for pass_ranks, fail_ranks in per_case:
+        wins, pairs = _rank_wins(pass_ranks, fail_ranks)
+        if pairs == 0:
+            continue
+        wins_total += wins
+        pairs_total += pairs
+        used += 1
+    auc = wins_total / pairs_total if pairs_total else None
+    return {
+        "rankAuc": _r(auc),
+        "rankPairs": pairs_total,
+        "casesUsed": used,
+        "casesWithoutPairs": len(per_case) - used,
+        "correlated": (
+            auc is not None and pairs_total >= YIELD_MIN_PAIRS and auc >= YIELD_AUC_CORRELATED
+        ),
+        "pooling": "PAIR_WEIGHTED_WITHIN_CASE",
+    }
 
 
 def _spearman(x: list[float], y: list[float]) -> float | None:
@@ -677,7 +717,8 @@ def audit_yield(cases: list[LayoutCase], label: str) -> dict[str, Any]:
     which the family's best feasible candidate sits — the number an audited
     per-family top-N reservation would have to reach."""
     records: list[dict[str, Any]] = []
-    pooled: dict[str, dict[str, list[int]]] = {}
+    #: family → per-case (pass ranks, fail ranks); never concatenated
+    pooled: dict[str, list[tuple[list[int], list[int]]]] = {}
     t_all = time.perf_counter()
     for case in cases:
         rec: dict[str, Any] = {"key": case.key, "note": case.note}
@@ -739,9 +780,9 @@ def audit_yield(cases: list[LayoutCase], label: str) -> dict[str, Any]:
                 [float(x["cheapProxy"]) for x in passes if x["cheapProxy"] is not None],
                 [float(x["total"]) for x in passes if x["cheapProxy"] is not None],
             )
-            pooled.setdefault(fam, {"pass": [], "fail": []})
-            pooled[fam]["pass"] += pass_ranks
-            pooled[fam]["fail"] += fail_ranks
+            # closeout A-1: keep the per-case rank lists SEPARATE — ranks are
+            # only comparable inside one case
+            pooled.setdefault(fam, []).append((list(pass_ranks), list(fail_ranks)))
             families[fam] = {
                 "cheapFeasible": len(members),
                 "shortlisted": sum(1 for x in rows if x["shortlisted"]),
@@ -804,17 +845,11 @@ def audit_yield(cases: list[LayoutCase], label: str) -> dict[str, Any]:
         )
         records.append(rec)
     pooled_out: dict[str, Any] = {}
-    for fam, pf in pooled.items():
-        auc, pairs = _rank_auc(pf["pass"], pf["fail"])
-        pooled_out[fam] = {
-            "rankAuc": _r(auc),
-            "rankPairs": pairs,
-            "correlated": (
-                auc is not None and pairs >= YIELD_MIN_PAIRS and auc >= YIELD_AUC_CORRELATED
-            ),
-            "passCount": len(pf["pass"]),
-            "failCount": len(pf["fail"]),
-        }
+    for fam, per_case in pooled.items():
+        out = pooled_rank_auc(per_case)
+        out["passCount"] = sum(len(p) for p, _ in per_case)
+        out["failCount"] = sum(len(f) for _, f in per_case)
+        pooled_out[fam] = out
     realized = [r for r in records if r.get("realized")]
     top_n_needed = max(
         (
@@ -844,6 +879,118 @@ def audit_yield(cases: list[LayoutCase], label: str) -> dict[str, Any]:
         "topNNeededForBestFeasible": top_n_needed,
         "anyWinnerMissed": any(r.get("winnerMissedByShortlist") for r in records),
         "anyFamilyMissed": any(r.get("missedFamilies") for r in records),
+        "totalRuntimeSeconds": time.perf_counter() - t_all,
+        "cases": records,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20C.1 closeout B: geometric-screen AUTHORITY audit (false blocks)
+# --------------------------------------------------------------------------- #
+
+
+def _served_levels(cand: Any) -> set[str]:
+    if cand.access_plan is None:
+        return set()
+    return {a.level_id for a in cand.access_plan.accesses if a.ok}
+
+
+def audit_screen(cases: list[LayoutCase], label: str) -> dict[str, Any]:
+    """Closeout B measurement (diagnostic, never part of the production
+    search): does the stage-2 geometric access screen ever report a level
+    BLOCKED that stage 4 then SERVES?
+
+    Under an EXACT distance contract that cannot happen — the screen anchor
+    is the stage-4 anchor and the gates are the same, so ``blocked`` is a
+    necessary condition. Under a CONSERVATIVE contract the screen anchors
+    sit at the COARSE stand-off while stage 4 may refine the bound and move
+    the entry, so a false block is possible; this audit measures whether it
+    actually occurs and whether it changed the production shortlist. Every
+    cheap-feasible candidate is validated (``detailed_all=True``) so the
+    stage-4 answer exists for candidates the bounded shortlist never
+    reached."""
+    records: list[dict[str, Any]] = []
+    t_all = time.perf_counter()
+    for case in cases:
+        rec: dict[str, Any] = {"key": case.key, "note": case.note}
+        try:
+            sc = case.realize()
+        except ScenarioRealizationError as exc:
+            rec["realized"] = False
+            rec["realizationError"] = str(exc)
+            records.append(rec)
+            continue
+        world = generate_world(sc)
+        normal = LayoutV2Search(sc, world).run()
+        exhaustive = LayoutV2Search(sc, world).run(detailed_all=True)
+        shortlisted = set(normal.shortlist)
+        rows: list[dict[str, Any]] = []
+        false_blocks = 0
+        for c in exhaustive.candidates:
+            if c.access_screen is None or c.access_plan is None:
+                continue
+            blocked = set(c.access_screen["blockedLevelIds"])
+            served = _served_levels(c)
+            false_levels = sorted(blocked & served)
+            if false_levels:
+                false_blocks += len(false_levels)
+            rows.append(
+                {
+                    "candidateId": c.candidate_id,
+                    "family": c.params.family.value,
+                    "authority": c.access_screen["authority"],
+                    "screenBlockedLevelIds": sorted(blocked),
+                    "screenBlockedButStage4ServedLevelIds": false_levels,
+                    "stage4Status": c.status,
+                    "accessibleLevels": c.accessible_count,
+                    "requiredLevels": len(c.level_service),
+                    "inProductionShortlist": c.candidate_id in shortlisted,
+                    "clearanceBasis": c.clearance.basis if c.clearance else None,
+                    "clearanceRefinementApplied": (
+                        bool((c.clearance.refinement or {}).get("applied")) if c.clearance else None
+                    ),
+                }
+            )
+        affected = [r for r in rows if r["screenBlockedButStage4ServedLevelIds"]]
+        rec.update(
+            {
+                "realized": True,
+                "clearanceBasis": exhaustive.clearance_basis,
+                "screenAuthority": (rows[0]["authority"] if rows else None),
+                "validatedCandidateCount": len(rows),
+                "screenBlockedButStage4Served": false_blocks,
+                "affectedCandidateIds": [r["candidateId"] for r in affected],
+                "affectedLevelIds": sorted(
+                    {lid for r in affected for lid in r["screenBlockedButStage4ServedLevelIds"]}
+                ),
+                "affectedInProductionShortlist": [
+                    r["candidateId"] for r in affected if r["inProductionShortlist"]
+                ],
+                "shortlist": list(normal.shortlist),
+                "winnerNormal": normal.winner_id,
+                "winnerExhaustive": exhaustive.winner_id,
+                "candidates": rows,
+            }
+        )
+        records.append(rec)
+    return {
+        "suiteVersion": SUITE_VERSION,
+        "label": label,
+        "semantics": (
+            "Phase 20C.1 closeout B diagnostic: stage-2 geometric access screen versus "
+            "exhaustive stage-4 outcomes. A `screenBlockedButStage4Served` level is a "
+            "FALSE BLOCK — impossible under an EXACT distance contract, possible under a "
+            "CONSERVATIVE one because stage 4 may refine the bound and move the entry. "
+            "The production search is unchanged by this report"
+        ),
+        "caseCount": len(records),
+        "totalFalseBlocks": sum(int(r.get("screenBlockedButStage4Served", 0)) for r in records),
+        "casesWithFalseBlocks": [
+            r["key"] for r in records if r.get("screenBlockedButStage4Served")
+        ],
+        "falseBlocksInsideProductionShortlist": sum(
+            len(r.get("affectedInProductionShortlist", [])) for r in records
+        ),
         "totalRuntimeSeconds": time.perf_counter() - t_all,
         "cases": records,
     }
