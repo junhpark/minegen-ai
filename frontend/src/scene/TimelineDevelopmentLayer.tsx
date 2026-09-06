@@ -15,7 +15,12 @@ declare module '@react-three/fiber' {
 }
 import { positionsToThree } from '@/geometry/coordinateTransform'
 import { useTimelineStore } from '@/stores/timelineStore'
-import { clipPolylineByFractions, developmentProgress, stateAt } from '@/timeline/evaluate'
+import {
+  clipPolylineByFractions,
+  developmentProgress,
+  progressDirectionOf,
+  stateAt,
+} from '@/timeline/evaluate'
 import type {
   LevelAccessesPayload,
   LevelsPayload,
@@ -77,6 +82,7 @@ export function TimelineDevelopmentLayer({
               points,
               dev.pointChainageFractions,
               developmentProgress(dev, currentDay),
+              progressDirectionOf(dev),
             )
           : points
       if (clipped.length < 6) continue

@@ -423,3 +423,66 @@ def test_identity_reference_integrity_gates(tmp_path) -> None:  # type: ignore[n
     dup_node["nodes"].append(json.loads(json.dumps(dup_node["nodes"][0])))
     p = _build(sc, smoothed, levels_d, dup_node, stopes_d)
     assert p.status == "FAILED" and "duplicate network node ids" in (p.failure_reason or "")
+
+
+def test_progress_direction_starts_at_the_excavation_start_node(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Phase 20C.1-V (rule 174): every development's progress runs from the
+    node it is excavated FROM (portal side of a ramp segment, junction of an
+    access, the endpoint reached first for level development) toward the
+    face. The fixture entry sits INSIDE the backbone, so one level carries
+    drifts on BOTH sides of the ramp — the −u side pieces are stored in +u
+    point order (face → entry) and must be flagged progressDirection = −1
+    without any geometry reorder."""
+    sc, smoothed, levels_d, network_d, stopes_d = _small(tmp_path)
+    p = _build(sc, smoothed, levels_d, network_d, stopes_d)
+    assert p.status == "SUCCESS", p.failure_reason
+    nodes = {n["id"]: np.asarray(n["position"], dtype=np.float64) for n in network_d["nodes"]}
+    edges = {e["id"]: e for e in network_d["edges"]}
+
+    def points(dev):  # type: ignore[no-untyped-def]
+        ref = dev.geometry_ref
+        if ref.artifact == "levels.json":
+            pts = levels_d["developments"][ref.segment_index]["centerline"]["points"]
+        else:
+            pts = smoothed["segments"][ref.segment_index]["effectiveCenterline"]["points"]
+        return np.asarray(pts, dtype=np.float64).reshape(-1, 3)
+
+    directions_by_level: dict[str, set[int]] = {}
+    for dev in p.developments:
+        pts = points(dev)
+        start = nodes[dev.excavation_start_node]
+        # the start node is one of the edge's endpoints and coincides with the
+        # fraction-0 end of PROGRESS (first point for +1, last point for −1)
+        assert dev.excavation_start_node in (
+            edges[dev.edge_id]["fromNode"],
+            edges[dev.edge_id]["toNode"],
+        )
+        p0 = pts[0] if dev.progress_direction == 1 else pts[-1]
+        p1 = pts[-1] if dev.progress_direction == 1 else pts[0]
+        assert float(np.linalg.norm(p0 - start)) <= 1e-6
+        assert float(np.linalg.norm(p0 - start)) < float(np.linalg.norm(p1 - start))
+        # chainage fractions stay geometry-ordered (rule 83 untouched)
+        f = dev.point_chainage_fractions
+        assert f[0] == 0.0 and f[-1] == 1.0
+        if dev.edge_type in ("RAMP", "CROSSCUT"):
+            assert dev.progress_direction == 1
+        if dev.edge_type == "DRIFT":
+            e = edges[dev.edge_id]
+            level = str(e["levelId"]) if "levelId" in e else dev.edge_id.split(":")[1]
+            directions_by_level.setdefault(level, set()).add(dev.progress_direction)
+    # the key fixture property: at least one level with drifts on BOTH sides
+    assert any(d == {1, -1} for d in directions_by_level.values()), directions_by_level
+    # progressive reveal is monotonic from the start end: the revealed
+    # chainage window at day t is a prefix of the window at day t + Δ
+    for dev in p.developments:
+        if dev.progress_direction != -1:
+            continue
+        f = dev.point_chainage_fractions
+        prev_lo = 1.0
+        for k in range(0, 11):
+            prog = k / 10.0
+            lo = 1.0 - prog  # revealed window is [1 − p, 1] on the fraction axis
+            assert lo <= prev_lo
+            prev_lo = lo
+        assert f[-1] == 1.0
+        break

@@ -33,6 +33,7 @@ from minegen.design.targets import generate_level_elevations, level_id
 from minegen.layout.families import (
     FAMILY_ORDER,
     CandidateParams,
+    FamilyGeometry,
     FamilyInfeasible,
     InfeasibleReason,
     LayoutContext,
@@ -40,6 +41,7 @@ from minegen.layout.families import (
     build_family,
     build_footwall_track,
     enumerate_candidates,
+    resolved_station_lengths,
 )
 from minegen.layout.geometry import (
     analyze_centerline,
@@ -326,8 +328,9 @@ def test_enumeration_is_finite_frozen_and_stable() -> None:
         len(cfg.switchback.legs_per_level)
         * len(cfg.switchback.principal_orientations_deg)
         * len(cfg.switchback.initial_turn_senses)
+        * len(resolved_station_lengths(cfg))  # Phase 20C.1-S: station axis
     )
-    assert len(params) == (spiral + longitudinal + switchback) * len(cfg.target_gradients) == 68
+    assert len(params) == (spiral + longitudinal + switchback) * len(cfg.target_gradients) == 92
     ids = [p.candidate_id for p in params]
     assert len(set(ids)) == len(ids)
     assert ids == [p.candidate_id for p in enumerate_candidates(LayoutV2Config())]
@@ -336,7 +339,7 @@ def test_enumeration_is_finite_frozen_and_stable() -> None:
     order = [FAMILY_ORDER.index(f) for f in families]
     assert order == sorted(order)
     assert ids[0] == "SPIRAL-n1-CW-e-45-g0.120"
-    assert ids[-1] == "SWITCHBACK-k2-p+20-CCW-g0.100"
+    assert ids[-1] == "SWITCHBACK-k2-p+20-CCW-s50-g0.100"  # Phase 20C.1-S station axis
     assert "LONGITUDINAL-STRIKE_POSITIVE-FOOTWALL-g0.120" in ids
     # a smaller declared grid shrinks the enumeration, no sampling involved
     small = LayoutV2Config(
@@ -651,7 +654,7 @@ def test_warped_vein_is_accepted_by_layout_v2_but_not_by_the_legacy_pipeline(
         sc.design.orebody_exclusion_buffer
         + math.hypot(sc.ramp.tunnel_width / 2.0, sc.ramp.tunnel_height),
     )
-    assert len(res.candidates) == 68
+    assert len(res.candidates) == 92
     assert res.shortlist  # candidates reached the detailed stage
     validated = [c for c in res.candidates if c.clearance is not None]
     assert validated
@@ -704,7 +707,7 @@ def test_search_is_deterministic_and_serializes_finite(
     assert a == b
     text = json.dumps(a, allow_nan=False)  # no NaN / inf anywhere (rule 34)
     assert len(text) > 1000
-    assert a["candidateCount"] == 68 and a["layoutVersion"] == 1
+    assert a["candidateCount"] == 92 and a["layoutVersion"] == 1
     assert a["status"] == "SUCCESS" and a["winnerId"] == res.winner_id
     # geometry only for shortlisted candidates (§41: no duplication for
     # discarded candidates)
@@ -1334,3 +1337,140 @@ def test_shortlist_with_family_reservation_stays_bounded(
     listed = {res.candidate(cid).params.family for cid in res.shortlist}  # type: ignore[union-attr]
     # every family with a cheap-feasible member holds a slot, within the bound
     assert cheap_ok <= listed
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20C.1-S: switchback hairpin station (arc–straight–arc)
+# --------------------------------------------------------------------------- #
+
+
+def test_station_axis_is_declared_and_ids_stay_stable() -> None:
+    cfg = LayoutV2Config()
+    stations = resolved_station_lengths(cfg)
+    assert stations == [0.0, 2.0 * cfg.access.minimum_turnout_straight_buffer] == [0.0, 50.0]
+    ids = [p.candidate_id for p in enumerate_candidates(cfg)]
+    assert len(set(ids)) == len(ids)
+    # station 0 keeps the pre-20C.1 id (no axis token); a station adds `-s<m>`
+    assert "SWITCHBACK-k2-p+20-CCW-g0.100" in ids
+    assert "SWITCHBACK-k2-p+20-CCW-s50-g0.100" in ids
+    assert ids[-1] == "SWITCHBACK-k2-p+20-CCW-s50-g0.100"
+    plain = [i for i in ids if i.startswith("SWITCHBACK") and "-s" not in i]
+    station = [i for i in ids if i.startswith("SWITCHBACK") and "-s" in i]
+    assert len(plain) == len(station) == 24
+    # order: sense, then station, then gradient innermost (frozen)
+    sw = [p for p in enumerate_candidates(cfg) if p.family is RampFamily.SWITCHBACK]
+    assert [p.station_length_m for p in sw[:4]] == [0.0, 0.0, 50.0, 50.0]
+    # an explicit declared axis replaces the default (never a hidden parameter)
+    explicit = LayoutV2Config.model_validate({"switchback": {"stationLengthsM": [0.0, 30.0, 60.0]}})
+    assert resolved_station_lengths(explicit) == [0.0, 30.0, 60.0]
+    assert len(enumerate_candidates(explicit)) == 68 + 2 * 24
+    with pytest.raises(ValueError):
+        LayoutV2Config.model_validate({"switchback": {"stationLengthsM": []}})
+    with pytest.raises(ValueError):
+        LayoutV2Config.model_validate({"switchback": {"stationLengthsM": [-1.0]}})
+
+
+def test_station_hairpin_is_arc_straight_arc_with_wider_leg_spacing(
+    tabular: tuple[Scenario, SyntheticWorld],
+    tabular_search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
+    sc, world = tabular
+    search, _ = tabular_search
+    ctx = _context(sc, world, search)
+    dz = ctx.levels[0].elevation - ctx.levels[1].elevation
+    r_min = sc.ramp.min_turn_radius
+    built_by_station: dict[float, FamilyGeometry] = {}
+    for station in (0.0, 50.0):
+        p = CandidateParams(
+            RampFamily.SWITCHBACK,
+            0.12,
+            legs_per_level=1,
+            principal_orientation_deg=0.0,
+            initial_turn_sense="CCW",  # feasible for both stations in the small fixture
+            station_length_m=station,
+        )
+        built = build_family(p, ctx)
+        assert not isinstance(built, FamilyInfeasible), built
+        built_by_station[station] = built
+        # rule 143 coupling: the station is subtracted from the straight leg
+        assert math.isclose(
+            built.derived["legLengthNominal"], dz / 0.12 - math.pi * r_min - station
+        )
+        assert built.derived["stationLength"] == station
+        assert math.isclose(built.derived["legSpacing"], 2.0 * r_min + station)
+        labels = [pc["label"] for pc in built.pieces]
+        if station == 0.0:
+            assert "HAIRPIN_0" in labels and not any(lb.startswith("STATION") for lb in labels)
+        else:
+            i_in, i_st, i_out = (
+                labels.index(k) for k in ("HAIRPIN_0_IN", "STATION_0", "HAIRPIN_0_OUT")
+            )
+            assert i_in + 1 == i_st == i_out - 1
+            assert built.pieces[i_st]["kind"] == "STRAIGHT"
+            assert math.isclose(built.pieces[i_st]["horizontalLength"], station)
+            assert built.pieces[i_in]["kind"] == "ARC" and built.pieces[i_out]["kind"] == "ARC"
+            assert math.isclose(abs(built.pieces[i_in]["angleDeg"]), 90.0)
+            assert math.isclose(abs(built.pieces[i_out]["angleDeg"]), 90.0)
+    # delivered geometry: the station straight is perpendicular to the legs,
+    # so the plan distance between consecutive legs grows by exactly station
+    for built in built_by_station.values():
+        d = analyze_centerline(built.points, station_merge_max_m=50.0 + sc.layout.sample_spacing)
+        assert d.heading_reversal_count >= 1
+        assert (d.min_plan_radius or 0.0) >= r_min - 0.05
+        assert d.max_abs_gradient <= 0.12 + 1e-9
+    spacing_cfg = sc.layout.sample_spacing
+    leg0 = _piece_points(built_by_station[50.0], "LEG_0", spacing_cfg)
+    leg1 = _piece_points(built_by_station[50.0], "LEG_1", spacing_cfg)
+    direction = leg0[-1, :2] - leg0[0, :2]
+    direction /= np.linalg.norm(direction)
+    normal = np.array([direction[1], -direction[0]])
+    spacing = abs(float((leg1[0, :2] - leg0[0, :2]) @ normal))
+    assert math.isclose(spacing, 2.0 * r_min + 50.0, abs_tol=1e-6)
+    leg0p = _piece_points(built_by_station[0.0], "LEG_0", spacing_cfg)
+    leg1p = _piece_points(built_by_station[0.0], "LEG_1", spacing_cfg)
+    spacing_plain = abs(float((leg1p[0, :2] - leg0p[0, :2]) @ normal))
+    assert math.isclose(spacing_plain, 2.0 * r_min, abs_tol=1e-6)
+
+
+def _piece_points(built: object, label: str, spacing: float) -> np.ndarray:
+    """Points of one labelled piece, reconstructed from the `Path` sampling
+    rule (``n = max(1, ceil(horizontalLength / spacing))`` samples per piece)."""
+    pts = built.points  # type: ignore[attr-defined]
+    start = 0
+    for pc in built.pieces:  # type: ignore[attr-defined]
+        n = max(1, math.ceil(float(pc["horizontalLength"]) / spacing))
+        if pc["label"] == label:
+            return np.asarray(pts[start : start + n + 1])
+        start += n
+    raise AssertionError(label)
+
+
+def test_station_hairpin_counts_as_one_reversal_only_within_the_bound() -> None:
+    # north leg, 90° CW arc (R 20), straight station 40 m east, 90° CW arc,
+    # south leg: physically ONE hairpin with a level station in its middle
+    leg = np.column_stack([np.zeros(20), np.linspace(0, 100, 20), np.zeros(20)])
+    phi = np.linspace(0, math.pi / 2, 20)[1:]
+    arc1 = np.column_stack([20 - 20 * np.cos(phi), 100 + 20 * np.sin(phi), np.zeros(19)])
+    stn = np.column_stack([np.linspace(20, 60, 9)[1:], np.full(8, 120.0), np.zeros(8)])
+    arc2 = np.column_stack([60 + 20 * np.sin(phi), 100 + 20 * np.cos(phi), np.zeros(19)])
+    back = np.column_stack([np.full(19, 80.0), np.linspace(100, 0, 20)[1:], np.zeros(19)])
+    pts = np.vstack([leg, arc1, stn, arc2, back])
+    plain = analyze_centerline(pts)
+    merged = analyze_centerline(pts, station_merge_max_m=45.0)
+    tight = analyze_centerline(pts, station_merge_max_m=30.0)
+    # cumulative heading is the same everywhere: the rule only changes how
+    # the two 90° halves are grouped into runs
+    for d in (plain, merged, tight):
+        assert math.isclose(d.cumulative_heading_change_deg, 180.0, abs_tol=1e-6)
+    assert plain.heading_reversal_count == 0 and plain.hairpin_run_count == 0
+    assert merged.heading_reversal_count == 1 and merged.hairpin_run_count == 1
+    assert tight.heading_reversal_count == 0  # station 40 m > bound 30 m
+    # two FULL hairpins separated by a short leg are never merged into one
+    phi_full = np.linspace(0, math.pi, 40)[1:]
+    hp1 = np.column_stack([20 - 20 * np.cos(phi_full), 100 + 20 * np.sin(phi_full), np.zeros(39)])
+    short = np.column_stack([np.full(4, 40.0), np.linspace(100, 80, 5)[1:], np.zeros(4)])
+    hp2 = np.column_stack(
+        [40 + 20 * (1 - np.cos(phi_full)), 80 - 20 * np.sin(phi_full), np.zeros(39)]
+    )
+    two = analyze_centerline(np.vstack([leg, hp1, short, hp2]), station_merge_max_m=45.0)
+    assert two.heading_reversal_count == 2 and two.hairpin_run_count == 2

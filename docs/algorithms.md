@@ -560,17 +560,70 @@ gradient never exceeds g):
 - LONGITUDINAL: one-direction along-strike corridor tilted by the footwall
   drift per metre of descent, clipped to the world margin, extended at most
   `longitudinalExtension` past the body.
-- SWITCHBACK: `k` legs per level of equal length `ΔZ/(k·g) − π·R_min`
+- SWITCHBACK: `k` legs per level of equal length `ΔZ/(k·g) − π·R_min − s`
   joined by constant-sense minimum-radius hairpins; the pair drift of the
   footwall is absorbed by bulging the hairpin (`R_min + |drift|/2`); a
   landing straight closes the last cycle exactly on the deepest level.
+  Phase 20C.1-S hairpin STATION `s`: a declared finite axis
+  (`switchback.stationLengthsM`, `None` → `[0, 2 × minimumTurnoutStraightBuffer]`
+  = {0, 50 m}; 50 m is a planning default — twice the turnout straight
+  buffer so a turnout centred on the station keeps its ± buffer inside the
+  straight — never a statutory value). With `s > 0` every hairpin is
+  arc(π/2) + straight(`s`) + arc(π/2) (pieces `HAIRPIN_c_IN`, `STATION_c`,
+  `HAIRPIN_c_OUT`), the station runs perpendicular to the legs so the leg
+  spacing becomes `2·R_min + s` (`derived.legSpacing`), and the station's
+  horizontal travel is subtracted from the leg (rule 143 coupling: a station
+  makes `LEG_TOO_SHORT` earlier, exactly as the arc does). Candidate ids
+  gain `-s<m>` only for `s > 0`, so every pre-20C.1 id is unchanged; station
+  candidates compete on the same score with no threshold change.
+
+  Measured (commit S, `golden/phase20c1_s_layout_v2.json`, 92 candidates,
+  `phase20c1_s_vs_20b2_layout.json`): every winner, ranking and feasible
+  count of the 7 golden cases is unchanged and no metric drifts; the only
+  contract change besides the enumeration (68 → 92, cheap-feasible +12 per
+  TABULAR case, +6 on GEOMETRY-STRESS) is the GEOMETRY-STRESS shortlist
+  order. Station diagnostics are consistent with the plain hairpins they
+  replace (TABULAR k1: 16 reversals / 16 hairpin runs / ≈ 3 000° for both
+  `s = 0` and `s = 50`; 3D length identical because the station is taken
+  from the leg). Every k2 station candidate is `LEG_TOO_SHORT`
+  (ΔZ/(2·g) − π·R_min − 50 < 20 m on all cases), and on GEOMETRY-STRESS
+  (15 m levels, R_min 20 m) so is every k1 station candidate at g = 0.12
+  (leg 125 − 62.8 − 50 = 12.2 m). NO station candidate entered the
+  production shortlist of 12 on any case: the stage-3 lower-bound proxy
+  ranks it below its plain twin (the far leg sits `s` further from the
+  ore, so more levels exceed the stage-2 reach heuristic), and the rule 165
+  per-family slot is taken by the plain k1 switchback. The S golden
+  therefore still reports GEOMETRY-STRESS = NO_FEASIBLE_CANDIDATE — a
+  shortlist starvation, not a geometric constraint: the exhaustive
+  diagnostic (`golden/phase20c1_s_stress_station_diagnosis.json`,
+  `LayoutV2Search.run(detailed_all=True)`, 51.6 s) validates every
+  switchback and finds `SWITCHBACK-k1-p+20-CW-s50-g0.100` FEASIBLE with
+  21/21 level accesses (all LS connectors, max access gradient 0.1197 ≤
+  0.12, min plan radius 20.0 m, min pillar 11.8 m ≥ 10 m, min plan
+  separation 40.1 m ≥ 30 m, max turnout heading change 69.8° ≤ 100°,
+  access lengths 43–60 m plus 100.6 m on L21, total score 8.546) — the
+  first feasible layout this case has ever had. The other five g = 0.10
+  station candidates fail 2–11 levels, all typed `GRADE_LIMIT` (one
+  `JUNCTION_SPACING_CONFLICT`), against 8–13 failed levels on their plain
+  twins (`TURNOUT_NOT_STRAIGHT` dominant), i.e. the station removes the
+  turnout-straightness failure exactly as intended. Getting that candidate
+  into the production result is the Phase 20C.1-Q shortlist-yield action,
+  not a threshold change here.
 
 Delivered-centerline diagnostics: per-edge gradient, chord-based plan
 radius at interior vertices (exact for uniformly sampled arcs), unwrapped
 heading change; family signature = cumulative / signed heading change,
 turning length (R < 500 m), hairpin runs (same-sense runs ≥ 150°),
 reversals (runs within 150°–210°), dominant folded azimuths (15° bins),
-turn-direction consistency. Measured on the TABULAR reference: spirals
+turn-direction consistency. Station merge (Phase 20C.1-S,
+`analyze_centerline(..., station_merge_max_m)`): two same-sense runs that
+are each BELOW 150° and separated only by straight edges totalling at most
+the bound are ONE run, so an arc–straight–arc hairpin counts as one
+reversal / hairpin run / half-turn pair like the plain hairpin it replaces
+(the turning-burden score is not escaped by inserting a station). The
+search passes `max(stationLengths) + sampleSpacing`; two full hairpins
+around a short leg are never merged (each is already ≥ 150°); `None`
+keeps the plain rule. Measured on the TABULAR reference: spirals
 show ≈ 2 400–6 200° cumulative change, consistency 1.0, 0 reversals;
 2-leg switchbacks 13 reversals; longitudinal ≈ 150° with ≤ 1.
 
@@ -779,3 +832,115 @@ whole-body search meaning. The shortlist bound is validated to be at least
 labelled EXACT (rule 134) — its bases are COARSE_CONSERVATIVE /
 REFINED_CONSERVATIVE, both carrying their actual `latticeSpacing` and
 `errorBound` in the candidate report.
+
+## Phase 20C.1 — hairpin station, shortlist yield, WARPED seed survey
+
+### Q — shortlist-yield audit and the geometric access screen (rule 176)
+
+Instrument: `python -m minegen.regression layout-v2-yield` (diagnostic,
+`golden/phase20c1_q_yield_before.json` on the commit-S search,
+`_after.json` on the commit-Q search). For every golden case and family it
+records each cheap-feasible candidate's FAMILY-INTERNAL cheap rank (stage-3
+lower-bound proxy), production shortlist membership, exhaustive detailed
+outcome, typed failure reasons and per-level access failure reasons, and
+per family a Mann–Whitney rank AUC (proxy rank vs detailed pass), the
+Spearman correlation of proxy vs detailed total among passes and the family
+rank of the best feasible candidate. The decision rule was fixed BEFORE the
+numbers (`YIELD_AUC_CORRELATED = 0.6`, `YIELD_MIN_PAIRS = 5`): a correlated
+family gets an audited top-N reservation, an uncorrelated one gets its
+proxy term fixed.
+
+Measured on the commit-S search (7 cases, 92 candidates each):
+
+| family | pooled rank AUC | pairs | pass / fail | verdict |
+|---|---|---|---|---|
+| SPIRAL | 0.665 | 1 428 | 14 / 102 | correlated |
+| SWITCHBACK | 0.489 | 8 789 | 47 / 187 | NOT correlated |
+| LONGITUDINAL | — | 0 | 0 / 0 | no cheap-feasible candidate on any case |
+
+Among feasible switchbacks the proxy orders the TOTAL well (Spearman
+0.93–0.98), so it is a sound score bound; what it cannot see is level-access
+feasibility, which decides every switchback detailed failure
+(`LEVEL_ACCESS_INFEASIBLE`: TURNOUT_NOT_STRAIGHT 65 / 67 level failures on
+WARPED-301 / GEOMETRY-STRESS, GRADE_LIMIT 52 / 84, INSUFFICIENT_RAMP_PILLAR
+40 on TABULAR). Consequences before the action: GEOMETRY-STRESS's only
+feasible candidate (the commit-S station switchback) sat at family rank
+15 / 18 (global 18 / 21) and was never validated (`winnerMissedByShortlist`
+= true); WARPED-301's first feasible switchback sat at family rank 5 with 4
+switchback slots (`missedFamilies = [SWITCHBACK]`, 9 feasible switchbacks
+exhaustive, 0 in production); TABULAR's shortlist validated 12 candidates
+of which 5 passed.
+
+Action ("fix the proxy term" branch, no coefficient): the stage-3 order
+gains an exact prefix. `geometric_access_screen` runs, for every
+cheap-feasible candidate, the evaluator-free stage-4 access gates on the
+delivered polyline through the SAME `_search_level` code path
+(`geometric_only=True`): the junction lattice, B-3 turnout curvature, B-1
+plan separation, connector availability, gradient, length, plan radius and
+the B-2 direction-aware rock pillar, with the junction-spacing assignment
+ignored and coarse-stand-off anchors. A level with no passing candidate is
+BLOCKED — a necessary condition of stage 4 (the tabular test pins
+`blocked ⊆ failed` for every detailed candidate and `blocked = 0` for every
+FEASIBLE one). Order = `(blockedLevels, proxy, family, id)`; nothing is
+rejected, the bound (12) and the per-family slot (rule 165) are unchanged,
+`accessScreen` is shipped per candidate. Under a conservative policy the
+refined stage-4 anchor may move, which is why the screen orders and never
+gates.
+
+Measured after (`golden/phase20c1_q_layout_v2.json`,
+`phase20c1_q_vs_s_layout.json`, `phase20c1_q_shortlist_audit.json`): winner
+unchanged on the 6 previously decided cases with ZERO metric drift (the
+KD-tree vertex pre-filter in `nearest_on_polyline` is bit-identical, tested
+on random and on-vertex tie queries); GEOMETRY-STRESS becomes SUCCESS in the
+PRODUCTION search with `SWITCHBACK-k1-p+20-CW-s50-g0.100` (21 / 21
+accesses); feasible counts 5 → 12 (TABULAR, CUT_AND_FILL), 3 → 10
+(WARPED-301), 5 → 10 (IRREGULAR); shortlist yield TABULAR 12 / 12 validated
+pass (9 switchbacks), WARPED-301 10 / 12, GEOMETRY-STRESS 1 / 12;
+`winnerMissedByShortlist` false 7 / 7 and `missedFamilies = []` 7 / 7
+(exhaustive feasible 17 / 13 / 1 vs production 12 / 10 / 1 on TABULAR /
+301 / STRESS — the remaining gap is the bound, not a missed family or
+winner). The screen's family AUC numbers are unchanged by construction (the
+proxy itself was not touched). Cost: the screen adds the evaluator-free gate
+sweep to stage 2; TABULAR-REFERENCE production search measured 23.4 s
+unloaded (stage 1+2 incl. screen 15.5 s, stage 4 7.8 s; 14.2 s before
+20C.1, 12 candidates validated instead of 5) — above the ≤ 20 s report
+target of the 20C.1 directive, reported as such, not gated.
+
+### W — WARPED_VEIN multi-seed feasibility survey (diagnostic only)
+
+Instrument: `python -m minegen.regression warped-seeds`
+(`golden/phase20c1_w_warped_seed_survey.json`), the PRODUCTION layout-v2
+search on `RANDOM_WARPED_VEIN` seeds 301–332 (32 seeds, one fault, the
+fixed list `WARPED_SURVEY_SEEDS`), recording per seed the outcome, the
+funnel (cheap-feasible / shortlist / detailed feasible), the dominant typed
+failure with its stage (among stage-4 failures when any candidate reached
+stage 4), the dominant per-level access failure, the clearance picture
+(required vs the best certified conservative minimum, error bound,
+COARSE / REFINED basis) and the serviceable / accessible level counts.
+Nothing is tuned, changed or persisted by the survey.
+
+Measured (commit W): 32 / 32 seeds realize; **9 / 32 SUCCESS** (301, 305,
+317, 318, 319, 326, 328, 329, 332 — 6 spiral winners, 3 switchback) and
+23 NO_FEASIBLE_CANDIDATE. Every seed reaches stage 4 with 3–59 cheap-feasible
+candidates (12 shortlisted, 3 on seed 302 whose ramps leave the world), so
+the funnel is never starved at stage 2. Dominant stage-4 failure on the 23
+failing seeds: `LEVEL_ACCESS_INFEASIBLE` 18, `ABOVE_TERRAIN` 5 (the main
+ramp breaks the surface — bodies that sit high under relief); the dominant
+level-access reason is `GRADE_LIMIT` 17 and `INSUFFICIENT_RAMP_PILLAR` 4
+(2 seeds have no access failure at all because no candidate survived the
+centerline stage). Clearance is NEVER the binding constraint: the best
+certified conservative minimum is 22.7–116.8 m against the 10.59 m
+requirement on every seed, with the stage-4 REFINED_CONSERVATIVE basis
+(error bound 5.39 m) applied on all 32. Serviceable levels are 7–14 of
+9–18 required (implicit bodies leave 1–6 required levels without an
+orebody section, reported and excluded per rule 141); the best candidate
+reaches 0–14 accessible levels, and on 9 failing seeds it serves all but
+1–3 levels. Reading: for irregular bodies the loss is concentrated in the
+level-access connector (a one-turn CS branch with a chord-exact gradient
+from a junction lattice inside the elevation window to a footwall anchor
+placed on the numerical section's principal axis) — the entry's elevation
+and horizontal offset from the ramp exceed what 0.12 can bridge inside the
+window on 17 seeds. That points at the Phase 20C.2 WARPED level-development
+contract (section(z) local frame, anchor placement following the local
+trace) and NOT at clearance, the shortlist or the ramp families; no
+threshold, policy or default is changed by this phase.

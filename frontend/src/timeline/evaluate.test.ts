@@ -93,3 +93,26 @@ describe('timeline store (§20)', () => {
     expect(useTimelineStore.getState().playing).toBe(false)
   })
 })
+
+describe('20C.1-V direction-aware clipping (rule 174)', () => {
+  const fr = [0, 0.25, 0.75, 1]
+  const pts = [0, 0, 0, 1, 0, 0, 3, 0, 0, 4, 0, 0]
+  it('direction −1 reveals from the LAST point toward the first, keeping point order', () => {
+    expect(clipPolylineByFractions(pts, fr, 0, -1)).toEqual([])
+    // progress 0.5 → window [0.5, 1] → cut at x = 2 (inside segment 1→3), then 3, 4
+    expect(clipPolylineByFractions(pts, fr, 0.5, -1)).toEqual([2, 0, 0, 3, 0, 0, 4, 0, 0])
+    expect(clipPolylineByFractions(pts, fr, 0.1, -1)).toEqual([3.6, 0, 0, 4, 0, 0])
+    expect(clipPolylineByFractions(pts, fr, 1, -1)).toEqual(pts)
+    // +1 is unchanged
+    expect(clipPolylineByFractions(pts, fr, 0.5, 1)).toEqual([0, 0, 0, 1, 0, 0, 2, 0, 0])
+  })
+  it('the revealed window grows monotonically from the start end', () => {
+    let prev = 0
+    for (let k = 0; k <= 10; k += 1) {
+      const n = clipPolylineByFractions(pts, fr, k / 10, -1).length / 3
+      const lo = n > 0 ? clipPolylineByFractions(pts, fr, k / 10, -1)[0]! : 4
+      expect(lo <= (k === 0 ? 4 : prev) || k === 0).toBe(true)
+      prev = lo
+    }
+  })
+})

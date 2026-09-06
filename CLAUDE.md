@@ -1379,3 +1379,53 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      revealed volume is a display cut aligned to backend rings — not
      engineering excavation geometry and never persisted (rule 115 analogue).
      Batched caps are shown only once every piece of their kind is complete.
+
+174. Excavation direction contract (Phase 20C.1-V). Every
+     `DevelopmentTimeline` names the network node it is excavated FROM
+     (`excavationStartNode`: the portal side of a ramp segment, the junction
+     of a level access, the endpoint reached first from the level entry for
+     drifts / crosscuts) and `progressDirection ∈ {+1, −1}` along the OWNING
+     centerline's point order: progress p reveals chainage fractions [0, p]
+     for +1 and [1 − p, 1] for −1. Chainage fraction 0 of PROGRESS is always
+     the start end and 1 the face; the reveal grows monotonically start →
+     face. `pointChainageFractions` stay geometry-ordered (rule 83) and the
+     centerline geometry is never reordered (colliders, mesh extras and
+     network edge direction depend on it) — the direction lives in the
+     fraction-semantics layer, and lines, meshes and future face
+     calculations inherit it. A start node that is not welded to a
+     centerline endpoint fails the timeline explicitly; the frontend never
+     decides direction from the camera or by patching individual edges.
+175. Switchback hairpin station (Phase 20C.1-S). The station length is a
+     DECLARED finite grid axis (`layout.switchback.stationLengthsM`, `None`
+     → `[0, 2 × access.minimumTurnoutStraightBuffer]`; 50 m is a planning
+     default, never statutory) enumerated between turn sense and gradient
+     (family order frozen, ids of station-0 candidates unchanged, `-s<m>`
+     appended for a station). A station hairpin is arc(π/2) + straight(s) +
+     arc(π/2) at the minimum radius with leg spacing `2·R_min + s` and the
+     station subtracted from the derived leg (rule 143); it competes on the
+     unchanged score under every unchanged hard constraint — no threshold,
+     coefficient, buffer or gate changes with it. Diagnostics treat one
+     arc–straight–arc hairpin as ONE reversal / hairpin run (station merge,
+     bounded by `max(stations) + sampleSpacing`, merging only sub-150° runs)
+     so the turning-burden score cannot be escaped by a station. A level
+     that still fails with a station is a real constraint, reported with
+     the per-level typed reason and numbers, never a relaxed gate.
+176. Geometric access screen as the stage-3 ORDER, never a gate (Phase
+     20C.1-Q). The shortlist-yield audit (`python -m minegen.regression
+     layout-v2-yield`, a priori rule: pooled rank AUC ≥ 0.6 over ≥ 5 pairs =
+     "correlated") showed the rule 165 lower-bound proxy predicts SPIRAL
+     detailed outcomes (AUC 0.665) but not SWITCHBACK ones (AUC 0.489): the
+     proxy bounds the SCORE and cannot see level-access feasibility. The
+     corrective is not a coefficient: every cheap-feasible candidate runs the
+     evaluator-free stage-4 access gates (`geometric_access_screen` —
+     the SAME `_search_level` code path with `geometric_only=True`: junction
+     lattice, B-3 turnout curvature, B-1 plan separation, connector
+     availability, gradient, length, plan radius, B-2 rock pillar; junction
+     spacing ignored; coarse-stand-off anchors) and a level with no passing
+     candidate is BLOCKED — a necessary condition of stage 4, never a
+     rejection. Stage-3 order is `(blockedLevels, proxy, family order, id)`;
+     the shortlist bound, the per-family slot (rule 165) and stage 4 as the
+     final authority are unchanged, and `accessScreen` stays inspectable per
+     candidate. The B-2 pillar keeps its exact direction-aware semantics
+     (rule 172); the KD-tree vertex pre-filter in `nearest_on_polyline` is a
+     proven-identical cost reduction, not an approximation.

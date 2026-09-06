@@ -104,7 +104,15 @@ class CenterlineDiagnostics:
         }
 
 
-def analyze_centerline(points: FloatArray) -> CenterlineDiagnostics:
+def analyze_centerline(
+    points: FloatArray, *, station_merge_max_m: float | None = None
+) -> CenterlineDiagnostics:
+    """``station_merge_max_m`` (Phase 20C.1-S): two same-sense turning runs
+    that are each BELOW the reversal minimum and separated only by straight
+    edges no longer than this bound are one physical reversal — the two 90°
+    halves of a hairpin with a level station between them. ``None`` keeps
+    the plain rule (any straight vertex closes a run). Two full hairpins
+    separated by a short leg are never merged (each already ≥ the minimum)."""
     pts = np.asarray(points, dtype=np.float64)
     if pts.shape[0] < 2:
         raise ValueError("a centerline needs at least two points")
@@ -131,17 +139,50 @@ def analyze_centerline(points: FloatArray) -> CenterlineDiagnostics:
     run_totals: list[float] = []
     run_sign = 0
     run_total = 0.0
-    for d in delta:
+    # station merge state: a closed sub-reversal run waiting for a same-sense
+    # continuation across a short straight (see the docstring)
+    carry: tuple[int, float] | None = None
+    gap = 0.0
+
+    def close_run(sign: int, total: float) -> None:
+        nonlocal carry, gap
+        deg = math.degrees(total)
+        if station_merge_max_m is not None and deg < REVERSAL_MIN_DEG:
+            carry, gap = (sign, total), 0.0
+            return
+        if deg >= REVERSAL_MIN_DEG:
+            run_totals.append(deg)
+        carry = None
+
+    for i, d in enumerate(delta):
         s_ = 0 if abs(d) <= STRAIGHT_HEADING_EPS else (1 if d > 0 else -1)
+        if s_ == 0:
+            # a straight vertex closes the current run; its outgoing edge
+            # lengthens the gap a station merge may bridge
+            if run_sign != 0:
+                close_run(run_sign, run_total)
+                run_sign, run_total = 0, 0.0
+            gap += float(h[i + 1]) if i + 1 < h.shape[0] else 0.0
+            continue
         if s_ != run_sign:
-            # a straight vertex or a sense change closes the current run
-            if run_sign != 0 and math.degrees(run_total) >= REVERSAL_MIN_DEG:
-                run_totals.append(math.degrees(run_total))
+            if run_sign != 0:
+                close_run(run_sign, run_total)  # sense change (gap 0)
             run_sign, run_total = s_, 0.0
-        if s_ != 0:
-            run_total += abs(d)
-    if run_sign != 0 and math.degrees(run_total) >= REVERSAL_MIN_DEG:
-        run_totals.append(math.degrees(run_total))
+            if (
+                carry is not None
+                and carry[0] == s_
+                and station_merge_max_m is not None
+                and gap <= station_merge_max_m
+            ):
+                run_total = carry[1]
+            # an unmerged carry is a sub-reversal run: dropped as before
+            carry = None
+            gap = 0.0
+        run_total += abs(d)
+    if run_sign != 0:
+        deg = math.degrees(run_total)
+        if deg >= REVERSAL_MIN_DEG:
+            run_totals.append(deg)
     hairpin_runs = len(run_totals)
     reversals = sum(1 for t in run_totals if t <= REVERSAL_MAX_DEG)
     # dominant azimuths: length-weighted histogram of edge headings, folded

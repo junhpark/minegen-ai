@@ -43,6 +43,7 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+from scipy.spatial import cKDTree
 
 from minegen.core.models import LevelAccessConfig, RampConstraints
 from minegen.design.constraints import RejectionReason
@@ -719,14 +720,34 @@ def _max_or_none(values: Any) -> float | None:
 
 
 def nearest_on_polyline(
-    points: FloatArray, polyline: FloatArray
+    points: FloatArray, polyline: FloatArray, tree: cKDTree | None = None
 ) -> tuple[FloatArray, FloatArray, npt.NDArray[np.intp]]:
     """Closest-centerline pair for each of ``points`` (N, 3) against the
     segments of ``polyline`` (M, 3): (distance, closest point, segment index).
     Exact point-to-segment distances, fully vectorized (N × M pairs; an
-    access branch has tens of samples)."""
+    access branch has tens of samples).
+
+    ``tree`` (Phase 20C.1-Q, optional): a ``cKDTree`` of the polyline
+    VERTICES. With it the exact projection runs only on the segments that can
+    hold a nearest point — every point's nearest vertex lies within
+    ``d_v`` and any point of a segment is within one segment length of an
+    endpoint, so a segment closer than ``d_v`` has an endpoint inside
+    ``max(d_v) + max segment length``; the candidate set is that ball's
+    union. Distances and the ascending-index tie-break are IDENTICAL to the
+    full evaluation — a pure cost reduction, never an approximation."""
     p = np.asarray(points, dtype=np.float64).reshape(-1, 3)
-    a, b = polyline[:-1], polyline[1:]
+    segs: npt.NDArray[np.intp] | None = None
+    if tree is not None and polyline.shape[0] > 2:
+        d_v, _ = tree.query(p)
+        seg_len_max = float(np.max(np.linalg.norm(np.diff(polyline, axis=0), axis=1)))
+        radius = float(np.max(d_v)) + seg_len_max + 1e-9
+        balls = tree.query_ball_point(p, radius)
+        verts = np.unique(np.concatenate([np.asarray(i, dtype=np.intp) for i in balls]))
+        segs = np.unique(np.concatenate([verts - 1, verts]))
+        segs = segs[(segs >= 0) & (segs < polyline.shape[0] - 1)]
+        a, b = polyline[segs], polyline[segs + 1]
+    else:
+        a, b = polyline[:-1], polyline[1:]
     ab = b - a
     denom = np.einsum("md,md->m", ab, ab)
     denom = np.where(denom < 1e-12, 1.0, denom)
@@ -736,7 +757,8 @@ def nearest_on_polyline(
     dist = np.linalg.norm(p[:, None, :] - closest, axis=2)
     seg = np.argmin(dist, axis=1)
     rows = np.arange(p.shape[0])
-    return dist[rows, seg], closest[rows, seg], seg
+    out_seg = segs[seg] if segs is not None else seg
+    return dist[rows, seg], closest[rows, seg], out_seg
 
 
 def min_distance_to_polyline(points: FloatArray, polyline: FloatArray) -> FloatArray:
@@ -813,6 +835,7 @@ def gated_separation(
     ramp_points: FloatArray,
     shape: ProfileShape,
     taper_arc: float,
+    tree: cKDTree | None = None,
 ) -> tuple[float, float]:
     """(minimum centerline distance, minimum excavation separation) of a
     branch against the full main-ramp polyline, over branch samples at
@@ -842,7 +865,7 @@ def gated_separation(
     mask = arc >= taper_arc
     mask[-1] = True  # the terminal is always judged
     judged = pts[mask]
-    d, closest, seg = nearest_on_polyline(judged, ramp_points)
+    d, closest, seg = nearest_on_polyline(judged, ramp_points, tree)
     ramp_dir = ramp_points[seg + 1] - ramp_points[seg]
     ramp_t = ramp_dir / np.maximum(np.linalg.norm(ramp_dir, axis=1, keepdims=True), 1e-12)
     branch_t = local_tangents(pts)[mask]
@@ -922,26 +945,34 @@ def _junction_candidates(
     z_level: float,
     cfg: LevelAccessConfig,
     anchor_xy: FloatArray,
+    ch: FloatArray | None = None,
+    az: FloatArray | None = None,
 ) -> list[_Candidate]:
-    ch = chainage(ramp_points)
-    az = headings(ramp_points)
+    """Junction lattice of one level; ``ch`` / ``az`` are the ramp chainage
+    and edge headings when the caller already holds them (same values)."""
+    if ch is None:
+        ch = chainage(ramp_points)
+    if az is None:
+        az = headings(ramp_points)
     total = float(ch[-1])
     n = math.floor(total / cfg.junction_search_spacing)
-    out: list[_Candidate] = []
-    for k in range(n + 1):
-        s = k * cfg.junction_search_spacing
-        i = int(np.searchsorted(ch, s, side="right") - 1)
-        i = min(max(i, 0), ramp_points.shape[0] - 2)
-        seg = float(ch[i + 1] - ch[i])
-        t = (s - float(ch[i])) / seg if seg > 1e-12 else 0.0
-        p = ramp_points[i] + t * (ramp_points[i + 1] - ramp_points[i])
-        dz = float(p[2]) - z_level
-        if dz > cfg.junction_window_above + 1e-9 or dz < -cfg.junction_window_below - 1e-9:
-            continue
-        if float(np.linalg.norm(p[:2] - anchor_xy)) > cfg.maximum_access_length:
-            continue
-        out.append(_Candidate(float(s), np.asarray(p, dtype=np.float64), float(az[i]), i))
-    return out
+    # vectorized lattice (Phase 20C.1-Q cost reduction; the per-point
+    # arithmetic is unchanged, so every candidate is bit-identical)
+    s_all = np.arange(n + 1, dtype=np.float64) * cfg.junction_search_spacing
+    idx = np.searchsorted(ch, s_all, side="right") - 1
+    idx = np.clip(idx, 0, ramp_points.shape[0] - 2)
+    seg = ch[idx + 1] - ch[idx]
+    t = np.where(seg > 1e-12, (s_all - ch[idx]) / np.where(seg > 1e-12, seg, 1.0), 0.0)
+    p_all = ramp_points[idx] + t[:, None] * (ramp_points[idx + 1] - ramp_points[idx])
+    dz = p_all[:, 2] - z_level
+    keep = (dz <= cfg.junction_window_above + 1e-9) & (dz >= -cfg.junction_window_below - 1e-9)
+    keep &= np.linalg.norm(p_all[:, :2] - anchor_xy, axis=1) <= cfg.maximum_access_length
+    return [
+        _Candidate(
+            float(s_all[k]), np.asarray(p_all[k], dtype=np.float64), float(az[idx[k]]), int(idx[k])
+        )
+        for k in np.flatnonzero(keep)
+    ]
 
 
 @dataclass
@@ -951,9 +982,13 @@ class _PlanContext:
 
     ramp_points: FloatArray
     ramp_ch: FloatArray
+    #: vertex KD-tree of the main ramp (exact nearest-segment pre-filter)
+    ramp_tree: cKDTree
+    ramp_az: FloatArray
     cfg: LevelAccessConfig
     ramp: RampConstraints
-    evaluator: DesignCostEvaluator
+    #: None only for the evaluator-free GEOMETRIC screen (Phase 20C.1-Q)
+    evaluator: DesignCostEvaluator | None
     shape: ProfileShape
     required_clearance: float
     g_max: float
@@ -971,13 +1006,22 @@ def _search_level(
     anchor: LevelDevelopmentAnchor,
     cands: list[_Candidate],
     used: list[float],
+    *,
+    geometric_only: bool = False,
 ) -> tuple[tuple[tuple[float, float, float, int], LevelAccess] | None, int, int, dict[str, int]]:
     """One level's deterministic candidate search under EVERY hard gate.
     Returns (best, tried, valid, rejections). ``used`` carries the junction
     chainages already committed by shallower levels; the B-5 diagnostic
     calls this again with ``used = []`` to distinguish greedy assignment
     starvation from real geometric infeasibility — nothing is relaxed for
-    the recorded result."""
+    the recorded result.
+
+    ``geometric_only`` (Phase 20C.1-Q geometric access screen): the SAME
+    gate sequence up to and including the B-2 rock pillar — everything that
+    needs no evaluator — and the search stops at the first candidate that
+    passes them (``valid = 1``, ``best = None``); the evaluator gates
+    (centerline validation, clearance, envelope) are never reached. A level
+    with ``valid == 0`` here has no candidate that could pass stage 4."""
     cfg, ramp_points = ctx.cfg, ctx.ramp_points
     rejections: dict[str, int] = {}
     reject = _rejecter(rejections)
@@ -1032,10 +1076,13 @@ def _search_level(
             # turnout taper (terminal always judged) — a branch that runs
             # alongside any part of the ramp with a thin skin is rejected,
             # whatever its length
-            _, exc_sep = gated_separation(pts, ramp_points, ctx.shape, ctx.taper_arc)
+            _, exc_sep = gated_separation(pts, ramp_points, ctx.shape, ctx.taper_arc, ctx.ramp_tree)
             if exc_sep < ctx.exc_sep_min - SEPARATION_TOLERANCE:
                 reject(AccessFailure.INSUFFICIENT_RAMP_PILLAR)
                 continue
+            if geometric_only:
+                return None, tried, valid + 1, rejections
+            assert ctx.evaluator is not None
             # hard validation of the delivered centerline (cover already
             # established: the branch starts underground on the ramp)
             ev, validation, finite = evaluate_and_validate(
@@ -1107,6 +1154,88 @@ def _search_level(
     return best, tried, valid, rejections
 
 
+def _plan_context(
+    ramp_points: FloatArray,
+    cfg: LevelAccessConfig,
+    ramp: RampConstraints,
+    evaluator: DesignCostEvaluator | None,
+    shape: ProfileShape,
+    required_clearance: float,
+    long_access_coef: float,
+) -> _PlanContext:
+    g_max = cfg.max_gradient if cfg.max_gradient is not None else ramp.max_gradient
+    r_min = cfg.min_turn_radius if cfg.min_turn_radius is not None else ramp.min_turn_radius
+    preferred, _ = effective_preferred_access_length(cfg, ramp)
+    plan_sep_min = effective_plan_separation(cfg, ramp)
+    exc_sep_min = effective_excavation_separation(cfg, ramp)
+    return _PlanContext(
+        ramp_points=ramp_points,
+        ramp_ch=chainage(ramp_points),
+        ramp_tree=cKDTree(np.asarray(ramp_points, dtype=np.float64)),
+        ramp_az=headings(ramp_points),
+        cfg=cfg,
+        ramp=ramp,
+        evaluator=evaluator,
+        shape=shape,
+        required_clearance=required_clearance,
+        g_max=g_max,
+        r_min=r_min,
+        preferred=preferred,
+        long_access_coef=long_access_coef,
+        plan_sep_min=plan_sep_min,
+        exc_sep_min=exc_sep_min,
+        taper_arc=gate_taper_arc(r_min, exc_sep_min + ramp.tunnel_width),
+    )
+
+
+def geometric_access_screen(
+    ramp_points: FloatArray,
+    anchors: list[LevelDevelopmentAnchor | None],
+    levels: list[RequiredLevel],
+    cfg: LevelAccessConfig,
+    ramp: RampConstraints,
+    shape: ProfileShape,
+) -> dict[str, Any]:
+    """Phase 20C.1-Q evaluator-free GEOMETRIC access screen: for every
+    required level, whether at least one junction candidate of the stage-4
+    lattice passes the evaluator-free hard gates — turnout curvature (B-3),
+    plan separation (B-1), connector availability, gradient, length, plan
+    radius and the rock pillar (B-2) — with the junction-spacing assignment
+    ignored. It is the SAME code path ``plan_level_accesses`` runs
+    (``_search_level(geometric_only=True)``), so a level reported BLOCKED
+    has no candidate that stage 4 could accept: a necessary condition, not
+    a heuristic. It never rejects a candidate; the search uses the blocked
+    count only as the stage-3 ordering prefix (rule 176) and stage 4 stays
+    the final authority. Under a CONSERVATIVE clearance policy the anchors
+    given here are the coarse-stand-off anchors; a refined stage-4 policy
+    may move an entry, which is why the screen orders and never gates."""
+    ctx = _plan_context(ramp_points, cfg, ramp, None, shape, 0.0, LONG_ACCESS_COEF)
+    per_level: dict[str, dict[str, Any]] = {}
+    blocked: list[str] = []
+    for lv, anchor in zip(levels, anchors, strict=True):
+        entry: dict[str, Any] = {"blocked": False, "reason": None, "rejectionCounts": {}}
+        if anchor is None:
+            entry.update({"blocked": True, "reason": AccessFailure.NO_ANCHOR})
+        else:
+            cands = _junction_candidates(
+                ramp_points, lv.elevation, cfg, anchor.position[:2], ctx.ramp_ch, ctx.ramp_az
+            )
+            if not cands:
+                entry.update({"blocked": True, "reason": AccessFailure.NO_JUNCTION_IN_WINDOW})
+            else:
+                _, _, valid, rejections = _search_level(
+                    ctx, lv, anchor, cands, [], geometric_only=True
+                )
+                entry["rejectionCounts"] = rejections
+                if valid == 0:
+                    top = max(rejections.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                    entry.update({"blocked": True, "reason": top})
+        if entry["blocked"]:
+            blocked.append(lv.level_id)
+        per_level[lv.level_id] = entry
+    return {"blockedLevelIds": blocked, "blockedCount": len(blocked), "levels": per_level}
+
+
 def plan_level_accesses(
     ramp_points: FloatArray,
     anchors: list[LevelDevelopmentAnchor | None],
@@ -1131,28 +1260,12 @@ def plan_level_accesses(
     conflicts records the B-5 assignment diagnostic (re-run ignoring only
     the used-junction spacing) so greedy starvation is distinguishable from
     real geometric infeasibility; no constraint is relaxed for the result."""
-    g_max = cfg.max_gradient if cfg.max_gradient is not None else ramp.max_gradient
-    r_min = cfg.min_turn_radius if cfg.min_turn_radius is not None else ramp.min_turn_radius
     preferred, preferred_source = effective_preferred_access_length(cfg, ramp)
-    plan_sep_min = effective_plan_separation(cfg, ramp)
-    exc_sep_min = effective_excavation_separation(cfg, ramp)
-    taper = gate_taper_arc(r_min, exc_sep_min + ramp.tunnel_width)
-    ctx = _PlanContext(
-        ramp_points=ramp_points,
-        ramp_ch=chainage(ramp_points),
-        cfg=cfg,
-        ramp=ramp,
-        evaluator=evaluator,
-        shape=shape,
-        required_clearance=required_clearance,
-        g_max=g_max,
-        r_min=r_min,
-        preferred=preferred,
-        long_access_coef=long_access_coef,
-        plan_sep_min=plan_sep_min,
-        exc_sep_min=exc_sep_min,
-        taper_arc=taper,
+    ctx = _plan_context(
+        ramp_points, cfg, ramp, evaluator, shape, required_clearance, long_access_coef
     )
+    g_max, r_min = ctx.g_max, ctx.r_min
+    plan_sep_min, exc_sep_min, taper = ctx.plan_sep_min, ctx.exc_sep_min, ctx.taper_arc
     used: list[float] = []
     accesses: list[LevelAccess] = []
     for lv, anchor in zip(levels, anchors, strict=True):
@@ -1169,7 +1282,9 @@ def plan_level_accesses(
             )
             continue
         access = LevelAccess(lv.level_id, lv.elevation, "INFEASIBLE", anchor)
-        cands = _junction_candidates(ramp_points, lv.elevation, cfg, anchor.position[:2])
+        cands = _junction_candidates(
+            ramp_points, lv.elevation, cfg, anchor.position[:2], ctx.ramp_ch, ctx.ramp_az
+        )
         if not cands:
             access.failure_reason = AccessFailure.NO_JUNCTION_IN_WINDOW
             access.failure_detail = (

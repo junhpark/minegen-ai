@@ -640,6 +640,14 @@ class SwitchbackFamilyGrid(ApiModel):
     initial_turn_senses: Annotated[list[TurnSense], Field(min_length=1)] = Field(
         default_factory=_both_turn_senses
     )
+    #: Phase 20C.1-S hairpin STATION lengths (m): the straight inserted in the
+    #: middle of every hairpin (arc–straight–arc) so a level lying on the
+    #: hairpin can be served by a turnout on that straight. A declared finite
+    #: set competing on score; ``None`` resolves to
+    #: ``[0, 2 × access.minimum_turnout_straight_buffer]`` (0 = the plain
+    #: arc–arc hairpin, 50 m default = twice the turnout straight buffer, a
+    #: planning default, not a statutory value).
+    station_lengths_m: Annotated[list[NonNegativeFloat], Field(min_length=1)] | None = None
 
 
 class LevelAccessConfig(ApiModel):

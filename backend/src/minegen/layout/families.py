@@ -426,6 +426,8 @@ class CandidateParams:
     legs_per_level: int | None = None
     principal_orientation_deg: float | None = None
     initial_turn_sense: str | None = None
+    #: Phase 20C.1-S hairpin station straight (m); 0 / None = plain hairpin
+    station_length_m: float | None = None
 
     @property
     def candidate_id(self) -> str:
@@ -437,9 +439,14 @@ class CandidateParams:
             )
         if self.family is RampFamily.LONGITUDINAL:
             return f"LONGITUDINAL-{self.orientation}-{self.side}-{g}"
+        station = (
+            f"-s{self.station_length_m:g}"
+            if self.station_length_m is not None and self.station_length_m > 0
+            else ""
+        )
         return (
             f"SWITCHBACK-k{self.legs_per_level}-p{self.principal_orientation_deg:+g}-"
-            f"{self.initial_turn_sense}-{g}"
+            f"{self.initial_turn_sense}{station}-{g}"
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -457,8 +464,19 @@ class CandidateParams:
                 legsPerLevel=self.legs_per_level,
                 principalOrientationDeg=self.principal_orientation_deg,
                 initialTurnSense=self.initial_turn_sense,
+                stationLengthM=float(self.station_length_m or 0.0),
             )
         return d
+
+
+def resolved_station_lengths(cfg: LayoutV2Config) -> list[float]:
+    """The declared finite hairpin-station axis (Phase 20C.1-S): the explicit
+    list, or ``[0, 2 × minimum_turnout_straight_buffer]`` — the plain hairpin
+    and a station exactly long enough for a turnout whose ± straight buffer
+    fits inside it."""
+    if cfg.switchback.station_lengths_m is not None:
+        return [float(s) for s in cfg.switchback.station_lengths_m]
+    return [0.0, 2.0 * float(cfg.access.minimum_turnout_straight_buffer)]
 
 
 def enumerate_candidates(cfg: LayoutV2Config) -> list[CandidateParams]:
@@ -482,19 +500,22 @@ def enumerate_candidates(cfg: LayoutV2Config) -> list[CandidateParams]:
         for side in cfg.longitudinal.sides:
             for g in cfg.target_gradients:
                 out.append(CandidateParams(RampFamily.LONGITUDINAL, g, orientation=o, side=side))
+    stations = resolved_station_lengths(cfg)
     for k in cfg.switchback.legs_per_level:
         for p in cfg.switchback.principal_orientations_deg:
             for sense in cfg.switchback.initial_turn_senses:
-                for g in cfg.target_gradients:
-                    out.append(
-                        CandidateParams(
-                            RampFamily.SWITCHBACK,
-                            g,
-                            legs_per_level=k,
-                            principal_orientation_deg=p,
-                            initial_turn_sense=sense,
+                for station in stations:
+                    for g in cfg.target_gradients:
+                        out.append(
+                            CandidateParams(
+                                RampFamily.SWITCHBACK,
+                                g,
+                                legs_per_level=k,
+                                principal_orientation_deg=p,
+                                initial_turn_sense=sense,
+                                station_length_m=station,
+                            )
                         )
-                    )
     ids = [c.candidate_id for c in out]
     if len(set(ids)) != len(ids):
         raise ValueError("layout grid produces duplicate candidate ids")
@@ -821,6 +842,31 @@ def build_longitudinal(
 # --------------------------------------------------------------------------- #
 
 
+def _hairpin(
+    path: Path, radius: float, station: float, sense: float, g: float, z_last: float, cycle: int
+) -> bool:
+    """One 180° hairpin descending at gradient ``g``: arc(π) when ``station``
+    is 0, otherwise arc(π/2) + straight(station) + arc(π/2) (Phase 20C.1-S
+    level station). Every piece is cut to the vertical budget left above the
+    deepest level; returns False when the hairpin ended at that budget."""
+    halves = (math.pi,) if station <= 0.0 else (math.pi / 2.0, math.pi / 2.0)
+    for i, angle in enumerate(halves):
+        remaining = path.pose.z - z_last
+        if remaining <= g * angle * radius + 1e-9:
+            path.arc(radius, sense * (remaining / (g * radius)), g, f"HAIRPIN_{cycle}")
+            return False
+        half = "IN" if i == 0 else "OUT"
+        label = f"HAIRPIN_{cycle}" if station <= 0.0 else f"HAIRPIN_{cycle}_{half}"
+        path.arc(radius, sense * angle, g, label)
+        if station > 0.0 and i == 0:
+            remaining = path.pose.z - z_last
+            if remaining <= g * station + 1e-9:
+                path.straight(remaining / g, g, f"STATION_{cycle}")
+                return False
+            path.straight(station, g, f"STATION_{cycle}")
+    return True
+
+
 def build_switchback(
     params: CandidateParams, ctx: LayoutContext
 ) -> FamilyGeometry | FamilyInfeasible:
@@ -853,17 +899,25 @@ def build_switchback(
     # the first leg is the NEAR leg when that move goes away from the ore
     first_moves_away = (first_sense > 0) == right_is_away
     drop_per_cycle = dz / k
-    # cycle: straight leg + 180° hairpin; the hairpin's horizontal arc length
-    # is subtracted from the horizontal travel the gradient needs (rule 143)
+    # Phase 20C.1-S: a hairpin STATION — the straight inserted between the two
+    # 90° halves of a hairpin (arc–straight–arc). It runs perpendicular to the
+    # legs, so consecutive legs sit 2·R + station apart, and it lengthens the
+    # horizontal travel of every cycle by the station length (rule 143 still
+    # derives the leg length from the level interval and the gradient).
+    station = float(params.station_length_m or 0.0)
+    # cycle: straight leg + hairpin; the hairpin's horizontal length (π·R plus
+    # the station) is subtracted from the horizontal travel the gradient needs
     z1 = ctx.levels[0].elevation
     near_lateral = ctx.standoff  # ore-facing leg
-    leg_lateral0 = near_lateral if first_moves_away else near_lateral + 2.0 * r_min
-    leg_len_nominal = drop_per_cycle / g - math.pi * r_min
+    leg_lateral0 = near_lateral if first_moves_away else near_lateral + 2.0 * r_min + station
+    leg_len_nominal = drop_per_cycle / g - math.pi * r_min - station
     if leg_len_nominal < ctx.cfg.min_straight_length:
         return FamilyInfeasible(
             InfeasibleReason.LEG_TOO_SHORT,
             f"derived straight leg {leg_len_nominal:.1f} m < {ctx.cfg.min_straight_length} m "
-            f"(ΔZ/k {drop_per_cycle:g} m at g {g:g} minus hairpin π·R {math.pi * r_min:.1f} m)",
+            f"(ΔZ/k {drop_per_cycle:g} m at g {g:g} minus hairpin π·R {math.pi * r_min:.1f} m"
+            + (f" and station {station:g} m" if station > 0 else "")
+            + ")",
         )
     heading = azimuth_of(leg_dir)
     # the corridor is anchored to the footwall edge at the JOIN elevation (the
@@ -917,24 +971,21 @@ def build_switchback(
             radius = r_min + abs(pair_drift) / 2.0
         # both legs of a pair share ONE length so the stack stays aligned
         # along strike: the pair drops 2·ΔZ/k over 2·L + π·(2·R_min +
-        # |drift|/2), i.e. L = ΔZ/(k·g) − π·(R_min + |drift|/4)
-        leg = drop_per_cycle / g - math.pi * (r_min + abs(pair_drift) / 4.0)
+        # |drift|/2) + 2·station, i.e. L = ΔZ/(k·g) − π·(R_min + |drift|/4) − s
+        leg = drop_per_cycle / g - math.pi * (r_min + abs(pair_drift) / 4.0) - station
         if leg < ctx.cfg.min_straight_length:
             return FamilyInfeasible(
                 InfeasibleReason.LEG_TOO_SHORT,
                 f"cycle {cycle}: straight leg {leg:.1f} m too short after the "
-                f"{radius:.1f} m hairpin",
+                f"{radius:.1f} m hairpin" + (f" and {station:g} m station" if station > 0 else ""),
             )
         remaining = path.pose.z - ctx.z_last
         if remaining <= g * leg + 1e-9:
             path.straight(remaining / g, g, f"LEG_{cycle}")
             break
         path.straight(leg, g, f"LEG_{cycle}")
-        remaining = path.pose.z - ctx.z_last
-        if remaining <= g * math.pi * radius + 1e-9:
-            path.arc(radius, sense * (remaining / (g * radius)), g, f"HAIRPIN_{cycle}")
+        if not _hairpin(path, radius, station, sense, g, ctx.z_last, cycle):
             break
-        path.arc(radius, sense * math.pi, g, f"HAIRPIN_{cycle}")
         cycle += 1
     # a closing partial hairpin descends chord-exactly, so it can stop a few
     # millimetres above the deepest level: finish with a straight that lands
@@ -958,6 +1009,8 @@ def build_switchback(
             "legLengthNominal": leg_len_nominal,
             "dropPerCycle": drop_per_cycle,
             "cycles": cycle + 1,
+            "stationLength": station,
+            "legSpacing": 2.0 * r_min + station,
         },
     )
 

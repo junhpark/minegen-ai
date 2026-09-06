@@ -85,7 +85,76 @@ def main(argv: list[str] | None = None) -> int:
     lva_p.add_argument("--label", required=True)
     lva_p.add_argument("--out", type=Path, default=Path("golden"))
 
+    lvy_p = sub.add_parser(
+        "layout-v2-yield",
+        help="Phase 20C.1-Q diagnostic: family-internal cheap rank vs detailed pass",
+    )
+    lvy_p.add_argument("--suite", choices=["full", "smoke"], default="full")
+    lvy_p.add_argument("--label", required=True)
+    lvy_p.add_argument("--out", type=Path, default=Path("golden"))
+
+    ws_p = sub.add_parser(
+        "warped-seeds",
+        help="Phase 20C.1-W diagnostic: WARPED_VEIN multi-seed layout-v2 feasibility survey",
+    )
+    ws_p.add_argument("--label", required=True)
+    ws_p.add_argument("--out", type=Path, default=Path("golden"))
+
     args = parser.parse_args(argv)
+    if args.command == "layout-v2-yield":
+        yld = layout_v2.audit_yield(layout_v2.suite(args.suite), args.label)
+        yld["gitHead"] = _git_head()
+        for rec in yld["cases"]:
+            fams = rec.get("families", {})
+            print(
+                f"  {rec['key']}: winner={rec.get('winnerNormal')} exhaustive="
+                f"{rec.get('winnerExhaustive')} (family rank "
+                f"{rec.get('winnerExhaustiveFamilyRank')}, global "
+                f"{rec.get('winnerExhaustiveGlobalRank')}) missedWinner="
+                f"{rec.get('winnerMissedByShortlist')} missedFamilies={rec.get('missedFamilies')}"
+            )
+            for fam, f in fams.items():
+                print(
+                    f"      {fam}: cheap={f['cheapFeasible']} shortlisted={f['shortlisted']} "
+                    f"pass={f['detailedPass']} (shortlisted pass {f['shortlistedPass']}) "
+                    f"bestRank={f['bestFeasibleFamilyRank']} maxPassRank={f['maxPassFamilyRank']} "
+                    f"auc={f['rankAuc']} ({f['rankPairs']} pairs) "
+                    f"spearman={f['spearmanProxyVsTotalAmongPasses']}"
+                )
+        print(f"  pooled: {json.dumps(yld['pooled'])}")
+        print(f"  topNNeededForBestFeasible={yld['topNNeededForBestFeasible']}")
+        args.out.mkdir(parents=True, exist_ok=True)
+        yield_path = args.out / f"{args.label}.json"
+        yield_path.write_text(json.dumps(yld, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"wrote {yield_path} ({yld['totalRuntimeSeconds']:.1f} s)")
+        return 0
+    if args.command == "warped-seeds":
+        survey = layout_v2.warped_seed_survey(layout_v2.WARPED_SURVEY_SEEDS, args.label)
+        survey["gitHead"] = _git_head()
+        for row in survey["rows"]:
+            if not row.get("realized"):
+                print(f"  seed {row['seed']}: NOT REALIZED {row.get('realizationError')}")
+                continue
+            print(
+                f"  seed {row['seed']}: {row['status']} winner={row['winnerId']} cheap="
+                f"{row['cheapFeasibleCount']}/{row['candidateCount']} shortlist="
+                f"{row['shortlistSize']} feasible={row['detailedFeasibleCount']} "
+                f"dominant={row['dominantFailure']} level={row['dominantLevelAccessFailure']} "
+                f"levels={row['serviceableLevelCount']}/"
+                f"{row['requiredLevelCount']} access={row['bestAccessibleLevels']} "
+                f"clear req={row['requiredClearance']} best={row['bestConservativeClearance']} "
+                f"bound={row['bestClearanceErrorBound']} basis={row['bestClearanceBasis']} "
+                f"({row['seconds']:.1f} s)"
+            )
+        print(
+            f"  success {survey['successCount']}/{survey['realizedCount']} realized of "
+            f"{survey['seedCount']} seeds; dominant failures {survey['dominantFailureHistogram']}"
+        )
+        args.out.mkdir(parents=True, exist_ok=True)
+        survey_path = args.out / f"{args.label}.json"
+        survey_path.write_text(json.dumps(survey, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"wrote {survey_path} ({survey['totalRuntimeSeconds']:.1f} s)")
+        return 0
     if args.command == "layout-v2":
         lv_cases = layout_v2.suite(args.suite)
         print(f"layout-v2 suite={args.suite} cases={len(lv_cases)}")

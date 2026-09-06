@@ -300,7 +300,14 @@ primitives carry ring-interval reveal metadata and
 at the last completed ring of the Phase 10 progress through draw ranges /
 draw groups over the shared loaded buffers (`timeline/excavationReveal.ts`,
 fail-closed mapping; unmapped developments keep their centerline). The
-walkthrough volumetric rule above is unchanged. Availability is resolved ONLY
+walkthrough volumetric rule above is unchanged. Phase 20C.1-V added the
+excavation direction contract (rule 174): the −u-side drift pieces of every
+level are stored in +u point order (face → entry), so before 20C.1 their
+reveal grew from the face toward the ramp (117 of 221 DRIFT edges on the
+acceptance scenario; RAMP / LEVEL_ACCESS / CROSSCUT were already correct).
+The timeline now names each development's `excavationStartNode` and
+`progressDirection`; `clipPolylineByFractions` and `revealedIndexRange`
+reveal the suffix for −1 developments, geometry untouched. Availability is resolved ONLY
 through each RAMP `DevelopmentTimeline.geometryRef` →
 `decline_smoothed.json` segmentIndex with exact runtime identity
 validation (`runtime.segmentId == smoothed.levelId`, counts equal, each
@@ -614,11 +621,14 @@ development, local bounded refinement, rulebook comparison) follow. The
 legacy chained Hybrid-A* pipeline is untouched and stays the default.
 
     scenario.layout (typed finite grids, 3 group weights)   ← rules 142/148
-        ↓ enumerate_candidates  (SPIRAL 36 · LONGITUDINAL 8 · SWITCHBACK 24 = 68)
+        ↓ enumerate_candidates  (SPIRAL 36 · LONGITUDINAL 8 · SWITCHBACK 48 = 92;
+                                 Phase 20C.1-S station axis {0, 50 m} doubled the switchbacks)
     families.py  closed-form primitives from the authoritative portal
         SPIRAL        R = ΔZ/(2π·g·n), drifting helix along the footwall track
         LONGITUDINAL  one-direction along-strike descent, corridor clipped to the world
-        SWITCHBACK    stacked antiparallel legs, L = ΔZ/(k·g) − π·R_min, constant hairpin sense
+        SWITCHBACK    stacked antiparallel legs, L = ΔZ/(k·g) − π·R_min − s, constant hairpin
+                      sense; hairpin = arc(π) for s = 0, arc(π/2)+straight(s)+arc(π/2) for a
+                      station s > 0 (leg spacing 2·R_min + s)             ← rule 175
         ↓ delivered polyline (sampleSpacing 2 m)             ← rule 144
     geometry.py   per-edge gradient, chord plan radius, unwrapped heading,
                   family signatures, exact level crossings          ← rule 145
@@ -626,7 +636,9 @@ legacy chained Hybrid-A* pipeline is untouched and stays the default.
                   in-plane footprint sections on `contains` + KD-tree + bisection
                   (upper-bound access distance)                     ← rule 144
     search.py     STAGE 1 enumerate → 2 cheap (grade, radius, bounds, monotone,
-                  level service) → 3 shortlist (12) → 4 detailed
+                  level service, geometric access screen ← rule 176)
+                  → 3 shortlist (12, ordered by blocked levels then the
+                  lower-bound proxy) → 4 detailed
                   (shared DesignCostEvaluator sample validator + clearance policy
                   + exposure + 3-group scores) → 5 ranking            ← rules 147/148
         ↓ layout_v2.json (catalogue) · layout_v2_selected.json (materialized winner)
@@ -856,13 +868,13 @@ whole point of a golden — happens on the CSV summary and the comparison
 files. Git LFS is deliberately not used. Policy:
 
 - Only the LATEST phase keeps its full detailed layout-v2 / warped-vein JSON
-  (`golden/phase20b2_layout_v2.json`, `golden/phase20a_warped_vein.json`).
+  (`golden/phase20c1_q_layout_v2.json`, `golden/phase20a_warped_vein.json`).
 - Every earlier phase keeps its CSV summary plus the comparison / audit JSON
   files (`*_vs_*_layout.json`, `*_shortlist_audit.json`, `*_turning_burden_audit.json`,
   …); its full JSON is deleted when the next phase's baseline lands.
 - A golden a test references is exempt from deletion (grep `backend/tests`
   before deleting — `phase17_baseline.json`, `phase19_warped_vein.json`,
-  `phase20b2_layout_v2.json` are referenced today).
+  `phase20c1_q_layout_v2.json` are referenced today).
 - The legacy 22-case golden files (`phase17_baseline`, `phase18_after_migration`,
   `phase19_full`, `phase20a_full`, `phase20b_full`, `phase20b_closeout_full`)
   are the regression lock of rule 132 and are NEVER deleted.

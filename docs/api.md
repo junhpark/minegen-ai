@@ -96,8 +96,19 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      COARSE/REFINED_CONSERVATIVE clearance). Persists
                                                      derived/layout_v2.json; deletes a stale
                                                      selection and, if LAYOUT_V2 is active, the
-                                                     ramp-derived chain (rule 151)
-    GET  …/design/layout-v2                          catalogue · 409 LAYOUT_V2_NOT_GENERATED
+                                                     ramp-derived chain (rule 151). Phase 20C.1-S:
+                                                     `scenario.layout.switchback.stationLengthsM`
+                                                     (null → [0, 2 × minimumTurnoutStraightBuffer])
+                                                     adds arc–straight–arc hairpin-station
+                                                     candidates (`-s<m>` in the id, stationLengthM
+                                                     in params, derived.stationLength / legSpacing)
+    GET  …/design/layout-v2                          catalogue · 409 LAYOUT_V2_NOT_GENERATED.
+                                                     Phase 20C.1-Q: every cheap-feasible candidate
+                                                     carries `accessScreen` {blockedLevelIds,
+                                                     blockedCount, levels{blocked, reason,
+                                                     rejectionCounts}} — the evaluator-free
+                                                     stage-4 access gates (rule 176), the stage-3
+                                                     ordering prefix, never a rejection
     POST …/design/layout-v2/select {candidateId}     materialize a FEASIBLE candidate as
                                                      derived/layout_v2_selected.json (source unchanged)
                                                      404 LAYOUT_V2_CANDIDATE_NOT_FOUND ·
@@ -208,6 +219,10 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      regeneration touches nothing upstream, rule 86)
     GET  /api/v1/scenarios/{id}/design/timeline      Phase 10: persisted typed TimelinePayload
                                                      (409 TIMELINE_NOT_GENERATED after invalidation)
+                                                     20C.1-V (rule 174): every development also
+                                                     carries excavationStartNode +
+                                                     progressDirection (+1 / −1) beside its
+                                                     geometry-ordered pointChainageFractions
     POST /api/v1/scenarios/{id}/network/generate     Phase 07/08: synchronous MineNetwork rebuild
                                                      (typed NetworkPayload; 409 SMOOTHED_NOT_GENERATED /
                                                      LEVELS_NOT_GENERATED without prerequisites)

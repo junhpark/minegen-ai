@@ -15,7 +15,7 @@
  * (rule 117 analogue): a development whose geometryRef does not resolve to
  * exactly one mesh range keeps the existing centerline rendering.
  */
-import { stateAt, developmentProgress } from '@/timeline/evaluate'
+import { stateAt, developmentProgress, progressDirectionOf } from '@/timeline/evaluate'
 import { rampOwningArtifact } from '@/walkthrough/temporalPlan'
 import {
   rampSegmentId,
@@ -81,6 +81,34 @@ export interface DevelopmentReveal {
   target: RevealTarget
   /** chainage fraction to reveal: 0 NOT_BUILT, (0,1) DEVELOPING, 1 built */
   progress: number
+  /** Phase 20C.1-V (rule 174): +1 reveals the index PREFIX (excavation starts
+   * at the first point), −1 the index SUFFIX (starts at the last point) */
+  direction: 1 | -1
+}
+
+/** Revealed index window of one segment / piece for a progress fraction and
+ * direction: +1 → the first `m` complete intervals ([0, m·stride]); −1 → the
+ * last `m` complete intervals counted from the END ring. Conservative in
+ * both directions (only COMPLETED rings). */
+export function revealedIndexRange(
+  meta: RevealMeta,
+  progress: number,
+  direction: 1 | -1,
+): { start: number; count: number } {
+  const total = meta.ringIntervalCount * meta.indexStride
+  if (!(progress > 0)) return { start: 0, count: 0 }
+  if (progress >= 1) return { start: 0, count: total }
+  const fr = meta.ringChainageFractions
+  if (direction === 1) {
+    let m = 0
+    while (m < meta.ringIntervalCount && fr[m + 1]! <= progress) m += 1
+    return { start: 0, count: m * meta.indexStride }
+  }
+  // interval i spans [fr[i], fr[i+1]]; from the end, interval i is complete
+  // once fr[i] >= 1 − progress
+  let m = 0
+  while (m < meta.ringIntervalCount && fr[meta.ringIntervalCount - 1 - m]! >= 1 - progress) m += 1
+  return { start: total - m * meta.indexStride, count: m * meta.indexStride }
 }
 
 export interface ExcavationRevealPlan {
@@ -149,6 +177,7 @@ export function resolveExcavationReveal(
       edgeType: dev.edgeType,
       target,
       progress: revealProgress(dev, day),
+      direction: progressDirectionOf(dev),
     })
   }
   return { reveals, unmappedEdgeIds: unmapped }
@@ -175,23 +204,34 @@ export interface IndexGroup {
  * the number of pieces. Ranges are visited in buffer order. A range without
  * reveal metadata is skipped entirely (20B.3-1.3 fail-closed).
  */
+export interface PieceProgress {
+  progress: number
+  /** rule 174 progress direction along the piece's ring order */
+  direction: 1 | -1
+}
+
 export function planIndexGroups(
   ranges: readonly PieceRange[],
-  progressByPiece: ReadonlyMap<string, number>,
+  progressByPiece: ReadonlyMap<string, number | PieceProgress>,
 ): IndexGroup[] {
   const sorted = [...ranges].sort((a, b) => a.indexOffset - b.indexOffset)
   const groups: IndexGroup[] = []
   for (const r of sorted) {
-    const p = progressByPiece.get(r.pieceId)
+    const raw = progressByPiece.get(r.pieceId)
+    const p = typeof raw === 'number' ? raw : raw?.progress
+    const direction: 1 | -1 = typeof raw === 'object' && raw !== null ? raw.direction : 1
     if (p === undefined || !(p > 0)) continue
     // 20B.3-1.3: no metadata → never revealed (the edge is not covered, so
     // its centerline fallback keeps rendering instead)
     if (r.meta === null) continue
-    const count = p >= 1 ? r.indexCount : Math.min(r.indexCount, revealedIndexCount(r.meta, p))
+    const win =
+      p >= 1 ? { start: 0, count: r.indexCount } : revealedIndexRange(r.meta, p, direction)
+    const count = Math.min(r.indexCount - win.start, win.count)
     if (count <= 0) continue
+    const start = r.indexOffset + win.start
     const last = groups[groups.length - 1]
-    if (last && last.start + last.count === r.indexOffset) last.count += count
-    else groups.push({ start: r.indexOffset, count })
+    if (last && last.start + last.count === start) last.count += count
+    else groups.push({ start, count })
   }
   return groups
 }
