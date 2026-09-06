@@ -998,11 +998,18 @@ WARPED-301 loses the SWITCHBACK family again (`missedFamilies` [] →
 ['SWITCHBACK'], production feasible 10 → 3), exactly the regression the Q
 screen was introduced to fix; the other three acceptance items held
 (`winnerMissedByShortlist` false 7 / 7, GEOMETRY-STRESS SUCCESS with 21 / 21
-accesses, the six decided winners unchanged). The heuristic prefix is kept
-on the conservative side as an ORDERING HEURISTIC ONLY. Ordering that side
-without a mis-blocking heuristic — by improving the stage-3 proxy so it can
-see level-access feasibility — is a Phase 20C.2 candidate, recorded, not
-attempted here. Post-revert the production search is bit-identical to the
+accesses, the six decided winners unchanged). The prefix is therefore kept
+on the conservative side, and the three statements it sits between are kept
+apart: the screen never REMOVES a candidate; BLOCKED is not a FEASIBILITY
+authority (stage 4 decides); and `screen_blocked` IS still the primary key
+of the current bounded search's stage-3 order — a NON-AUTHORITATIVE ORDERING
+HEURISTIC, which is exactly what `_shortlist_key` implements. It is not kept
+because it costs nothing — it demonstrably mis-blocks 56 times, 6 of them
+inside the validated shortlist — but because removing it regresses the
+family yield of the current golden suite, and that mis-blocking stays a
+documented Phase 20C.2 limitation. Ordering that side without a mis-blocking
+heuristic — by improving the stage-3 proxy so it can see level-access
+feasibility — is a Phase 20C.2 candidate, recorded, not attempted here. Post-revert the production search is bit-identical to the
 merged 20C.1 baseline (`phase20c1_closeout_vs_q_layout.json`: 0 contract
 regressions, 0 metric drift).
 
@@ -1035,6 +1042,22 @@ bound, rule 165 family reservation, re-sort) and compares candidate ids
 exactly, plus a RED-FIXTURE PROOF: with the key reduced to the id, to the
 proxy alone, or with the screen prefix inverted — or with the bound off by
 one — the same assertion fails.
+
+Follow-up §2: the first version of that reconstruction still had a defect of
+its own — it took the stage-3 survivors to be the candidates with no failure
+reasons, which silently drops every shortlisted candidate stage 4 marked
+INFEASIBLE. It passed only because the EXACT fixture's whole shortlist
+happens to be feasible (12 / 12); measured against the audit it would have
+been wrong by 2 candidates on WARPED-301 and IRREGULAR, and by 12 on
+WARPED-307 and ACCESS-INFEASIBLE. `tests/shortlist_reconstruction.py` now
+derives survivors as `stage_reached == DETAILED` (a cheap survivor whatever
+stage 4 decided) or `CHEAP + NOT_VALIDATED`, and keeps the discarded filter
+beside it so two regressions can prove the difference: a synthetic case
+(cheap survivor → shortlisted → FEASIBLE / INFEASIBLE / outside the
+shortlist / cheap-INFEASIBLE) where the old filter demonstrably loses the
+detailed-INFEASIBLE candidate, and the REAL WARPED-301 result, whose
+shortlist contains detailed-INFEASIBLE candidates and which the old filter
+reconstructs incorrectly. The A-3 red-fixture proofs still hold.
 
 ### Closeout R — the 32-seed survey re-run on the closeout tree
 

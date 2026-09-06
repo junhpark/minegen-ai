@@ -1447,13 +1447,24 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
        anchors sit at the COARSE stand-off while stage 4 may refine the
        bound, shrink the stand-off and move the entry, so BLOCKED is a
        HEURISTIC. It is never called "provably unservable" or a necessary
-       condition, the `blocked ⊆ failed` contract is NOT applied (nor
-       tested), and it is not the authority for removing or ranking a
-       shortlist candidate. Whether a coarse-blocked level is actually
-       served in stage 4 is MEASURED
-       (`golden/phase20c1_closeout_screen_audit.json`,
-       `python -m minegen.regression layout-v2-screen-audit`); the ordering
-       prefix is only kept on the conservative side while that measurement
-       shows it costs nothing, and any change to it must preserve the
-       family-yield acceptance (`missedFamilies = []`,
-       `winnerMissedByShortlist` false on every golden case).
+       condition, and the `blocked ⊆ failed` contract is NOT applied (nor
+       tested) there. Three separate statements, none of which implies
+       another:
+       (i) the screen never REMOVES a candidate, under either contract;
+       (ii) BLOCKED is not a FEASIBILITY authority — stage 4 decides, and a
+       coarse-blocked level can still be served;
+       (iii) `screen_blocked` IS nevertheless used as the primary key of the
+       current bounded search's stage-3 order — a NON-AUTHORITATIVE ORDERING
+       HEURISTIC, exactly as `_shortlist_key` implements it.
+       The reason it is kept is not that it is free: the closeout-B
+       measurement (`golden/phase20c1_closeout_screen_audit.json`,
+       `python -m minegen.regression layout-v2-screen-audit`) found 56 false
+       blocks on the conservative side (WARPED-301 27, WARPED-307 2,
+       IRREGULAR 27), 6 of them on candidates the production shortlist had
+       validated, against 0 on every EXACT case. It is kept because removing
+       it REGRESSES the family-yield acceptance of the current golden suite
+       (measured: WARPED-301 `missedFamilies` [] → ['SWITCHBACK'], production
+       feasible 10 → 3), and that false-block behaviour stays a documented
+       Phase 20C.2 limitation. Any change to this ordering must preserve
+       `missedFamilies = []` and `winnerMissedByShortlist` false on every
+       golden case.

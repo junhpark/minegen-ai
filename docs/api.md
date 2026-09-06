@@ -113,7 +113,10 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      is NECESSARY_CONDITION under an EXACT
                                                      clearance policy and HEURISTIC under a
                                                      conservative one, where stage-4 refinement
-                                                     may still serve a blocked level
+                                                     may still serve a blocked level (measured:
+                                                     56 such false blocks). Either way the count
+                                                     orders the shortlist and never removes a
+                                                     candidate; feasibility is stage 4's
     POST …/design/layout-v2/select {candidateId}     materialize a FEASIBLE candidate as
                                                      derived/layout_v2_selected.json (source unchanged)
                                                      404 LAYOUT_V2_CANDIDATE_NOT_FOUND ·

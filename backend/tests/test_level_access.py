@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Any
 
 import numpy as np
 import pytest
@@ -44,6 +43,11 @@ from minegen.services.scenario_realizer import realize_scenario
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 
 from .conftest import small_scenario
+from .shortlist_reconstruction import (
+    reconstruct_shortlist,
+    stage3_survivors,
+    survivors_without_failed_detailed,
+)
 
 
 @pytest.fixture(scope="module")
@@ -1084,7 +1088,7 @@ def test_shortlist_is_exactly_the_reconstructed_bounded_selection(
     compare candidate ids exactly — the previous assertion was vacuous
     (`... or c.params.family is not None` is always true)."""
     s, res = search
-    expected = _reconstruct_shortlist(res, s.cfg.shortlist_size)
+    expected = reconstruct_shortlist(res, s.cfg.shortlist_size)
     assert res.shortlist == expected
     assert len(expected) == s.cfg.shortlist_size
     # RED-FIXTURE PROOF (closeout A-3): with a deliberately wrong key the same
@@ -1096,32 +1100,83 @@ def test_shortlist_is_exactly_the_reconstructed_bounded_selection(
         lambda c: (c.cheap_proxy or math.inf,),  # proxy only: ignores the screen prefix
         lambda c: (-c.screen_blocked, c.cheap_proxy or math.inf),  # prefix inverted
     ):
-        wrong = _reconstruct_shortlist(res, s.cfg.shortlist_size, key=wrong_key)
+        wrong = reconstruct_shortlist(res, s.cfg.shortlist_size, key=wrong_key)
         assert wrong != res.shortlist, wrong_key
     # and a wrong BOUND fails too
-    assert _reconstruct_shortlist(res, s.cfg.shortlist_size - 1) != res.shortlist
+    assert reconstruct_shortlist(res, s.cfg.shortlist_size - 1) != res.shortlist
 
 
-def _reconstruct_shortlist(res: LayoutSearchResult, bound: int, key: Any = None) -> list[str]:
-    """Pure re-implementation of stage 3 (rule 165 family reservation +
-    rule 176 ordering prefix) from the candidate results."""
-    from minegen.layout.families import FAMILY_ORDER
-    from minegen.layout.search import _shortlist_key
+def _synthetic_result(
+    entries: list[tuple[str, str, str, list[str]]],
+) -> LayoutSearchResult:
+    """A LayoutSearchResult carrying only what stage-3 reconstruction reads:
+    (candidate label, stage_reached, status, failure_reasons) per candidate."""
+    from minegen.layout.families import CandidateParams, RampFamily
+    from minegen.layout.search import CandidateResult
 
-    k = key or _shortlist_key
-    survived = [
-        c
-        for c in res.candidates
-        if c.stage_reached in ("CHEAP", "DETAILED") and not c.failure_reasons
-    ]
-    cheap_ok = sorted(survived, key=k)
-    base = cheap_ok[:bound]
-    missing = [f for f in FAMILY_ORDER if not any(c.params.family is f for c in base)]
-    extras = [
-        best
-        for f in missing
-        if (best := next((c for c in cheap_ok if c.params.family is f), None)) is not None
-    ]
-    if extras:
-        base = sorted(base[: max(0, bound - len(extras))] + extras, key=k)
-    return [c.candidate_id for c in base]
+    cands = []
+    for i, (label, stage, status, reasons) in enumerate(entries):
+        params = CandidateParams(
+            RampFamily.SPIRAL,
+            0.1 + i / 1000.0,  # distinct ids and a deterministic proxy order
+            turns_per_level=1,
+            turn_sense="CW",
+            entry_orientation_deg=0.0,
+        )
+        c = CandidateResult(params)
+        c.stage_reached = stage
+        c.status = status
+        c.failure_reasons = list(reasons)
+        # 1-based: `_shortlist_key` reads `cheap_proxy or math.inf`, so an
+        # exact 0.0 would sort last — irrelevant in production (the proxy is a
+        # sum of positive terms) and not what this test is about
+        c.cheap_proxy = float(i) + 1.0
+        c.derived = {"label": label}
+        cands.append(c)
+    return LayoutSearchResult(
+        levels=[],
+        serviceable_ids=[],
+        track=None,
+        portal=np.zeros(3),
+        portal_generated=False,
+        candidates=cands,
+        shortlist=[],
+        ranking=[],
+        winner_id=None,
+        clearance_basis="EXACT",
+        clearance_error_bound=0.0,
+        required_clearance=0.0,
+        access_reach=0.0,
+        standoff=0.0,
+        performance={},
+        config={},
+    )
+
+
+def test_stage3_survivors_keep_shortlisted_candidates_that_stage_four_rejected() -> None:
+    """Follow-up §2: a candidate that reached DETAILED was a stage-3 survivor
+    whatever stage 4 decided. The discarded "no failure reasons" filter drops
+    exactly those, which is why it only looked right on a case whose whole
+    shortlist happened to be feasible."""
+    res = _synthetic_result(
+        [
+            ("A", "DETAILED", "FEASIBLE", []),
+            ("B", "DETAILED", "INFEASIBLE", ["LEVEL_ACCESS_INFEASIBLE"]),
+            ("C", "CHEAP", "NOT_VALIDATED", []),
+            ("D", "CHEAP", "INFEASIBLE", ["WORLD_BOUNDS"]),
+            ("E", "CONSTRUCT", "INFEASIBLE", ["LEG_TOO_SHORT"]),
+        ]
+    )
+    labels = {c.candidate_id: c.derived["label"] for c in res.candidates}
+    kept = {labels[c.candidate_id] for c in stage3_survivors(res)}
+    assert kept == {"A", "B", "C"}  # D fell out at CHEAP, E never built
+    # RED PROOF: the discarded filter loses B, so a reconstruction built on it
+    # would drop a candidate the production shortlist really contained
+    old = {labels[c.candidate_id] for c in survivors_without_failed_detailed(res)}
+    assert old == {"A", "C"} and "B" not in old
+    # and the reconstruction itself differs between the two survivor sets
+    ids = [c.candidate_id for c in res.candidates]
+    new_list = reconstruct_shortlist(res, 3)
+    old_list = reconstruct_shortlist(res, 3, survivors=survivors_without_failed_detailed(res))
+    assert new_list == [ids[0], ids[1], ids[2]]
+    assert old_list == [ids[0], ids[2]] and new_list != old_list
