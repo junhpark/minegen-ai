@@ -35,6 +35,12 @@ import numpy.typing as npt
 from scipy.spatial import cKDTree
 
 from minegen.design.targets import generate_level_elevations, level_id
+from minegen.layout.sections import (
+    LevelSectionGeometry,
+    SectionResolution,
+    build_section_geometry,
+    validate_section_budgets,
+)
 from minegen.world.orebody import Orebody
 
 FloatArray = npt.NDArray[np.float64]
@@ -137,18 +143,57 @@ def build_level_section(orebody: Orebody, elevation: float, spacing: float) -> L
 
 class LevelSections:
     """Sections for every required level, built once per search (the same
-    sections serve every candidate; results are deterministic)."""
+    sections serve every candidate; results are deterministic).
 
-    def __init__(self, orebody: Orebody, levels: list[RequiredLevel], spacing: float) -> None:
+    With a ``SectionResolution`` (Phase 20C.2A) the per-level SECTION
+    GEOMETRY (occupancy grid, 4-connected components, dominant component,
+    outer contour — ``layout.sections``) becomes available through
+    ``geometry()``: candidate-independent, built lazily ONCE per level and
+    cached. Both cell budgets are validated upfront from the projected grid
+    shape — before any allocation and independent of the lazy build order —
+    so a budget failure is deterministic (typed
+    ``SECTION_RESOLUTION_BUDGET_EXCEEDED``, raised here in the constructor).
+    """
+
+    def __init__(
+        self,
+        orebody: Orebody,
+        levels: list[RequiredLevel],
+        spacing: float,
+        resolution: SectionResolution | None = None,
+    ) -> None:
         self.orebody = orebody
         self.levels = levels
         self.spacing = spacing
+        self.resolution = resolution
+        self.budget_diagnostics: dict[str, object] | None = None
+        if resolution is not None:
+            self.budget_diagnostics = dict(
+                validate_section_budgets(orebody, resolution, len(levels))
+            )
         self.sections: dict[str, LevelSection] = {
             lv.level_id: build_level_section(orebody, lv.elevation, spacing) for lv in levels
         }
+        self._geometry: dict[str, LevelSectionGeometry] = {}
+        self._by_id: dict[str, RequiredLevel] = {lv.level_id: lv for lv in levels}
 
     def section(self, level: RequiredLevel) -> LevelSection:
         return self.sections[level.level_id]
+
+    def geometry(self, level: RequiredLevel) -> LevelSectionGeometry:
+        """Lazy per-level section geometry (requires a ``SectionResolution``)."""
+        if self.resolution is None:
+            raise RuntimeError(
+                "LevelSections was built without a SectionResolution; "
+                "section geometry is unavailable"
+            )
+        g = self._geometry.get(level.level_id)
+        if g is None:
+            g = build_section_geometry(
+                self.orebody, level.level_id, level.elevation, self.resolution
+            )
+            self._geometry[level.level_id] = g
+        return g
 
     def all_present(self) -> bool:
         return all(not s.empty for s in self.sections.values())
