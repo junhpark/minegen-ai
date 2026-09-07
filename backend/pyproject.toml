@@ -41,7 +41,22 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-q"
+# --strict-markers: an unregistered marker (typo) is a collection ERROR, never
+# a silently unmarked test (VA-01 §16).
+addopts = "-q --strict-markers"
+# VA-01 verification tiers. Unmarked tests form the FAST inner loop; every
+# marked test is still collected by FULL (scripts/verify.py enforces
+# collected(FULL) == collected(unfiltered) mechanically). Markers are assigned
+# centrally in tests/conftest.py from explicit tables (runtime + role).
+markers = [
+    "slow: high-cost test with low inner-loop repeat value (>= ~8 s or an expensive shared fixture); FEATURE/FULL only",
+    "golden: locked contract / metric comparison against a committed golden baseline",
+    "survey: multi-seed deterministic survey (FULL closeout)",
+    "e2e: clean pipeline integration through the service/API layer",
+    "legacy_regression: locked historical Hybrid-A* regression suite (smoke subset in pytest)",
+    "benchmark: runtime observation only, never a correctness authority",
+    "canary: representative-scenario regression detector (TABULAR-REFERENCE / WARPED-301 / WARPED-307); clean in FEATURE and FULL",
+]
 
 [tool.ruff]
 target-version = "py312"

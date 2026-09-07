@@ -12,7 +12,7 @@ import math
 import numpy as np
 import pytest
 
-from minegen.core.enums import MiningMethodType, ScenarioPreset
+from minegen.core.enums import MiningMethodType
 from minegen.core.models import RampConstraints, Scenario, TunnelProfile
 from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import DesignCostEvaluator, clearance_policy_for
@@ -39,7 +39,6 @@ from minegen.layout.search import (
 )
 from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
 from minegen.network.builder import MineNetworkBuilder
-from minegen.services.scenario_realizer import realize_scenario
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 
 from .conftest import small_scenario
@@ -1054,7 +1053,9 @@ def test_geometric_screen_is_a_necessary_condition_under_an_exact_contract(
             assert c.access_screen is not None
 
 
-def test_conservative_screen_is_a_heuristic_and_carries_no_subset_contract() -> None:
+def test_conservative_screen_is_a_heuristic_and_carries_no_subset_contract(
+    warped_301_search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
     """Closeout B: under a conservative contract the screen anchors sit at the
     COARSE stand-off while stage 4 may refine the bound and move the entry, so
     `blocked` is only a heuristic. The test pins the DECLARED authority and
@@ -1062,13 +1063,9 @@ def test_conservative_screen_is_a_heuristic_and_carries_no_subset_contract() -> 
     does NOT assert `blocked ⊆ failed` (the measurement of whether a false
     block actually occurs lives in
     `golden/phase20c1_closeout_screen_audit.json`)."""
-    sc = Scenario(
-        **realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 301, fault_count=1).model_dump()
-    )
-    world = generate_world(sc)
-    search = LayoutV2Search(sc, world)
+    # VA-01: session-shared read-only DEFAULT WARPED-301 search (tests/conftest.py)
+    search, res = warped_301_search
     assert search.policy.basis != "EXACT" and search.policy.error_bound > 0.0
-    res = search.run()
     assert res.clearance_basis == "COARSE_CONSERVATIVE"
     screened = [c for c in res.candidates if c.access_screen is not None]
     assert screened

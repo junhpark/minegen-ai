@@ -13,7 +13,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from minegen.core.enums import ScenarioPreset
 from minegen.core.models import Scenario
 from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import DesignCostEvaluator, clearance_policy_for
@@ -26,7 +25,6 @@ from minegen.layout.search import (
 from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
 from minegen.levels.models import DevelopmentKind, LevelsPayload
 from minegen.mining.methods.base import strategy_for
-from minegen.services.scenario_realizer import realize_scenario
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 from tests.conftest import small_scenario
 
@@ -34,20 +32,16 @@ REV = "rev-curved"
 
 
 @pytest.fixture(scope="module")
-def warped() -> tuple[Scenario, SyntheticWorld]:
-    sc = Scenario(
-        **realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 301, fault_count=1).model_dump()
-    )
-    return sc, generate_world(sc)
+def warped(warped_301: tuple[Scenario, SyntheticWorld]) -> tuple[Scenario, SyntheticWorld]:
+    # VA-01: session-shared read-only DEFAULT WARPED-301 world (tests/conftest.py)
+    return warped_301
 
 
 @pytest.fixture(scope="module")
 def warped_search(
-    warped: tuple[Scenario, SyntheticWorld],
+    warped_301_search: tuple[LayoutV2Search, LayoutSearchResult],
 ) -> tuple[LayoutV2Search, LayoutSearchResult]:
-    sc, world = warped
-    search = LayoutV2Search(sc, world)
-    return search, search.run()
+    return warped_301_search
 
 
 def _build_levels(

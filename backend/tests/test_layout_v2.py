@@ -93,20 +93,17 @@ def tabular_search(
 
 
 @pytest.fixture(scope="module")
-def warped() -> tuple[Scenario, SyntheticWorld]:
-    sc = Scenario(
-        **realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 301, fault_count=1).model_dump()
-    )
-    return sc, generate_world(sc)
+def warped(warped_301: tuple[Scenario, SyntheticWorld]) -> tuple[Scenario, SyntheticWorld]:
+    # VA-01: the DEFAULT WARPED-301 world is the session-shared read-only
+    # fixture (tests/conftest.py); this alias keeps the module's names
+    return warped_301
 
 
 @pytest.fixture(scope="module")
 def warped_search(
-    warped: tuple[Scenario, SyntheticWorld],
+    warped_301_search: tuple[LayoutV2Search, LayoutSearchResult],
 ) -> tuple[LayoutV2Search, LayoutSearchResult]:
-    sc, world = warped
-    search = LayoutV2Search(sc, world)
-    return search, search.run()
+    return warped_301_search
 
 
 def _context(
