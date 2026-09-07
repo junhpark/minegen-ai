@@ -199,6 +199,153 @@ class TestCurvedLevelDevelopment:
             assert (p2.failure_reason or "").startswith("MIXED_DEVELOPMENT_GEOMETRY")
 
 
+class TestInwardNormalContract:
+    """PR #24 follow-up §1 regressions: the crosscut direction is the exact
+    ± horizontal perpendicular of the offset trace's local tangent, the ore
+    side decided by bounded contains() probes; undecidable stations are
+    typed (hard failure or NO_PERPENDICULAR_ORE_SUPPORT exclusion)."""
+
+    def test_crosscuts_are_perpendicular_to_the_local_trace_tangent(
+        self, warped, warped_search, warped_levels
+    ) -> None:
+        """The plan direction of every delivered crosscut is perpendicular
+        to the offset trace's interpolated local tangent at its station.
+        Tolerance 1e-9: the direction is CONSTRUCTED as the exact
+        perpendicular of that tangent, so only float noise remains."""
+        from minegen.design.profile import required_clearance
+        from minegen.layout.families import build_footwall_track
+        from minegen.layout.levels import LevelSections, required_levels
+        from minegen.layout.sections import resolve_section_resolution
+        from minegen.levels.builder import GENERIC_BACKBONE_END_CLEARANCE
+
+        sc, world = warped
+        search, res = warped_search
+        payload, _, accesses = warped_levels
+        assert payload.status == "SUCCESS"
+        base = (
+            sc.layout.access.anchor_standoff
+            if sc.layout.access.anchor_standoff is not None
+            else sc.ramp.footwall_access_offset
+        )
+        resolution = resolve_section_resolution(
+            float(sc.layout.section_sampling_spacing), float(base)
+        )
+        levels = required_levels(
+            world.orebody,
+            sc.mining.sublevel_interval,
+            sc.design.top_mining_margin,
+            sc.design.bottom_mining_margin,
+        )
+        sections = LevelSections(
+            world.orebody, levels, float(sc.layout.section_sampling_spacing), resolution
+        )
+        track = build_footwall_track(world.orebody, sections)
+        _, policy, _ = search.candidate_policy(res, res.winner_id)
+        req = required_clearance(sc.design, sc.ramp, sc.tunnel_profile)
+        by_id = {lv.level_id: lv for lv in levels}
+        standoffs = {
+            a["levelId"]: float(a["anchor"]["standoff"])
+            for a in accesses["accesses"]
+            if a["status"] == "OK"
+        }
+        traces = {}
+        checked = 0
+        for d in payload.developments:
+            if d.kind is not DevelopmentKind.CROSSCUT:
+                continue
+            lvid = d.level_id
+            if lvid not in traces:
+                traces[lvid] = sections.offset_trace(
+                    by_id[lvid],
+                    track.w_h,
+                    standoffs[lvid],
+                    2.0 * GENERIC_BACKBONE_END_CLEARANCE,
+                    policy.signed_clearance,
+                    "SELECTED",
+                    req,
+                )
+            off = traces[lvid]
+            pts = np.asarray(d.centerline.points).reshape(-1, 3)
+            direction = pts[-1, :2] - pts[0, :2]
+            n = float(np.linalg.norm(direction))
+            assert n > 0
+            tangent = off.tangent_at(float(d.station_u))
+            assert abs(float(np.dot(direction / n, tangent))) <= 1e-9
+            checked += 1
+        assert checked > 0
+
+    def test_stations_without_perpendicular_ore_support_are_excluded_typed(
+        self, warped_levels
+    ) -> None:
+        """WARPED-301 (measured): 5 end stations sit past the local ore
+        extent — the offset level set wraps around the body's tapered ends.
+        Under the perpendicular contract they are typed-excluded from the
+        REQUIRED lattice (rule 141 precedent), fully recorded, and never
+        emitted as developments; the artifact stays SUCCESS. The removed
+        KD-tree fallback had been bending these crosscuts up to ~59 degrees
+        off perpendicular to force them through."""
+        payload, _, _ = warped_levels
+        assert payload.status == "SUCCESS"
+        excluded = {
+            lv.level_id: lv.excluded_stations
+            for lv in payload.levels
+            if lv.excluded_stations
+        }
+        flat = {(lid, e.station_index) for lid, lst in excluded.items() for e in lst}
+        assert flat == {("L03", -4), ("L03", 3), ("L03", 4), ("L15", -6), ("L16", -5)}
+        for lst in excluded.values():
+            for e in lst:
+                assert e.reason == "NO_PERPENDICULAR_ORE_SUPPORT"
+                assert e.probe_length > 0
+        emitted = {
+            (d.level_id, d.station_index)
+            for d in payload.developments
+            if d.kind is DevelopmentKind.CROSSCUT
+        }
+        assert not (flat & emitted)
+
+    def test_inward_probe_outcomes_are_typed(self) -> None:
+        from minegen.levels.builder import _inward_contact
+
+        class Slab:
+            """ore occupies x >= x_min (vertical half-space in plan)."""
+
+            def __init__(self, x_min: float) -> None:
+                self.x_min = x_min
+
+            def contains(self, points):
+                pts = np.asarray(points, dtype=np.float64)
+                return pts[:, 0] >= self.x_min
+
+        class TwoSlabs:
+            def contains(self, points):
+                pts = np.asarray(points, dtype=np.float64)
+                return np.abs(pts[:, 0]) >= 20.0
+
+        class NoOre:
+            def contains(self, points):
+                return np.zeros(np.asarray(points).shape[0], dtype=bool)
+
+        start = np.zeros(3)
+        tangent = np.array([0.0, 1.0])  # perpendiculars point +-x
+        # exactly one side -> decided, direction points at the ore, bracket tight
+        decided = _inward_contact(Slab(15.0), start, tangent, 60.0)
+        assert not isinstance(decided[0], str)
+        direction, (end, gap) = decided
+        # tangent +y makes normal = (-1, 0); ore at +x is the NEGATED normal
+        assert direction[0] > 0 and abs(direction[1]) <= 1e-12
+        assert end[0] == pytest.approx(15.0, abs=1e-6) and gap <= 1e-6
+        # ore on both sides -> typed hard code
+        both = _inward_contact(TwoSlabs(), start, tangent, 60.0)
+        assert both[0] == "INWARD_AMBIGUOUS"
+        # ore on neither side -> typed exclusion code (rule 141 precedent)
+        none = _inward_contact(NoOre(), start, tangent, 60.0)
+        assert none[0] == "NO_PERPENDICULAR_ORE_SUPPORT"
+        # station inside the ore -> typed hard code
+        inside = _inward_contact(Slab(-5.0), start, tangent, 60.0)
+        assert inside[0] == "STATION_INSIDE_ORE"
+
+
 class TestTabularUnchanged:
     def test_tabular_declares_rule_43_geometry(self) -> None:
         sc = small_scenario()

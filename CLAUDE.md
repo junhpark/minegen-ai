@@ -1551,9 +1551,17 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      entry (the entry never moves); LONGHOLE stations use the
      `stope_length + minimum_pillar` pitch on CURVED drift chainage,
      symmetric about the trace midpoint with the stope + end-pillar
-     margin inside the span; CROSSCUTS run horizontally toward the
-     nearest INSIDE occupancy cell (a contains()-verified point, so
-     termination is guaranteed and nothing nearer can be inside) with a
+     margin inside the span; CROSSCUTS run horizontally along the LOCAL
+     inward normal — the ± horizontal perpendicular of the offset trace's
+     local tangent at the station, the ore side decided by bounded
+     deterministic contains() probes. A station inside the ore or with ore
+     on BOTH perpendiculars is a typed per-station failure, never a
+     nearest-cell fallback; a station where NEITHER perpendicular finds
+     ore within the probe budget (the level set wraps around the body's
+     tapered ends) is reported and EXCLUDED from the REQUIRED lattice
+     (NO_PERPENDICULAR_ORE_SUPPORT, rule 141 precedent — recorded per
+     level, never silently dropped; a level whose stations are ALL
+     excluded fails typed). Confirmed crosscuts end with a
      contains()-bisection ore-contact terminal — the terminal is the
      OUTSIDE end of a ≤ 1e-6 m bracket (`terminalContactGap`). Every
      development passes the SAME hard validation as the TABULAR path;

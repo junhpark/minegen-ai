@@ -337,6 +337,30 @@ class TestOffsetTrace:
         assert ei.value.code == SECTION_TRACE_OFFSET_INVALID
         assert "shorter than" in ei.value.detail
 
+    def test_planning_standoff_floor_is_a_hard_gate(self):
+        """PR #24 follow-up §2: a smoothed trace that keeps the engineering
+        minimum-clearance floor but sits materially closer to the footwall
+        contact than the PLANNING stand-off fails typed — the docstring
+        contract is enforced, not just reported. Fixture: a clearance
+        measure inflated +14 m over the true plan distance, so the level
+        set at the construction stand-off lands ~14 m closer in plan than
+        intended — below the stand-off floor (20 - 2 x spacing) — while the
+        measured clearance stays far above the small engineering floor
+        (both gates are separate contracts; the engineering gate must NOT
+        be the one firing here)."""
+        ob = ArcOrebody()
+        sections = make_sections(ob)
+        geom = sections.geometry(LEVEL)
+        trace = build_footwall_trace(ob, geom, RES, np.array([0.0, 1.0]))
+
+        def inflated(pts):
+            return ob.signed_clearance(pts) + 14.0
+
+        with pytest.raises(SectionGeometryError) as ei:
+            build_offset_trace(geom, trace, RES, STANDOFF, 10.0, inflated, 5.0)
+        assert ei.value.code == SECTION_TRACE_OFFSET_INVALID
+        assert "planning stand-off floor" in ei.value.detail
+
     def test_determinism_and_cache(self):
         ob = ArcOrebody()
         a = make_sections(ob).offset_trace(

@@ -1152,9 +1152,15 @@ Pipeline per required level, candidate-independent parts cached once:
    fail closed). Drifts follow the backbone (`level_drift_gradient` along
    chainage from the never-moved entry); LONGHOLE stations use the
    `stope_length + minimum_pillar` pitch on curved chainage symmetric
-   about the trace midpoint; crosscuts run horizontally toward the
-   nearest INSIDE occupancy cell (termination guaranteed; nothing nearer
-   can be inside) with a `contains()`-bisection terminal — the OUTSIDE
+   about the trace midpoint; crosscuts run horizontally along the LOCAL
+   inward normal — the ± perpendicular of the offset trace's local
+   tangent, the ore side decided by bounded deterministic `contains()`
+   probes. A station inside the ore or with ore on both perpendiculars is
+   a typed per-station failure, never a nearest-cell fallback; a station
+   where neither perpendicular finds ore within the bounded probe is
+   reported and excluded from the required lattice
+   (`NO_PERPENDICULAR_ORE_SUPPORT`, rule 141 precedent). Confirmed
+   crosscuts end with a `contains()`-bisection terminal — the OUTSIDE
    end of a ≤ 1e-6 m bracket (`terminalContactGap`). All hard gates are
    the TABULAR path's, unchanged; `levels.json` declares
    `developmentGeometry` and the TABULAR path is bit-compatible
@@ -1191,3 +1197,23 @@ documented Phase 20C.2 heuristic-ordering limitation.
 The trace layer costs one clearance-field grid per (level, policy,
 stand-off): WARPED-301 full search 49 s → ~76–87 s under load (the
 20C.1 ≤ 20 s TABULAR target is unaffected — TABULAR builds no traces).
+
+PR #24 follow-up (crosscut inward-normal contract + stand-off hard gate).
+The delivered crosscut direction is the exact ± horizontal perpendicular
+of the offset trace's local tangent (the interim nearest-inside-occupancy-
+cell aiming was measured bending end-station crosscuts up to ~59° off
+perpendicular and was removed); the planning stand-off floor
+(`standoff − 2 × spacing`) on the smoothed trace is now a HARD typed gate
+alongside the unchanged engineering `minimum_clearance` floor. Measured
+impact: the layout catalogue, the 32-seed LAYOUT survey and the screen
+audit are bit-identical (the stand-off gate fired on zero cases/seeds —
+every delivered trace already held it); the change lives entirely in
+`levels.json`. Under the perpendicular contract 194 planned stations
+across the 19 layout-SUCCESS seeds (5 on WARPED-301) have NO
+perpendicular ore support and are typed-excluded from the required
+lattice (`NO_PERPENDICULAR_ORE_SUPPORT`, rule 141 precedent, recorded
+per level in `excludedStations`); level development stays 19/19 SUCCESS
+and total crosscut length drops accordingly (e.g. WARPED-301
+7 905 → 7 669 m). Some exclusion clusters sit MID-level (e.g. seed 304
+L14, seed 327 L02) where the offset arc wraps far from the local ore —
+a recorded Phase 20C.2B/20C.3 station-lattice question, not tuned here.

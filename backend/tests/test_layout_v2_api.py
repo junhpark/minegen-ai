@@ -460,6 +460,20 @@ def test_warped_vein_development_mesh_sweeps_accesses_drifts_and_crosscuts(
     assert dev["byKind"]["CROSSCUT"]["developmentCount"] > 0
     assert {p["name"] for p in dev["primitives"]} >= {"LEVEL_ACCESS", "DRIFT", "CROSSCUT"}
     assert client.get(f"{base}/development-mesh/mesh.glb").status_code == 200
+    # PR #24 follow-up §4: the 20C.2A acceptance chain ends at the NETWORK.
+    # The generic builder must make CROSSCUT terminals STOPE_ACCESS anchors
+    # and reference levels.json geometry — pinned here so it cannot drift.
+    r = client.post(f"/api/v1/scenarios/{sid}/network/generate")
+    assert r.status_code == 200, r.text
+    net = r.json()
+    assert net["status"] == "SUCCESS", net.get("failureReason")
+    assert net["validation"]["connected"] is True
+    assert net["validation"]["synchronized"] is True
+    assert net["metrics"]["stopeAccessCount"] > 0
+    assert net["metrics"]["crosscutEdgeCount"] > 0
+    crosscut_edges = [e for e in net["edges"] if e["type"] == "CROSSCUT"]
+    assert crosscut_edges
+    assert all(e["geometryRef"]["artifact"] == "levels.json" for e in crosscut_edges)
 
 
 def test_warped_vein_levels_succeed_on_the_curved_backbone(client: TestClient) -> None:

@@ -38,7 +38,6 @@ from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
-from scipy.spatial import cKDTree
 
 from minegen.core.enums import MiningMethodType
 from minegen.core.models import Scenario
@@ -57,6 +56,7 @@ from minegen.levels.models import (
     Development,
     DevelopmentKind,
     DevelopmentReport,
+    ExcludedStation,
     LevelsMetrics,
     LevelsPayload,
     LevelSummary,
@@ -74,6 +74,12 @@ SAMPLE_SPACING = 2.0  # m — polyline sampling (endpoints always exact)
 #: parameter (rule 159). Bounded by a quarter of the strike span so a tiny
 #: body still gets a positive-length backbone.
 GENERIC_BACKBONE_END_CLEARANCE = 5.0
+#: bounded crosscut inward-normal probe (rule 180): each perpendicular of the
+#: station's local trace tangent is probed to CROSSCUT_PROBE_FACTOR × the
+#: trace's own contact distance at that chainage (floored by the stand-off).
+#: The factor bounds the deterministic contains() march; it is a probe
+#: budget, never an engineering distance.
+CROSSCUT_PROBE_FACTOR = 2.0
 CONSUMABLE_SMOOTHED_STATUSES = ("SUCCESS", "SUCCESS_WITH_FALLBACK")
 
 
@@ -147,6 +153,72 @@ def _polyline_stats(points: FloatArray) -> tuple[float, float, float]:
     mask = dh > 1e-9
     max_abs = float(np.max(np.abs(dz[mask] / dh[mask]))) if bool(mask.any()) else 0.0
     return length_3d, mean_signed, max_abs
+
+
+def _ray_contact(
+    orebody: Orebody, start: FloatArray, direction: FloatArray, max_len: float
+) -> tuple[FloatArray, float] | None:
+    """First orebody contact along a horizontal ray: coarse march (0.5 m)
+    to the first ``contains`` hit, then bisection to a ≤ 1e-6 m bracket.
+    The returned terminal is the OUTSIDE end of the bracket (never inside
+    the ore); the bracket width is returned as the contact gap."""
+    step = 0.5
+    n = max(2, math.ceil(max_len / step) + 1)
+    ts = np.linspace(0.0, max_len, n)
+    pts = start[None, :] + ts[:, None] * direction[None, :]
+    inside = orebody.contains(pts)
+    if not bool(inside.any()):
+        return None
+    first = int(np.argmax(inside))
+    if first == 0:  # the drift itself sits inside the ore — a real defect
+        return start.copy(), 0.0
+    t_out, t_in = float(ts[first - 1]), float(ts[first])
+    for _ in range(40):
+        t_mid = 0.5 * (t_out + t_in)
+        q = start + t_mid * direction
+        if bool(orebody.contains(q[None, :])[0]):
+            t_in = t_mid
+        else:
+            t_out = t_mid
+    return start + t_out * direction, t_in - t_out
+
+
+#: outcome of the rule 180 inward probe: either ``(unit direction, (terminal,
+#: gap))`` for a decided side, or ``(code, message)`` — codes
+#: STATION_INSIDE_ORE / INWARD_AMBIGUOUS (per-station HARD failures) and
+#: NO_PERPENDICULAR_ORE_SUPPORT (rule 141 precedent: the station is reported
+#: and excluded from the REQUIRED lattice, never silently dropped).
+_InwardResult = tuple["FloatArray", tuple["FloatArray", float]] | tuple[str, str]
+
+
+def _inward_contact(
+    orebody: Orebody, start: FloatArray, tangent: FloatArray, probe_len: float
+) -> _InwardResult:
+    """Rule 180 crosscut inward decision (PR #24 follow-up §1): probe BOTH
+    horizontal perpendiculars of the local trace ``tangent`` with the same
+    bounded ``contains()`` ray march that terminates the crosscut. Returns
+    ``(unit direction, (terminal, gap))`` when exactly one side contacts
+    ore; otherwise a typed ``(code, message)`` — a station inside the ore,
+    ore on both perpendicular sides, or ore on neither. Never a
+    nearest-cell fallback."""
+    normal = np.array([-float(tangent[1]), float(tangent[0]), 0.0])
+    if bool(orebody.contains(start[None, :])[0]):
+        return ("STATION_INSIDE_ORE", "station lies inside the orebody footprint")
+    hit_pos = _ray_contact(orebody, start, normal, probe_len)
+    hit_neg = _ray_contact(orebody, start, -normal, probe_len)
+    if hit_pos is not None and hit_neg is not None:
+        return (
+            "INWARD_AMBIGUOUS",
+            f"inward normal ambiguous: ore contact on both perpendicular "
+            f"sides of the local tangent within {probe_len:.1f} m",
+        )
+    if hit_pos is None and hit_neg is None:
+        return (
+            "NO_PERPENDICULAR_ORE_SUPPORT",
+            f"no orebody contact within {probe_len:.1f} m along either "
+            "perpendicular of the local tangent",
+        )
+    return (normal, hit_pos) if hit_pos is not None else (-normal, hit_neg)  # type: ignore[return-value]
 
 
 @dataclass
@@ -540,29 +612,7 @@ class LevelDevelopmentBuilder:
     def _ray_contact(
         self, start: FloatArray, direction: FloatArray, max_len: float
     ) -> tuple[FloatArray, float] | None:
-        """First orebody contact along a horizontal ray: coarse march (0.5 m)
-        to the first ``contains`` hit, then bisection to a ≤ 1e-6 m bracket.
-        The returned terminal is the OUTSIDE end of the bracket (never inside
-        the ore); the bracket width is returned as the contact gap."""
-        step = 0.5
-        n = max(2, math.ceil(max_len / step) + 1)
-        ts = np.linspace(0.0, max_len, n)
-        pts = start[None, :] + ts[:, None] * direction[None, :]
-        inside = self.orebody.contains(pts)
-        if not bool(inside.any()):
-            return None
-        first = int(np.argmax(inside))
-        if first == 0:  # the drift itself sits inside the ore — a real defect
-            return start.copy(), 0.0
-        t_out, t_in = float(ts[first - 1]), float(ts[first])
-        for _ in range(40):
-            t_mid = 0.5 * (t_out + t_in)
-            q = start + t_mid * direction
-            if bool(self.orebody.contains(q[None, :])[0]):
-                t_in = t_mid
-            else:
-                t_out = t_mid
-        return start + t_out * direction, t_in - t_out
+        return _ray_contact(self.orebody, start, direction, max_len)
 
     def _build_curved(
         self,
@@ -586,8 +636,15 @@ class LevelDevelopmentBuilder:
           the stope + end-pillar margin inside the trace span (rule 72
           analogue — an access-layout proxy, not stope design).
         * CROSSCUT: horizontal from each station along the LOCAL inward
-          normal (station point → its nearest ore contact), terminated at
-          the first ``contains`` contact refined by bisection to ≤ 1e-6 m.
+          normal — the ± perpendicular of the offset trace's local tangent,
+          the ore side decided by bounded ``contains()`` probes — terminated
+          at the first ``contains`` contact refined by bisection to ≤ 1e-6 m.
+          A station inside the ore or with ore on BOTH perpendiculars is a
+          typed per-station failure, never a fallback; a station where
+          NEITHER perpendicular finds ore within the probe budget is
+          reported and EXCLUDED from the required lattice
+          (NO_PERPENDICULAR_ORE_SUPPORT, rule 141 precedent), and a level
+          whose planned stations are ALL excluded fails typed.
 
         Every development passes the same hard validation as the TABULAR
         path (centerline context, excavation envelope); nothing is relaxed
@@ -669,29 +726,59 @@ class LevelDevelopmentBuilder:
             span = off.total_length
             clearance = min(GENERIC_BACKBONE_END_CLEARANCE, 0.25 * span)
             mid = 0.5 * span
-            stations: list[float] = []
+            planned: list[float] = []
             if longhole:
                 k_max = math.floor((mid - station_margin) / pitch + 1e-9)
-                stations = [mid + k * pitch for k in range(-k_max, k_max + 1)] if k_max >= 0 else []
-                if not stations:
+                planned = [mid + k * pitch for k in range(-k_max, k_max + 1)] if k_max >= 0 else []
+                if not planned:
                     return _failed(
                         source_revision,
                         f"offset trace span {span:.1f} m at level {level_id} cannot "
                         "accommodate one planned stope-access station "
                         f"(span/2 < stope_length/2 + minimum_pillar = {station_margin:g} m)",
                     )
-            breakpoints = sorted(stations) if longhole else [clearance, span - clearance]
+            # rule 180 station confirmation (rule 141 precedent, PR #24
+            # follow-up): a planned station where NEITHER horizontal
+            # perpendicular of the local trace tangent finds ore within the
+            # bounded probe has no perpendicular crosscut — the offset level
+            # set wraps around the body's tapered ends, so end stations can
+            # sit past the local ore extent. Such a station is reported and
+            # EXCLUDED from the REQUIRED lattice (NO_PERPENDICULAR_ORE_SUPPORT),
+            # never silently dropped. Ambiguous / inside-ore stations remain
+            # per-station HARD failures in the crosscut loop below.
+            required: list[tuple[float, int, FloatArray, _InwardResult]] = []
+            excluded: list[ExcludedStation] = []
+            for c_s in planned:
+                k = round((c_s - mid) / pitch)
+                start = self._curved_drift_points(off, c_s, c_s, c_entry, float(entry[2]), g)[0]
+                tangent = off.tangent_at(c_s)
+                # bounded deterministic probe: the trace's own contact
+                # distance at this chainage sets the scale (≈ the stand-off)
+                d_ref = float(np.interp(c_s, off.chainage, off.ore_contact_distance))
+                probe_len = max(CROSSCUT_PROBE_FACTOR * d_ref, standoff)
+                decided = _inward_contact(self.orebody, start, tangent, probe_len)
+                if isinstance(decided[0], str) and decided[0] == "NO_PERPENDICULAR_ORE_SUPPORT":
+                    excluded.append(
+                        ExcludedStation(
+                            station_index=k,
+                            station_u=c_s,
+                            reason="NO_PERPENDICULAR_ORE_SUPPORT",
+                            probe_length=probe_len,
+                        )
+                    )
+                    continue
+                required.append((c_s, k, start, decided))
+            if longhole and planned and not required:
+                return _failed(
+                    source_revision,
+                    f"level {level_id}: every planned crosscut station lacks "
+                    f"perpendicular ore support ({len(excluded)} stations excluded)",
+                )
+            station_chainages = [c for c, _, _, _ in required]
+            breakpoints = sorted(station_chainages) if longhole else [clearance, span - clearance]
             if not any(abs(c_entry - s) <= WELD_TOLERANCE for s in breakpoints):
                 breakpoints = sorted([*breakpoints, c_entry])
             level_valid = True
-            # crosscut aiming: the nearest INSIDE occupancy cell of the
-            # dominant component — a contains()-verified point, so the ray
-            # is guaranteed to terminate at or before it, and nothing
-            # nearer can be inside (it is the nearest inside point)
-            geom = sections.geometry(lv)
-            gi, gj = np.nonzero(geom.selected_mask)
-            cells = np.column_stack([geom.x0 + gi * geom.spacing, geom.y0 + gj * geom.spacing])
-            cell_tree = cKDTree(cells)
 
             # -- drift pieces along the trace (rule 73 split) --------------- #
             piece_count = 0
@@ -736,33 +823,22 @@ class LevelDevelopmentBuilder:
                 piece_count += 1
 
             # -- crosscuts: local inward normal to the ore contact ---------- #
+            # Approved rule 180 contract (PR #24 follow-up §1): the crosscut
+            # direction is the ± horizontal PERPENDICULAR of the offset
+            # trace's LOCAL TANGENT at the station; the ore side is decided
+            # by contains() probes (the same ray+bisection that terminates
+            # the crosscut). A station inside the ore or with ore on BOTH
+            # perpendicular sides is a typed per-station failure — never a
+            # nearest-cell fallback.
             crosscut_count = 0
-            for c_s in stations:
-                k = round((c_s - mid) / pitch)
-                start = self._curved_drift_points(off, c_s, c_s, c_entry, float(entry[2]), g)[0]
-                d_target, ci = cell_tree.query(start[:2])
-                inward = cells[int(ci)] - start[:2]
-                h = float(np.linalg.norm(inward))
+            for c_s, k, start, decided in required:
                 reason: str | None = None
-                if h < 1e-9:
-                    reason = "station lies inside the orebody footprint"
-                    direction = np.zeros(3)
-                else:
-                    direction = np.array([inward[0] / h, inward[1] / h, 0.0])
-                # the march samples include max_len itself (linspace
-                # endpoint) = the verified-inside cell center, so a hit is
-                # guaranteed — and nothing nearer can be inside (it is the
-                # nearest inside point to the station)
-                max_len = float(d_target)
-                hit = self._ray_contact(start, direction, max_len) if reason is None else None
-                if reason is None and hit is None:
-                    reason = (
-                        f"no orebody contact within {max_len:.1f} m along the local inward normal"
-                    )
-                if hit is not None:
-                    end, gap = hit
-                else:
+                direction = np.zeros(3)
+                if isinstance(decided[0], str):
+                    reason = str(decided[1])
                     end, gap = start + 1.0 * direction, math.inf
+                else:
+                    direction, (end, gap) = decided
                 pts = _sample_line(start, end)
                 inside_pre = self.orebody.contains(pts[:-1])
                 interior = int(np.sum(inside_pre))
@@ -821,6 +897,7 @@ class LevelDevelopmentBuilder:
                     drift_piece_count=piece_count,
                     crosscut_count=crosscut_count,
                     valid=level_valid,
+                    excluded_stations=excluded,
                 )
             )
 

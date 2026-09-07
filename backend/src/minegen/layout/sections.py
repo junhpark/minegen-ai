@@ -265,6 +265,28 @@ class LevelSectionGeometry:
             "gridShape": [self.shape[0], self.shape[1]],
             "componentCount": self.component_count,
             "selectedComponentId": self.selected_component_id,
+            # explicit contract fields (PR #24 follow-up §3) — derived from
+            # the existing components list, never recomputed
+            "selectedAreaProxy": next(
+                (
+                    c.area_proxy
+                    for c in self.components
+                    if c.component_id == self.selected_component_id
+                ),
+                None,
+            ),
+            "ignoredComponentIds": [
+                c.component_id
+                for c in self.components
+                if c.component_id != self.selected_component_id
+            ],
+            "ignoredAreaProxy": float(
+                sum(
+                    c.area_proxy
+                    for c in self.components
+                    if c.component_id != self.selected_component_id
+                )
+            ),
             "components": [c.payload() for c in self.components],
             "outerContourVertexCount": int(self.outer_contour_xy.shape[0]),
             "loopCount": self.loop_count,
@@ -701,6 +723,15 @@ class OffsetTrace:
     def point_at(self, chainage: float) -> FloatArray:
         return np.asarray(_interp_along(self.points, self.chainage, np.array([chainage]))[0])
 
+    def tangent_at(self, chainage: float) -> FloatArray:
+        """Unit local tangent (2-D plan) at an arc-length chainage —
+        linear interpolation of the per-vertex windowed tangents,
+        renormalized. The crosscut inward-normal contract (rule 180) takes
+        its ± perpendicular from this tangent."""
+        t = np.asarray(_interp_along(self.tangents, self.chainage, np.array([chainage]))[0])
+        n = float(np.linalg.norm(t))
+        return t / n if n > 1e-12 else t
+
     def payload(self) -> dict[str, Any]:
         return {
             "levelId": self.level_id,
@@ -896,6 +927,23 @@ def build_offset_trace(
     trace_tree = cKDTree(trace.contact_points[:, :2])
     contact_dist, contact_idx = trace_tree.query(run_pts)
     contact_dist = np.asarray(contact_dist, dtype=np.float64)
+    # planning stand-off HARD validation (PR #24 follow-up §2): the docstring
+    # contract — no smoothed vertex materially closer to the footwall contact
+    # than the stand-off — is enforced, not just reported. This is a SEPARATE
+    # contract from the engineering ``minimum_clearance`` floor above (both
+    # gates stay): a trace that keeps the engineering floor but misses the
+    # planning stand-off fails typed instead of passing silently.
+    contact_floor = standoff - OFFSET_CONTACT_TOLERANCE_SPACINGS * spacing
+    if float(contact_dist.min()) < contact_floor - 1e-9:
+        raise SectionGeometryError(
+            SECTION_TRACE_OFFSET_INVALID,
+            f"level {geometry.level_id}: smoothed offset trace approaches the "
+            f"footwall contact to {float(contact_dist.min()):.2f} m — below the "
+            f"planning stand-off floor {contact_floor:.2f} m (stand-off "
+            f"{standoff:.1f} m - {OFFSET_CONTACT_TOLERANCE_SPACINGS:g} x "
+            f"{spacing:g} m spacing)",
+            {**fail_diag, "minContactDistance": float(contact_dist.min())},
+        )
     seg = np.linalg.norm(np.diff(run_pts, axis=0), axis=1)
     chain = np.concatenate([[0.0], np.cumsum(seg)])
     tangents = _windowed_tangents(run_pts, 0.5 * resolution.base_standoff, closed=False)

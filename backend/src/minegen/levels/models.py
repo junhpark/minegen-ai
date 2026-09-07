@@ -62,6 +62,20 @@ class Development(ApiModel):
     report: DevelopmentReport
 
 
+class ExcludedStation(ApiModel):
+    """A planned crosscut station excluded from the REQUIRED lattice
+    (rule 180, rule 141 precedent): neither horizontal perpendicular of the
+    local trace tangent finds ore within the bounded probe — the offset
+    level set wraps around the body's tapered ends, so end stations can sit
+    past the local ore extent. Reported explicitly, never silently
+    dropped; ``probe_length`` is the bounded probe used (m)."""
+
+    station_index: int
+    station_u: float
+    reason: Literal["NO_PERPENDICULAR_ORE_SUPPORT"]
+    probe_length: float
+
+
 class LevelSummary(ApiModel):
     level_id: str
     candidate_id: str
@@ -72,6 +86,9 @@ class LevelSummary(ApiModel):
     drift_piece_count: int
     crosscut_count: int
     valid: bool
+    #: rule 180 station confirmation (curved backbones only; empty for
+    #: TABULAR_RULE_43): planned stations excluded from the required lattice
+    excluded_stations: list[ExcludedStation] = []
 
 
 class LevelsMetrics(ApiModel):

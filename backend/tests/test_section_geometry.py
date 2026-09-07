@@ -173,6 +173,12 @@ class TestMultiComponent:
         assert int(g.occupancy.sum()) == selected.sample_count + ignored.sample_count
         # the outer contour belongs to the dominant component only
         assert abs(shoelace(g.outer_contour_xy)) == pytest.approx(math.pi * 30.0**2, rel=0.05)
+        # PR #24 follow-up §3: the explicit contract fields are derived from
+        # the same components list — no recomputation, no information loss
+        payload = g.payload()
+        assert payload["selectedAreaProxy"] == selected.area_proxy
+        assert payload["ignoredComponentIds"] == [ignored.component_id]
+        assert payload["ignoredAreaProxy"] == pytest.approx(ignored.area_proxy)
         assert np.all(g.outer_contour_xy[:, 0] < 60.0)
 
     def test_tie_break_centroid_x_then_y(self):
