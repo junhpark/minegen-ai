@@ -158,6 +158,24 @@ Every phase must pass all of these before it is considered complete:
    network → 4D unchanged; the warped-vein mesh (≈ 10–25 k vertices) orbits
    smoothly in the browser.
 
+## Phase 20C.2A manual acceptance (curved WARPED level development)
+
+1. Randomized · irregular warped vein (seed 301) → Generate world →
+   Generate candidates → Activate the winner.
+2. **Generate level development** → the panel reads `SUCCESS`,
+   `entry source LEVEL_ACCESS`; every level is valid. The drift
+   centerlines visibly FOLLOW the warped footwall in plan (different
+   local headings along one level — not a single straight axis), and
+   crosscuts leave the drift toward the ore with per-station headings.
+3. **Generate development mesh** → SUCCESS with LEVEL_ACCESS, DRIFT and
+   CROSSCUT primitives; no ring-turn failures; drift tubes are smooth
+   (no visible kinks at the ring scale).
+4. Network → the drifts split at stations, CROSSCUT terminals are
+   STOPE_ACCESS anchors; **stopes stay the typed Phase 09 TABULAR
+   boundary** (that failure IS the correct result).
+5. TABULAR baseline unchanged: repeat step 2 on the Baseline scenario —
+   levels report `TABULAR_RULE_43` and the geometry matches pre-20C.2A.
+
 ## Phase 20B closeout v3 manual acceptance (preferred access, meshes, UX)
 
 Scenario A — TABULAR + LONGHOLE
@@ -202,11 +220,12 @@ Scenario B — WARPED_VEIN
    direct reach is exceeded (the reach screen is a heuristic). A
    NO_FEASIBLE_CANDIDATE result names the failure stage
    (RAMP_GEOMETRY / STAGE2 / SHORTLIST / ACCESS_PLANNER / CLEARANCE).
-2. Activate → Generate level development reports the typed implicit-body
-   boundary IN THE PANEL (`FAILED` ·
-   `LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY`, not an HTTP error);
-   **Generate development mesh** still sweeps the access branches
-   (accesses only).
+2. Activate → Generate level development now SUCCEEDS on the curved
+   section-trace backbone (Phase 20C.2A; the panel reports `SUCCESS`,
+   `developmentGeometry SECTION_FOOTWALL_OFFSET_TRACE` — the old typed
+   `LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY` boundary is gone
+   from this path); **Generate development mesh** sweeps the access
+   branches AND the curved drifts / crosscuts.
 3. Inspect 2–3 of the long level accesses, especially the ~70 m-class
    branches: each must read as a reasonable access drive from the turnout to
    the level entry, not as wandering or a loop. Record the junction
@@ -250,8 +269,10 @@ Scenario 2 — WARPED_VEIN
 1. Randomized · irregular warped vein → Generate world → Generate
    candidates → Select: branches follow the per-level numerical sections
    (different headings per level), the clearance label stays
-   "CONSERVATIVE (−… m)". Levels / tunnel still answer the typed
-   implicit-orebody boundary.
+   "CONSERVATIVE (−… m)". Since Phase 20C.2A, levels SUCCEED along the
+   curved section-trace backbone (drifts follow the local footwall;
+   crosscuts run to contains()-bisection ore contacts); stopes stay the
+   typed Phase 09 TABULAR boundary.
 
 Scenario 3 — CUT_AND_FILL
 

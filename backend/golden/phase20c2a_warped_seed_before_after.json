@@ -1,0 +1,2576 @@
+{
+  "baselineLabel": "20c1c-warped-seeds",
+  "currentLabel": "phase20c2a_warped_seed_survey",
+  "label": "phase20c2a_warped_seed_before_after",
+  "layout": {
+    "changedSeeds": [
+      {
+        "diffs": {
+          "winnerId": {
+            "after": "SPIRAL-n1-CW-e+0-g0.120",
+            "before": "SPIRAL-n1-CCW-e+0-g0.120"
+          }
+        },
+        "seed": 301
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 9,
+            "before": 6
+          },
+          "bestConservativeClearance": {
+            "after": 24.922554,
+            "before": 23.472236
+          }
+        },
+        "seed": 303
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 12,
+            "before": 11
+          },
+          "bestConservativeClearance": {
+            "after": 49.915904,
+            "before": 43.910125
+          },
+          "detailedFeasibleCount": {
+            "after": 6,
+            "before": 0
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": "INSUFFICIENT_RAMP_PILLAR"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 12,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 304
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 47.148086,
+            "before": 44.117594
+          },
+          "detailedFeasibleCount": {
+            "after": 5,
+            "before": 2
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": "SPIRAL"
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.100",
+            "before": "SPIRAL-n1-CW-e+0-g0.100"
+          }
+        },
+        "seed": 305
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 6,
+            "before": 7
+          },
+          "bestConservativeClearance": {
+            "after": 24.914873,
+            "before": 25.497859
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": "INSUFFICIENT_RAMP_PILLAR"
+          }
+        },
+        "seed": 306
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 4,
+            "before": 1
+          }
+        },
+        "seed": 307
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 6,
+            "before": 3
+          },
+          "bestConservativeClearance": {
+            "after": 30.092288,
+            "before": 31.369481
+          }
+        },
+        "seed": 308
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 6,
+            "before": 4
+          },
+          "bestConservativeClearance": {
+            "after": 42.088629,
+            "before": 37.748843
+          },
+          "dominantLevelAccessFailure": {
+            "after": "INSUFFICIENT_RAMP_PILLAR",
+            "before": "GRADE_LIMIT"
+          }
+        },
+        "seed": 309
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 10,
+            "before": 7
+          },
+          "bestConservativeClearance": {
+            "after": 50.61707,
+            "before": 49.085265
+          },
+          "detailedFeasibleCount": {
+            "after": 5,
+            "before": 0
+          },
+          "dominantFailure": {
+            "after": "DETAILED:ABOVE_TERRAIN",
+            "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE"
+          },
+          "dominantLevelAccessFailure": {
+            "after": "TURNOUT_NOT_STRAIGHT",
+            "before": "GRADE_LIMIT"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 10,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 310
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 12,
+            "before": 11
+          },
+          "bestConservativeClearance": {
+            "after": 43.480633,
+            "before": 42.647177
+          },
+          "detailedFeasibleCount": {
+            "after": 9,
+            "before": 0
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 12,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 311
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 10,
+            "before": 9
+          },
+          "bestConservativeClearance": {
+            "after": 26.111513,
+            "before": 33.971575
+          },
+          "dominantLevelAccessFailure": {
+            "after": "INSUFFICIENT_RAMP_PILLAR",
+            "before": "GRADE_LIMIT"
+          }
+        },
+        "seed": 312
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 8,
+            "before": 4
+          },
+          "bestConservativeClearance": {
+            "after": 50.507307,
+            "before": 50.155311
+          },
+          "detailedFeasibleCount": {
+            "after": 1,
+            "before": 0
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 8,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k2-p+20-CW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 313
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 11,
+            "before": 4
+          },
+          "detailedFeasibleCount": {
+            "after": 5,
+            "before": 0
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 11,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 314
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 8,
+            "before": 6
+          },
+          "bestConservativeClearance": {
+            "after": 56.186142,
+            "before": 49.000602
+          },
+          "detailedFeasibleCount": {
+            "after": 7,
+            "before": 0
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 8,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.100",
+            "before": null
+          }
+        },
+        "seed": 315
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 7,
+            "before": 4
+          },
+          "bestConservativeClearance": {
+            "after": 25.100515,
+            "before": 26.203341
+          }
+        },
+        "seed": 316
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 40.382484,
+            "before": 26.602942
+          },
+          "detailedFeasibleCount": {
+            "after": 2,
+            "before": 3
+          }
+        },
+        "seed": 317
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 31.77602,
+            "before": 24.000647
+          },
+          "detailedFeasibleCount": {
+            "after": 3,
+            "before": 11
+          },
+          "dominantFailure": {
+            "after": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+            "before": "DETAILED:OREBODY_CLEARANCE"
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.120",
+            "before": "SWITCHBACK-k1-p+0-CCW-g0.100"
+          }
+        },
+        "seed": 318
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 11,
+            "before": 14
+          },
+          "bestConservativeClearance": {
+            "after": 22.530718,
+            "before": 22.728009
+          },
+          "detailedFeasibleCount": {
+            "after": 0,
+            "before": 9
+          },
+          "dominantFailure": {
+            "after": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+            "before": "DETAILED:ABOVE_TERRAIN"
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": null
+          },
+          "status": {
+            "after": "NO_FEASIBLE_CANDIDATE",
+            "before": "SUCCESS"
+          },
+          "winnerAccessibleLevels": {
+            "after": null,
+            "before": 14
+          },
+          "winnerFamily": {
+            "after": null,
+            "before": "SWITCHBACK"
+          },
+          "winnerId": {
+            "after": null,
+            "before": "SWITCHBACK-k1-p+0-CCW-g0.120"
+          }
+        },
+        "seed": 319
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 26.469245,
+            "before": 26.401672
+          }
+        },
+        "seed": 320
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 7,
+            "before": 2
+          },
+          "bestConservativeClearance": {
+            "after": 92.585243,
+            "before": 85.129328
+          },
+          "detailedFeasibleCount": {
+            "after": 11,
+            "before": 0
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": "INSUFFICIENT_RAMP_PILLAR"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 7,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 322
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 13,
+            "before": 1
+          },
+          "bestConservativeClearance": {
+            "after": 42.95704,
+            "before": 40.743323
+          },
+          "detailedFeasibleCount": {
+            "after": 2,
+            "before": 0
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 13,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k2-p+20-CCW-g0.100",
+            "before": null
+          }
+        },
+        "seed": 323
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 4,
+            "before": 0
+          },
+          "bestConservativeClearance": {
+            "after": 27.324053,
+            "before": 27.410139
+          },
+          "dominantFailure": {
+            "after": "DETAILED:ABOVE_TERRAIN",
+            "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE"
+          }
+        },
+        "seed": 324
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 11,
+            "before": 10
+          },
+          "bestConservativeClearance": {
+            "after": 42.481018,
+            "before": 32.920489
+          },
+          "detailedFeasibleCount": {
+            "after": 5,
+            "before": 0
+          },
+          "dominantLevelAccessFailure": {
+            "after": "INSUFFICIENT_RAMP_PILLAR",
+            "before": "GRADE_LIMIT"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 11,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 325
+      },
+      {
+        "diffs": {
+          "detailedFeasibleCount": {
+            "after": 1,
+            "before": 10
+          },
+          "dominantFailure": {
+            "after": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+            "before": "DETAILED:OREBODY_CLEARANCE"
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": "SPIRAL"
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-s50-g0.100",
+            "before": "SPIRAL-n1-CCW-e+0-g0.120"
+          }
+        },
+        "seed": 326
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 8,
+            "before": 7
+          },
+          "bestConservativeClearance": {
+            "after": 99.823245,
+            "before": 79.597865
+          },
+          "detailedFeasibleCount": {
+            "after": 10,
+            "before": 0
+          },
+          "dominantFailure": {
+            "after": "DETAILED:OREBODY_CLEARANCE",
+            "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE"
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": "INSUFFICIENT_RAMP_PILLAR"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 8,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 327
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 10,
+            "before": 11
+          },
+          "bestConservativeClearance": {
+            "after": 26.932742,
+            "before": 25.112411
+          },
+          "detailedFeasibleCount": {
+            "after": 0,
+            "before": 12
+          },
+          "dominantFailure": {
+            "after": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+            "before": "CONSTRUCT:LEG_TOO_SHORT"
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": null
+          },
+          "status": {
+            "after": "NO_FEASIBLE_CANDIDATE",
+            "before": "SUCCESS"
+          },
+          "winnerAccessibleLevels": {
+            "after": null,
+            "before": 11
+          },
+          "winnerFamily": {
+            "after": null,
+            "before": "SPIRAL"
+          },
+          "winnerId": {
+            "after": null,
+            "before": "SPIRAL-n1-CCW-e+0-g0.120"
+          }
+        },
+        "seed": 328
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 28.845011,
+            "before": 23.556434
+          },
+          "detailedFeasibleCount": {
+            "after": 4,
+            "before": 10
+          },
+          "dominantFailure": {
+            "after": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+            "before": "DETAILED:OREBODY_CLEARANCE"
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": "SPIRAL"
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CW-g0.120",
+            "before": "SPIRAL-n1-CW-e+0-g0.120"
+          }
+        },
+        "seed": 329
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 14,
+            "before": 12
+          },
+          "bestConservativeClearance": {
+            "after": 43.908002,
+            "before": 33.017303
+          },
+          "detailedFeasibleCount": {
+            "after": 10,
+            "before": 0
+          },
+          "dominantFailure": {
+            "after": "DETAILED:OREBODY_CLEARANCE",
+            "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE"
+          },
+          "dominantLevelAccessFailure": {
+            "after": null,
+            "before": "GRADE_LIMIT"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 14,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 330
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 8,
+            "before": 0
+          },
+          "bestConservativeClearance": {
+            "after": 44.352732,
+            "before": 35.750289
+          },
+          "detailedFeasibleCount": {
+            "after": 6,
+            "before": 0
+          },
+          "dominantFailure": {
+            "after": "DETAILED:OREBODY_CLEARANCE",
+            "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 8,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 331
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 28.680823,
+            "before": 30.882797
+          },
+          "detailedFeasibleCount": {
+            "after": 2,
+            "before": 11
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": "SPIRAL"
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CW-g0.100",
+            "before": "SPIRAL-n1-CW-e+0-g0.100"
+          }
+        },
+        "seed": 332
+      }
+    ],
+    "dominantFailureHistogramAfter": {
+      "DETAILED:ABOVE_TERRAIN": 5,
+      "DETAILED:LEVEL_ACCESS_INFEASIBLE": 8
+    },
+    "dominantFailureHistogramBefore": {
+      "DETAILED:ABOVE_TERRAIN": 5,
+      "DETAILED:LEVEL_ACCESS_INFEASIBLE": 18
+    },
+    "identicalSeeds": 2,
+    "levelAccessFailureReasonsAfter": {
+      "CONNECTOR_UNAVAILABLE": 66,
+      "GRADE_LIMIT": 350,
+      "INSUFFICIENT_RAMP_PILLAR": 96,
+      "TURNOUT_NOT_STRAIGHT": 77
+    },
+    "levelAccessFailureReasonsBefore": {
+      "CONNECTOR_UNAVAILABLE": 7,
+      "GRADE_LIMIT": 695,
+      "INSUFFICIENT_RAMP_PILLAR": 256,
+      "JUNCTION_SPACING_CONFLICT": 3,
+      "OREBODY_CLEARANCE": 55,
+      "TURNOUT_NOT_STRAIGHT": 84
+    },
+    "runtimeNote": "wall-clock only; the phase20c2a survey ran concurrently with the 22-case legacy golden re-run on the same machine",
+    "runtimeSecondsAfter": 1803.7,
+    "runtimeSecondsBefore": 707.0,
+    "statusFlips": {
+      "note": "the two SUCCESS -> NO_FEASIBLE_CANDIDATE seeds (319, 328) lose levels the PCA-plane anchor could reach: the curved section-trace anchor sits on the ACTUAL local footwall geometry and on those seeds some entries become unreachable for the one-turn CS connector (GRADE_LIMIT / CONNECTOR_UNAVAILABLE). Reported, not tuned around; no gate or threshold was changed",
+      "toNoFeasible": [
+        319,
+        328
+      ],
+      "toSuccess": [
+        304,
+        310,
+        311,
+        313,
+        314,
+        315,
+        322,
+        323,
+        325,
+        327,
+        330,
+        331
+      ]
+    },
+    "successCountAfter": 19,
+    "successCountBefore": 9
+  },
+  "levelDevelopment": {
+    "beforeNote": "pre-20C.2A every WARPED_VEIN levels request answered the typed UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT boundary; 0 is by construction, not a measured regression baseline",
+    "developmentGeometry": [
+      "SECTION_FOOTWALL_OFFSET_TRACE"
+    ],
+    "layoutSuccessCount": 19,
+    "maxTerminalContactGap": 4.547473508864641e-13,
+    "rows": [
+      {
+        "accessCount": 14,
+        "crosscutCount": 187,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 187,
+        "excludedStationCount": 5,
+        "excludedStations": [
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 3
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L16",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 116.3,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 301,
+        "totalCrosscutLengthM": 7669.3,
+        "totalDriftLengthM": 6055.0,
+        "winnerId": "SPIRAL-n1-CW-e+0-g0.120"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 302
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 303
+      },
+      {
+        "accessCount": 12,
+        "crosscutCount": 158,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 158,
+        "excludedStationCount": 20,
+        "excludedStations": [
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 1
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 2
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 3
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 6
+          },
+          {
+            "levelId": "L04",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 8
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 9
+          },
+          {
+            "levelId": "L11",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -8
+          },
+          {
+            "levelId": "L11",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -8
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -1
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 0
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 1
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 2
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 3
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 107.0,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 304,
+        "totalCrosscutLengthM": 10057.1,
+        "totalDriftLengthM": 5343.2,
+        "winnerId": "SWITCHBACK-k1-p-20-CCW-g0.120"
+      },
+      {
+        "accessCount": 11,
+        "crosscutCount": 147,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 147,
+        "excludedStationCount": 16,
+        "excludedStations": [
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -3
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -2
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -1
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 0
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 1
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L11",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L11",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -3
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 123.4,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 305,
+        "totalCrosscutLengthM": 8665.0,
+        "totalDriftLengthM": 4781.1,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.100"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 306
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 307
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 308
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 309
+      },
+      {
+        "accessCount": 10,
+        "crosscutCount": 118,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 118,
+        "excludedStationCount": 2,
+        "excludedStations": [
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 84.0,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 310,
+        "totalCrosscutLengthM": 8029.5,
+        "totalDriftLengthM": 3818.0,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.120"
+      },
+      {
+        "accessCount": 12,
+        "crosscutCount": 142,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 142,
+        "excludedStationCount": 4,
+        "excludedStations": [
+          {
+            "levelId": "L04",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          },
+          {
+            "levelId": "L08",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 6
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 6
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 90.5,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 311,
+        "totalCrosscutLengthM": 7110.1,
+        "totalDriftLengthM": 4680.6,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.120"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 312
+      },
+      {
+        "accessCount": 8,
+        "crosscutCount": 104,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 104,
+        "excludedStationCount": 8,
+        "excludedStations": [
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -10
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 0
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 1
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 2
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 31.1,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 313,
+        "totalCrosscutLengthM": 6604.3,
+        "totalDriftLengthM": 3605.0,
+        "winnerId": "SWITCHBACK-k2-p+20-CW-g0.120"
+      },
+      {
+        "accessCount": 11,
+        "crosscutCount": 106,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 106,
+        "excludedStationCount": 9,
+        "excludedStations": [
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L10",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L11",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -3
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -2
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -1
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 62.7,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 314,
+        "totalCrosscutLengthM": 5367.7,
+        "totalDriftLengthM": 3529.3,
+        "winnerId": "SWITCHBACK-k1-p-20-CCW-g0.120"
+      },
+      {
+        "accessCount": 8,
+        "crosscutCount": 114,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 114,
+        "excludedStationCount": 2,
+        "excludedStations": [
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 67.2,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 315,
+        "totalCrosscutLengthM": 5874.5,
+        "totalDriftLengthM": 3710.0,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.100"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 316
+      },
+      {
+        "accessCount": 9,
+        "crosscutCount": 114,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 114,
+        "excludedStationCount": 15,
+        "excludedStations": [
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L04",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 7
+          },
+          {
+            "levelId": "L06",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L06",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L07",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L07",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 7
+          },
+          {
+            "levelId": "L10",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 0
+          },
+          {
+            "levelId": "L10",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 1
+          },
+          {
+            "levelId": "L10",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 2
+          },
+          {
+            "levelId": "L10",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 3
+          },
+          {
+            "levelId": "L10",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          },
+          {
+            "levelId": "L10",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 44.4,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 317,
+        "totalCrosscutLengthM": 6273.3,
+        "totalDriftLengthM": 3675.0,
+        "winnerId": "SWITCHBACK-k1-p-20-CCW-g0.120"
+      },
+      {
+        "accessCount": 12,
+        "crosscutCount": 172,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 172,
+        "excludedStationCount": 22,
+        "excludedStations": [
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -3
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -2
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -1
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 0
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 6
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 7
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 8
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -1
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 0
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 1
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 2
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 3
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 6
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 7
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 114.1,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 318,
+        "totalCrosscutLengthM": 8618.5,
+        "totalDriftLengthM": 5809.1,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.120"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 319
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 320
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 321
+      },
+      {
+        "accessCount": 7,
+        "crosscutCount": 111,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 111,
+        "excludedStationCount": 10,
+        "excludedStations": [
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L06",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 9
+          },
+          {
+            "levelId": "L07",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 8
+          },
+          {
+            "levelId": "L07",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 9
+          },
+          {
+            "levelId": "L08",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 8
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -8
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 7
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 8
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 100.9,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 322,
+        "totalCrosscutLengthM": 5917.1,
+        "totalDriftLengthM": 3817.5,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.120"
+      },
+      {
+        "accessCount": 13,
+        "crosscutCount": 113,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 113,
+        "excludedStationCount": 26,
+        "excludedStations": [
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -3
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -2
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -1
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 0
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 1
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 6
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -2
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -1
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 0
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 1
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 2
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 3
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 6
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -2
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -1
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 0
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 1
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 2
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 3
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 55.1,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 323,
+        "totalCrosscutLengthM": 6392.2,
+        "totalDriftLengthM": 3860.1,
+        "winnerId": "SWITCHBACK-k2-p+20-CCW-g0.100"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 324
+      },
+      {
+        "accessCount": 11,
+        "crosscutCount": 100,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 100,
+        "excludedStationCount": 9,
+        "excludedStations": [
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 0
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 1
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 2
+          },
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 3
+          },
+          {
+            "levelId": "L07",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L12",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -3
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 2
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 3
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 75.3,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 325,
+        "totalCrosscutLengthM": 6593.7,
+        "totalDriftLengthM": 3292.8,
+        "winnerId": "SWITCHBACK-k1-p-20-CCW-g0.120"
+      },
+      {
+        "accessCount": 12,
+        "crosscutCount": 199,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 199,
+        "excludedStationCount": 5,
+        "excludedStations": [
+          {
+            "levelId": "L03",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 8
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L14",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -3
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 101.0,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 326,
+        "totalCrosscutLengthM": 9195.5,
+        "totalDriftLengthM": 6545.0,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-s50-g0.100"
+      },
+      {
+        "accessCount": 8,
+        "crosscutCount": 71,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 71,
+        "excludedStationCount": 13,
+        "excludedStations": [
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -3
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -2
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -1
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 0
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 1
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 2
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 6
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 57.3,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 327,
+        "totalCrosscutLengthM": 4190.8,
+        "totalDriftLengthM": 2373.6,
+        "winnerId": "SWITCHBACK-k1-p+20-CW-g0.120"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 328
+      },
+      {
+        "accessCount": 12,
+        "crosscutCount": 128,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 128,
+        "excludedStationCount": 4,
+        "excludedStations": [
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -3
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 74.3,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 329,
+        "totalCrosscutLengthM": 5727.8,
+        "totalDriftLengthM": 4064.9,
+        "winnerId": "SWITCHBACK-k1-p-20-CW-g0.120"
+      },
+      {
+        "accessCount": 14,
+        "crosscutCount": 219,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 219,
+        "excludedStationCount": 9,
+        "excludedStations": [
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -3
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -2
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -8
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -6
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -5
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 6
+          },
+          {
+            "levelId": "L15",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 7
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 78.0,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 330,
+        "totalCrosscutLengthM": 12374.6,
+        "totalDriftLengthM": 7424.8,
+        "winnerId": "SWITCHBACK-k1-p-20-CW-g0.120"
+      },
+      {
+        "accessCount": 8,
+        "crosscutCount": 106,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 106,
+        "excludedStationCount": 10,
+        "excludedStations": [
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          },
+          {
+            "levelId": "L02",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          },
+          {
+            "levelId": "L08",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 7
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -7
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 2
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 3
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 5
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 6
+          },
+          {
+            "levelId": "L09",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 7
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 37.4,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 331,
+        "totalCrosscutLengthM": 5803.5,
+        "totalDriftLengthM": 3466.7,
+        "winnerId": "SWITCHBACK-k1-p-20-CW-g0.120"
+      },
+      {
+        "accessCount": 11,
+        "crosscutCount": 154,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 154,
+        "excludedStationCount": 5,
+        "excludedStations": [
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -4
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -3
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -2
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": -1
+          },
+          {
+            "levelId": "L13",
+            "reason": "NO_PERPENDICULAR_ORE_SUPPORT",
+            "stationIndex": 4
+          }
+        ],
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 71.9,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 332,
+        "totalCrosscutLengthM": 7915.1,
+        "totalDriftLengthM": 5077.1,
+        "winnerId": "SWITCHBACK-k1-p+20-CW-g0.100"
+      }
+    ],
+    "runtimeSeconds": 1492.1,
+    "sectionEffectiveSpacings": [
+      2.0
+    ],
+    "successCountAfter": 19,
+    "successCountBefore": 0
+  },
+  "perSeed": [
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 301,
+      "winnerAfter": "SPIRAL-n1-CW-e+0-g0.120",
+      "winnerBefore": "SPIRAL-n1-CCW-e+0-g0.120"
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 302,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 303,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 304,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 305,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.100",
+      "winnerBefore": "SPIRAL-n1-CW-e+0-g0.100"
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 306,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 307,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 308,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 309,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 310,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 311,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 312,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 313,
+      "winnerAfter": "SWITCHBACK-k2-p+20-CW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 314,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 315,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.100",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 316,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 317,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CCW-g0.120",
+      "winnerBefore": "SWITCHBACK-k1-p-20-CCW-g0.120"
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 318,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "winnerBefore": "SWITCHBACK-k1-p+0-CCW-g0.100"
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "SUCCESS",
+      "seed": 319,
+      "winnerAfter": null,
+      "winnerBefore": "SWITCHBACK-k1-p+0-CCW-g0.120"
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 320,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 321,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 322,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 323,
+      "winnerAfter": "SWITCHBACK-k2-p+20-CCW-g0.100",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 324,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 325,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 326,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-s50-g0.100",
+      "winnerBefore": "SPIRAL-n1-CCW-e+0-g0.120"
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 327,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "SUCCESS",
+      "seed": 328,
+      "winnerAfter": null,
+      "winnerBefore": "SPIRAL-n1-CCW-e+0-g0.120"
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 329,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CW-g0.120",
+      "winnerBefore": "SPIRAL-n1-CW-e+0-g0.120"
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 330,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 331,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 332,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CW-g0.100",
+      "winnerBefore": "SPIRAL-n1-CW-e+0-g0.100"
+    }
+  ],
+  "seedCount": 32,
+  "seeds": [
+    301,
+    302,
+    303,
+    304,
+    305,
+    306,
+    307,
+    308,
+    309,
+    310,
+    311,
+    312,
+    313,
+    314,
+    315,
+    316,
+    317,
+    318,
+    319,
+    320,
+    321,
+    322,
+    323,
+    324,
+    325,
+    326,
+    327,
+    328,
+    329,
+    330,
+    331,
+    332
+  ],
+  "semantics": "Phase 20C.2A A12: fixed 32-seed RANDOM_WARPED_VEIN survey (301-332), 20C.1-closeout baseline vs the 20C.2A tree, LAYOUT half and LEVEL-DEVELOPMENT half reported separately. The layout search gained curved section-trace anchors (rule 177-180); the level-development half did not exist before 20C.2A (typed UNSUPPORTED boundary), so its 'before' success count is 0 by construction. Diagnostic only: no threshold, coefficient or gate was changed to move these numbers"
+}

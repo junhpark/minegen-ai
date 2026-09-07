@@ -1096,3 +1096,124 @@ unloaded (stage 1 + 2 including the screen 10.1 s), against 23.4 s measured
 under load during 20C.1-Q; both are the same code, so the ≤ 20 s target is
 not claimed as met by any change in this closeout — runtime work stays a
 Phase 20C.2 item.
+
+## Phase 20C.2A — curved WARPED level development (section(z) geometry)
+
+Implicit orebodies (WARPED_VEIN) develop their levels along a CURVED
+section-trace backbone instead of the removed whole-section principal-axis
+line (rules 177–180 hold the full contract; `layout/sections.py` is the
+module).
+
+Pipeline per required level, candidate-independent parts cached once:
+
+1. **Occupancy** — a world-origin-anchored grid at the resolved effective
+   spacing (`<= base stand-off / 4`, power-of-two refinement, budgets
+   2 M cells/level and 16 M total validated from the projected shape
+   BEFORE allocation), evaluated by deterministic chunked
+   `Orebody.contains` — the only membership authority.
+2. **Components** — 4-connected labelling; ONE dominant component
+   (sampleCount desc, centroid.x asc, centroid.y asc); ignored components
+   recorded, never merged or developed.
+3. **Outer contour** — marching squares on the dominant component
+   (largest |shoelace area| loop, CCW-normalized): a grid-resolution
+   boundary, never called an exact ore contact; holes are diagnostics.
+4. **Footwall trace** — the dominant footwall-side arc of the contour:
+   windowed-secant tangents (± base stand-off / 2), outward normals
+   verified against `contains` probes, `track.w_h` ONLY as the
+   orientation seed. Ambiguity is typed SECTION_FOOTWALL_AMBIGUOUS —
+   there is no PCA fallback.
+5. **Offset development backbone** — the level set of the DESIGN
+   CLEARANCE POLICY (`signed_clearance`) at the anchor stand-off on the
+   level plane, restricted to the arc adjacent to the footwall trace and
+   oriented along its chainage. The measure matters: an in-plane 2-D
+   offset of the section was measured to under-clear a leaning body
+   (WARPED-301 L03: conservative clearance −3.2 m and 82 % of the trace
+   below the required clearance at a 20 m plan stand-off) and was
+   rejected. The delivered trace is uniform-chainage resampled (2 m),
+   box-smoothed at the stand-off scale twice (the piecewise-trilinear
+   clearance field's level set carries genuine lattice-boundary corners,
+   measured up to ~70° / exact duplicate vertices at compressed ends —
+   both below the trace's resolution contract), resampled again, and
+   RE-VALIDATED typed: finite, minimum length, no self-intersection, and
+   clearance ≥ the required design clearance (hard floor; the stand-off
+   stays the planning target, reported in `minSmoothedClearance`).
+6. **Curved anchor** — NEAREST_TO_RAMP by admissible chainage (end
+   margins), heading = local tangent toward the longer usable side; the
+   payload carries traceChainage / traceLength / localTangent / inward
+   localNormal / oreContact / selectedComponentId / section spacings. A
+   section failure travels as a typed AnchorFailure with IDENTICAL
+   handling in the geometric access screen and stage 4 (they differ only
+   in clearance policy and stand-off; rule 176 authority unchanged).
+7. **Level development** (`levels/builder.py`) — dispatch by the
+   development-geometry contract (curved anchors present), never
+   isinstance; the backbone is rebuilt deterministically under the
+   SELECTED candidate's certified policy and must reproduce the persisted
+   entry at its recorded chainage within 1e-6 m (SECTION_TRACE_MISMATCH,
+   fail closed). Drifts follow the backbone (`level_drift_gradient` along
+   chainage from the never-moved entry); LONGHOLE stations use the
+   `stope_length + minimum_pillar` pitch on curved chainage symmetric
+   about the trace midpoint; crosscuts run horizontally along the LOCAL
+   inward normal — the ± perpendicular of the offset trace's local
+   tangent, the ore side decided by bounded deterministic `contains()`
+   probes. A station inside the ore or with ore on both perpendiculars is
+   a typed per-station failure, never a nearest-cell fallback; a station
+   where neither perpendicular finds ore within the bounded probe is
+   reported and excluded from the required lattice
+   (`NO_PERPENDICULAR_ORE_SUPPORT`, rule 141 precedent). Confirmed
+   crosscuts end with a `contains()`-bisection terminal — the OUTSIDE
+   end of a ≤ 1e-6 m bracket (`terminalContactGap`). All hard gates are
+   the TABULAR path's, unchanged; `levels.json` declares
+   `developmentGeometry` and the TABULAR path is bit-compatible
+   (`TABULAR_RULE_43`). WARPED stopes stay the typed Phase 09 boundary.
+
+Measured (final goldens, `phase20c2a_layout_v2.json` vs the 20C.1
+closeout baseline, `phase20c2a_vs_20c1_closeout_layout.json`): every
+EXACT case (TABULAR-REFERENCE, GEOMETRY-STRESS, ACCESS-INFEASIBLE,
+CUT_AND_FILL) is byte-identical; the 18 contract differences are
+confined to the three CONSERVATIVE cases — WARPED-301 and
+IRREGULAR-REACH-EXCEEDED keep 10 feasible candidates but the winner
+flips SPIRAL-n1-CCW → SPIRAL-n1-CW (L 4418.89 → 4454.96 m) because the
+curved anchors move every entry and with it access lengths and scores;
+WARPED-307 stays 0-feasible with shifted per-candidate diagnostics.
+Levels + development mesh are SUCCESS end-to-end on WARPED-301 under
+the unchanged QA gates (max `terminalContactGap` ≤ 1e-12 m across the
+A12 supplement).
+
+32-seed survey (`phase20c2a_warped_seed_survey.json`, before/after in
+`phase20c2a_warped_seed_before_after.json`): layout success 9/32 →
+19/32. 12 seeds flip to SUCCESS; 2 seeds (319, 328) flip to
+NO_FEASIBLE_CANDIDATE — the curved anchor sits on the actual local
+footwall geometry and on those seeds some entries become unreachable
+for the one-turn CS connector (GRADE_LIMIT / CONNECTOR_UNAVAILABLE);
+reported, not tuned around. Level development, which before 20C.2A was
+the typed UNSUPPORTED boundary on every WARPED scenario (0 by
+construction), is SUCCESS on all 19 layout-SUCCESS seeds
+(`SECTION_FOOTWALL_OFFSET_TRACE`). Screen audit
+(`phase20c2a_screen_audit.json`): EXACT cases keep 0 false blocks
+(the rule 176 necessary-condition contract holds); conservative false
+blocks 56 → 40 (3 inside the production shortlist) — still the
+documented Phase 20C.2 heuristic-ordering limitation.
+
+The trace layer costs one clearance-field grid per (level, policy,
+stand-off): WARPED-301 full search 49 s → ~76–87 s under load (the
+20C.1 ≤ 20 s TABULAR target is unaffected — TABULAR builds no traces).
+
+PR #24 follow-up (crosscut inward-normal contract + stand-off hard gate).
+The delivered crosscut direction is the exact ± horizontal perpendicular
+of the offset trace's local tangent (the interim nearest-inside-occupancy-
+cell aiming was measured bending end-station crosscuts up to ~59° off
+perpendicular and was removed); the planning stand-off floor
+(`standoff − 2 × spacing`) on the smoothed trace is now a HARD typed gate
+alongside the unchanged engineering `minimum_clearance` floor. Measured
+impact: the layout catalogue, the 32-seed LAYOUT survey and the screen
+audit are bit-identical (the stand-off gate fired on zero cases/seeds —
+every delivered trace already held it); the change lives entirely in
+`levels.json`. Under the perpendicular contract 194 planned stations
+across the 19 layout-SUCCESS seeds (5 on WARPED-301) have NO
+perpendicular ore support and are typed-excluded from the required
+lattice (`NO_PERPENDICULAR_ORE_SUPPORT`, rule 141 precedent, recorded
+per level in `excludedStations`); level development stays 19/19 SUCCESS
+and total crosscut length drops accordingly (e.g. WARPED-301
+7 905 → 7 669 m). Some exclusion clusters sit MID-level (e.g. seed 304
+L14, seed 327 L02) where the offset arc wraps far from the local ore —
+a recorded Phase 20C.2B/20C.3 station-lattice question, not tuned here.

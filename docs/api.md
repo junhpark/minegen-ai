@@ -213,6 +213,22 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      without a Phase 05 artifact)
     GET  /api/v1/scenarios/{id}/design/levels        Phase 08: persisted typed LevelsPayload
                                                      (409 LEVELS_NOT_GENERATED after invalidation)
+                                                     Phase 20C.2A: the payload declares
+                                                     developmentGeometry (TABULAR_RULE_43 |
+                                                     SECTION_FOOTWALL_OFFSET_TRACE); an implicit
+                                                     orebody SUCCEEDS along the curved section-trace
+                                                     backbone (crosscut reports carry
+                                                     terminalContactGap <= 1e-6 m; from_u / to_u /
+                                                     station_u are trace CHAINAGE there); level-access
+                                                     anchors carry traceChainage / traceLength /
+                                                     localTangent / localNormal / oreContact /
+                                                     selectedComponentId / section spacings; typed
+                                                     failures: SECTION_FOOTWALL_AMBIGUOUS,
+                                                     SECTION_TRACE_OFFSET_INVALID,
+                                                     SECTION_TRACE_ANCHORS_REQUIRED,
+                                                     SECTION_TRACE_MISMATCH,
+                                                     SECTION_RESOLUTION_BUDGET_EXCEEDED,
+                                                     SECTION_STANDOFF_NONPOSITIVE
     POST /api/v1/scenarios/{id}/design/stopes        Phase 09: synchronous planned stopes
                                                      (typed StopesPayload; 409 LEVELS_NOT_GENERATED
                                                      without the Phase 08 artifact; UNSUPPORTED

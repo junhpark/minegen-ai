@@ -20,7 +20,7 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
-from minegen.core.models import RampConstraints, TunnelProfile
+from minegen.core.models import DesignConfig, RampConstraints, TunnelProfile
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -104,6 +104,16 @@ def build_profile(ramp: RampConstraints, profile: TunnelProfile) -> ProfileShape
         crown_center_y=center_y,
         centroid=np.array([cx, cy]),
     )
+
+
+def required_clearance(cfg: DesignConfig, ramp: RampConstraints, profile: TunnelProfile) -> float:
+    """Centerline clearance that keeps the whole excavation envelope outside
+    the orebody exclusion buffer: buffer + the profile's farthest point from
+    the floor centerline (half width sideways, full height up). ONE
+    definition, shared by the layout-v2 search and the level builder
+    (moved here from ``layout.search`` in Phase 20C.2A; the search
+    re-exports it unchanged)."""
+    return cfg.orebody_exclusion_buffer + math.hypot(ramp.tunnel_width / 2.0, ramp.tunnel_height)
 
 
 def profile_envelope_reach(ramp: RampConstraints, profile: TunnelProfile) -> float:

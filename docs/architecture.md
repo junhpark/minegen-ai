@@ -874,7 +874,7 @@ files. Git LFS is deliberately not used. Policy:
   …); its full JSON is deleted when the next phase's baseline lands.
 - A golden a test references is exempt from deletion (grep `backend/tests`
   before deleting — `phase17_baseline.json`, `phase19_warped_vein.json`,
-  `phase20c1_closeout_layout_v2.json` are referenced today).
+  `phase20c2a_layout_v2.json` are referenced today).
 - The legacy 22-case golden files (`phase17_baseline`, `phase18_after_migration`,
   `phase19_full`, `phase20a_full`, `phase20b_full`, `phase20b_closeout_full`)
   are the regression lock of rule 132 and are NEVER deleted.
@@ -882,3 +882,30 @@ files. Git LFS is deliberately not used. Policy:
 Phase 20B.3 applied it: `phase20a_layout_v2.json`, `phase20b_layout_v2.json`,
 `phase20b_closeout_layout_v2.json` and `phase20b1_layout_v2.json` were removed
 (13 MB → 3.9 MB); their CSVs and comparisons stay.
+
+
+## Phase 20C.2A — curved WARPED level development
+
+The whole-section principal-axis (PCA) backbone for implicit orebodies is
+GONE. Level development for every non-TABULAR body now follows the curved
+SECTION_FOOTWALL_OFFSET_TRACE backbone built from authoritative section(z)
+geometry (`layout/sections.py`, rules 177–180; algorithm details in
+`docs/algorithms.md`): a contains()-only occupancy grid (resolution
+contract + cell budgets), 4-connected dominant component, marching-squares
+outer contour, a contains()-verified footwall trace seeded (orientation
+only) by `track.w_h`, and a development backbone extracted as the level set
+of the DESIGN CLEARANCE POLICY at the anchor stand-off — smoothed at the
+stand-off scale and re-validated against the required design clearance.
+Anchors, the geometric access screen and stage 4 share the same section
+semantics (they differ only in clearance policy / stand-off); every
+section-geometry failure is typed and per-level. The level builder
+dispatches by the development-geometry contract carried by the level-access
+anchors (never isinstance), rebuilds the backbone under the SELECTED
+candidate's certified policy (rule 172, SECTION_TRACE_MISMATCH fails
+closed) and emits curved drifts, chainage stations and
+contains()-bisection crosscuts through the unchanged hard gates.
+`levels.json` declares `developmentGeometry`; the TABULAR path is
+bit-compatible; WARPED stopes remain the typed Phase 09 boundary. The
+artifact ownership, invalidation chains and downstream builders (network,
+development mesh, timeline, communication, sensors) are unchanged — they
+consume the same `levels.json` contract.

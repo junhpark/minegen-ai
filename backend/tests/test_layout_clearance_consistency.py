@@ -71,8 +71,7 @@ def test_downstream_reuses_the_selected_candidate_certification_across_restart(
     assert accesses["clearanceRefinement"]["applied"] is True
     assert catalogue["clearanceBasis"] == "COARSE_CONSERVATIVE"  # whole-body search basis stays
 
-    # the fixture is DECISIVE: under the coarse certification alone at least
-    # one validated access branch falls below the required clearance
+    # measured branch clearances under the whole-body COARSE measure
     _, world = world_service.load(sid)
     coarse = clearance_policy_for(world.orebody)
     required = float(accesses["requiredClearance"])
@@ -81,7 +80,17 @@ def test_downstream_reuses_the_selected_candidate_certification_across_restart(
         for a in accesses["accesses"]
         if a["status"] == "OK"
     ]
-    assert coarse_mins and min(coarse_mins) < required - 1e-6
+    # Phase 20C.2A changed what this fixture can prove. Pre-20C.2A the
+    # branches sat BETWEEN the refined and coarse floors (decisive: coarse
+    # alone failed them). The curved backbone now CONSTRUCTS entries at the
+    # allowance-compensated stand-off ≈ 1.28 × (required + refinedBound + 1),
+    # which exceeds required + coarseBound for every buffer value (solving
+    # 1.28·(req + b_r + 1) < req + b_c has no solution with b_c = 2·b_r),
+    # so the decisive window is STRUCTURALLY empty — branches clear the
+    # coarse floor too. The rule 172 MECHANISM pins below (identical
+    # reconstruction across restart, stale selection fails closed, basis
+    # naming) are unchanged and still the regression content of 1.1.
+    assert coarse_mins and min(coarse_mins) >= required - 1e-6
     for a in accesses["accesses"]:
         assert a["validation"]["minimumOrebodyDistance"] >= required - 1e-9
 

@@ -14,13 +14,6 @@ from minegen.services.design_service import DesignService
 from tests.test_smoothing_api import _decline, _prepare
 from tests.test_tunnel_api import _smooth
 
-#: The typed Phase 20B boundary a non-TABULAR orebody answers from
-#: ``LevelDevelopmentBuilder``. The frontend matches this literal as a PREFIX
-#: (frontend/src/components/panels/developmentMeshScope.ts) to tell the normal
-#: implicit-orebody boundary apart from a genuine level-development failure,
-#: so the string is pinned on BOTH sides (closeout v5 §2).
-IMPLICIT_OREBODY_BOUNDARY = "LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY"
-
 
 def _generate_layout(client: TestClient, sid: str) -> dict:  # type: ignore[type-arg]
     r = client.post(f"/api/v1/scenarios/{sid}/design/layout-v2", params={"sync": "true"})
@@ -432,10 +425,13 @@ def test_legacy_pipeline_is_unchanged_and_isolated_from_layout_v2(
     assert design_service.smoothed_path(sid).is_file()
 
 
-def test_warped_vein_development_mesh_sweeps_the_access_branches_only(client: TestClient) -> None:
-    """Closeout v3 §4 / §6 scenario B: an implicit body has no level
-    development (typed boundary) but its validated access branches are
-    swept; without a selection the endpoint stays a typed 409."""
+def test_warped_vein_development_mesh_sweeps_accesses_drifts_and_crosscuts(
+    client: TestClient,
+) -> None:
+    """Phase 20C.2A: an implicit body now has REAL level development along
+    its curved section-trace backbone, so the development mesh sweeps the
+    access branches AND the drifts / crosscuts; without a selection the
+    endpoint stays a typed 409."""
     r = client.post(
         "/api/v1/scenarios/realize",
         json={"preset": "RANDOM_WARPED_VEIN", "seed": 301, "faultCount": 1},
@@ -449,33 +445,43 @@ def test_warped_vein_development_mesh_sweeps_the_access_branches_only(client: Te
     assert cat["status"] == "SUCCESS"
     r = client.post(f"{base}/layout-v2/activate", json={"candidateId": _winner(cat)})
     assert r.status_code == 200, r.text
-    # closeout v3 §2: the implicit body REACHES the level builder and answers
-    # the typed Phase 20B boundary (200 FAILED), not the legacy 422
     r = client.post(f"{base}/levels")
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "FAILED"
-    # pinned as a PREFIX: the frontend distinguishes this normal boundary from a
-    # real failure with `startsWith` (developmentMeshScope.ts), so a backend
-    # rename must break CI here rather than silently degrade the panel wording
-    assert r.json()["failureReason"].startswith(IMPLICIT_OREBODY_BOUNDARY)
+    levels = r.json()
+    assert levels["status"] == "SUCCESS", levels.get("failureReason")
+    assert levels["developmentGeometry"] == "SECTION_FOOTWALL_OFFSET_TRACE"
     r = client.post(f"{base}/development-mesh", params={"sync": "true"})
     assert r.status_code == 200, r.text
     dev = r.json()
     assert dev["status"] == "SUCCESS", dev.get("failureReason")
-    assert dev["sources"] == {"levelAccesses": True, "levels": False, "rampSource": "LAYOUT_V2"}
+    assert dev["sources"] == {"levelAccesses": True, "levels": True, "rampSource": "LAYOUT_V2"}
     assert dev["byKind"]["LEVEL_ACCESS"]["developmentCount"] == cat["serviceableLevelCount"]
-    assert dev["byKind"]["DRIFT"]["developmentCount"] == 0
-    assert dev["byKind"]["CROSSCUT"]["developmentCount"] == 0
-    assert [p["name"] for p in dev["primitives"]] == ["LEVEL_ACCESS"]
+    assert dev["byKind"]["DRIFT"]["developmentCount"] > 0
+    assert dev["byKind"]["CROSSCUT"]["developmentCount"] > 0
+    assert {p["name"] for p in dev["primitives"]} >= {"LEVEL_ACCESS", "DRIFT", "CROSSCUT"}
     assert client.get(f"{base}/development-mesh/mesh.glb").status_code == 200
+    # PR #24 follow-up §4: the 20C.2A acceptance chain ends at the NETWORK.
+    # The generic builder must make CROSSCUT terminals STOPE_ACCESS anchors
+    # and reference levels.json geometry — pinned here so it cannot drift.
+    r = client.post(f"/api/v1/scenarios/{sid}/network/generate")
+    assert r.status_code == 200, r.text
+    net = r.json()
+    assert net["status"] == "SUCCESS", net.get("failureReason")
+    assert net["validation"]["connected"] is True
+    assert net["validation"]["synchronized"] is True
+    assert net["metrics"]["stopeAccessCount"] > 0
+    assert net["metrics"]["crosscutEdgeCount"] > 0
+    crosscut_edges = [e for e in net["edges"] if e["type"] == "CROSSCUT"]
+    assert crosscut_edges
+    assert all(e["geometryRef"]["artifact"] == "levels.json" for e in crosscut_edges)
 
 
-def test_warped_vein_levels_return_the_typed_phase20b_boundary(client: TestClient) -> None:
-    """Closeout v3 §2: level development for an implicit body must be built
-    with the world's own clearance policy (CONSERVATIVE) so it reaches
-    ``LevelDevelopmentBuilder`` and answers the intended typed Phase 20B
-    boundary — not the legacy exact-only evaluator's 422 (rule 135 still
-    guards the LEGACY Hybrid-A* chain, which is a different path)."""
+def test_warped_vein_levels_succeed_on_the_curved_backbone(client: TestClient) -> None:
+    """Phase 20C.2A (directive A11): the implicit body's level development
+    SUCCEEDS along the SECTION_FOOTWALL_OFFSET_TRACE backbone via the API —
+    the old LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY boundary is
+    gone from the success path. The LEGACY Hybrid-A* chain keeps its typed
+    422 refusal (rule 135 — a different path)."""
     r = client.post(
         "/api/v1/scenarios/realize",
         json={"preset": "RANDOM_WARPED_VEIN", "seed": 301, "faultCount": 1},
@@ -490,12 +496,19 @@ def test_warped_vein_levels_return_the_typed_phase20b_boundary(client: TestClien
     r = client.post(f"{base}/levels")
     assert r.status_code == 200, r.text
     payload = r.json()
-    assert payload["status"] == "FAILED"
-    assert payload["failureReason"].startswith(IMPLICIT_OREBODY_BOUNDARY)
-    assert payload["developments"] == [] and payload["levels"] == []
-    # the persisted artifact is readable and stays the same typed boundary
+    assert payload["status"] == "SUCCESS", payload.get("failureReason")
+    assert payload["entrySource"] == "LEVEL_ACCESS"
+    assert payload["developmentGeometry"] == "SECTION_FOOTWALL_OFFSET_TRACE"
+    assert payload["developments"] and payload["levels"]
+    assert all(lv["valid"] for lv in payload["levels"])
+    # every crosscut terminates at a contains()-bisection ore contact
+    for dev in payload["developments"]:
+        if dev["kind"] == "CROSSCUT":
+            assert dev["report"]["terminalContactGap"] is not None
+            assert dev["report"]["terminalContactGap"] <= 1e-6
+    # the persisted artifact is readable and stays SUCCESS
     got = client.get(f"{base}/levels")
-    assert got.status_code == 200 and got.json()["status"] == "FAILED"
+    assert got.status_code == 200 and got.json()["status"] == "SUCCESS"
     # the LEGACY exact-only chain keeps its typed 422 refusal (rule 135)
     assert client.post(f"{base}/targets").status_code == 422
 

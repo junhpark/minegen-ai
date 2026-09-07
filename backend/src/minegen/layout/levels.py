@@ -27,14 +27,27 @@ missed entirely; a missed sliver only makes a level look LESS served.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 from scipy.spatial import cKDTree
 
 from minegen.design.targets import generate_level_elevations, level_id
+from minegen.layout.sections import (
+    FootwallTrace,
+    LevelSectionGeometry,
+    OffsetTrace,
+    SectionGeometryError,
+    SectionResolution,
+    build_footwall_trace,
+    build_offset_trace,
+    build_section_geometry,
+    validate_section_budgets,
+)
 from minegen.world.orebody import Orebody
 
 FloatArray = npt.NDArray[np.float64]
@@ -137,18 +150,136 @@ def build_level_section(orebody: Orebody, elevation: float, spacing: float) -> L
 
 class LevelSections:
     """Sections for every required level, built once per search (the same
-    sections serve every candidate; results are deterministic)."""
+    sections serve every candidate; results are deterministic).
 
-    def __init__(self, orebody: Orebody, levels: list[RequiredLevel], spacing: float) -> None:
+    With a ``SectionResolution`` (Phase 20C.2A) the per-level SECTION
+    GEOMETRY (occupancy grid, 4-connected components, dominant component,
+    outer contour — ``layout.sections``) becomes available through
+    ``geometry()``: candidate-independent, built lazily ONCE per level and
+    cached. Both cell budgets are validated upfront from the projected grid
+    shape — before any allocation and independent of the lazy build order —
+    so a budget failure is deterministic (typed
+    ``SECTION_RESOLUTION_BUDGET_EXCEEDED``, raised here in the constructor).
+    """
+
+    def __init__(
+        self,
+        orebody: Orebody,
+        levels: list[RequiredLevel],
+        spacing: float,
+        resolution: SectionResolution | None = None,
+    ) -> None:
         self.orebody = orebody
         self.levels = levels
         self.spacing = spacing
+        self.resolution: SectionResolution | None = None
+        self.budget_diagnostics: dict[str, object] | None = None
+        if resolution is not None:
+            self.set_resolution(resolution)
         self.sections: dict[str, LevelSection] = {
             lv.level_id: build_level_section(orebody, lv.elevation, spacing) for lv in levels
         }
+        self._geometry: dict[str, LevelSectionGeometry] = {}
+        self._by_id: dict[str, RequiredLevel] = {lv.level_id: lv for lv in levels}
+        # trace caches (Phase 20C.2A A2): typed failures are cached and
+        # re-raised so per-candidate anchor construction never rebuilds a
+        # level's geometry — success and failure are both deterministic
+        self._traces: dict[tuple[Any, ...], FootwallTrace | SectionGeometryError] = {}
+        self._offsets: dict[tuple[Any, ...], OffsetTrace | SectionGeometryError] = {}
 
     def section(self, level: RequiredLevel) -> LevelSection:
         return self.sections[level.level_id]
+
+    def set_resolution(self, resolution: SectionResolution) -> None:
+        """Attach the section-geometry resolution, validating both cell
+        budgets upfront from the projected shape (constructor contract)."""
+        self.budget_diagnostics = dict(
+            validate_section_budgets(self.orebody, resolution, len(self.levels))
+        )
+        self.resolution = resolution
+
+    def geometry(self, level: RequiredLevel) -> LevelSectionGeometry:
+        """Lazy per-level section geometry (requires a ``SectionResolution``)."""
+        if self.resolution is None:
+            raise RuntimeError(
+                "LevelSections was built without a SectionResolution; "
+                "section geometry is unavailable"
+            )
+        g = self._geometry.get(level.level_id)
+        if g is None:
+            g = build_section_geometry(
+                self.orebody, level.level_id, level.elevation, self.resolution
+            )
+            self._geometry[level.level_id] = g
+        return g
+
+    @staticmethod
+    def _seed_key(w_h: FloatArray) -> tuple[float, float]:
+        return (round(float(w_h[0]), 9), round(float(w_h[1]), 9))
+
+    def footwall_trace(self, level: RequiredLevel, w_h: FloatArray) -> FootwallTrace:
+        """Cached dominant footwall trace of one level (``w_h`` is the
+        orientation seed only — see ``sections.build_footwall_trace``).
+        Typed failures are cached and re-raised deterministically."""
+        if self.resolution is None:
+            raise RuntimeError("LevelSections was built without a SectionResolution")
+        key = (level.level_id, self._seed_key(w_h))
+        hit = self._traces.get(key)
+        if hit is None:
+            try:
+                hit = build_footwall_trace(self.orebody, self.geometry(level), self.resolution, w_h)
+            except SectionGeometryError as err:
+                hit = err
+            self._traces[key] = hit
+        if isinstance(hit, SectionGeometryError):
+            raise hit
+        return hit
+
+    def offset_trace(
+        self,
+        level: RequiredLevel,
+        w_h: FloatArray,
+        standoff: float,
+        minimum_length: float,
+        clearance: Callable[[FloatArray], FloatArray],
+        policy_token: str,
+        minimum_clearance: float,
+    ) -> OffsetTrace:
+        """Cached offset development trace of one level at ``standoff``
+        under one clearance measure. ``policy_token`` names the clearance
+        policy for the cache key (callers pass a deterministic identity —
+        the world policy marker or the candidate id — so a trace is never
+        reused across different clearance fields); the stand-off is also in
+        the key (the screen's coarse stand-off and a stage-4 refined
+        stand-off are distinct geometries)."""
+        if self.resolution is None:
+            raise RuntimeError("LevelSections was built without a SectionResolution")
+        key = (
+            level.level_id,
+            self._seed_key(w_h),
+            round(float(standoff), 6),
+            round(float(minimum_length), 6),
+            policy_token,
+            round(float(minimum_clearance), 6),
+        )
+        hit = self._offsets.get(key)
+        if hit is None:
+            try:
+                hit = build_offset_trace(
+                    self.geometry(level),
+                    self.footwall_trace(level, w_h),
+                    self.resolution,
+                    float(standoff),
+                    float(minimum_length),
+                    clearance,
+                    float(minimum_clearance),
+                )
+            except SectionGeometryError as err:
+                hit = err
+            self._offsets[key] = hit
+        if isinstance(hit, SectionGeometryError):
+            raise hit
+        return hit
 
     def all_present(self) -> bool:
         return all(not s.empty for s in self.sections.values())

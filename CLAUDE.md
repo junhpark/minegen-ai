@@ -1468,3 +1468,105 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
        Phase 20C.2 limitation. Any change to this ordering must preserve
        `missedFamilies = []` and `winnerMissedByShortlist` false on every
        golden case.
+
+177. Authoritative section(z) geometry (Phase 20C.2A A1,
+     `layout/sections.py`). The horizontal section of ANY orebody at a
+     required-level elevation is measured on a world-origin-anchored
+     occupancy grid whose only membership authority is `Orebody.contains`
+     — never WARPED control points, a nominal strike, bounding-box edges,
+     mesh vertices or the frontend. Components are 4-connected
+     (`scipy.ndimage`, no diagonals); ONE dominant component is selected
+     by (sampleCount desc, centroid.x asc, centroid.y asc), ignored
+     components are recorded and never merged, deleted or developed. The
+     marching-squares outer contour (largest |shoelace area|,
+     CCW-normalized) is a grid-resolution boundary — never called an
+     exact ore contact; hole loops are diagnostics. Resolution contract:
+     `effective_section_spacing <= base_anchor_standoff /
+     SECTION_TRACE_SAMPLES_PER_STANDOFF` (4), base stand-off = explicit
+     `access.anchorStandoff` else `ramp.footwallAccessOffset`,
+     power-of-two refinement only, a non-positive base stand-off is a
+     typed SECTION_STANDOFF_NONPOSITIVE (never a schema change). Cell
+     budgets `SECTION_MAX_GRID_CELLS_PER_LEVEL` = 2,000,000 and
+     `SECTION_MAX_GRID_CELLS_TOTAL` = 16,000,000 (documented from the
+     Gate 0 32-seed measurements: worst default scenario ≈ 2.97 M cells,
+     one /2 refinement ≈ 11.9 M) are validated from the PROJECTED grid
+     shape before any allocation (SECTION_RESOLUTION_BUDGET_EXCEEDED);
+     occupancy is evaluated with a deterministic chunked `contains`
+     sweep. Section geometry is candidate-independent, built lazily once
+     per level and cached (`LevelSections.geometry`).
+
+178. Footwall trace and offset development backbone (Phase 20C.2A A2/A3).
+     The dominant FootwallTrace is the footwall-side arc of the outer
+     contour: local tangents from a ± baseStandoff/2 windowed secant
+     estimator, outward normals VERIFIED against contains() probes, and
+     `track.w_h` used ONLY as the orientation seed deciding which side is
+     the footwall. No decisive orientation or no footwall run ≥ 4 grid
+     spacings is a typed SECTION_FOOTWALL_AMBIGUOUS — the whole-section
+     principal-axis (PCA) backbone is GONE and must not return. The
+     offset development backbone is the level set of the DESIGN CLEARANCE
+     POLICY (`signed_clearance`) at the anchor stand-off ON THE LEVEL
+     PLANE — never a 2-D in-plane offset of the section (measured on
+     WARPED-301 L03: 82 % of the in-plane-EDT trace sat below the
+     required 3-D clearance because the body leans over the level plane).
+     The delivered trace is uniform-chainage resampled, box-smoothed at
+     the stand-off scale (sub-stand-off wiggles — including the
+     piecewise-trilinear field's level-set corners — are below the trace
+     resolution contract), resampled again, and RE-VALIDATED: finite,
+     minimum length, no self-intersection, and clearance ≥ the required
+     design clearance (the hard floor; the stand-off stays the PLANNING
+     target, reported as a diagnostic). Smoothing never hides a
+     hard-clearance violation and the unchanged hard gates still judge
+     every delivered development. Traces are cached per (level, w_h,
+     stand-off, clearance-policy token); the tokens are deterministic
+     (world policy vs candidate id), so a trace is never reused across
+     clearance fields.
+
+179. Curved anchors and typed level failures (Phase 20C.2A A3). For every
+     non-TABULAR orebody `build_anchor` yields the curved anchor: entry
+     policy NEAREST_TO_RAMP as the plan-closest ADMISSIBLE chainage on
+     the offset backbone (end margins on chainage, ties to the lowest
+     chainage), preferred heading = the local trace tangent toward the
+     longer usable side (tie: trace orientation), payload extended with
+     traceChainage, traceLength, localTangent, inward localNormal,
+     oreContact, selectedComponentId and the section spacings. TABULAR
+     keeps the exact rule 43 line unchanged. A section-geometry failure
+     travels as a typed AnchorFailure and receives IDENTICAL treatment in
+     the geometric access screen and stage 4 (the two differ ONLY in
+     clearance policy and stand-off); the rule 176 screen-authority
+     contract and stage-3 ordering are unchanged. `required_clearance`
+     has ONE definition in `design.profile` (re-exported by
+     `layout.search`).
+
+180. Curved level development (Phase 20C.2A A4). The level builder
+     dispatches by the AVAILABLE development-geometry contract — entries
+     carrying curved anchors (non-null traceChainage) — never by orebody
+     isinstance; a non-TABULAR body without curved anchors is a typed
+     SECTION_TRACE_ANCHORS_REQUIRED and mixed contracts are a typed
+     MIXED_DEVELOPMENT_GEOMETRY. The builder rebuilds the offset backbone
+     deterministically under the SELECTED candidate's certified clearance
+     policy (rule 172) and the persisted entry must reproduce on it at
+     its recorded chainage within 1e-6 m (typed SECTION_TRACE_MISMATCH,
+     fail closed — never a re-anchor). The curved DRIFT follows the
+     backbone with `level_drift_gradient` applied along chainage from the
+     entry (the entry never moves); LONGHOLE stations use the
+     `stope_length + minimum_pillar` pitch on CURVED drift chainage,
+     symmetric about the trace midpoint with the stope + end-pillar
+     margin inside the span; CROSSCUTS run horizontally along the LOCAL
+     inward normal — the ± horizontal perpendicular of the offset trace's
+     local tangent at the station, the ore side decided by bounded
+     deterministic contains() probes. A station inside the ore or with ore
+     on BOTH perpendiculars is a typed per-station failure, never a
+     nearest-cell fallback; a station where NEITHER perpendicular finds
+     ore within the probe budget (the level set wraps around the body's
+     tapered ends) is reported and EXCLUDED from the REQUIRED lattice
+     (NO_PERPENDICULAR_ORE_SUPPORT, rule 141 precedent — recorded per
+     level, never silently dropped; a level whose stations are ALL
+     excluded fails typed). Confirmed crosscuts end with a
+     contains()-bisection ore-contact terminal — the terminal is the
+     OUTSIDE end of a ≤ 1e-6 m bracket (`terminalContactGap`). Every
+     development passes the SAME hard validation as the TABULAR path;
+     `levels.json` declares `developmentGeometry` (TABULAR_RULE_43 |
+     SECTION_FOOTWALL_OFFSET_TRACE) and the TABULAR path is
+     bit-compatible. WARPED stope geometry stays the explicit typed
+     Phase 09 boundary (rule 75); STOPE_ACCESS crosscut terminals are the
+     future anchors.

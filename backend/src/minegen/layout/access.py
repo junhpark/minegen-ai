@@ -38,6 +38,7 @@ and this module plans it deterministically:
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -61,6 +62,7 @@ from minegen.layout.geometry import (
     unwrap_delta,
 )
 from minegen.layout.levels import LevelSections, RequiredLevel
+from minegen.layout.sections import SectionGeometryError
 from minegen.levels.builder import GENERIC_BACKBONE_END_CLEARANCE
 from minegen.world.orebody import Orebody, TabularOrebody
 
@@ -197,6 +199,28 @@ class AccessFailure:
 
 
 @dataclass(frozen=True)
+class AnchorFailure:
+    """Typed per-level anchor failure (Phase 20C.2A A3): the section
+    geometry could not produce a development backbone for this level
+    (SECTION_FOOTWALL_AMBIGUOUS, SECTION_TRACE_OFFSET_INVALID,
+    SECTION_RESOLUTION_BUDGET_EXCEEDED). Carried through the geometric
+    access screen and stage 4 as the level's typed reason — never a PCA
+    fallback, never silently dropped."""
+
+    code: str
+    detail: str
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": "FAILED",
+            "code": self.code,
+            "detail": self.detail,
+            "diagnostics": self.diagnostics,
+        }
+
+
+@dataclass(frozen=True)
 class LevelDevelopmentAnchor:
     """Backend-authoritative development location a level access must reach."""
 
@@ -212,6 +236,17 @@ class LevelDevelopmentAnchor:
     standoff: float
     ramp_reference: FloatArray | None  # main-ramp level reference (crossing) if any
     diagnostics: dict[str, Any] = field(default_factory=dict)
+    #: Phase 20C.2A curved-anchor fields (None on the exact TABULAR line
+    #: anchor): the entry as a chainage on the level's offset development
+    #: trace, with its local frame and nearest ore contact
+    trace_chainage: float | None = None
+    trace_length: float | None = None
+    local_tangent: FloatArray | None = None  # (2,) unit, trace orientation
+    local_normal: FloatArray | None = None  # (2,) unit, INWARD (toward ore)
+    ore_contact: FloatArray | None = None  # (3,) nearest contact-trace vertex
+    selected_component_id: int | None = None
+    section_sampling_spacing: float | None = None  # configured base spacing
+    section_effective_spacing: float | None = None  # refined grid spacing
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -228,6 +263,20 @@ class LevelDevelopmentAnchor:
             "rampLevelReference": (
                 [float(v) for v in self.ramp_reference] if self.ramp_reference is not None else None
             ),
+            "traceChainage": self.trace_chainage,
+            "traceLength": self.trace_length,
+            "localTangent": (
+                [float(v) for v in self.local_tangent] if self.local_tangent is not None else None
+            ),
+            "localNormal": (
+                [float(v) for v in self.local_normal] if self.local_normal is not None else None
+            ),
+            "oreContact": (
+                [float(v) for v in self.ore_contact] if self.ore_contact is not None else None
+            ),
+            "selectedComponentId": self.selected_component_id,
+            "sectionSamplingSpacing": self.section_sampling_spacing,
+            "sectionEffectiveSpacing": self.section_effective_spacing,
             "diagnostics": self.diagnostics,
         }
 
@@ -250,6 +299,16 @@ def _principal_axis(xy: FloatArray, prefer: FloatArray) -> FloatArray:
     return axis
 
 
+def _ramp_reference(ramp_points: FloatArray, z: float) -> FloatArray:
+    """Main-ramp level reference: the z-crossing point, else the ramp vertex
+    closest to the level elevation."""
+    cr = find_crossing(ramp_points, z)
+    if cr is not None:
+        return np.asarray(cr.point, dtype=np.float64)
+    i = int(np.argmin(np.abs(ramp_points[:, 2] - z)))
+    return np.asarray(ramp_points[i], dtype=np.float64)
+
+
 def build_anchor(
     orebody: Orebody,
     level: RequiredLevel,
@@ -258,48 +317,53 @@ def build_anchor(
     ramp_points: FloatArray,
     standoff: float,
     mining_method: str,
-) -> LevelDevelopmentAnchor | None:
+    clearance: Callable[[FloatArray], FloatArray] | None = None,
+    policy_token: str = "",
+    minimum_clearance: float | None = None,
+) -> LevelDevelopmentAnchor | AnchorFailure | None:
     """Level-development anchor on the footwall backbone at ``level``.
 
-    Entry policy NEAREST_TO_RAMP: the backbone point closest to the main
-    ramp's level reference (its z-crossing, else its closest vertex to the
-    level elevation), clamped inside the backbone extent. The preferred
-    terminal heading points along the backbone toward its centre so the
-    drift continues along the ore."""
+    TABULAR keeps the exact rule 43 footwall line. Every other orebody uses
+    the curved section-trace anchor (Phase 20C.2A — ``build_curved_anchor``;
+    the old whole-section principal-axis backbone is GONE, and a section
+    that cannot orient a footwall is a typed ``AnchorFailure``, never a PCA
+    fallback). Entry policy NEAREST_TO_RAMP in both paths. Returns ``None``
+    only for an empty section (NO_ANCHOR)."""
     sec = sections.section(level)
     if sec.empty:
         return None
+    if not isinstance(orebody, TabularOrebody):
+        if clearance is None or not policy_token or minimum_clearance is None:
+            raise RuntimeError(
+                "build_anchor for a non-TABULAR orebody needs the clearance policy, "
+                "its cache token and the required clearance (Phase 20C.2A)"
+            )
+        try:
+            return build_curved_anchor(
+                orebody,
+                level,
+                sections,
+                track.w_h,
+                track.u_h,
+                ramp_points,
+                standoff,
+                mining_method,
+                clearance,
+                policy_token,
+                minimum_clearance,
+            )
+        except SectionGeometryError as err:
+            return AnchorFailure(err.code, err.detail, err.diagnostics)
     z = level.elevation
-    cr = find_crossing(ramp_points, z)
-    if cr is not None:
-        ref = np.asarray(cr.point, dtype=np.float64)
-    else:
-        i = int(np.argmin(np.abs(ramp_points[:, 2] - z)))
-        ref = np.asarray(ramp_points[i], dtype=np.float64)
-    if isinstance(orebody, TabularOrebody):
-        # exact rule 43 footwall line at this elevation
-        u_h = np.asarray(orebody.u[:2], dtype=np.float64)
-        u_h = u_h / float(np.linalg.norm(u_h))
-        p0, _, _ = footwall_candidate_position(orebody, 0.0, z, standoff)
-        origin = np.asarray(p0, dtype=np.float64)
-        axis = u_h
-        lo_u, hi_u = -float(orebody.half_length), float(orebody.half_length)
-        diag: dict[str, Any] = {"backbone": "TABULAR_RULE_43", "halfLength": orebody.half_length}
-    else:
-        axis = _principal_axis(sec.inside_xy, track.u_h)
-        normal = np.array([axis[1], -axis[0]])  # perpendicular, oriented to w_h
-        if float(normal @ track.w_h) < 0.0:
-            normal = -normal
-        lo_n, hi_n = sec.extent_along(normal)
-        lo_u, hi_u = sec.extent_along(axis)
-        edge = sec.centroid + normal * hi_n
-        origin = np.array([edge[0] + normal[0] * standoff, edge[1] + normal[1] * standoff, z])
-        diag = {
-            "backbone": "NUMERICAL_SECTION_PRINCIPAL_AXIS",
-            "sectionSamples": int(sec.inside_xy.shape[0]),
-            "sectionWidthAlongNormal": float(hi_n - lo_n),
-            "localAxisAzimuthDeg": math.degrees(_azimuth(axis)),
-        }
+    ref = _ramp_reference(ramp_points, z)
+    # exact rule 43 footwall line at this elevation
+    u_h = np.asarray(orebody.u[:2], dtype=np.float64)
+    u_h = u_h / float(np.linalg.norm(u_h))
+    p0, _, _ = footwall_candidate_position(orebody, 0.0, z, standoff)
+    origin = np.asarray(p0, dtype=np.float64)
+    axis = u_h
+    lo_u, hi_u = -float(orebody.half_length), float(orebody.half_length)
+    diag: dict[str, Any] = {"backbone": "TABULAR_RULE_43", "halfLength": orebody.half_length}
     span = hi_u - lo_u
     margin = min(BACKBONE_END_MARGIN, 0.25 * span)
     t_ref = float((ref[:2] - origin[:2]) @ axis)
@@ -328,6 +392,122 @@ def build_anchor(
         standoff=standoff,
         ramp_reference=ref,
         diagnostics=diag,
+    )
+
+
+#: minimum offset-trace arc length that can host a level development —
+#: room for the entry end margins plus one positive drift span (a planning
+#: floor, never statutory)
+MIN_DEVELOPMENT_TRACE_LENGTH = 2.0 * BACKBONE_END_MARGIN
+
+
+def build_curved_anchor(
+    orebody: Orebody,
+    level: RequiredLevel,
+    sections: LevelSections,
+    w_h: FloatArray,
+    u_h: FloatArray,
+    ramp_points: FloatArray,
+    standoff: float,
+    mining_method: str,
+    clearance: Callable[[FloatArray], FloatArray],
+    policy_token: str,
+    minimum_clearance: float,
+) -> LevelDevelopmentAnchor | None:
+    """Phase 20C.2A curved level-development anchor for implicit orebodies.
+
+    The backbone is the level's OFFSET DEVELOPMENT TRACE (the level set of
+    ``clearance`` — the caller's design clearance policy — at ``standoff``
+    on the level plane, adjacent to the dominant footwall trace —
+    ``layout.sections``), never a global principal axis. ``policy_token``
+    names that policy for the deterministic trace cache. ``w_h`` is the
+    footwall-side orientation seed only; ``u_h`` is used solely for the
+    PCA-comparison diagnostic. Entry policy
+    NEAREST_TO_RAMP: the admissible trace chainage (inside the end margins)
+    whose point is plan-closest to the main ramp's level reference —
+    deterministic (ties resolve to the lowest chainage). The preferred
+    terminal heading is the LOCAL trace tangent, oriented toward the longer
+    usable trace side (tie: along the deterministic trace orientation).
+
+    Returns ``None`` for an empty section (NO_ANCHOR, as before); section
+    trace failures raise typed ``SectionGeometryError``
+    (SECTION_FOOTWALL_AMBIGUOUS / SECTION_TRACE_OFFSET_INVALID /
+    SECTION_RESOLUTION_BUDGET_EXCEEDED) for the caller to record."""
+    if sections.geometry(level).empty:
+        return None
+    z = level.elevation
+    ref = _ramp_reference(ramp_points, z)
+    trace = sections.footwall_trace(level, w_h)
+    off = sections.offset_trace(
+        level,
+        w_h,
+        standoff,
+        MIN_DEVELOPMENT_TRACE_LENGTH,
+        clearance,
+        policy_token,
+        minimum_clearance,
+    )
+    total = off.total_length
+    margin = min(BACKBONE_END_MARGIN, 0.25 * total)
+    admissible = (off.chainage >= margin - 1e-9) & (off.chainage <= total - margin + 1e-9)
+    if not bool(admissible.any()):  # pragma: no cover — total ≥ 2·margin by the trace gate
+        admissible = np.ones(off.chainage.shape[0], dtype=bool)
+    d = np.hypot(off.points[:, 0] - ref[0], off.points[:, 1] - ref[1])
+    d = np.where(admissible, d, np.inf)
+    i = int(np.argmin(d))  # ties → lowest chainage (first index)
+    t = float(off.chainage[i])
+    pos = off.points[i].copy()
+    tangent = off.tangents[i].copy()
+    forward_len = total - t
+    backward_len = t
+    direction = tangent if forward_len >= backward_len else -tangent
+    inward = off.ore_contact[i, :2] - pos[:2]
+    n_in = float(np.linalg.norm(inward))
+    inward = inward / n_in if n_in > 1e-12 else -off.tangents[i]
+    # heading-frame extent: 0 at the entry, positive along the heading
+    ahead, behind = (
+        (forward_len, backward_len) if forward_len >= backward_len else (backward_len, forward_len)
+    )
+    sec = sections.section(level)
+    pca_axis = _principal_axis(sec.inside_xy, u_h)
+    cosang = abs(float(np.clip(pca_axis @ tangent, -1.0, 1.0)))
+    res = sections.resolution
+    assert res is not None  # offset_trace above already required it
+    diag: dict[str, Any] = {
+        "backbone": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "entryPolicy": "NEAREST_TO_RAMP",
+        "traceDiagnostics": off.diagnostics,
+        "footwallTrace": {
+            "totalLength": trace.total_length,
+            "vertexCount": int(trace.contact_points.shape[0]),
+            **{k: trace.diagnostics[k] for k in ("orientationFlipped", "footwallRunCount")},
+        },
+        "endMargin": margin,
+        "referenceOffset": float(np.hypot(*(ref[:2] - pos[:2]))),
+        "localTangentAzimuthDeg": math.degrees(_azimuth(direction)),
+        "localTangentVsGlobalPcaDeg": math.degrees(math.acos(cosang)),
+    }
+    return LevelDevelopmentAnchor(
+        level_id=level.level_id,
+        elevation=z,
+        position=pos,
+        heading=_azimuth(direction),
+        backbone_direction=np.asarray(direction, dtype=np.float64),
+        backbone_extent=(-behind, ahead),
+        role="FOOTWALL_DRIFT_ENTRY",
+        orebody_side="FOOTWALL",
+        mining_method=mining_method,
+        standoff=standoff,
+        ramp_reference=ref,
+        diagnostics=diag,
+        trace_chainage=t,
+        trace_length=total,
+        local_tangent=np.asarray(tangent, dtype=np.float64),
+        local_normal=np.asarray(inward, dtype=np.float64),
+        ore_contact=off.ore_contact[i].copy(),
+        selected_component_id=sections.geometry(level).selected_component_id,
+        section_sampling_spacing=res.base_spacing,
+        section_effective_spacing=res.effective_spacing,
     )
 
 
@@ -1199,7 +1379,7 @@ SCREEN_HEURISTIC = "HEURISTIC"
 
 def geometric_access_screen(
     ramp_points: FloatArray,
-    anchors: list[LevelDevelopmentAnchor | None],
+    anchors: list[LevelDevelopmentAnchor | AnchorFailure | None],
     levels: list[RequiredLevel],
     cfg: LevelAccessConfig,
     ramp: RampConstraints,
@@ -1235,6 +1415,10 @@ def geometric_access_screen(
         entry: dict[str, Any] = {"blocked": False, "reason": None, "rejectionCounts": {}}
         if anchor is None:
             entry.update({"blocked": True, "reason": AccessFailure.NO_ANCHOR})
+        elif isinstance(anchor, AnchorFailure):
+            # typed section-geometry failure (Phase 20C.2A) — same semantics
+            # here and in stage 4: the level has no development backbone
+            entry.update({"blocked": True, "reason": anchor.code, "detail": anchor.detail})
         else:
             cands = _junction_candidates(
                 ramp_points, lv.elevation, cfg, anchor.position[:2], ctx.ramp_ch, ctx.ramp_az
@@ -1262,7 +1446,7 @@ def geometric_access_screen(
 
 def plan_level_accesses(
     ramp_points: FloatArray,
-    anchors: list[LevelDevelopmentAnchor | None],
+    anchors: list[LevelDevelopmentAnchor | AnchorFailure | None],
     levels: list[RequiredLevel],
     cfg: LevelAccessConfig,
     ramp: RampConstraints,
@@ -1302,6 +1486,21 @@ def plan_level_accesses(
                     None,
                     failure_reason=AccessFailure.NO_ANCHOR,
                     failure_detail="no orebody section / development backbone at this level",
+                )
+            )
+            continue
+        if isinstance(anchor, AnchorFailure):
+            # typed section-geometry failure (Phase 20C.2A): identical
+            # treatment to the screen — the level fails with the section's
+            # own code, nothing is relaxed and no PCA fallback exists
+            accesses.append(
+                LevelAccess(
+                    lv.level_id,
+                    lv.elevation,
+                    "INFEASIBLE",
+                    None,
+                    failure_reason=anchor.code,
+                    failure_detail=anchor.detail,
                 )
             )
             continue
