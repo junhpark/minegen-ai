@@ -1,0 +1,35 @@
+# VA-01 FAST tier (additive — the original ci.yml stays untouched until the
+# same-HEAD old/new FULL equivalence is proven, §34). Inner-loop feedback on
+# pull requests: static checks + unmarked tests + cached canaries.
+name: Verify FAST
+
+on:
+  pull_request:
+
+concurrency:
+  group: verify-fast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: FAST (ruff · mypy · unmarked pytest · cached canaries)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install
+        working-directory: backend
+        run: pip install -e ".[dev]"
+      - name: verify fast
+        run: python scripts/verify.py fast
+      - name: Upload verification summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-fast
+          path: backend/.verification/
+          retention-days: 7
