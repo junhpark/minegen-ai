@@ -4,20 +4,17 @@
  * The two ways `sources.levels` becomes false — no levels artifact at all,
  * and a persisted levels artifact that contributed nothing — carry the SAME
  * headline: the sweep really does hold no drift / crosscut geometry either
- * way. Only the EXPLANATION differs, and only the implicit-orebody boundary
- * (closeout v5 §1) may be worded as a normal state; every other levels
- * failure must read as a failure. There is deliberately no stale state: the
- * last test pins one of the two mechanisms that make a stale report
- * impossible.
+ * way. Phase 20C.2A removed the old implicit-orebody "normal boundary"
+ * (LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY): an implicit body
+ * now develops real drifts / crosscuts along its curved section-trace
+ * backbone, so EVERY failed levels artifact must read as a failure. There
+ * is deliberately no stale state: the last test pins one of the two
+ * mechanisms that make a stale report impossible.
  */
 import { describe, expect, it } from 'vitest'
 import type { DevelopmentMeshReport, LevelsPayload, WorldScene } from '@/types/scene'
 import { afterLevelsRegen } from '@/scene/invalidation'
-import {
-  ACCESS_ONLY_HEADLINE,
-  IMPLICIT_OREBODY_BOUNDARY,
-  developmentMeshScope,
-} from './developmentMeshScope'
+import { ACCESS_ONLY_HEADLINE, developmentMeshScope } from './developmentMeshScope'
 
 function report(over: Partial<DevelopmentMeshReport> = {}): DevelopmentMeshReport {
   return {
@@ -62,26 +59,12 @@ describe('developmentMeshScope', () => {
     expect(scope.detail).toContain('generate level development')
   })
 
-  it('calls the implicit-orebody boundary a normal state and names Phase 20D', () => {
-    const scope = developmentMeshScope(
-      report({ sources: { levelAccesses: true, levels: false, rampSource: 'LAYOUT_V2' } }),
-      levels({
-        status: 'FAILED',
-        // the real backend text: CODE, then a colon and prose
-        failureReason:
-          `${IMPLICIT_OREBODY_BOUNDARY}: level drifts / crosscuts for a non-TABULAR ` +
-          'orebody are not implemented (Phase 20B boundary); ramp junctions and level ' +
-          'accesses are available',
-      }),
-    )
-    expect(scope.accessOnly).toBe(true)
-    expect(scope.headline).toBe(ACCESS_ONLY_HEADLINE)
-    expect(scope.detail).toContain('normal state')
-    expect(scope.detail).toContain('Phase 20D')
-  })
-
-  it('never calls ANOTHER levels failure normal — it is still access-only, but a failure', () => {
+  it('reads EVERY levels failure as a failure — no boundary is worded as normal', () => {
     for (const failureReason of [
+      'SECTION_TRACE_ANCHORS_REQUIRED: a non-TABULAR orebody is developed along its ' +
+        'curved section-trace anchors (Phase 20C.2A)',
+      'SECTION_FOOTWALL_AMBIGUOUS: level L03: no footwall-side contour run',
+      'SECTION_TRACE_OFFSET_INVALID: level L05: offset trace self-intersects',
       'LEVEL_ACCESSES_REQUIRED: a parametric main ramp ends its segments at ramp junctions',
       'no level entries to develop',
       'smoothed artifact has no effective segments',
@@ -96,20 +79,7 @@ describe('developmentMeshScope', () => {
       expect(scope.headline).toBe(ACCESS_ONLY_HEADLINE)
       expect(scope.detail).toContain('level development failed')
       expect(scope.detail).not.toContain('normal state')
-      expect(scope.detail).not.toContain('Phase 20D')
     }
-  })
-
-  it('does not treat a mere substring match as the typed boundary', () => {
-    const scope = developmentMeshScope(
-      report({ sources: { levelAccesses: true, levels: false, rampSource: 'LAYOUT_V2' } }),
-      levels({
-        status: 'FAILED',
-        failureReason: `wrapped ${IMPLICIT_OREBODY_BOUNDARY} in other prose`,
-      }),
-    )
-    expect(scope.detail).toContain('level development failed')
-    expect(scope.detail).not.toContain('Phase 20D')
   })
 
   it('qualifies nothing for a failed sweep or a report without sources', () => {

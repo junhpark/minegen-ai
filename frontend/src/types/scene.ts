@@ -932,6 +932,12 @@ export interface LevelsPayload {
   sourceRevision: string
   /** Phase 20B: where the LEVEL_ENTRY positions came from (rule 157) */
   entrySource?: 'LEGACY_RAMP_SEGMENT' | 'LEVEL_ACCESS'
+  /**
+   * Phase 20C.2A: which backbone geometry contract developed the levels —
+   * the exact TABULAR strike line, or the curved section-trace backbone of
+   * an implicit orebody. Absent on pre-20C.2A artifacts.
+   */
+  developmentGeometry?: 'TABULAR_RULE_43' | 'SECTION_FOOTWALL_OFFSET_TRACE' | null
   /** Phase 20B: method-specific production development status (rule 159) */
   productionDevelopment?: {
     method: string

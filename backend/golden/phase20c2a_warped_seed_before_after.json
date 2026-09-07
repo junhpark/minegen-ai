@@ -1,0 +1,1549 @@
+{
+  "baselineLabel": "20c1c-warped-seeds",
+  "currentLabel": "phase20c2a_warped_seed_survey",
+  "label": "phase20c2a_warped_seed_before_after",
+  "layout": {
+    "changedSeeds": [
+      {
+        "diffs": {
+          "winnerId": {
+            "after": "SPIRAL-n1-CW-e+0-g0.120",
+            "before": "SPIRAL-n1-CCW-e+0-g0.120"
+          }
+        },
+        "seed": 301
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 9,
+            "before": 6
+          },
+          "bestConservativeClearance": {
+            "after": 24.922554,
+            "before": 23.472236
+          }
+        },
+        "seed": 303
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 12,
+            "before": 11
+          },
+          "bestConservativeClearance": {
+            "after": 49.915904,
+            "before": 43.910125
+          },
+          "detailedFeasibleCount": {
+            "after": 6,
+            "before": 0
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": "INSUFFICIENT_RAMP_PILLAR"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 12,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 304
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 47.148086,
+            "before": 44.117594
+          },
+          "detailedFeasibleCount": {
+            "after": 5,
+            "before": 2
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": "SPIRAL"
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.100",
+            "before": "SPIRAL-n1-CW-e+0-g0.100"
+          }
+        },
+        "seed": 305
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 6,
+            "before": 7
+          },
+          "bestConservativeClearance": {
+            "after": 24.914873,
+            "before": 25.497859
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": "INSUFFICIENT_RAMP_PILLAR"
+          }
+        },
+        "seed": 306
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 4,
+            "before": 1
+          }
+        },
+        "seed": 307
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 6,
+            "before": 3
+          },
+          "bestConservativeClearance": {
+            "after": 30.092288,
+            "before": 31.369481
+          }
+        },
+        "seed": 308
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 6,
+            "before": 4
+          },
+          "bestConservativeClearance": {
+            "after": 42.088629,
+            "before": 37.748843
+          },
+          "dominantLevelAccessFailure": {
+            "after": "INSUFFICIENT_RAMP_PILLAR",
+            "before": "GRADE_LIMIT"
+          }
+        },
+        "seed": 309
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 10,
+            "before": 7
+          },
+          "bestConservativeClearance": {
+            "after": 50.61707,
+            "before": 49.085265
+          },
+          "detailedFeasibleCount": {
+            "after": 5,
+            "before": 0
+          },
+          "dominantFailure": {
+            "after": "DETAILED:ABOVE_TERRAIN",
+            "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE"
+          },
+          "dominantLevelAccessFailure": {
+            "after": "TURNOUT_NOT_STRAIGHT",
+            "before": "GRADE_LIMIT"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 10,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 310
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 12,
+            "before": 11
+          },
+          "bestConservativeClearance": {
+            "after": 43.480633,
+            "before": 42.647177
+          },
+          "detailedFeasibleCount": {
+            "after": 9,
+            "before": 0
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 12,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 311
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 10,
+            "before": 9
+          },
+          "bestConservativeClearance": {
+            "after": 26.111513,
+            "before": 33.971575
+          },
+          "dominantLevelAccessFailure": {
+            "after": "INSUFFICIENT_RAMP_PILLAR",
+            "before": "GRADE_LIMIT"
+          }
+        },
+        "seed": 312
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 8,
+            "before": 4
+          },
+          "bestConservativeClearance": {
+            "after": 50.507307,
+            "before": 50.155311
+          },
+          "detailedFeasibleCount": {
+            "after": 1,
+            "before": 0
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 8,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k2-p+20-CW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 313
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 11,
+            "before": 4
+          },
+          "detailedFeasibleCount": {
+            "after": 5,
+            "before": 0
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 11,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 314
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 8,
+            "before": 6
+          },
+          "bestConservativeClearance": {
+            "after": 56.186142,
+            "before": 49.000602
+          },
+          "detailedFeasibleCount": {
+            "after": 7,
+            "before": 0
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 8,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.100",
+            "before": null
+          }
+        },
+        "seed": 315
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 7,
+            "before": 4
+          },
+          "bestConservativeClearance": {
+            "after": 25.100515,
+            "before": 26.203341
+          }
+        },
+        "seed": 316
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 40.382484,
+            "before": 26.602942
+          },
+          "detailedFeasibleCount": {
+            "after": 2,
+            "before": 3
+          }
+        },
+        "seed": 317
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 31.77602,
+            "before": 24.000647
+          },
+          "detailedFeasibleCount": {
+            "after": 3,
+            "before": 11
+          },
+          "dominantFailure": {
+            "after": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+            "before": "DETAILED:OREBODY_CLEARANCE"
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.120",
+            "before": "SWITCHBACK-k1-p+0-CCW-g0.100"
+          }
+        },
+        "seed": 318
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 11,
+            "before": 14
+          },
+          "bestConservativeClearance": {
+            "after": 22.530718,
+            "before": 22.728009
+          },
+          "detailedFeasibleCount": {
+            "after": 0,
+            "before": 9
+          },
+          "dominantFailure": {
+            "after": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+            "before": "DETAILED:ABOVE_TERRAIN"
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": null
+          },
+          "status": {
+            "after": "NO_FEASIBLE_CANDIDATE",
+            "before": "SUCCESS"
+          },
+          "winnerAccessibleLevels": {
+            "after": null,
+            "before": 14
+          },
+          "winnerFamily": {
+            "after": null,
+            "before": "SWITCHBACK"
+          },
+          "winnerId": {
+            "after": null,
+            "before": "SWITCHBACK-k1-p+0-CCW-g0.120"
+          }
+        },
+        "seed": 319
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 26.469245,
+            "before": 26.401672
+          }
+        },
+        "seed": 320
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 7,
+            "before": 2
+          },
+          "bestConservativeClearance": {
+            "after": 92.585243,
+            "before": 85.129328
+          },
+          "detailedFeasibleCount": {
+            "after": 11,
+            "before": 0
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": "INSUFFICIENT_RAMP_PILLAR"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 7,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 322
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 13,
+            "before": 1
+          },
+          "bestConservativeClearance": {
+            "after": 42.95704,
+            "before": 40.743323
+          },
+          "detailedFeasibleCount": {
+            "after": 2,
+            "before": 0
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 13,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k2-p+20-CCW-g0.100",
+            "before": null
+          }
+        },
+        "seed": 323
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 4,
+            "before": 0
+          },
+          "bestConservativeClearance": {
+            "after": 27.324053,
+            "before": 27.410139
+          },
+          "dominantFailure": {
+            "after": "DETAILED:ABOVE_TERRAIN",
+            "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE"
+          }
+        },
+        "seed": 324
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 11,
+            "before": 10
+          },
+          "bestConservativeClearance": {
+            "after": 42.481018,
+            "before": 32.920489
+          },
+          "detailedFeasibleCount": {
+            "after": 5,
+            "before": 0
+          },
+          "dominantLevelAccessFailure": {
+            "after": "INSUFFICIENT_RAMP_PILLAR",
+            "before": "GRADE_LIMIT"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 11,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CCW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 325
+      },
+      {
+        "diffs": {
+          "detailedFeasibleCount": {
+            "after": 1,
+            "before": 10
+          },
+          "dominantFailure": {
+            "after": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+            "before": "DETAILED:OREBODY_CLEARANCE"
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": "SPIRAL"
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CCW-s50-g0.100",
+            "before": "SPIRAL-n1-CCW-e+0-g0.120"
+          }
+        },
+        "seed": 326
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 8,
+            "before": 7
+          },
+          "bestConservativeClearance": {
+            "after": 99.823245,
+            "before": 79.597865
+          },
+          "detailedFeasibleCount": {
+            "after": 10,
+            "before": 0
+          },
+          "dominantFailure": {
+            "after": "DETAILED:OREBODY_CLEARANCE",
+            "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE"
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": "INSUFFICIENT_RAMP_PILLAR"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 8,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 327
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 10,
+            "before": 11
+          },
+          "bestConservativeClearance": {
+            "after": 26.932742,
+            "before": 25.112411
+          },
+          "detailedFeasibleCount": {
+            "after": 0,
+            "before": 12
+          },
+          "dominantFailure": {
+            "after": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+            "before": "CONSTRUCT:LEG_TOO_SHORT"
+          },
+          "dominantLevelAccessFailure": {
+            "after": "GRADE_LIMIT",
+            "before": null
+          },
+          "status": {
+            "after": "NO_FEASIBLE_CANDIDATE",
+            "before": "SUCCESS"
+          },
+          "winnerAccessibleLevels": {
+            "after": null,
+            "before": 11
+          },
+          "winnerFamily": {
+            "after": null,
+            "before": "SPIRAL"
+          },
+          "winnerId": {
+            "after": null,
+            "before": "SPIRAL-n1-CCW-e+0-g0.120"
+          }
+        },
+        "seed": 328
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 28.845011,
+            "before": 23.556434
+          },
+          "detailedFeasibleCount": {
+            "after": 4,
+            "before": 10
+          },
+          "dominantFailure": {
+            "after": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+            "before": "DETAILED:OREBODY_CLEARANCE"
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": "SPIRAL"
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CW-g0.120",
+            "before": "SPIRAL-n1-CW-e+0-g0.120"
+          }
+        },
+        "seed": 329
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 14,
+            "before": 12
+          },
+          "bestConservativeClearance": {
+            "after": 43.908002,
+            "before": 33.017303
+          },
+          "detailedFeasibleCount": {
+            "after": 10,
+            "before": 0
+          },
+          "dominantFailure": {
+            "after": "DETAILED:OREBODY_CLEARANCE",
+            "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE"
+          },
+          "dominantLevelAccessFailure": {
+            "after": null,
+            "before": "GRADE_LIMIT"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 14,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 330
+      },
+      {
+        "diffs": {
+          "bestAccessibleLevels": {
+            "after": 8,
+            "before": 0
+          },
+          "bestConservativeClearance": {
+            "after": 44.352732,
+            "before": 35.750289
+          },
+          "detailedFeasibleCount": {
+            "after": 6,
+            "before": 0
+          },
+          "dominantFailure": {
+            "after": "DETAILED:OREBODY_CLEARANCE",
+            "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE"
+          },
+          "status": {
+            "after": "SUCCESS",
+            "before": "NO_FEASIBLE_CANDIDATE"
+          },
+          "winnerAccessibleLevels": {
+            "after": 8,
+            "before": null
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": null
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p-20-CW-g0.120",
+            "before": null
+          }
+        },
+        "seed": 331
+      },
+      {
+        "diffs": {
+          "bestConservativeClearance": {
+            "after": 28.680823,
+            "before": 30.882797
+          },
+          "detailedFeasibleCount": {
+            "after": 2,
+            "before": 11
+          },
+          "winnerFamily": {
+            "after": "SWITCHBACK",
+            "before": "SPIRAL"
+          },
+          "winnerId": {
+            "after": "SWITCHBACK-k1-p+20-CW-g0.100",
+            "before": "SPIRAL-n1-CW-e+0-g0.100"
+          }
+        },
+        "seed": 332
+      }
+    ],
+    "dominantFailureHistogramAfter": {
+      "DETAILED:ABOVE_TERRAIN": 5,
+      "DETAILED:LEVEL_ACCESS_INFEASIBLE": 8
+    },
+    "dominantFailureHistogramBefore": {
+      "DETAILED:ABOVE_TERRAIN": 5,
+      "DETAILED:LEVEL_ACCESS_INFEASIBLE": 18
+    },
+    "identicalSeeds": 2,
+    "levelAccessFailureReasonsAfter": {
+      "CONNECTOR_UNAVAILABLE": 66,
+      "GRADE_LIMIT": 350,
+      "INSUFFICIENT_RAMP_PILLAR": 96,
+      "TURNOUT_NOT_STRAIGHT": 77
+    },
+    "levelAccessFailureReasonsBefore": {
+      "CONNECTOR_UNAVAILABLE": 7,
+      "GRADE_LIMIT": 695,
+      "INSUFFICIENT_RAMP_PILLAR": 256,
+      "JUNCTION_SPACING_CONFLICT": 3,
+      "OREBODY_CLEARANCE": 55,
+      "TURNOUT_NOT_STRAIGHT": 84
+    },
+    "runtimeNote": "wall-clock only; the phase20c2a survey ran concurrently with the 22-case legacy golden re-run on the same machine",
+    "runtimeSecondsAfter": 1782.9,
+    "runtimeSecondsBefore": 707.0,
+    "statusFlips": {
+      "note": "the two SUCCESS -> NO_FEASIBLE_CANDIDATE seeds (319, 328) lose levels the PCA-plane anchor could reach: the curved section-trace anchor sits on the ACTUAL local footwall geometry and on those seeds some entries become unreachable for the one-turn CS connector (GRADE_LIMIT / CONNECTOR_UNAVAILABLE). Reported, not tuned around; no gate or threshold was changed",
+      "toNoFeasible": [
+        319,
+        328
+      ],
+      "toSuccess": [
+        304,
+        310,
+        311,
+        313,
+        314,
+        315,
+        322,
+        323,
+        325,
+        327,
+        330,
+        331
+      ]
+    },
+    "successCountAfter": 19,
+    "successCountBefore": 9
+  },
+  "levelDevelopment": {
+    "beforeNote": "pre-20C.2A every WARPED_VEIN levels request answered the typed UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT boundary; 0 is by construction, not a measured regression baseline",
+    "developmentGeometry": [
+      "SECTION_FOOTWALL_OFFSET_TRACE"
+    ],
+    "layoutSuccessCount": 19,
+    "maxTerminalContactGap": 4.547473508864641e-13,
+    "rows": [
+      {
+        "accessCount": 14,
+        "crosscutCount": 192,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 192,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 97.1,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 301,
+        "totalCrosscutLengthM": 7904.7,
+        "totalDriftLengthM": 6230.0,
+        "winnerId": "SPIRAL-n1-CW-e+0-g0.120"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 302
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 303
+      },
+      {
+        "accessCount": 12,
+        "crosscutCount": 178,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 178,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 85.9,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 304,
+        "totalCrosscutLengthM": 11643.2,
+        "totalDriftLengthM": 5890.1,
+        "winnerId": "SWITCHBACK-k1-p-20-CCW-g0.120"
+      },
+      {
+        "accessCount": 11,
+        "crosscutCount": 163,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 163,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 99.2,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 305,
+        "totalCrosscutLengthM": 10110.0,
+        "totalDriftLengthM": 5320.0,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.100"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 306
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 307
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 308
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 309
+      },
+      {
+        "accessCount": 10,
+        "crosscutCount": 120,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 120,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 69.6,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 310,
+        "totalCrosscutLengthM": 8080.5,
+        "totalDriftLengthM": 3888.0,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.120"
+      },
+      {
+        "accessCount": 12,
+        "crosscutCount": 146,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 146,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 77.2,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 311,
+        "totalCrosscutLengthM": 7136.4,
+        "totalDriftLengthM": 4753.3,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.120"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 312
+      },
+      {
+        "accessCount": 8,
+        "crosscutCount": 112,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 112,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 27.1,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 313,
+        "totalCrosscutLengthM": 8470.6,
+        "totalDriftLengthM": 3640.0,
+        "winnerId": "SWITCHBACK-k2-p+20-CW-g0.120"
+      },
+      {
+        "accessCount": 11,
+        "crosscutCount": 115,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 115,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 52.7,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 314,
+        "totalCrosscutLengthM": 6024.3,
+        "totalDriftLengthM": 3641.2,
+        "winnerId": "SWITCHBACK-k1-p-20-CCW-g0.120"
+      },
+      {
+        "accessCount": 8,
+        "crosscutCount": 116,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 116,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 55.0,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 315,
+        "totalCrosscutLengthM": 5967.7,
+        "totalDriftLengthM": 3780.0,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.100"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 316
+      },
+      {
+        "accessCount": 9,
+        "crosscutCount": 129,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 129,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 40.0,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 317,
+        "totalCrosscutLengthM": 7641.8,
+        "totalDriftLengthM": 4200.0,
+        "winnerId": "SWITCHBACK-k1-p-20-CCW-g0.120"
+      },
+      {
+        "accessCount": 12,
+        "crosscutCount": 194,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 194,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 92.7,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 318,
+        "totalCrosscutLengthM": 11355.5,
+        "totalDriftLengthM": 6370.0,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.120"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 319
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 320
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 321
+      },
+      {
+        "accessCount": 7,
+        "crosscutCount": 121,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 121,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 89.5,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 322,
+        "totalCrosscutLengthM": 7037.9,
+        "totalDriftLengthM": 4014.9,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.120"
+      },
+      {
+        "accessCount": 13,
+        "crosscutCount": 139,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 139,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 52.5,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 323,
+        "totalCrosscutLengthM": 9273.7,
+        "totalDriftLengthM": 4420.9,
+        "winnerId": "SWITCHBACK-k2-p+20-CCW-g0.100"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 324
+      },
+      {
+        "accessCount": 11,
+        "crosscutCount": 109,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 109,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 66.0,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 325,
+        "totalCrosscutLengthM": 7113.6,
+        "totalDriftLengthM": 3537.8,
+        "winnerId": "SWITCHBACK-k1-p-20-CCW-g0.120"
+      },
+      {
+        "accessCount": 12,
+        "crosscutCount": 204,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 204,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 83.8,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 326,
+        "totalCrosscutLengthM": 9664.6,
+        "totalDriftLengthM": 6720.0,
+        "winnerId": "SWITCHBACK-k1-p+20-CCW-s50-g0.100"
+      },
+      {
+        "accessCount": 8,
+        "crosscutCount": 84,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 84,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 55.2,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 327,
+        "totalCrosscutLengthM": 5471.7,
+        "totalDriftLengthM": 2763.9,
+        "winnerId": "SWITCHBACK-k1-p+20-CW-g0.120"
+      },
+      {
+        "layoutStatus": "NO_FEASIBLE_CANDIDATE",
+        "levelsStatus": null,
+        "note": "layout did not produce a winner; level development not reachable",
+        "seed": 328
+      },
+      {
+        "accessCount": 12,
+        "crosscutCount": 132,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 132,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 70.3,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 329,
+        "totalCrosscutLengthM": 5972.4,
+        "totalDriftLengthM": 4200.0,
+        "winnerId": "SWITCHBACK-k1-p-20-CW-g0.120"
+      },
+      {
+        "accessCount": 14,
+        "crosscutCount": 228,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 228,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 77.8,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 330,
+        "totalCrosscutLengthM": 12963.6,
+        "totalDriftLengthM": 7490.0,
+        "winnerId": "SWITCHBACK-k1-p-20-CW-g0.120"
+      },
+      {
+        "accessCount": 8,
+        "crosscutCount": 116,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 116,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 40.5,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 331,
+        "totalCrosscutLengthM": 6745.5,
+        "totalDriftLengthM": 3781.7,
+        "winnerId": "SWITCHBACK-k1-p-20-CW-g0.120"
+      },
+      {
+        "accessCount": 11,
+        "crosscutCount": 159,
+        "developmentGeometry": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "driftCount": 159,
+        "invalidDevelopments": 0,
+        "layoutStatus": "SUCCESS",
+        "levelsFailureReason": null,
+        "levelsStatus": "SUCCESS",
+        "maxTerminalContactGap": 4.547473508864641e-13,
+        "seconds": 73.9,
+        "sectionEffectiveSpacings": [
+          2.0
+        ],
+        "seed": 332,
+        "totalCrosscutLengthM": 8332.0,
+        "totalDriftLengthM": 5180.0,
+        "winnerId": "SWITCHBACK-k1-p+20-CW-g0.100"
+      }
+    ],
+    "runtimeSeconds": 1306.1,
+    "sectionEffectiveSpacings": [
+      2.0
+    ],
+    "successCountAfter": 19,
+    "successCountBefore": 0
+  },
+  "perSeed": [
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 301,
+      "winnerAfter": "SPIRAL-n1-CW-e+0-g0.120",
+      "winnerBefore": "SPIRAL-n1-CCW-e+0-g0.120"
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 302,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 303,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 304,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 305,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.100",
+      "winnerBefore": "SPIRAL-n1-CW-e+0-g0.100"
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 306,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 307,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 308,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 309,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 310,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 311,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 312,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 313,
+      "winnerAfter": "SWITCHBACK-k2-p+20-CW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 314,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 315,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.100",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 316,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 317,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CCW-g0.120",
+      "winnerBefore": "SWITCHBACK-k1-p-20-CCW-g0.120"
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 318,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "winnerBefore": "SWITCHBACK-k1-p+0-CCW-g0.100"
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "SUCCESS",
+      "seed": 319,
+      "winnerAfter": null,
+      "winnerBefore": "SWITCHBACK-k1-p+0-CCW-g0.120"
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 320,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 321,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 322,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 323,
+      "winnerAfter": "SWITCHBACK-k2-p+20-CCW-g0.100",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 324,
+      "winnerAfter": null,
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 325,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CCW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 326,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CCW-s50-g0.100",
+      "winnerBefore": "SPIRAL-n1-CCW-e+0-g0.120"
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 327,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+      "layoutBefore": "SUCCESS",
+      "seed": 328,
+      "winnerAfter": null,
+      "winnerBefore": "SPIRAL-n1-CCW-e+0-g0.120"
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 329,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CW-g0.120",
+      "winnerBefore": "SPIRAL-n1-CW-e+0-g0.120"
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 330,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+      "seed": 331,
+      "winnerAfter": "SWITCHBACK-k1-p-20-CW-g0.120",
+      "winnerBefore": null
+    },
+    {
+      "layoutAfter": "SUCCESS",
+      "layoutBefore": "SUCCESS",
+      "seed": 332,
+      "winnerAfter": "SWITCHBACK-k1-p+20-CW-g0.100",
+      "winnerBefore": "SPIRAL-n1-CW-e+0-g0.100"
+    }
+  ],
+  "seedCount": 32,
+  "seeds": [
+    301,
+    302,
+    303,
+    304,
+    305,
+    306,
+    307,
+    308,
+    309,
+    310,
+    311,
+    312,
+    313,
+    314,
+    315,
+    316,
+    317,
+    318,
+    319,
+    320,
+    321,
+    322,
+    323,
+    324,
+    325,
+    326,
+    327,
+    328,
+    329,
+    330,
+    331,
+    332
+  ],
+  "semantics": "Phase 20C.2A A12: fixed 32-seed RANDOM_WARPED_VEIN survey (301-332), 20C.1-closeout baseline vs the 20C.2A tree, LAYOUT half and LEVEL-DEVELOPMENT half reported separately. The layout search gained curved section-trace anchors (rule 177-180); the level-development half did not exist before 20C.2A (typed UNSUPPORTED boundary), so its 'before' success count is 0 by construction. Diagnostic only: no threshold, coefficient or gate was changed to move these numbers"
+}
