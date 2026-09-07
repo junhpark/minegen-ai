@@ -287,9 +287,7 @@ class TestInwardNormalContract:
         payload, _, _ = warped_levels
         assert payload.status == "SUCCESS"
         excluded = {
-            lv.level_id: lv.excluded_stations
-            for lv in payload.levels
-            if lv.excluded_stations
+            lv.level_id: lv.excluded_stations for lv in payload.levels if lv.excluded_stations
         }
         flat = {(lid, e.station_index) for lid, lst in excluded.items() for e in lst}
         assert flat == {("L03", -4), ("L03", 3), ("L03", 4), ("L15", -6), ("L16", -5)}
