@@ -158,6 +158,18 @@ Every phase must pass all of these before it is considered complete:
    network → 4D unchanged; the warped-vein mesh (≈ 10–25 k vertices) orbits
    smoothly in the browser.
 
+## Verification tiers (VA-01)
+
+```
+python scripts/verify.py fast      # inner loop (static + unmarked tests + cached canaries)
+python scripts/verify.py feature   # + clean canaries
+python scripts/verify.py full      # authoritative (old CI gates, pytest unfiltered, coverage proof)
+python scripts/verify.py benchmark # runtime observation only
+```
+
+Read `backend/.verification/verification-summary.json`, not the raw logs.
+See `docs/verification.md`.
+
 ## Phase 20C.2A manual acceptance (curved WARPED level development)
 
 1. Randomized · irregular warped vein (seed 301) → Generate world →

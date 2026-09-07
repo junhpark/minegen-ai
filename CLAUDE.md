@@ -593,6 +593,13 @@ Frontend: `cd frontend && npm run typecheck && npm run lint && npm test && npm r
 All four backend commands and all four frontend commands must pass before a
 phase is considered complete.
 
+Verification tiers (VA-01, `scripts/verify.py`): `fast` is the inner loop
+(static checks + unmarked tests + cached canaries), `feature` adds the clean
+canaries, `full` is the authoritative closeout (every gate above, pytest
+UNFILTERED, plus the mechanical coverage proof) and `benchmark` is runtime
+observation only. Raw logs and `verification-summary.json` live under
+`backend/.verification/` (git-ignored). Read the summary, not the log.
+
 81. **MineTimeline temporal ownership**: `derived/timeline.json` owns time,
     tasks and state ONLY — never geometry. Geometry remains owned by
     `decline_smoothed.json` (RAMP), `levels.json` (DRIFT/CROSSCUT) and
@@ -1570,3 +1577,22 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      bit-compatible. WARPED stope geometry stays the explicit typed
      Phase 09 boundary (rule 75); STOPE_ACCESS crosscut terminals are the
      future anchors.
+
+181. Verification tiers never weaken FULL (VA-01). Tests are FAST by
+     default; heavy groups carry the registered markers `slow`, `golden`,
+     `survey`, `e2e`, `legacy_regression`, `benchmark` (assigned centrally
+     in `backend/tests/conftest.py` from explicit tables; `--strict-markers`
+     rejects typos) and `canary` marks the representative clean-scenario
+     detectors. FULL runs pytest UNFILTERED and proves
+     `collected(FULL) == collected(unfiltered)` and
+     `excludedFromFast ⊆ FULL` mechanically (`scripts/verify.py
+     collect-full`, `tests/test_verification_tiers.py`). Session-shared
+     upstream fixtures (`warped_301`, `warped_301_search`) are READ-ONLY
+     (content fingerprint re-checked at teardown); a cached verification
+     fixture (`backend/tests/fixtures/verification/`, generated only by
+     `scripts/generate_verification_fixtures.py`, content-fingerprinted) is
+     development acceleration, never release authority — FULL regenerates
+     the artifact cleanly and a fingerprint mismatch is an explicit STALE
+     VERIFICATION FIXTURE failure, never auto-rewritten. A FULL result is
+     merge evidence only for the exact HEAD it ran on. Faster verification
+     never changes a production threshold, golden expectation or hard gate.
