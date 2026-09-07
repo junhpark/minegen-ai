@@ -212,6 +212,17 @@ class LevelDevelopmentAnchor:
     standoff: float
     ramp_reference: FloatArray | None  # main-ramp level reference (crossing) if any
     diagnostics: dict[str, Any] = field(default_factory=dict)
+    #: Phase 20C.2A curved-anchor fields (None on the exact TABULAR line
+    #: anchor): the entry as a chainage on the level's offset development
+    #: trace, with its local frame and nearest ore contact
+    trace_chainage: float | None = None
+    trace_length: float | None = None
+    local_tangent: FloatArray | None = None  # (2,) unit, trace orientation
+    local_normal: FloatArray | None = None  # (2,) unit, INWARD (toward ore)
+    ore_contact: FloatArray | None = None  # (3,) nearest contact-trace vertex
+    selected_component_id: int | None = None
+    section_sampling_spacing: float | None = None  # configured base spacing
+    section_effective_spacing: float | None = None  # refined grid spacing
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -228,6 +239,20 @@ class LevelDevelopmentAnchor:
             "rampLevelReference": (
                 [float(v) for v in self.ramp_reference] if self.ramp_reference is not None else None
             ),
+            "traceChainage": self.trace_chainage,
+            "traceLength": self.trace_length,
+            "localTangent": (
+                [float(v) for v in self.local_tangent] if self.local_tangent is not None else None
+            ),
+            "localNormal": (
+                [float(v) for v in self.local_normal] if self.local_normal is not None else None
+            ),
+            "oreContact": (
+                [float(v) for v in self.ore_contact] if self.ore_contact is not None else None
+            ),
+            "selectedComponentId": self.selected_component_id,
+            "sectionSamplingSpacing": self.section_sampling_spacing,
+            "sectionEffectiveSpacing": self.section_effective_spacing,
             "diagnostics": self.diagnostics,
         }
 
@@ -250,6 +275,16 @@ def _principal_axis(xy: FloatArray, prefer: FloatArray) -> FloatArray:
     return axis
 
 
+def _ramp_reference(ramp_points: FloatArray, z: float) -> FloatArray:
+    """Main-ramp level reference: the z-crossing point, else the ramp vertex
+    closest to the level elevation."""
+    cr = find_crossing(ramp_points, z)
+    if cr is not None:
+        return np.asarray(cr.point, dtype=np.float64)
+    i = int(np.argmin(np.abs(ramp_points[:, 2] - z)))
+    return np.asarray(ramp_points[i], dtype=np.float64)
+
+
 def build_anchor(
     orebody: Orebody,
     level: RequiredLevel,
@@ -270,12 +305,7 @@ def build_anchor(
     if sec.empty:
         return None
     z = level.elevation
-    cr = find_crossing(ramp_points, z)
-    if cr is not None:
-        ref = np.asarray(cr.point, dtype=np.float64)
-    else:
-        i = int(np.argmin(np.abs(ramp_points[:, 2] - z)))
-        ref = np.asarray(ramp_points[i], dtype=np.float64)
+    ref = _ramp_reference(ramp_points, z)
     if isinstance(orebody, TabularOrebody):
         # exact rule 43 footwall line at this elevation
         u_h = np.asarray(orebody.u[:2], dtype=np.float64)
@@ -328,6 +358,109 @@ def build_anchor(
         standoff=standoff,
         ramp_reference=ref,
         diagnostics=diag,
+    )
+
+
+#: minimum offset-trace arc length that can host a level development —
+#: room for the entry end margins plus one positive drift span (a planning
+#: floor, never statutory)
+MIN_DEVELOPMENT_TRACE_LENGTH = 2.0 * BACKBONE_END_MARGIN
+
+
+def build_curved_anchor(
+    orebody: Orebody,
+    level: RequiredLevel,
+    sections: LevelSections,
+    w_h: FloatArray,
+    u_h: FloatArray,
+    ramp_points: FloatArray,
+    standoff: float,
+    mining_method: str,
+) -> LevelDevelopmentAnchor | None:
+    """Phase 20C.2A curved level-development anchor for implicit orebodies.
+
+    The backbone is the level's OFFSET DEVELOPMENT TRACE (the EDT level set
+    at ``standoff`` from the dominant section component, adjacent to the
+    dominant footwall trace — ``layout.sections``), never a global principal
+    axis. ``w_h`` is the footwall-side orientation seed only; ``u_h`` is
+    used solely for the PCA-comparison diagnostic. Entry policy
+    NEAREST_TO_RAMP: the admissible trace chainage (inside the end margins)
+    whose point is plan-closest to the main ramp's level reference —
+    deterministic (ties resolve to the lowest chainage). The preferred
+    terminal heading is the LOCAL trace tangent, oriented toward the longer
+    usable trace side (tie: along the deterministic trace orientation).
+
+    Returns ``None`` for an empty section (NO_ANCHOR, as before); section
+    trace failures raise typed ``SectionGeometryError``
+    (SECTION_FOOTWALL_AMBIGUOUS / SECTION_TRACE_OFFSET_INVALID /
+    SECTION_RESOLUTION_BUDGET_EXCEEDED) for the caller to record."""
+    if sections.geometry(level).empty:
+        return None
+    z = level.elevation
+    ref = _ramp_reference(ramp_points, z)
+    trace = sections.footwall_trace(level, w_h)
+    off = sections.offset_trace(level, w_h, standoff, MIN_DEVELOPMENT_TRACE_LENGTH)
+    total = off.total_length
+    margin = min(BACKBONE_END_MARGIN, 0.25 * total)
+    admissible = (off.chainage >= margin - 1e-9) & (off.chainage <= total - margin + 1e-9)
+    if not bool(admissible.any()):  # pragma: no cover — total ≥ 2·margin by the trace gate
+        admissible = np.ones(off.chainage.shape[0], dtype=bool)
+    d = np.hypot(off.points[:, 0] - ref[0], off.points[:, 1] - ref[1])
+    d = np.where(admissible, d, np.inf)
+    i = int(np.argmin(d))  # ties → lowest chainage (first index)
+    t = float(off.chainage[i])
+    pos = off.points[i].copy()
+    tangent = off.tangents[i].copy()
+    forward_len = total - t
+    backward_len = t
+    direction = tangent if forward_len >= backward_len else -tangent
+    inward = off.ore_contact[i, :2] - pos[:2]
+    n_in = float(np.linalg.norm(inward))
+    inward = inward / n_in if n_in > 1e-12 else -off.tangents[i]
+    # heading-frame extent: 0 at the entry, positive along the heading
+    ahead, behind = (
+        (forward_len, backward_len) if forward_len >= backward_len else (backward_len, forward_len)
+    )
+    sec = sections.section(level)
+    pca_axis = _principal_axis(sec.inside_xy, u_h)
+    cosang = abs(float(np.clip(pca_axis @ tangent, -1.0, 1.0)))
+    res = sections.resolution
+    assert res is not None  # offset_trace above already required it
+    diag: dict[str, Any] = {
+        "backbone": "SECTION_FOOTWALL_OFFSET_TRACE",
+        "entryPolicy": "NEAREST_TO_RAMP",
+        "traceDiagnostics": off.diagnostics,
+        "footwallTrace": {
+            "totalLength": trace.total_length,
+            "vertexCount": int(trace.contact_points.shape[0]),
+            **{k: trace.diagnostics[k] for k in ("orientationFlipped", "footwallRunCount")},
+        },
+        "endMargin": margin,
+        "referenceOffset": float(np.hypot(*(ref[:2] - pos[:2]))),
+        "localTangentAzimuthDeg": math.degrees(_azimuth(direction)),
+        "localTangentVsGlobalPcaDeg": math.degrees(math.acos(cosang)),
+    }
+    return LevelDevelopmentAnchor(
+        level_id=level.level_id,
+        elevation=z,
+        position=pos,
+        heading=_azimuth(direction),
+        backbone_direction=np.asarray(direction, dtype=np.float64),
+        backbone_extent=(-behind, ahead),
+        role="FOOTWALL_DRIFT_ENTRY",
+        orebody_side="FOOTWALL",
+        mining_method=mining_method,
+        standoff=standoff,
+        ramp_reference=ref,
+        diagnostics=diag,
+        trace_chainage=t,
+        trace_length=total,
+        local_tangent=np.asarray(tangent, dtype=np.float64),
+        local_normal=np.asarray(inward, dtype=np.float64),
+        ore_contact=off.ore_contact[i].copy(),
+        selected_component_id=sections.geometry(level).selected_component_id,
+        section_sampling_spacing=res.base_spacing,
+        section_effective_spacing=res.effective_spacing,
     )
 
 

@@ -50,6 +50,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 from scipy import ndimage
+from scipy.spatial import cKDTree
 
 from minegen.world.orebody import Orebody
 
@@ -394,3 +395,457 @@ def build_section_geometry(
         loop_count=loop_count,
         hole_count=max(loop_count - 1, 0),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Footwall trace + offset development trace (Phase 20C.2A commit A2)
+# --------------------------------------------------------------------------- #
+
+#: typed failure codes of the trace layer (fail closed, never smoothed away)
+SECTION_FOOTWALL_AMBIGUOUS = "SECTION_FOOTWALL_AMBIGUOUS"
+SECTION_TRACE_OFFSET_INVALID = "SECTION_TRACE_OFFSET_INVALID"
+
+#: contour vertices probed (evenly spaced) by the contains()-based outward-
+#: orientation verification
+ORIENTATION_PROBE_COUNT = 16
+#: minimum dominant footwall run length, in effective spacings — below this
+#: the side classification is noise, not a footwall
+MIN_FOOTWALL_RUN_SPACINGS = 4.0
+#: tolerance band (in effective spacings) by which the offset trace may sit
+#: CLOSER to the contact than the stand-off — grid EDT measures to cell
+#: centers while the contact trace sits on mid-cell contour vertices
+OFFSET_CONTACT_TOLERANCE_SPACINGS = 2.0
+#: block size of the chunked self-intersection sweep (pairs per block)
+_SELF_INTERSECT_BLOCK = 256
+
+
+def _interp_along(pts: FloatArray, s: FloatArray, query: FloatArray) -> FloatArray:
+    """Linear interpolation of a polyline at arc-length coordinates."""
+    out = np.empty((query.shape[0], pts.shape[1]), dtype=np.float64)
+    for k in range(pts.shape[1]):
+        out[:, k] = np.interp(query, s, pts[:, k])
+    return out
+
+
+def _windowed_tangents(pts: FloatArray, half_window: float, *, closed: bool) -> FloatArray:
+    """Unit tangent per vertex from the symmetric secant over ``±half_window``
+    of arc length. This is a documented tangent ESTIMATOR resolution — the
+    secant is exact (parallel to the midpoint tangent) on constant-curvature
+    arcs and suppresses sub-window grid staircase; the polyline itself is
+    never moved (no smoothing of the geometry). Windows are clamped to a
+    quarter of the total length (closed) or the ends (open)."""
+    seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+    if closed:
+        loop_pts = np.concatenate([pts, pts[:1]], axis=0)
+        s_full = np.concatenate([[0.0], np.cumsum(seg), [0.0]])
+        s_full[-1] = s_full[-2] + float(np.linalg.norm(pts[0] - pts[-1]))
+        total = float(s_full[-1])
+        s = s_full[:-1]
+        hw = min(half_window, 0.25 * total)
+        ext_pts = np.concatenate([loop_pts, loop_pts, loop_pts], axis=0)
+        s_ext = np.concatenate([s_full - total, s_full, s_full + total])
+        fwd = _interp_along(ext_pts, s_ext, s + hw)
+        bwd = _interp_along(ext_pts, s_ext, s - hw)
+    else:
+        s = np.concatenate([[0.0], np.cumsum(seg)])
+        total = float(s[-1])
+        hw = min(half_window, 0.25 * total) if total > 0.0 else 0.0
+        fwd = _interp_along(pts, s, np.minimum(s + hw, total))
+        bwd = _interp_along(pts, s, np.maximum(s - hw, 0.0))
+    d = fwd - bwd
+    n = np.linalg.norm(d, axis=1)
+    n[n < 1e-12] = 1.0
+    return np.asarray(d / n[:, None])
+
+
+def _cyclic_runs(mask: npt.NDArray[np.bool_]) -> list[npt.NDArray[np.int64]]:
+    """Maximal cyclic runs of True indices, each as a contiguous index array
+    (wrapping runs are unrolled past N). Deterministic order: by unwrapped
+    start index."""
+    n = mask.shape[0]
+    if not bool(mask.any()):
+        return []
+    if bool(mask.all()):
+        return [np.arange(n, dtype=np.int64)]
+    starts = np.flatnonzero(mask & ~np.roll(mask, 1))
+    runs: list[npt.NDArray[np.int64]] = []
+    for st in starts:
+        length = 1
+        while mask[(st + length) % n]:
+            length += 1
+        runs.append(np.arange(st, st + length, dtype=np.int64))
+    return runs
+
+
+def _run_arc_length(pts: FloatArray, run: npt.NDArray[np.int64]) -> float:
+    idx = run % pts.shape[0]
+    return float(np.linalg.norm(np.diff(pts[idx], axis=0), axis=1).sum())
+
+
+def _segments_intersect_any(pts_xy: FloatArray) -> bool:
+    """True when any two NON-ADJACENT segments of the open polyline
+    intersect. Chunked all-pairs orientation test."""
+    a = pts_xy[:-1]
+    b = pts_xy[1:]
+    m = a.shape[0]
+    if m < 3:
+        return False
+
+    def cross(o: FloatArray, p: FloatArray, q: FloatArray) -> FloatArray:
+        return np.asarray(
+            (p[..., 0] - o[..., 0]) * (q[..., 1] - o[..., 1])
+            - (p[..., 1] - o[..., 1]) * (q[..., 0] - o[..., 0])
+        )
+
+    for i0 in range(0, m, _SELF_INTERSECT_BLOCK):
+        i1 = min(i0 + _SELF_INTERSECT_BLOCK, m)
+        ai, bi = a[i0:i1, None, :], b[i0:i1, None, :]
+        aj, bj = a[None, :, :], b[None, :, :]
+        d1 = cross(ai, bi, aj)
+        d2 = cross(ai, bi, bj)
+        d3 = cross(aj, bj, ai)
+        d4 = cross(aj, bj, bi)
+        hit = ((d1 * d2) < 0.0) & ((d3 * d4) < 0.0)
+        idx_i = np.arange(i0, i1)[:, None]
+        idx_j = np.arange(m)[None, :]
+        hit &= (idx_j - idx_i) >= 2  # each unordered pair once, skip adjacent
+        if bool(hit.any()):
+            return True
+    return False
+
+
+@dataclass
+class FootwallTrace:
+    """Dominant footwall arc of a level's outer contour: the ore-CONTACT
+    polyline (grid resolution — never an exact ore contact) with per-vertex
+    chainage, local tangents and local OUTWARD (away from ore) normals.
+    ``track.w_h`` enters only as the orientation seed deciding WHICH side of
+    the contour is the footwall; every tangent/normal is local contour
+    geometry verified against ``contains``."""
+
+    level_id: str
+    elevation: float
+    contact_points: FloatArray  # (K, 3)
+    chainage: FloatArray  # (K,) cumulative, starts at 0
+    tangents: FloatArray  # (K, 2) unit, along increasing chainage
+    outward_normals: FloatArray  # (K, 2) unit, away from the ore
+    total_length: float
+    diagnostics: dict[str, Any]
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "levelId": self.level_id,
+            "elevation": self.elevation,
+            "vertexCount": int(self.contact_points.shape[0]),
+            "totalLength": self.total_length,
+            **self.diagnostics,
+        }
+
+
+def build_footwall_trace(
+    orebody: Orebody,
+    geometry: LevelSectionGeometry,
+    resolution: SectionResolution,
+    w_h: FloatArray,
+) -> FootwallTrace:
+    """Extract the dominant footwall trace from the section's outer contour.
+
+    1. Local tangents on the closed contour via the ``±base_standoff / 2``
+       windowed secant estimator; outward normals as their right-hand
+       perpendicular (CCW loop → interior on the left).
+    2. ``contains``-verified orientation: probe vertices ``± spacing`` along
+       the normal; a majority of decisive probes must confirm (or
+       consistently invert, in which case the normals are flipped and the
+       flip is recorded). No decisive majority is a typed
+       ``SECTION_FOOTWALL_AMBIGUOUS`` failure — never a PCA fallback.
+    3. Footwall side: cyclic runs of ``outward · w_h > 0``; the dominant run
+       is the one with the largest arc length (tie: smallest start index).
+       Runs shorter than ``MIN_FOOTWALL_RUN_SPACINGS × spacing`` are noise;
+       having none is ambiguous. Ignored runs are recorded."""
+    spacing = geometry.spacing
+    loop = geometry.outer_contour_xy
+    if geometry.empty or loop.shape[0] < 5:
+        raise SectionGeometryError(
+            SECTION_FOOTWALL_AMBIGUOUS,
+            f"level {geometry.level_id}: outer contour has too few vertices "
+            f"({int(loop.shape[0])}) to orient a footwall side",
+            {"levelId": geometry.level_id, "vertexCount": int(loop.shape[0])},
+        )
+    pts = loop[:-1]  # drop the duplicate closing vertex
+    n = pts.shape[0]
+    half_window = 0.5 * resolution.base_standoff
+    tangents = _windowed_tangents(pts, half_window, closed=True)
+    normals = np.column_stack([tangents[:, 1], -tangents[:, 0]])
+
+    probe_idx = np.unique(
+        np.linspace(0, n - 1, min(ORIENTATION_PROBE_COUNT, n)).round().astype(int)
+    )
+    delta = spacing
+    outer = pts[probe_idx] + delta * normals[probe_idx]
+    inner = pts[probe_idx] - delta * normals[probe_idx]
+    z = np.full(probe_idx.shape[0], geometry.elevation)
+    outer_in = orebody.contains(np.column_stack([outer, z]))
+    inner_in = orebody.contains(np.column_stack([inner, z]))
+    votes_ok = int(np.sum(~outer_in & inner_in))
+    votes_inverted = int(np.sum(outer_in & ~inner_in))
+    flipped = False
+    if votes_inverted > votes_ok:
+        normals = -normals
+        tangents = -tangents
+        flipped = True
+    elif votes_ok == votes_inverted:  # includes zero decisive probes
+        raise SectionGeometryError(
+            SECTION_FOOTWALL_AMBIGUOUS,
+            f"level {geometry.level_id}: contains()-probes cannot confirm the "
+            f"contour's outward side ({votes_ok} outward vs {votes_inverted} "
+            f"inverted decisive votes of {int(probe_idx.shape[0])} probes)",
+            {
+                "levelId": geometry.level_id,
+                "votesOutward": votes_ok,
+                "votesInverted": votes_inverted,
+                "probeCount": int(probe_idx.shape[0]),
+            },
+        )
+
+    w = np.asarray(w_h, dtype=np.float64)
+    w = w / float(np.linalg.norm(w))
+    side = np.asarray((normals @ w) > 0.0)
+    runs = _cyclic_runs(side)
+    min_run = MIN_FOOTWALL_RUN_SPACINGS * spacing
+    scored = [(r, _run_arc_length(pts, r)) for r in runs]
+    usable = [(r, ln) for r, ln in scored if ln >= min_run]
+    if not usable:
+        raise SectionGeometryError(
+            SECTION_FOOTWALL_AMBIGUOUS,
+            f"level {geometry.level_id}: no footwall-side contour run of at "
+            f"least {min_run:.1f} m (runs: "
+            f"{[round(ln, 1) for _, ln in scored]})",
+            {"levelId": geometry.level_id, "runLengths": [ln for _, ln in scored]},
+        )
+    usable.sort(key=lambda rl: (-rl[1], int(rl[0][0])))
+    run, run_length = usable[0]
+    idx = run % n
+    contact = np.column_stack([pts[idx], np.full(idx.shape[0], geometry.elevation)])
+    seg = np.linalg.norm(np.diff(contact[:, :2], axis=0), axis=1)
+    chain = np.concatenate([[0.0], np.cumsum(seg)])
+    t_open = _windowed_tangents(pts[idx], half_window, closed=False)
+    # keep the loop's verified outward sense: re-derive the open-trace normals
+    # from the open tangents, oriented to agree with the loop normals
+    n_open = np.column_stack([t_open[:, 1], -t_open[:, 0]])
+    agree = np.sum(n_open * normals[idx], axis=1)
+    n_open[agree < 0.0] = -n_open[agree < 0.0]
+    return FootwallTrace(
+        level_id=geometry.level_id,
+        elevation=geometry.elevation,
+        contact_points=contact,
+        chainage=chain,
+        tangents=t_open,
+        outward_normals=n_open,
+        total_length=float(chain[-1]),
+        diagnostics={
+            "selectedComponentId": geometry.selected_component_id,
+            "componentCount": geometry.component_count,
+            "effectiveSpacing": spacing,
+            "refinementFactor": geometry.refinement_factor,
+            "tangentWindowHalfWidth": float(min(half_window, 0.25 * (chain[-1] + 1e-9))),
+            "orientationVotes": {"outward": votes_ok, "inverted": votes_inverted},
+            "orientationFlipped": flipped,
+            "footwallRunCount": len(usable),
+            "ignoredRunLengths": [ln for _, ln in scored if ln < min_run],
+            "dominantRunLength": run_length,
+        },
+    )
+
+
+@dataclass
+class OffsetTrace:
+    """Curved development backbone: the arc of the Euclidean-distance-
+    transform level set ``dist(section) = standoff`` adjacent to the
+    dominant footwall trace. The EDT level set IS the true offset of the
+    grid-resolution section (concave contact stretches are rounded with
+    radius = standoff instead of self-intersecting); it is extracted, never
+    smoothed, and every defect that survives is a typed failure."""
+
+    level_id: str
+    elevation: float
+    standoff: float
+    points: FloatArray  # (K, 3)
+    chainage: FloatArray  # (K,)
+    tangents: FloatArray  # (K, 2) unit
+    ore_contact: FloatArray  # (K, 3) nearest footwall-trace contact vertex
+    ore_contact_distance: FloatArray  # (K,)
+    total_length: float
+    diagnostics: dict[str, Any]
+
+    def point_at(self, chainage: float) -> FloatArray:
+        return np.asarray(_interp_along(self.points, self.chainage, np.array([chainage]))[0])
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "levelId": self.level_id,
+            "elevation": self.elevation,
+            "standoff": self.standoff,
+            "vertexCount": int(self.points.shape[0]),
+            "totalLength": self.total_length,
+            **self.diagnostics,
+        }
+
+
+def build_offset_trace(
+    geometry: LevelSectionGeometry,
+    trace: FootwallTrace,
+    resolution: SectionResolution,
+    standoff: float,
+    minimum_length: float,
+) -> OffsetTrace:
+    """Extract and validate the offset development trace at ``standoff``.
+
+    The selected component's occupancy is zero-padded by
+    ``ceil(standoff / spacing) + 2`` cells (transient EDT working arrays
+    only — the contains() cell budgets are not affected), the EDT of the
+    outside region is contoured at ``standoff``, and the arc whose vertices
+    are nearest to the dominant footwall trace (against the rest of the
+    outer contour) is kept, oriented along increasing trace chainage.
+
+    Typed ``SECTION_TRACE_OFFSET_INVALID`` failures — nothing is smoothed,
+    trimmed or clamped to hide a defect: no footwall-adjacent offset arc;
+    arc shorter than ``minimum_length``; non-finite vertices;
+    self-intersection; any vertex materially closer to the contact than the
+    stand-off (``standoff − OFFSET_CONTACT_TOLERANCE_SPACINGS × spacing``)."""
+    from skimage import measure  # heavy import kept lazy (Phase 19 pattern)
+
+    spacing = geometry.spacing
+    mask = geometry.selected_mask
+    if geometry.empty or not bool(mask.any()):
+        raise SectionGeometryError(
+            SECTION_TRACE_OFFSET_INVALID,
+            f"level {geometry.level_id}: no selected component to offset",
+            {"levelId": geometry.level_id},
+        )
+    pad = int(np.ceil(standoff / spacing)) + 2
+    padded = np.zeros((mask.shape[0] + 2 * pad, mask.shape[1] + 2 * pad), dtype=bool)
+    padded[pad:-pad, pad:-pad] = mask
+    dist = ndimage.distance_transform_edt(~padded, sampling=(spacing, spacing))
+    loops = measure.find_contours(dist, standoff)  # type: ignore[no-untyped-call]
+    contour_pts = geometry.outer_contour_xy[:-1]
+    contact_tree = cKDTree(contour_pts)
+    trace_start = trace.contact_points[0, :2]
+    # membership of each outer-contour vertex in the dominant footwall run
+    _, first_idx = contact_tree.query(trace_start)
+    k = trace.contact_points.shape[0]
+    member = np.zeros(contour_pts.shape[0], dtype=bool)
+    member[(int(first_idx) + np.arange(k)) % contour_pts.shape[0]] = True
+
+    candidates: list[tuple[float, int, int, FloatArray]] = []
+    for li, lp in enumerate(loops):
+        w = np.empty_like(lp)
+        w[:, 0] = geometry.x0 + (lp[:, 0] - pad) * spacing
+        w[:, 1] = geometry.y0 + (lp[:, 1] - pad) * spacing
+        closed = bool(np.allclose(w[0], w[-1]))
+        v = w[:-1] if closed and w.shape[0] > 1 else w
+        if v.shape[0] < 2:
+            continue
+        _, nearest = contact_tree.query(v)
+        labs = member[np.asarray(nearest, dtype=int)]
+        runs = _cyclic_runs(labs) if closed else _open_runs(labs)
+        for r in runs:
+            ln = _run_arc_length(v, r)
+            candidates.append((ln, li, int(r[0]), v[r % v.shape[0]]))
+    if not candidates:
+        raise SectionGeometryError(
+            SECTION_TRACE_OFFSET_INVALID,
+            f"level {geometry.level_id}: the {standoff:.1f} m offset level set "
+            "has no arc adjacent to the dominant footwall trace",
+            {"levelId": geometry.level_id, "standoff": standoff, "loopCount": len(loops)},
+        )
+    candidates.sort(key=lambda c: (-c[0], c[1], c[2]))
+    run_length, loop_index, _, run_pts = candidates[0]
+
+    # deterministic orientation: advance with the footwall-trace chainage
+    _, c_first = contact_tree.query(run_pts[0])
+    _, c_last = contact_tree.query(run_pts[-1])
+    pos_first = _member_chainage_rank(int(c_first), int(first_idx), k, contour_pts.shape[0])
+    pos_last = _member_chainage_rank(int(c_last), int(first_idx), k, contour_pts.shape[0])
+    if pos_last < pos_first:
+        run_pts = run_pts[::-1].copy()
+
+    fail_diag: dict[str, Any] = {
+        "levelId": geometry.level_id,
+        "standoff": standoff,
+        "arcLength": run_length,
+        "minimumLength": minimum_length,
+    }
+    if not bool(np.isfinite(run_pts).all()):
+        raise SectionGeometryError(
+            SECTION_TRACE_OFFSET_INVALID,
+            f"level {geometry.level_id}: offset trace has non-finite vertices",
+            fail_diag,
+        )
+    if run_length < minimum_length:
+        raise SectionGeometryError(
+            SECTION_TRACE_OFFSET_INVALID,
+            f"level {geometry.level_id}: offset trace arc {run_length:.1f} m is "
+            f"shorter than the minimum development length {minimum_length:.1f} m",
+            fail_diag,
+        )
+    if _segments_intersect_any(run_pts):
+        raise SectionGeometryError(
+            SECTION_TRACE_OFFSET_INVALID,
+            f"level {geometry.level_id}: offset trace self-intersects",
+            fail_diag,
+        )
+    trace_tree = cKDTree(trace.contact_points[:, :2])
+    contact_dist, contact_idx = trace_tree.query(run_pts)
+    contact_dist = np.asarray(contact_dist, dtype=np.float64)
+    tol = OFFSET_CONTACT_TOLERANCE_SPACINGS * spacing
+    if float(contact_dist.min()) < standoff - tol:
+        raise SectionGeometryError(
+            SECTION_TRACE_OFFSET_INVALID,
+            f"level {geometry.level_id}: offset trace approaches the contact to "
+            f"{float(contact_dist.min()):.2f} m (< stand-off {standoff:.1f} m minus "
+            f"tolerance {tol:.1f} m)",
+            fail_diag,
+        )
+    pts3 = np.column_stack([run_pts, np.full(run_pts.shape[0], geometry.elevation)])
+    seg = np.linalg.norm(np.diff(run_pts, axis=0), axis=1)
+    chain = np.concatenate([[0.0], np.cumsum(seg)])
+    tangents = _windowed_tangents(run_pts, 0.5 * resolution.base_standoff, closed=False)
+    return OffsetTrace(
+        level_id=geometry.level_id,
+        elevation=geometry.elevation,
+        standoff=standoff,
+        points=pts3,
+        chainage=chain,
+        tangents=tangents,
+        ore_contact=trace.contact_points[np.asarray(contact_idx, dtype=int)],
+        ore_contact_distance=contact_dist,
+        total_length=float(chain[-1]),
+        diagnostics={
+            "selectedComponentId": geometry.selected_component_id,
+            "effectiveSpacing": spacing,
+            "refinementFactor": geometry.refinement_factor,
+            "padCells": pad,
+            "offsetLoopCount": len(loops),
+            "footwallArcCandidates": len(candidates),
+            "minContactDistance": float(contact_dist.min()),
+            "maxContactDistance": float(contact_dist.max()),
+            "loopIndex": loop_index,
+        },
+    )
+
+
+def _open_runs(mask: npt.NDArray[np.bool_]) -> list[npt.NDArray[np.int64]]:
+    """Maximal runs of True in an OPEN (non-cyclic) label array."""
+    if not bool(mask.any()):
+        return []
+    padded = np.concatenate([[False], mask, [False]])
+    starts = np.flatnonzero(padded[1:] & ~padded[:-1])
+    ends = np.flatnonzero(~padded[1:] & padded[:-1])
+    return [np.arange(st, en, dtype=np.int64) for st, en in zip(starts, ends, strict=True)]
+
+
+def _member_chainage_rank(contour_idx: int, first_idx: int, k: int, n: int) -> int:
+    """Rank of an outer-contour vertex along the footwall run (0 = run start;
+    non-members rank past the run, keeping order stable)."""
+    off = (contour_idx - first_idx) % n
+    return off if off < k else k + off

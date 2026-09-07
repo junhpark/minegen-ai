@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -36,8 +37,13 @@ from scipy.spatial import cKDTree
 
 from minegen.design.targets import generate_level_elevations, level_id
 from minegen.layout.sections import (
+    FootwallTrace,
     LevelSectionGeometry,
+    OffsetTrace,
+    SectionGeometryError,
     SectionResolution,
+    build_footwall_trace,
+    build_offset_trace,
     build_section_geometry,
     validate_section_budgets,
 )
@@ -176,6 +182,11 @@ class LevelSections:
         }
         self._geometry: dict[str, LevelSectionGeometry] = {}
         self._by_id: dict[str, RequiredLevel] = {lv.level_id: lv for lv in levels}
+        # trace caches (Phase 20C.2A A2): typed failures are cached and
+        # re-raised so per-candidate anchor construction never rebuilds a
+        # level's geometry — success and failure are both deterministic
+        self._traces: dict[tuple[Any, ...], FootwallTrace | SectionGeometryError] = {}
+        self._offsets: dict[tuple[Any, ...], OffsetTrace | SectionGeometryError] = {}
 
     def section(self, level: RequiredLevel) -> LevelSection:
         return self.sections[level.level_id]
@@ -194,6 +205,63 @@ class LevelSections:
             )
             self._geometry[level.level_id] = g
         return g
+
+    @staticmethod
+    def _seed_key(w_h: FloatArray) -> tuple[float, float]:
+        return (round(float(w_h[0]), 9), round(float(w_h[1]), 9))
+
+    def footwall_trace(self, level: RequiredLevel, w_h: FloatArray) -> FootwallTrace:
+        """Cached dominant footwall trace of one level (``w_h`` is the
+        orientation seed only — see ``sections.build_footwall_trace``).
+        Typed failures are cached and re-raised deterministically."""
+        if self.resolution is None:
+            raise RuntimeError("LevelSections was built without a SectionResolution")
+        key = (level.level_id, self._seed_key(w_h))
+        hit = self._traces.get(key)
+        if hit is None:
+            try:
+                hit = build_footwall_trace(self.orebody, self.geometry(level), self.resolution, w_h)
+            except SectionGeometryError as err:
+                hit = err
+            self._traces[key] = hit
+        if isinstance(hit, SectionGeometryError):
+            raise hit
+        return hit
+
+    def offset_trace(
+        self,
+        level: RequiredLevel,
+        w_h: FloatArray,
+        standoff: float,
+        minimum_length: float,
+    ) -> OffsetTrace:
+        """Cached offset development trace of one level at ``standoff``
+        (cache key includes the stand-off: the screen's coarse stand-off and
+        a stage-4 refined stand-off are distinct geometries)."""
+        if self.resolution is None:
+            raise RuntimeError("LevelSections was built without a SectionResolution")
+        key = (
+            level.level_id,
+            self._seed_key(w_h),
+            round(float(standoff), 6),
+            round(float(minimum_length), 6),
+        )
+        hit = self._offsets.get(key)
+        if hit is None:
+            try:
+                hit = build_offset_trace(
+                    self.geometry(level),
+                    self.footwall_trace(level, w_h),
+                    self.resolution,
+                    float(standoff),
+                    float(minimum_length),
+                )
+            except SectionGeometryError as err:
+                hit = err
+            self._offsets[key] = hit
+        if isinstance(hit, SectionGeometryError):
+            raise hit
+        return hit
 
     def all_present(self) -> bool:
         return all(not s.empty for s in self.sections.values())
