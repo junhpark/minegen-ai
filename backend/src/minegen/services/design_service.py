@@ -708,13 +708,15 @@ class DesignService:
         reserves async jobs for long-running operations). Regenerating levels
         invalidates the MineNetwork but never the tunnel mesh (rule 74).
 
-        The evaluators are built with the world's own clearance policy
-        (rule 146: EXACT for analytic bodies — numerically identical to the
-        legacy path — COARSE_CONSERVATIVE for implicit ones) instead of the
-        exact-only ``self.evaluator``. An implicit body must REACH
-        ``LevelDevelopmentBuilder`` so it answers the intended typed Phase 20B
-        boundary (``LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY``)
-        rather than the legacy evaluator's 422."""
+        The evaluators are built with the ACTIVE ramp's clearance policy
+        (rule 146/172: EXACT for analytic bodies — numerically identical to
+        the legacy path — the selected candidate's own stage-4 certification
+        under LAYOUT_V2) instead of the exact-only ``self.evaluator``. An
+        implicit body develops its levels along the curved
+        SECTION_FOOTWALL_OFFSET_TRACE backbone (Phase 20C.2A) — the old
+        LEVEL_DEVELOPMENT_UNSUPPORTED_FOR_IMPLICIT_OREBODY boundary exists
+        only for entries without curved anchors (typed
+        SECTION_TRACE_ANCHORS_REQUIRED)."""
         fingerprint = self.levels_fingerprint(scenario_id)
         smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
         accesses_payload = self.active_level_accesses(scenario_id)

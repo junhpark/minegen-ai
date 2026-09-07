@@ -34,11 +34,9 @@ import numpy as np
 import numpy.typing as npt
 
 from minegen.core.models import (
-    DesignConfig,
     LayoutV2Config,
     RampConstraints,
     Scenario,
-    TunnelProfile,
 )
 from minegen.design.constraints import DesignContext, RejectionReason
 from minegen.design.cost_field import (
@@ -49,12 +47,16 @@ from minegen.design.cost_field import (
     clearance_policy_for,
 )
 from minegen.design.exposure import measure_exposure
-from minegen.design.profile import build_profile
+
+# required_clearance is re-exported here for its established import path; the
+# ONE shared definition lives in design.profile (Phase 20C.2A)
+from minegen.design.profile import build_profile, required_clearance
 from minegen.design.progress import ProgressCallback, ProgressEvent, ProgressStage, no_progress
 from minegen.design.targets import default_portal
 from minegen.layout.access import (
     SCREEN_HEURISTIC,
     SCREEN_NECESSARY_CONDITION,
+    AnchorFailure,
     LevelAccessPlan,
     LevelDevelopmentAnchor,
     build_anchor,
@@ -83,7 +85,9 @@ from minegen.layout.geometry import (
     split_at,
 )
 from minegen.layout.levels import LevelSections, RequiredLevel, required_levels
+from minegen.layout.sections import SectionGeometryError, resolve_section_resolution
 from minegen.layout.validation import validate_delivered_centerline
+from minegen.world.orebody import TabularOrebody
 from minegen.world.synthetic_world import SyntheticWorld
 
 FloatArray = npt.NDArray[np.float64]
@@ -280,7 +284,7 @@ class CandidateResult:
     exposure: dict[str, Any] | None = None
     validation: dict[str, Any] | None = None
     access_plan: LevelAccessPlan | None = None
-    anchors: list[LevelDevelopmentAnchor | None] = field(default_factory=list)
+    anchors: list[LevelDevelopmentAnchor | AnchorFailure | None] = field(default_factory=list)
     derived: dict[str, Any] = field(default_factory=dict)
     pieces: list[dict[str, Any]] = field(default_factory=list)
     points: FloatArray | None = None
@@ -445,13 +449,6 @@ class LayoutSearchResult:
 # --------------------------------------------------------------------------- #
 # Stage helpers
 # --------------------------------------------------------------------------- #
-
-
-def required_clearance(cfg: DesignConfig, ramp: RampConstraints, profile: TunnelProfile) -> float:
-    """Centerline clearance that keeps the whole excavation envelope outside
-    the orebody exclusion buffer: buffer + the profile's farthest point from
-    the floor centerline (half width sideways, full height up)."""
-    return cfg.orebody_exclusion_buffer + math.hypot(ramp.tunnel_width / 2.0, ramp.tunnel_height)
 
 
 def level_service(
@@ -741,6 +738,26 @@ class LayoutV2Search:
             sc.design.bottom_mining_margin,
         )
         sections = LevelSections(world.orebody, levels, self.cfg.section_sampling_spacing)
+        # Phase 20C.2A: non-TABULAR level development anchors come from the
+        # section(z) geometry, which needs a resolved sampling resolution.
+        # Base stand-off = explicit access.anchorStandoff else the configured
+        # footwall access offset (never the honesty-raised value). A typed
+        # resolution/budget failure fails EVERY candidate closed below.
+        section_error: SectionGeometryError | None = None
+        if not isinstance(world.orebody, TabularOrebody):
+            base_standoff = (
+                self.cfg.access.anchor_standoff
+                if self.cfg.access.anchor_standoff is not None
+                else sc.ramp.footwall_access_offset
+            )
+            try:
+                sections.set_resolution(
+                    resolve_section_resolution(
+                        float(self.cfg.section_sampling_spacing), float(base_standoff)
+                    )
+                )
+            except SectionGeometryError as err:
+                section_error = err
         track = build_footwall_track(world.orebody, sections)
         self._sections, self._track = sections, track
         if sc.portal is not None:
@@ -756,6 +773,17 @@ class LayoutV2Search:
         results = [CandidateResult(p) for p in params]
         t_setup = time.perf_counter()
         perf["setupSeconds"] = t_setup - t0
+        if section_error is not None:
+            for c in results:
+                c.failure_reasons = [section_error.code]
+                c.failure_detail = section_error.detail
+            perf["sectionGeometry"] = section_error.diagnostics
+            perf["totalSeconds"] = time.perf_counter() - t0
+            return self._result(
+                levels, sections, portal, generated, results, [], [], None, req_clear, perf, None
+            )
+        if sections.budget_diagnostics is not None:
+            perf["sectionGeometry"] = sections.budget_diagnostics
         serviceable = sections.serviceable()
         if not serviceable or track is None:
             for c in results:
@@ -960,6 +988,9 @@ class LayoutV2Search:
                     built.points,
                     standoff,
                     self.scenario.mining.method.value,
+                    clearance=self.policy.signed_clearance,
+                    policy_token="WORLD",
+                    minimum_clearance=req_clear,
                 )
                 for lv in ctx.levels
             ]
@@ -1044,8 +1075,11 @@ class LayoutV2Search:
                 cand.points,
                 standoff_coarse,
                 self.scenario.mining.method.value,
+                clearance=policy.signed_clearance,
+                policy_token="WORLD",
+                minimum_clearance=req_clear,
             )
-            if a is not None:
+            if a is not None and not isinstance(a, AnchorFailure):
                 needy.append(a.position[None, :])
         pts = np.vstack([p for p in needy if p.shape[0]])
         pad = req_clear + float(policy.error_bound) + 2.0
@@ -1103,6 +1137,9 @@ class LayoutV2Search:
         if not problems:
             assert self._sections is not None and self._track is not None
             standoff = self.anchor_standoff(req_clear, policy)
+            # trace cache identity: the shared world policy, or this
+            # candidate's own stage-4 refined policy (deterministic token)
+            token = "WORLD" if policy is self.policy else cand.candidate_id
             cand.anchors = [
                 build_anchor(
                     self.world.orebody,
@@ -1112,6 +1149,9 @@ class LayoutV2Search:
                     cand.points,
                     standoff,
                     self.scenario.mining.method.value,
+                    clearance=policy.signed_clearance,
+                    policy_token=token,
+                    minimum_clearance=req_clear,
                 )
                 for lv in ctx.levels
             ]

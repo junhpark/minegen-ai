@@ -27,6 +27,7 @@ missed entirely; a missed sliver only makes a level look LESS served.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Any
@@ -171,12 +172,10 @@ class LevelSections:
         self.orebody = orebody
         self.levels = levels
         self.spacing = spacing
-        self.resolution = resolution
+        self.resolution: SectionResolution | None = None
         self.budget_diagnostics: dict[str, object] | None = None
         if resolution is not None:
-            self.budget_diagnostics = dict(
-                validate_section_budgets(orebody, resolution, len(levels))
-            )
+            self.set_resolution(resolution)
         self.sections: dict[str, LevelSection] = {
             lv.level_id: build_level_section(orebody, lv.elevation, spacing) for lv in levels
         }
@@ -190,6 +189,14 @@ class LevelSections:
 
     def section(self, level: RequiredLevel) -> LevelSection:
         return self.sections[level.level_id]
+
+    def set_resolution(self, resolution: SectionResolution) -> None:
+        """Attach the section-geometry resolution, validating both cell
+        budgets upfront from the projected shape (constructor contract)."""
+        self.budget_diagnostics = dict(
+            validate_section_budgets(self.orebody, resolution, len(self.levels))
+        )
+        self.resolution = resolution
 
     def geometry(self, level: RequiredLevel) -> LevelSectionGeometry:
         """Lazy per-level section geometry (requires a ``SectionResolution``)."""
@@ -234,10 +241,17 @@ class LevelSections:
         w_h: FloatArray,
         standoff: float,
         minimum_length: float,
+        clearance: Callable[[FloatArray], FloatArray],
+        policy_token: str,
+        minimum_clearance: float,
     ) -> OffsetTrace:
         """Cached offset development trace of one level at ``standoff``
-        (cache key includes the stand-off: the screen's coarse stand-off and
-        a stage-4 refined stand-off are distinct geometries)."""
+        under one clearance measure. ``policy_token`` names the clearance
+        policy for the cache key (callers pass a deterministic identity —
+        the world policy marker or the candidate id — so a trace is never
+        reused across different clearance fields); the stand-off is also in
+        the key (the screen's coarse stand-off and a stage-4 refined
+        stand-off are distinct geometries)."""
         if self.resolution is None:
             raise RuntimeError("LevelSections was built without a SectionResolution")
         key = (
@@ -245,6 +259,8 @@ class LevelSections:
             self._seed_key(w_h),
             round(float(standoff), 6),
             round(float(minimum_length), 6),
+            policy_token,
+            round(float(minimum_clearance), 6),
         )
         hit = self._offsets.get(key)
         if hit is None:
@@ -255,6 +271,8 @@ class LevelSections:
                     self.resolution,
                     float(standoff),
                     float(minimum_length),
+                    clearance,
+                    float(minimum_clearance),
                 )
             except SectionGeometryError as err:
                 hit = err

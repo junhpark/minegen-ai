@@ -44,6 +44,8 @@ stays bounded regardless of grid size.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -412,11 +414,25 @@ ORIENTATION_PROBE_COUNT = 16
 #: the side classification is noise, not a footwall
 MIN_FOOTWALL_RUN_SPACINGS = 4.0
 #: tolerance band (in effective spacings) by which the offset trace may sit
-#: CLOSER to the contact than the stand-off — grid EDT measures to cell
-#: centers while the contact trace sits on mid-cell contour vertices
+#: CLOSER (in plan) to the contact trace than the stand-off — the level set
+#: interpolates between grid nodes while the contact trace sits on mid-cell
+#: contour vertices; the plan distance to the contact is always at least
+#: the 3-D clearance the level set holds
 OFFSET_CONTACT_TOLERANCE_SPACINGS = 2.0
 #: block size of the chunked self-intersection sweep (pairs per block)
 _SELF_INTERSECT_BLOCK = 256
+#: uniform chainage spacing (m) the offset trace is delivered at
+TRACE_RESAMPLE_SPACING = 2.0
+#: arc-length box-smoothing passes applied to the resampled offset trace.
+#: The clearance field is piecewise-trilinear, so its raw level set carries
+#: corners at lattice-cell boundaries (measured up to ~70°) that no drift
+#: could drive; features below the stand-off scale are sub-resolution by
+#: the trace contract, so the backbone is smoothed at that scale
+#: (half-window = base stand-off, endpoints fixed) and then RE-VALIDATED
+#: against the same clearance measure — smoothing is never allowed to hide
+#: a stand-off violation, and the unchanged hard gates still judge every
+#: delivered development (rule 61/62 pattern).
+TRACE_SMOOTHING_PASSES = 2
 
 
 def _interp_along(pts: FloatArray, s: FloatArray, query: FloatArray) -> FloatArray:
@@ -659,12 +675,17 @@ def build_footwall_trace(
 
 @dataclass
 class OffsetTrace:
-    """Curved development backbone: the arc of the Euclidean-distance-
-    transform level set ``dist(section) = standoff`` adjacent to the
-    dominant footwall trace. The EDT level set IS the true offset of the
-    grid-resolution section (concave contact stretches are rounded with
-    radius = standoff instead of self-intersecting); it is extracted, never
-    smoothed, and every defect that survives is a typed failure."""
+    """Curved development backbone: the arc of the CLEARANCE-FIELD level set
+    ``clearance = standoff`` on the level plane, adjacent to the dominant
+    footwall trace. The measure is the caller's authoritative clearance
+    (the design clearance policy — exact SDF or conservative basis), NEVER a
+    2-D in-plane distance: a dipping / warped body leans over the level
+    plane, and an in-plane offset of the section under-clears it (measured
+    on WARPED-301 L03: 82 % of the in-plane-EDT trace sat below the
+    required 3-D clearance; the clearance level set holds it by
+    construction). A level set rounds concave stretches instead of
+    self-intersecting; it is extracted, never smoothed, and every defect
+    that survives is a typed failure."""
 
     level_id: str
     elevation: float
@@ -691,21 +712,53 @@ class OffsetTrace:
         }
 
 
+def _clearance_grid(
+    clearance: Callable[[FloatArray], FloatArray],
+    x0: float,
+    y0: float,
+    nx: int,
+    ny: int,
+    spacing: float,
+    elevation: float,
+) -> FloatArray:
+    """Clearance field sampled on the (padded) section grid at the level
+    elevation — deterministic fixed-size chunks, bounded probe buffer."""
+    total = nx * ny
+    out = np.empty(total, dtype=np.float64)
+    for start in range(0, total, SECTION_CONTAINS_CHUNK):
+        stop = min(start + SECTION_CONTAINS_CHUNK, total)
+        flat = np.arange(start, stop, dtype=np.int64)
+        pts = np.empty((stop - start, 3), dtype=np.float64)
+        pts[:, 0] = x0 + (flat // ny) * spacing
+        pts[:, 1] = y0 + (flat % ny) * spacing
+        pts[:, 2] = elevation
+        out[start:stop] = clearance(pts)
+    return out.reshape(nx, ny)
+
+
 def build_offset_trace(
     geometry: LevelSectionGeometry,
     trace: FootwallTrace,
     resolution: SectionResolution,
     standoff: float,
     minimum_length: float,
+    clearance: Callable[[FloatArray], FloatArray],
+    minimum_clearance: float,
 ) -> OffsetTrace:
     """Extract and validate the offset development trace at ``standoff``.
 
-    The selected component's occupancy is zero-padded by
-    ``ceil(standoff / spacing) + 2`` cells (transient EDT working arrays
-    only — the contains() cell budgets are not affected), the EDT of the
-    outside region is contoured at ``standoff``, and the arc whose vertices
-    are nearest to the dominant footwall trace (against the rest of the
-    outer contour) is kept, oriented along increasing trace chainage.
+    ``clearance`` is the AUTHORITATIVE stand-off measure — the design
+    clearance policy's ``signed_clearance`` (exact SDF for analytic bodies,
+    the conservative basis for implicit ones; the same policy whose hard
+    gates later judge the delivered development, so the backbone holds the
+    stand-off by construction of its geometry, with nothing relaxed). It is
+    sampled on the section grid extended by ``ceil(2·standoff / spacing) +
+    2`` cells (a leaning body pushes the level set outward in plan;
+    transient float grid only — the contains() cell budgets are not
+    affected), contoured at ``standoff``, and the arc whose vertices are
+    nearest to the dominant footwall trace (against the rest of the outer
+    contour) is kept, oriented along increasing trace chainage. An arc that
+    leaves the extended grid is handled as an open contour.
 
     Typed ``SECTION_TRACE_OFFSET_INVALID`` failures — nothing is smoothed,
     trimmed or clamped to hide a defect: no footwall-adjacent offset arc;
@@ -722,11 +775,21 @@ def build_offset_trace(
             f"level {geometry.level_id}: no selected component to offset",
             {"levelId": geometry.level_id},
         )
-    pad = int(np.ceil(standoff / spacing)) + 2
-    padded = np.zeros((mask.shape[0] + 2 * pad, mask.shape[1] + 2 * pad), dtype=bool)
-    padded[pad:-pad, pad:-pad] = mask
-    dist = ndimage.distance_transform_edt(~padded, sampling=(spacing, spacing))
-    loops = measure.find_contours(dist, standoff)  # type: ignore[no-untyped-call]
+    # construct the level set at standoff + the derived smoothing allowance
+    # so the SMOOTHED backbone still holds the planning stand-off
+    allowance = smoothing_allowance(standoff, resolution.base_standoff, TRACE_SMOOTHING_PASSES)
+    construction = standoff + allowance
+    pad = int(np.ceil(2.0 * construction / spacing)) + 2
+    dist = _clearance_grid(
+        clearance,
+        geometry.x0 - pad * spacing,
+        geometry.y0 - pad * spacing,
+        mask.shape[0] + 2 * pad,
+        mask.shape[1] + 2 * pad,
+        spacing,
+        geometry.elevation,
+    )
+    loops = measure.find_contours(dist, construction)  # type: ignore[no-untyped-call]
     contour_pts = geometry.outer_contour_xy[:-1]
     contact_tree = cKDTree(contour_pts)
     trace_start = trace.contact_points[0, :2]
@@ -769,6 +832,25 @@ def build_offset_trace(
     if pos_last < pos_first:
         run_pts = run_pts[::-1].copy()
 
+    # delivered form: uniform chainage, smoothed at the stand-off scale,
+    # re-resampled to uniform chainage (the clipped smoothing windows
+    # compress spacing near the ends and can collapse neighbouring vertices
+    # into exact duplicates), END-TRIMMED by the smoothing half-window (the
+    # end regions only receive one-sided windows, so residual level-set
+    # curvature survives there — below the smoothing contract's guarantee;
+    # trimming is conservative-only, it just shortens the usable backbone),
+    # then RE-VALIDATED below
+    run_pts = _resample_polyline(run_pts, TRACE_RESAMPLE_SPACING)
+    run_pts = _box_smooth(run_pts, resolution.base_standoff, TRACE_SMOOTHING_PASSES)
+    run_pts = _resample_polyline(run_pts, TRACE_RESAMPLE_SPACING)
+    seg_l = np.linalg.norm(np.diff(run_pts, axis=0), axis=1)
+    s_full = np.concatenate([[0.0], np.cumsum(seg_l)])
+    trim = min(float(resolution.base_standoff), 0.2 * float(s_full[-1]))
+    keep = (s_full >= trim - 1e-9) & (s_full <= float(s_full[-1]) - trim + 1e-9)
+    if int(keep.sum()) >= 2:
+        run_pts = run_pts[keep]
+    run_length = float(np.linalg.norm(np.diff(run_pts, axis=0), axis=1).sum())
+
     fail_diag: dict[str, Any] = {
         "levelId": geometry.level_id,
         "standoff": standoff,
@@ -794,19 +876,26 @@ def build_offset_trace(
             f"level {geometry.level_id}: offset trace self-intersects",
             fail_diag,
         )
+    pts3 = np.column_stack([run_pts, np.full(run_pts.shape[0], geometry.elevation)])
+    # clearance RE-VALIDATION of the smoothed backbone under the SAME
+    # measure. The HARD floor is ``minimum_clearance`` (the required design
+    # clearance — the same gate the delivered development must pass);
+    # ``standoff`` is the level-set PLANNING target, and the achieved
+    # minimum is reported against it as a diagnostic. Smoothing can never
+    # hide a hard-clearance violation (typed).
+    cvals = np.asarray(clearance(pts3), dtype=np.float64)
+    if float(cvals.min()) < minimum_clearance - 1e-9:
+        raise SectionGeometryError(
+            SECTION_TRACE_OFFSET_INVALID,
+            f"level {geometry.level_id}: smoothed offset trace clearance "
+            f"{float(cvals.min()):.2f} m falls below the required design "
+            f"clearance {minimum_clearance:.2f} m (planning stand-off "
+            f"{standoff:.1f} m)",
+            fail_diag,
+        )
     trace_tree = cKDTree(trace.contact_points[:, :2])
     contact_dist, contact_idx = trace_tree.query(run_pts)
     contact_dist = np.asarray(contact_dist, dtype=np.float64)
-    tol = OFFSET_CONTACT_TOLERANCE_SPACINGS * spacing
-    if float(contact_dist.min()) < standoff - tol:
-        raise SectionGeometryError(
-            SECTION_TRACE_OFFSET_INVALID,
-            f"level {geometry.level_id}: offset trace approaches the contact to "
-            f"{float(contact_dist.min()):.2f} m (< stand-off {standoff:.1f} m minus "
-            f"tolerance {tol:.1f} m)",
-            fail_diag,
-        )
-    pts3 = np.column_stack([run_pts, np.full(run_pts.shape[0], geometry.elevation)])
     seg = np.linalg.norm(np.diff(run_pts, axis=0), axis=1)
     chain = np.concatenate([[0.0], np.cumsum(seg)])
     tangents = _windowed_tangents(run_pts, 0.5 * resolution.base_standoff, closed=False)
@@ -829,9 +918,60 @@ def build_offset_trace(
             "footwallArcCandidates": len(candidates),
             "minContactDistance": float(contact_dist.min()),
             "maxContactDistance": float(contact_dist.max()),
+            "minSmoothedClearance": float(cvals.min()),
+            "smoothingPasses": TRACE_SMOOTHING_PASSES,
+            "smoothingAllowance": allowance,
+            "constructionStandoff": construction,
+            "resampleSpacing": TRACE_RESAMPLE_SPACING,
             "loopIndex": loop_index,
         },
     )
+
+
+def _resample_polyline(pts_xy: FloatArray, spacing: float) -> FloatArray:
+    """Uniform-chainage resampling of an open polyline (endpoints exact)."""
+    seg = np.linalg.norm(np.diff(pts_xy, axis=0), axis=1)
+    s = np.concatenate([[0.0], np.cumsum(seg)])
+    total = float(s[-1])
+    if total <= spacing:
+        return pts_xy.copy()
+    n = max(2, round(total / spacing) + 1)
+    return _interp_along(pts_xy, s, np.linspace(0.0, total, n))
+
+
+def smoothing_allowance(standoff: float, half_window: float, passes: int) -> float:
+    """DERIVED upper bound of the inward displacement box smoothing can
+    apply to the offset level set. The level set's tightest convex
+    roundings have radius = the stand-off; the box average of a circular
+    arc of radius R over arc half-window W sits at ``R·sin(θ)/θ`` with
+    ``θ = W/R``, i.e. an inward displacement of ``R·(1 − sin θ / θ)`` per
+    pass (later passes act on a flatter curve, so ``passes ×`` is an upper
+    bound). The trace is CONSTRUCTED at ``standoff + allowance`` so the
+    smoothed backbone still holds the planning stand-off — a raise-only
+    compensation (rule 158 precedent), never a relaxed gate: the hard
+    clearance floor is re-validated unchanged."""
+    theta = min(half_window / max(standoff, 1e-9), math.pi / 2.0)
+    return passes * standoff * (1.0 - math.sin(theta) / theta)
+
+
+def _box_smooth(pts_xy: FloatArray, half_window: float, passes: int) -> FloatArray:
+    """Arc-length box smoothing: each vertex becomes the mean of the
+    vertices within ``± half_window`` of arc length, the window CLIPPED (not
+    shrunk) at the ends so the trace is uniformly smooth everywhere — a
+    shrink-to-zero window leaves the raw level-set kinks standing near the
+    ends. The trace ends are free geometry (the entry is picked mid-trace
+    afterwards); the caller re-validates the smoothed result against the
+    clearance measure. Deterministic."""
+    out = pts_xy
+    for _ in range(passes):
+        seg = np.linalg.norm(np.diff(out, axis=0), axis=1)
+        s = np.concatenate([[0.0], np.cumsum(seg)])
+        lo = np.searchsorted(s, s - half_window, side="left")
+        hi = np.searchsorted(s, s + half_window, side="right")
+        csum = np.concatenate([np.zeros((1, 2)), np.cumsum(out, axis=0)])
+        counts = (hi - lo).astype(np.float64)
+        out = (csum[hi] - csum[lo]) / counts[:, None]
+    return np.asarray(out)
 
 
 def _open_runs(mask: npt.NDArray[np.bool_]) -> list[npt.NDArray[np.int64]]:

@@ -4,10 +4,11 @@ the curved level-development anchor (directive test A8 + trace contracts).
 The A8 fixture is a HALF-ANNULUS footprint (a strongly curved body): its
 global principal axis is the x-axis, while the local footwall tangent at a
 45-degree entry differs from it by ~45 degrees — exactly the geometry the
-old whole-section-PCA anchor gets wrong and the curved anchor must get
-right. The old PCA anchor is still constructed (via the unchanged
-``build_anchor``) purely to MEASURE the difference; commit A3 swaps the
-dispatch."""
+old whole-section-PCA anchor got wrong and the curved anchor must get
+right. The REMOVED principal-axis backbone is replicated inline below,
+purely to MEASURE the divergence (commit A3 deleted it from production:
+``build_anchor`` now dispatches every non-TABULAR body to the curved
+anchor, and that dispatch is asserted here too)."""
 
 from __future__ import annotations
 
@@ -17,6 +18,8 @@ import numpy as np
 import pytest
 
 from minegen.layout.access import (
+    LevelDevelopmentAnchor,
+    _principal_axis,
     build_anchor,
     build_curved_anchor,
 )
@@ -25,11 +28,13 @@ from minegen.layout.levels import LevelSections, RequiredLevel
 from minegen.layout.sections import (
     SECTION_FOOTWALL_AMBIGUOUS,
     SECTION_TRACE_OFFSET_INVALID,
+    TRACE_SMOOTHING_PASSES,
     SectionGeometryError,
     _segments_intersect_any,
     build_footwall_trace,
     build_offset_trace,
     resolve_section_resolution,
+    smoothing_allowance,
 )
 
 RES = resolve_section_resolution(2.0, 20.0)
@@ -68,6 +73,12 @@ class ArcOrebody:
             & (pts[:, 2] <= self.z_range[1])
         )
 
+    def signed_clearance(self, points):
+        # vertical-sided body: the 3-D clearance IS the plan signed distance
+        pts = np.asarray(points, dtype=np.float64)
+        r = np.hypot(pts[:, 0], pts[:, 1])
+        return np.maximum(np.maximum(self.r_in - r, r - self.r_out), -pts[:, 1])
+
 
 class BittenDisc:
     """Disc with a concave bite whose radius is SMALLER than the stand-off:
@@ -93,6 +104,13 @@ class BittenDisc:
         inside &= (pts[:, 2] >= self.z_range[0]) & (pts[:, 2] <= self.z_range[1])
         return inside
 
+    def signed_clearance(self, points):
+        pts = np.asarray(points, dtype=np.float64)
+        bx, by, br = self.bite
+        d_disc = np.hypot(pts[:, 0], pts[:, 1]) - self.r
+        d_bite = br - np.hypot(pts[:, 0] - bx, pts[:, 1] - by)
+        return np.maximum(d_disc, d_bite)
+
 
 def make_sections(ob):
     return LevelSections(ob, [LEVEL], 2.0, resolution=RES)
@@ -106,35 +124,92 @@ RAMP_PTS = np.array([[176.0, 176.0, -40.0], [176.0, 176.0, -60.0]])
 # --------------------------------------------------------------------------- #
 
 
+def _removed_pca_anchor(ob, sections, track, ref, standoff):
+    """Inline replica of the REMOVED whole-section principal-axis backbone
+    (pre-20C.2A ``build_anchor`` else-branch) — kept only to MEASURE how far
+    the curved anchor moves; production has no PCA path any more."""
+    sec = sections.section(LEVEL)
+    axis = _principal_axis(sec.inside_xy, track.u_h)
+    normal = np.array([axis[1], -axis[0]])
+    if float(normal @ track.w_h) < 0.0:
+        normal = -normal
+    _, hi_n = sec.extent_along(normal)
+    lo_u, hi_u = sec.extent_along(axis)
+    edge = sec.centroid + normal * hi_n
+    origin = np.array(
+        [edge[0] + normal[0] * standoff, edge[1] + normal[1] * standoff, LEVEL.elevation]
+    )
+    margin = min(5.0, 0.25 * (hi_u - lo_u))
+    t = min(max(float((ref[:2] - origin[:2]) @ axis), lo_u + margin), hi_u - margin)
+    pos = np.array([origin[0] + axis[0] * t, origin[1] + axis[1] * t, LEVEL.elevation])
+    direction = axis if t <= 0.5 * (lo_u + hi_u) else -axis
+    heading = math.atan2(float(direction[0]), float(direction[1]))
+    return pos, heading
+
+
 class TestCurvedAnchorVsPca:
     def test_curved_anchor_diverges_from_pca_and_matches_local_geometry(self):
         ob = ArcOrebody()
         sections = make_sections(ob)
         track = build_footwall_track(ob, sections)
         assert track is not None
-        old = build_anchor(ob, LEVEL, sections, track, RAMP_PTS, STANDOFF, "LONGHOLE")
+        ref = np.array([176.0, 176.0, -50.0])
+        old_pos, old_heading = _removed_pca_anchor(ob, sections, track, ref, STANDOFF)
         new = build_curved_anchor(
-            ob, LEVEL, sections, track.w_h, track.u_h, RAMP_PTS, STANDOFF, "LONGHOLE"
+            ob,
+            LEVEL,
+            sections,
+            track.w_h,
+            track.u_h,
+            RAMP_PTS,
+            STANDOFF,
+            "LONGHOLE",
+            ob.signed_clearance,
+            "TEST",
+            10.0,
         )
-        assert old is not None and new is not None
+        assert new is not None
+        # production dispatch (commit A3): build_anchor itself yields the
+        # curved anchor for every non-TABULAR body — the PCA path is gone
+        dispatched = build_anchor(
+            ob,
+            LEVEL,
+            sections,
+            track,
+            RAMP_PTS,
+            STANDOFF,
+            "LONGHOLE",
+            clearance=ob.signed_clearance,
+            policy_token="TEST",
+            minimum_clearance=10.0,
+        )
+        assert isinstance(dispatched, LevelDevelopmentAnchor)
+        assert dispatched.diagnostics["backbone"] == "SECTION_FOOTWALL_OFFSET_TRACE"
+        assert np.allclose(dispatched.position, new.position)
 
         # measured divergence (directive A8): the PCA anchor puts the entry
         # on the global x-axis backbone; the curved anchor follows the arc
-        position_diff = float(np.linalg.norm(old.position - new.position))
+        position_diff = float(np.linalg.norm(old_pos - new.position))
         assert position_diff > 30.0
         axis_mismatch = abs(
             math.degrees(
                 math.asin(
-                    abs(math.sin(new.heading - old.heading))  # heading AXIS difference, mod 180
+                    abs(math.sin(new.heading - old_heading))  # heading AXIS difference, mod 180
                 )
             )
         )
         assert axis_mismatch > 20.0
 
-        # the new entry sits on the r = r_out + standoff offset arc, near the
-        # ramp reference's 45-degree azimuth, with the analytic arc tangent
+        # the new entry sits on the offset arc at r_out + the CONSTRUCTION
+        # stand-off (stand-off + the derived smoothing allowance; on this
+        # gentle 146 m-radius arc the smoothing itself moves it < 1 m),
+        # near the ramp reference's 45-degree azimuth, with the analytic
+        # arc tangent
+        construction = STANDOFF + smoothing_allowance(
+            STANDOFF, RES.base_standoff, TRACE_SMOOTHING_PASSES
+        )
         r_entry = float(np.hypot(new.position[0], new.position[1]))
-        assert r_entry == pytest.approx(120.0 + STANDOFF, abs=3.0)
+        assert r_entry == pytest.approx(120.0 + construction, abs=3.0)
         phi = math.atan2(float(new.position[1]), float(new.position[0]))
         assert math.degrees(phi) == pytest.approx(45.0, abs=8.0)
         arc_tangent = np.array([-math.sin(phi), math.cos(phi)])
@@ -146,7 +221,7 @@ class TestCurvedAnchorVsPca:
         r_contact = float(np.hypot(new.ore_contact[0], new.ore_contact[1]))
         assert r_contact == pytest.approx(120.0, abs=3.0)
         d_contact = float(np.linalg.norm(new.ore_contact[:2] - new.position[:2]))
-        assert d_contact == pytest.approx(STANDOFF, abs=2.0 * RES.effective_spacing)
+        assert d_contact == pytest.approx(construction, abs=2.0 * RES.effective_spacing)
         # inward local normal points from the entry toward the ore
         assert new.local_normal is not None
         assert float(new.local_normal @ (new.ore_contact[:2] - new.position[:2])) > 0.0
@@ -160,8 +235,6 @@ class TestCurvedAnchorVsPca:
         assert d["sectionEffectiveSpacing"] == RES.effective_spacing
         assert d["diagnostics"]["backbone"] == "SECTION_FOOTWALL_OFFSET_TRACE"
         assert d["diagnostics"]["localTangentVsGlobalPcaDeg"] > 25.0
-        # the old anchor advertises the PCA backbone it is being replaced for
-        assert old.diagnostics["backbone"] == "NUMERICAL_SECTION_PRINCIPAL_AXIS"
 
     def test_heading_points_toward_longer_trace_side(self):
         ob = ArcOrebody()
@@ -175,6 +248,9 @@ class TestCurvedAnchorVsPca:
             RAMP_PTS,
             STANDOFF,
             "LONGHOLE",
+            ob.signed_clearance,
+            "TEST",
+            10.0,
         )
         assert new is not None
         t = new.trace_chainage
@@ -240,7 +316,9 @@ class TestOffsetTrace:
     def test_concave_bite_rounds_instead_of_self_intersecting(self):
         ob = BittenDisc()  # bite radius 15 < stand-off 20
         sections = LevelSections(ob, [LEVEL], 2.0, resolution=RES)
-        off = sections.offset_trace(LEVEL, np.array([1.0, 0.0]), STANDOFF, 10.0)
+        off = sections.offset_trace(
+            LEVEL, np.array([1.0, 0.0]), STANDOFF, 10.0, ob.signed_clearance, "TEST", 10.0
+        )
         assert off.total_length > 50.0
         assert bool(np.isfinite(off.points).all())
         assert not _segments_intersect_any(off.points[:, :2])
@@ -255,26 +333,37 @@ class TestOffsetTrace:
         geom = sections.geometry(LEVEL)
         trace = build_footwall_trace(ob, geom, RES, np.array([0.0, 1.0]))
         with pytest.raises(SectionGeometryError) as ei:
-            build_offset_trace(geom, trace, RES, STANDOFF, minimum_length=10_000.0)
+            build_offset_trace(geom, trace, RES, STANDOFF, 10_000.0, ob.signed_clearance, 10.0)
         assert ei.value.code == SECTION_TRACE_OFFSET_INVALID
         assert "shorter than" in ei.value.detail
 
     def test_determinism_and_cache(self):
         ob = ArcOrebody()
-        a = make_sections(ob).offset_trace(LEVEL, np.array([0.0, 1.0]), STANDOFF, 10.0)
+        a = make_sections(ob).offset_trace(
+            LEVEL, np.array([0.0, 1.0]), STANDOFF, 10.0, ob.signed_clearance, "TEST", 10.0
+        )
         sections_b = make_sections(ob)
-        b = sections_b.offset_trace(LEVEL, np.array([0.0, 1.0]), STANDOFF, 10.0)
+        b = sections_b.offset_trace(
+            LEVEL, np.array([0.0, 1.0]), STANDOFF, 10.0, ob.signed_clearance, "TEST", 10.0
+        )
         assert np.array_equal(a.points, b.points)
         assert np.array_equal(a.tangents, b.tangents)
         assert np.array_equal(a.ore_contact, b.ore_contact)
         assert a.total_length == b.total_length
-        assert sections_b.offset_trace(LEVEL, np.array([0.0, 1.0]), STANDOFF, 10.0) is b
+        assert (
+            sections_b.offset_trace(
+                LEVEL, np.array([0.0, 1.0]), STANDOFF, 10.0, ob.signed_clearance, "TEST", 10.0
+            )
+            is b
+        )
 
     def test_orientation_follows_footwall_trace_chainage(self):
         ob = ArcOrebody()
         sections = make_sections(ob)
         trace = sections.footwall_trace(LEVEL, np.array([0.0, 1.0]))
-        off = sections.offset_trace(LEVEL, np.array([0.0, 1.0]), STANDOFF, 10.0)
+        off = sections.offset_trace(
+            LEVEL, np.array([0.0, 1.0]), STANDOFF, 10.0, ob.signed_clearance, "TEST", 10.0
+        )
         # start of the offset trace maps near the start of the contact trace
         d_start = float(np.linalg.norm(off.ore_contact[0] - trace.contact_points[0]))
         d_end = float(np.linalg.norm(off.ore_contact[-1] - trace.contact_points[-1]))

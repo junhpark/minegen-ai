@@ -977,7 +977,14 @@ def test_effective_ramp_for_warped_vein_reports_conservative_clearance(
     for a in accesses["accesses"]:
         assert a["status"] == "OK"
         assert a["validation"]["minimumOrebodyDistance"] >= res.required_clearance - 1e-9
-        assert a["anchor"]["diagnostics"]["backbone"] == "NUMERICAL_SECTION_PRINCIPAL_AXIS"
+        # Phase 20C.2A: implicit-orebody anchors sit on the curved offset
+        # development trace, never on a whole-section principal axis
+        anchor = a["anchor"]
+        assert anchor["diagnostics"]["backbone"] == "SECTION_FOOTWALL_OFFSET_TRACE"
+        assert anchor["traceChainage"] is not None and anchor["traceLength"] is not None
+        assert 0.0 <= anchor["traceChainage"] <= anchor["traceLength"]
+        assert anchor["localTangent"] is not None and anchor["oreContact"] is not None
+        assert anchor["selectedComponentId"] is not None
     json.dumps(ramp, allow_nan=False)
     json.dumps(accesses, allow_nan=False)
 
@@ -1480,14 +1487,20 @@ def test_station_hairpin_counts_as_one_reversal_only_within_the_bound() -> None:
     assert two.heading_reversal_count == 2 and two.hairpin_run_count == 2
 
 
-def test_shortlist_reconstruction_holds_on_a_conservative_case_with_failed_detailed(
-    warped_search: tuple[LayoutV2Search, LayoutSearchResult],
-) -> None:
+def test_shortlist_reconstruction_holds_on_a_conservative_case_with_failed_detailed() -> None:
     """Follow-up §2 (b): the reconstruction must also match a REAL result whose
     shortlist contains candidates stage 4 marked INFEASIBLE — the EXACT
     fixture in ``test_level_access.py`` happens to have an all-feasible
-    shortlist, so it alone could not catch the discarded survivor filter."""
-    search, res = warped_search
+    shortlist, so it alone could not catch the discarded survivor filter.
+    Phase 20C.2A: seed 301's shortlist became all-feasible under the curved
+    section-trace backbone, so the decisive conservative case is now
+    WARPED-307 (NO_FEASIBLE_CANDIDATE — every shortlisted candidate is
+    detailed-INFEASIBLE)."""
+    sc = Scenario(
+        **realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 307, fault_count=1).model_dump()
+    )
+    search = LayoutV2Search(sc, generate_world(sc))
+    res = search.run()
     assert res.clearance_basis == "COARSE_CONSERVATIVE"
     shortlisted = {c.candidate_id for c in res.candidates if c.shortlisted}
     failed_in_shortlist = [

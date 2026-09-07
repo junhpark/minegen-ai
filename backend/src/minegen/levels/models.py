@@ -34,6 +34,10 @@ class DevelopmentReport(ApiModel):
     envelope_hard_violations: int
     envelope_above_terrain: int
     terminal_sdf: float | None = None  # crosscut only: |sdf| at first contact
+    #: crosscut on an implicit body (Phase 20C.2A): width of the final
+    #: contains()-bisection bracket at the ore-contact terminal (m); the
+    #: terminal itself is the OUTSIDE end of that bracket
+    terminal_contact_gap: float | None = None
     interior_breach_samples: int = 0  # crosscut only: pre-terminal inside-ore
     field_cost: float
     valid: bool
@@ -46,7 +50,10 @@ class Development(ApiModel):
     level_id: str
     station_index: int | None = None  # crosscut station k (…,-1, 0, +1,…)
     station_u: float | None = None  # crosscut station strike coordinate
-    from_u: float  # strike-span start (canonical +u direction)
+    #: span coordinates along the level backbone: the canonical +u strike
+    #: coordinate (TABULAR rule 43) or the offset-trace CHAINAGE for a
+    #: curved section-trace backbone (Phase 20C.2A)
+    from_u: float
     to_u: float
     centerline: Centerline
     length3d: float = Field(alias="length3d")
@@ -96,6 +103,10 @@ class LevelsPayload(ApiModel):
     source_revision: str
     #: LEGACY_RAMP_SEGMENT (Phase 05 segment ends) | LEVEL_ACCESS (rule 157)
     entry_source: Literal["LEGACY_RAMP_SEGMENT", "LEVEL_ACCESS"] = "LEGACY_RAMP_SEGMENT"
+    #: which backbone geometry contract developed the levels (Phase 20C.2A):
+    #: TABULAR_RULE_43 (exact strike line) or SECTION_FOOTWALL_OFFSET_TRACE
+    #: (curved trace of the numerical section geometry)
+    development_geometry: Literal["TABULAR_RULE_43", "SECTION_FOOTWALL_OFFSET_TRACE"] | None = None
     production_development: ProductionDevelopment | None = None
     developments: list[Development]
     levels: list[LevelSummary]
