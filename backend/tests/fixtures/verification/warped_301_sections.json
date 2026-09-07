@@ -1,0 +1,274 @@
+{
+ "metadata": {
+  "authority": "DEVELOPMENT_ACCELERATION_ONLY \u2014 never release evidence (VA-01 \u00a720)",
+  "faultCount": 1,
+  "fixtureVersion": 1,
+  "generatedAt": "2026-09-07T23:21:47+00:00",
+  "generatedFromGitSha": "96bc5763f4a0f20a5ecae9057641ca466903a300",
+  "scenarioPreset": "RANDOM_WARPED_VEIN",
+  "schemaVersion": 1,
+  "seed": 301,
+  "sourceStage": "SECTION_TRACES_WORLD_POLICY",
+  "upstreamFingerprint": "e092723fd7a1aa628383d145b65743c583bde4b3418980f8921d0fcd8367f9f9"
+ },
+ "summary": {
+  "effectiveSpacing": 2.0,
+  "levels": [
+   {
+    "componentCount": 3,
+    "elevation": 133.057109,
+    "footwallTraceLength": 190.551299,
+    "levelId": "L03",
+    "midpoint": [
+     136.179728,
+     131.089268,
+     133.057109
+    ],
+    "minClearance": 23.690115,
+    "minContactDistance": 35.169729,
+    "offsetTraceLength": 322.689726,
+    "offsetVertexCount": 162,
+    "outerContourVertices": 241,
+    "selectedComponentId": 3,
+    "selectedSamples": 272
+   },
+   {
+    "componentCount": 1,
+    "elevation": 108.057109,
+    "footwallTraceLength": 439.428499,
+    "levelId": "L04",
+    "midpoint": [
+     116.538607,
+     84.389913,
+     108.057109
+    ],
+    "minClearance": 23.734022,
+    "minContactDistance": 34.113521,
+    "offsetTraceLength": 464.00856,
+    "offsetVertexCount": 233,
+    "outerContourVertices": 559,
+    "selectedComponentId": 1,
+    "selectedSamples": 1036
+   },
+   {
+    "componentCount": 2,
+    "elevation": 83.057109,
+    "footwallTraceLength": 495.854906,
+    "levelId": "L05",
+    "midpoint": [
+     119.061345,
+     77.439506,
+     83.057109
+    ],
+    "minClearance": 23.020655,
+    "minContactDistance": 33.909791,
+    "offsetTraceLength": 501.407265,
+    "offsetVertexCount": 252,
+    "outerContourVertices": 633,
+    "selectedComponentId": 1,
+    "selectedSamples": 1443
+   },
+   {
+    "componentCount": 1,
+    "elevation": 58.057109,
+    "footwallTraceLength": 530.482323,
+    "levelId": "L06",
+    "midpoint": [
+     124.458162,
+     73.824936,
+     58.057109
+    ],
+    "minClearance": 23.349451,
+    "minContactDistance": 33.267732,
+    "offsetTraceLength": 529.206003,
+    "offsetVertexCount": 266,
+    "outerContourVertices": 677,
+    "selectedComponentId": 1,
+    "selectedSamples": 1685
+   },
+   {
+    "componentCount": 1,
+    "elevation": 33.057109,
+    "footwallTraceLength": 550.967604,
+    "levelId": "L07",
+    "midpoint": [
+     131.125897,
+     72.722991,
+     33.057109
+    ],
+    "minClearance": 23.453131,
+    "minContactDistance": 33.636612,
+    "offsetTraceLength": 553.132218,
+    "offsetVertexCount": 278,
+    "outerContourVertices": 701,
+    "selectedComponentId": 1,
+    "selectedSamples": 1828
+   },
+   {
+    "componentCount": 1,
+    "elevation": 8.057109,
+    "footwallTraceLength": 563.452886,
+    "levelId": "L08",
+    "midpoint": [
+     138.334049,
+     70.958842,
+     8.057109
+    ],
+    "minClearance": 24.275164,
+    "minContactDistance": 34.947257,
+    "offsetTraceLength": 569.673716,
+    "offsetVertexCount": 286,
+    "outerContourVertices": 717,
+    "selectedComponentId": 1,
+    "selectedSamples": 1902
+   },
+   {
+    "componentCount": 1,
+    "elevation": -16.942891,
+    "footwallTraceLength": 568.281313,
+    "levelId": "L09",
+    "midpoint": [
+     145.417503,
+     68.773866,
+     -16.942891
+    ],
+    "minClearance": 24.491614,
+    "minContactDistance": 33.76035,
+    "offsetTraceLength": 579.885371,
+    "offsetVertexCount": 291,
+    "outerContourVertices": 723,
+    "selectedComponentId": 1,
+    "selectedSamples": 1923
+   },
+   {
+    "componentCount": 1,
+    "elevation": -41.942891,
+    "footwallTraceLength": 569.452886,
+    "levelId": "L10",
+    "midpoint": [
+     152.993906,
+     67.141747,
+     -41.942891
+    ],
+    "minClearance": 24.171539,
+    "minContactDistance": 36.554768,
+    "offsetTraceLength": 585.12194,
+    "offsetVertexCount": 294,
+    "outerContourVertices": 723,
+    "selectedComponentId": 1,
+    "selectedSamples": 1905
+   },
+   {
+    "componentCount": 1,
+    "elevation": -66.942891,
+    "footwallTraceLength": 564.624458,
+    "levelId": "L11",
+    "midpoint": [
+     160.316297,
+     65.442968,
+     -66.942891
+    ],
+    "minClearance": 23.859341,
+    "minContactDistance": 36.676872,
+    "offsetTraceLength": 583.162335,
+    "offsetVertexCount": 293,
+    "outerContourVertices": 717,
+    "selectedComponentId": 1,
+    "selectedSamples": 1846
+   },
+   {
+    "componentCount": 1,
+    "elevation": -91.942891,
+    "footwallTraceLength": 554.967604,
+    "levelId": "L12",
+    "midpoint": [
+     166.684197,
+     62.846488,
+     -91.942891
+    ],
+    "minClearance": 23.952335,
+    "minContactDistance": 37.039255,
+    "offsetTraceLength": 577.169745,
+    "offsetVertexCount": 290,
+    "outerContourVertices": 705,
+    "selectedComponentId": 1,
+    "selectedSamples": 1744
+   },
+   {
+    "componentCount": 1,
+    "elevation": -116.942891,
+    "footwallTraceLength": 535.653896,
+    "levelId": "L13",
+    "midpoint": [
+     173.428389,
+     60.982567,
+     -116.942891
+    ],
+    "minClearance": 23.910614,
+    "minContactDistance": 37.054037,
+    "offsetTraceLength": 570.703151,
+    "offsetVertexCount": 286,
+    "outerContourVertices": 681,
+    "selectedComponentId": 1,
+    "selectedSamples": 1602
+   },
+   {
+    "componentCount": 1,
+    "elevation": -141.942891,
+    "footwallTraceLength": 504.683333,
+    "levelId": "L14",
+    "midpoint": [
+     179.647233,
+     59.485743,
+     -141.942891
+    ],
+    "minClearance": 24.233564,
+    "minContactDistance": 36.985665,
+    "offsetTraceLength": 539.796894,
+    "offsetVertexCount": 271,
+    "outerContourVertices": 643,
+    "selectedComponentId": 1,
+    "selectedSamples": 1416
+   },
+   {
+    "componentCount": 1,
+    "elevation": -166.942891,
+    "footwallTraceLength": 454.399062,
+    "levelId": "L15",
+    "midpoint": [
+     185.47197,
+     57.426594,
+     -166.942891
+    ],
+    "minClearance": 23.47246,
+    "minContactDistance": 36.944319,
+    "offsetTraceLength": 506.230649,
+    "offsetVertexCount": 254,
+    "outerContourVertices": 581,
+    "selectedComponentId": 1,
+    "selectedSamples": 1135
+   },
+   {
+    "componentCount": 1,
+    "elevation": -191.942891,
+    "footwallTraceLength": 361.830519,
+    "levelId": "L16",
+    "midpoint": [
+     191.96351,
+     56.161342,
+     -191.942891
+    ],
+    "minClearance": 23.374377,
+    "minContactDistance": 37.239308,
+    "offsetTraceLength": 444.751147,
+    "offsetVertexCount": 223,
+    "outerContourVertices": 465,
+    "selectedComponentId": 1,
+    "selectedSamples": 688
+   }
+  ],
+  "policyBasis": "COARSE_CONSERVATIVE",
+  "requiredClearance": 10.59017,
+  "serviceableLevels": 14
+ }
+}
