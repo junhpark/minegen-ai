@@ -5,9 +5,9 @@ never a layout-v2 family, never a replacement for the ramp, never placed by
 an optimizer. For every declared ``ShaftSpec`` the planner:
 
 1. resolves the collar PLAN position — explicit, or the deterministic
-   default (target-level entry plan centroid pushed ``collarStandoff`` m away
-   from the orebody plan centre); the collar ELEVATION is always the terrain
-   surface;
+   default (``collarStandoff`` beyond the footwall-most extent of the level
+   developments along the away-from-ore direction through the target-level
+   entry centroid); the collar ELEVATION is always the terrain surface;
 2. places one SHAFT_STATION per required level on the vertical axis at the
    elevation of that level's connection target — the EXISTING level
    development node (LEVEL_ENTRY or drift breakpoint) nearest to the axis in
@@ -43,6 +43,7 @@ from minegen.design.profile import boundary_points, build_profile
 from minegen.shafts.models import (
     Centerline,
     ConnectionTarget,
+    DevelopmentClearanceReport,
     Shaft,
     ShaftCenterline,
     ShaftFailureCode,
@@ -132,6 +133,16 @@ def _dominant_code(counts: dict[str, int], default: ShaftFailureCode) -> ShaftFa
     return default
 
 
+def _development_samples(levels_payload: dict[str, Any]) -> list[tuple[str, FloatArray]]:
+    """Every level-development centerline (id, (N, 3) points) of the levels
+    artifact — the existing excavations a shaft axis must stay clear of."""
+    out: list[tuple[str, FloatArray]] = []
+    for dev in levels_payload.get("developments", []):
+        pts = np.asarray(dev["centerline"]["points"], dtype=np.float64).reshape(-1, 3)
+        out.append((str(dev["id"]), pts))
+    return out
+
+
 def level_breakpoints(levels_payload: dict[str, Any]) -> dict[str, list[_Breakpoint]]:
     """Every EXISTING level-development node the network builder will
     create for a level (rule 73 breakpoints): the LEVEL_ENTRY plus every
@@ -181,6 +192,7 @@ class ShaftPlanner:
         self.axis_ev = axis_evaluator
         self.access_ev = access_evaluator
         self.shape = build_profile(scenario.ramp, scenario.tunnel_profile)
+        self._dev_samples: list[tuple[str, FloatArray]] = []
         cores = [f.config.core_half_width for f in world.faults]
         self.axis_spacing = min([AXIS_SAMPLE_SPACING, *cores]) if cores else AXIS_SAMPLE_SPACING
 
@@ -200,6 +212,7 @@ class ShaftPlanner:
                 t0,
             )
         breakpoints = level_breakpoints(levels_payload)
+        self._dev_samples = _development_samples(levels_payload)
         centerlines: list[ShaftCenterline] = []
         shafts: list[Shaft] = []
         for spec in specs:
@@ -269,6 +282,15 @@ class ShaftPlanner:
                     f"shaft bottom z={bottom[2]:.2f} lies below the model floor",
                 )
             validation, axis_cost = self._validate_axis(collar, bottom, radius)
+            validation = validation.model_copy(
+                update={
+                    "development_clearance": self._development_clearance(collar, bottom, radius)
+                }
+            )
+            if validation.development_clearance is not None and (
+                not validation.development_clearance.valid
+            ):
+                validation = validation.model_copy(update={"valid": False})
         except _ShaftFailureError as exc:
             return Shaft(
                 shaft_id=spec.shaft_id,
@@ -332,7 +354,16 @@ class ShaftPlanner:
         status = "OK"
         code = None
         reason = None
-        if not validation.valid:
+        dc = validation.development_clearance
+        if dc is not None and not dc.valid:
+            status = "FAILED"
+            code = ShaftFailureCode.SHAFT_CLEARANCE_VIOLATION
+            reason = (
+                f"shaft axis is {dc.minimum_plan_distance:.2f} m in plan from level development "
+                f"{dc.nearest_development_id} — the excavations need "
+                f"{dc.required_plan_distance:.2f} m (radius + tunnel half-width + rock pillar)"
+            )
+        elif not validation.valid:
             status = "FAILED"
             code = _dominant_code(
                 validation.rejection_counts, ShaftFailureCode.SHAFT_GEOMETRY_INVALID
@@ -388,6 +419,16 @@ class ShaftPlanner:
         level_ids: list[str],
         breakpoints: dict[str, list[_Breakpoint]],
     ) -> tuple[FloatArray, str]:
+        """Explicit collar, or the deterministic default (rule 182): along
+        the away-from-ore direction ``n = unit(entry centroid − orebody plan
+        centre)`` the collar sits ``collarStandoff`` beyond the footwall-most
+        extent of the EXISTING level developments —
+        ``centroid + (max(0, max_i n·(p_i − centroid)) + standoff) · n``.
+        Because every development sample projects at most ``max_proj`` along
+        ``n``, the axis is at least ``standoff`` from all of them in plan, so
+        a standoff ≥ the rock-pillar requirement satisfies the development
+        clearance gate by construction. No search, no optimization; a
+        planning default, never statutory."""
         if spec.collar is not None:
             return np.array([spec.collar.x, spec.collar.y], dtype=np.float64), "EXPLICIT"
         entries = np.array(
@@ -404,7 +445,12 @@ class ShaftPlanner:
                 "default collar placement is undefined: the level-entry centroid coincides "
                 "with the orebody plan centre; declare an explicit collar",
             )
-        return centroid + spec.collar_standoff * (away / norm), "DEFAULT_DERIVED"
+        n = away / norm
+        max_proj = 0.0
+        for _, pts in self._dev_samples:
+            proj = (pts[:, :2] - centroid[None, :]) @ n
+            max_proj = max(max_proj, float(proj.max()))
+        return centroid + (max_proj + spec.collar_standoff) * n, "DEFAULT_DERIVED"
 
     def _collar(self, xy: FloatArray) -> FloatArray:
         terrain = self.world.terrain
@@ -530,6 +576,43 @@ class ShaftPlanner:
             valid=axis_invalid == 0 and env_invalid == 0,
         )
         return validation, axis_cost
+
+    def _development_clearance(
+        self, collar: FloatArray, bottom: FloatArray, radius: float
+    ) -> DevelopmentClearanceReport:
+        """Rock pillar between the shaft excavation and every EXISTING level
+        development inside the shaft's depth range (directive §10). Required
+        plan distance = radius + tunnel_width/2 + pillar, the rule 171 B-2
+        pillar default (2 × tunnel width) unless ``minimumShaftSeparation``
+        declares another. A hard gate, never a score."""
+        width = self.scenario.ramp.tunnel_width
+        cfg = self.scenario.shafts
+        pillar = (
+            cfg.minimum_shaft_separation
+            if cfg.minimum_shaft_separation is not None
+            else 2.0 * width
+        )
+        required = radius + width / 2.0 + pillar
+        z_lo, z_hi = float(bottom[2]) - width, float(collar[2])
+        best: float | None = None
+        best_id: str | None = None
+        checked = 0
+        for dev_id, pts in self._dev_samples:
+            mask = (pts[:, 2] >= z_lo) & (pts[:, 2] <= z_hi)
+            if not bool(mask.any()):
+                continue
+            d = np.hypot(pts[mask, 0] - collar[0], pts[mask, 1] - collar[1])
+            checked += int(mask.sum())
+            dmin = float(d.min())
+            if best is None or dmin < best:
+                best, best_id = dmin, dev_id
+        return DevelopmentClearanceReport(
+            minimum_plan_distance=best,
+            required_plan_distance=required,
+            nearest_development_id=best_id,
+            samples_checked=checked,
+            valid=best is None or best >= required,
+        )
 
     def _station(
         self,

@@ -470,3 +470,29 @@ def test_infrastructure_domain_and_communication_accept_shaft_edges(
 
     with pytest.raises(DomainValidationError, match="out of range"):
         InfrastructureNetworkDomain.build(net, fx["effectiveRamp"], levels, fx["levelAccesses"])
+
+
+def test_axis_too_close_to_an_existing_development_is_a_clearance_violation(
+    tabular_levels: tuple[Scenario, SyntheticWorld, dict[str, Any]],
+) -> None:
+    """Directive §10 minimum infrastructure clearance: the shaft excavation
+    keeps a rock pillar from every existing level development."""
+    sc, world, levels = tabular_levels
+    entry = levels["levels"][1]["entry"]  # put the axis 4 m from the L02 entry
+    res = _plan(sc, world, levels, ShaftSpec(collar=Point2D(x=entry[0] + 4.0, y=entry[1])))
+    assert res.status == "FAILED"
+    (shaft,) = res.shafts
+    assert shaft.failure_code is ShaftFailureCode.SHAFT_CLEARANCE_VIOLATION
+    assert shaft.validation is not None
+    dc = shaft.validation.development_clearance
+    assert dc is not None and not dc.valid
+    assert (
+        dc.minimum_plan_distance is not None
+        and dc.minimum_plan_distance < dc.required_plan_distance
+    )
+    assert dc.required_plan_distance == pytest.approx(3.0 + 2.5 + 2.0 * sc.ramp.tunnel_width)
+    assert dc.nearest_development_id is not None and "L02" in dc.nearest_development_id
+    # the healthy default placement reports its clearance too
+    ok = _plan(sc, world, levels, ShaftSpec()).shafts[0]
+    assert ok.validation is not None and ok.validation.development_clearance is not None
+    assert ok.validation.development_clearance.valid

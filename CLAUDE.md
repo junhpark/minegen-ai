@@ -1596,3 +1596,65 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      VERIFICATION FIXTURE failure, never auto-rewritten. A FULL result is
      merge evidence only for the exact HEAD it ran on. Faster verification
      never changes a production threshold, golden expectation or hard gate.
+
+182. Shaft = infrastructure primitive, never a layout family (Phase 20C.2B).
+     `scenario.shafts.specs` declares explicit vertical shafts (empty =
+     no shaft; every no-shaft artifact is unchanged and the ramp always
+     coexists — shaft-only mines are out of scope). The backend plans them
+     deterministically: collar plan position explicit or the documented
+     default (`collarStandoff` beyond the footwall-most level-development
+     extent along the away-from-ore direction through the target-level
+     entry centroid — clear of every development by construction), collar
+     elevation always from the terrain,
+     one SHAFT_STATION per REQUIRED level (every listed level is required —
+     one infeasible station fails the shaft), sump bottom. No placement
+     optimization, no LLM-placed geometry; the frontend never derives shaft
+     geometry. Inclined shafts / winzes and a shaft mesh are deferred
+     (rule 26 reserves the parallel-transport frame).
+183. Shaft geometry ownership and validation. `derived/shafts.json` is the
+     ONLY owner of shaft axes, stations and station drives (one flat
+     `centerlines` list; `GeometryRef{artifact, segmentIndex}` unchanged).
+     A station drive is a straight, validated line from the axis to the
+     EXISTING level node nearest in plan (LEVEL_ENTRY or drift breakpoint,
+     welded through the network builder's breakpoint logic) — level
+     geometry is never rebuilt and no new production crosscut is created.
+     Axis and circular envelope pass the shared `DesignCostEvaluator`
+     gates under `DesignContext.shaft` (permanent shaft: orebody
+     penetration forbidden via the exclusion buffer; restricted zones and
+     world bounds hard; terrain break-through only inside the collar zone;
+     `minimum_surface_cover` not applied — a shaft breaks the surface by
+     definition) under the ACTIVE ramp's clearance policy (rule 172).
+     Failures are typed (`ShaftFailureCode`) and nothing is clamped.
+184. Shaft lifecycle and network integration. levels → shafts → network:
+     `levelsRevision` binds shafts.json to the levels it was planned on
+     (409 SHAFTS_STALE fail-closed); regenerating levels deletes shafts,
+     regenerating shafts deletes network / timeline / communication /
+     sensors / capability graph, and nothing upstream. MineNetwork adds
+     SHAFT_COLLAR / SHAFT_STATION / SHAFT_BOTTOM nodes, VERTICAL `SHAFT`
+     edges (`orientation = VERTICAL`, null gradients, `verticalDrop`,
+     CIRCULAR cross-section) and `SHAFT_STATION_ACCESS` edges; it
+     references shafts.json and never owns the geometry. PORTAL ∪
+     SHAFT_COLLAR is the surface set of the rule-70 advisory. The timeline
+     sinks the shaft from the collar segment by segment and drives each
+     station FROM the shaft once sinking reaches it (rule 174); level
+     development stays ramp-rooted (rule 85). Communication / sensor
+     domains treat both edge types as physical tunnel geometry; RAISE
+     stays the only unsupported type.
+185. GEOMETRY ≠ TOPOLOGY ≠ CAPABILITY, and capability ≠ capacity.
+     `derived/capability_graph.json` references MineNetwork node / edge
+     ids only (no geometry, no topology of its own). Every edge's
+     capability set has an EXPLICIT source — the declared / default set per
+     edge type (`scenario.capability`) or the owning shaft's declared
+     `ShaftSpec.capabilities` (role-seeded, persisted resolved) — never
+     inferred from geometry alone; node `supports` derive from incident
+     edges. The graph is bound to `network.json`'s file revision (409
+     CAPABILITY_GRAPH_STALE; network regeneration deletes it), validates
+     references / duplicates, evaluates required capability paths (portal →
+     level entries, collar → stations for shafts declaring personnel /
+     haulage, one EMERGENCY_EGRESS route for every personnel-reachable
+     underground node — unsatisfied = explicit FAILED) and reports the
+     edge-disjoint egress advisory with no statutory or compliance claim
+     (Phase 20D). `can_reach(source, target, capability)` reports physical
+     and capability reachability separately. The five v0.1 capabilities are
+     typed may / may-not tags; tonnes/hour, people/hour, airflow and hoist
+     cycles are never modelled here.

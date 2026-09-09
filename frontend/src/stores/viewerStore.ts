@@ -58,6 +58,7 @@ const DEFAULT_VISIBLE: LayerId[] = [
   'ramp',
   'levels',
   'crosscuts',
+  'shafts',
   'network',
   'stopes',
   // Phase 16 hotfix 2 (item 6): infrastructure families default ON — they

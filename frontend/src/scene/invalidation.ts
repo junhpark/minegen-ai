@@ -1,4 +1,5 @@
 import type {
+  CapabilityGraphPayload,
   CommunicationPayload,
   DevelopmentMeshReport,
   LayoutV2Catalogue,
@@ -7,6 +8,7 @@ import type {
   NetworkPayload,
   RampSourceSummary,
   SensorPayload,
+  ShaftsPayload,
   SmoothedDeclinePayload,
   StopesPayload,
   TimelinePayload,
@@ -29,7 +31,9 @@ export function afterUpstreamRegen(scene: WorldScene): WorldScene {
     ...scene,
     levels: null,
     developmentMesh: null,
+    shafts: null,
     network: null,
+    capabilityGraph: null,
     stopes: null,
     timeline: null,
     communication: null,
@@ -45,12 +49,37 @@ export function afterLevelsRegen(scene: WorldScene, payload: LevelsPayload): Wor
     ...scene,
     levels: payload,
     developmentMesh: null,
+    shafts: null, // rule 184: stations weld onto level nodes
     network: null,
+    capabilityGraph: null,
     stopes: null,
     timeline: null,
     communication: null,
     sensors: null,
   }
+}
+
+/** Shafts (re)planned (Phase 20C.2B, rule 184): the network and everything
+ * below it — timeline, communication, sensors, capability graph — are
+ * stale; levels, meshes and stopes are preserved. */
+export function afterShaftsRegen(scene: WorldScene, payload: ShaftsPayload): WorldScene {
+  return {
+    ...scene,
+    shafts: payload,
+    network: null,
+    capabilityGraph: null,
+    timeline: null,
+    communication: null,
+    sensors: null,
+  }
+}
+
+/** Capability graph rebuilt (rule 185): touches nothing else. */
+export function afterCapabilityGraphRegen(
+  scene: WorldScene,
+  payload: CapabilityGraphPayload,
+): WorldScene {
+  return { ...scene, capabilityGraph: payload }
 }
 
 /** Development mesh rebuilt (closeout v3 §4): touches nothing else. */
@@ -64,7 +93,14 @@ export function afterDevelopmentMeshRegen(
 /** Network rebuilt (rules 86/92): timeline and communication are stale;
  * stopes are preserved. */
 export function afterNetworkRegen(scene: WorldScene, payload: NetworkPayload): WorldScene {
-  return { ...scene, network: payload, timeline: null, communication: null, sensors: null }
+  return {
+    ...scene,
+    network: payload,
+    capabilityGraph: null, // rule 185: network → capability
+    timeline: null,
+    communication: null,
+    sensors: null,
+  }
 }
 
 /** Stopes rebuilt (rules 79/86/92): timeline is stale, communication and

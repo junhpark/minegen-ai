@@ -12,7 +12,10 @@ export const NODE_TYPES = [
   'STOPE_ACCESS',
   'RAMP_JUNCTION',
   'RAMP_END',
+  // Phase 20C.2B shaft infrastructure (rules 182–184)
+  'SHAFT_COLLAR',
   'SHAFT_STATION',
+  'SHAFT_BOTTOM',
   'CRUSHER',
   'REFUGE',
   'FAN',
@@ -21,7 +24,16 @@ export const NODE_TYPES = [
 ] as const
 export type NodeType = (typeof NODE_TYPES)[number]
 
-export const EDGE_TYPES = ['RAMP', 'LEVEL_ACCESS', 'DRIFT', 'CROSSCUT', 'RAISE', 'SHAFT'] as const
+export const EDGE_TYPES = [
+  'RAMP',
+  'LEVEL_ACCESS',
+  'DRIFT',
+  'CROSSCUT',
+  'RAISE',
+  'SHAFT',
+  // Phase 20C.2B: station drive from a SHAFT_STATION to a level node
+  'SHAFT_STATION_ACCESS',
+] as const
 export type EdgeType = (typeof EDGE_TYPES)[number]
 
 export const OBJECT_STATES = [
@@ -94,5 +106,18 @@ export const LAYER_IDS = [
   'levelAccesses',
   'tunnelMesh',
   'developmentMesh',
+  // Phase 20C.2B: shaft axes, stations and station drives (backend geometry)
+  'shafts',
 ] as const
 export type LayerId = (typeof LAYER_IDS)[number]
+
+/** Phase 20C.2B capability taxonomy (rule 185): a may / may-not tag, never
+ * a capacity. Mirrors backend Capability. */
+export const CAPABILITIES = [
+  'PERSONNEL_ACCESS',
+  'MATERIAL_HAULAGE',
+  'VENTILATION_PATH',
+  'UTILITY_SERVICE',
+  'EMERGENCY_EGRESS',
+] as const
+export type Capability = (typeof CAPABILITIES)[number]

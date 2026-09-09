@@ -887,9 +887,10 @@ class ShaftSpec(ApiModel):
     level_ids: list[str] = Field(default_factory=list)
     #: sump below the lowest station (m) — the shaft bottom
     bottom_sump_depth: PositiveFloat = 10.0
-    #: default-placement plan stand-off from the target-level entry centroid
-    #: away from the orebody plan centre (m) — planning default, never
-    #: statutory; unused for an explicit collar
+    #: default placement: plan margin (m) beyond the footwall-most extent of
+    #: the existing level developments, measured along the away-from-ore
+    #: direction through the target-level entry centroid — planning
+    #: default, never statutory; unused for an explicit collar
     collar_standoff: PositiveFloat = 40.0
     #: declared capabilities (rule 185); ``None`` → the role default,
     #: resolved at validation so the persisted scenario is explicit

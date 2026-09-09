@@ -1217,3 +1217,106 @@ and total crosscut length drops accordingly (e.g. WARPED-301
 7 905 → 7 669 m). Some exclusion clusters sit MID-level (e.g. seed 304
 L14, seed 327 L02) where the offset arc wraps far from the local ore —
 a recorded Phase 20C.2B/20C.3 station-lattice question, not tuned here.
+
+## Phase 20C.2B — vertical shaft planner and capability graph (`shafts/`, `capability/`, rules 182–185)
+
+Enum unification came first: the MineNetwork contract now uses the one
+`core/enums.py` NodeType / EdgeType (the network-local subset is gone,
+persisted values unchanged; new values SHAFT_COLLAR, SHAFT_BOTTOM,
+SHAFT_STATION_ACCESS).
+
+### Shaft planner (`shafts/planner.py`)
+
+Per declared `ShaftSpec`, deterministically:
+
+1. **Target levels** — `levelIds` (every listed level is REQUIRED) or every
+   level with a SUCCESS development; unknown ids →
+   SHAFT_STATION_LEVEL_MISMATCH; no developed level →
+   SHAFT_NO_SERVICEABLE_LEVELS.
+2. **Collar plan position** — explicit `collar {x, y}`, or the default
+   `centroid + (max(0, maxᵢ n·(pᵢ − centroid)) + collarStandoff) · n` with
+   `n = unit(centroid(target-level entries) − orebody plan centre)` and
+   `pᵢ` every level-development sample: the collar sits `collarStandoff`
+   beyond the footwall-most development extent along the away-from-ore
+   direction, so the axis is ≥ `collarStandoff` in plan from every
+   development by construction (the footwall side of a dipping body stays
+   the footwall side at depth). Measured on WARPED-301: a plain
+   centroid + 40 m rule put the axis 0.93 m from the L05 drift (the
+   development-clearance gate below caught it); the extent rule is clear
+   of every development but, because the curved backbone migrates
+   laterally with depth, its deepest station drive measures 203.4 m against
+   the 200 m `maximumStationAccessLength` ceiling — a typed
+   SHAFT_STATION_CONNECTION_INFEASIBLE, recorded, not tuned around. The
+   WARPED-301 E2E therefore exercises directive option A (an explicit
+   collar 80 m along the away direction: clearance 20.6 m, all 14 stations
+   OK). A depth-aware default is a recorded Phase 20C.2C candidate. Elevation = `Terrain.sample`; outside the
+   terrain grid → SHAFT_TERRAIN_INVALID, outside the world →
+   SHAFT_COLLAR_OUT_OF_BOUNDS. No search, no optimization.
+3. **Connection target per level** — the EXISTING network breakpoint of the
+   level (LEVEL_ENTRY + drift piece endpoints, `level_breakpoints`) with the
+   minimum plan distance to the axis (ties: lower `u`, then order). The
+   station sits on the axis at the target's elevation (≥ 1 diameter below
+   the collar; distinct, descending elevations).
+4. **Bottom** = lowest station − `bottomSumpDepth`; below the model floor →
+   SHAFT_BOTTOM_OUT_OF_BOUNDS.
+5. **Axis + envelope validation** — samples at `min(1 m, smallest fault core
+   half-width)`; 8-point circular rings at the radius; the shared
+   `DesignCostEvaluator.evaluate_points` under `DesignContext.shaft`
+   (buffer hard, cover 0). Reason precedence INSIDE_OREBODY →
+   SHAFT_OREBODY_INTERSECTION, OREBODY_BUFFER → SHAFT_CLEARANCE_VIOLATION,
+   RESTRICTED_ZONE → SHAFT_RESTRICTED_ZONE_INTERSECTION, OUTSIDE_WORLD →
+   SHAFT_BOTTOM_OUT_OF_BOUNDS; ring samples above terrain are permitted
+   only within one diameter of the collar (SHAFT_TERRAIN_INVALID deeper).
+6. **Development clearance** — the minimum PLAN distance from the axis to
+   every level-development centerline sample inside the shaft's depth range
+   must be ≥ radius + tunnel_width/2 + pillar (`minimumShaftSeparation`,
+   default 2 × tunnel width — the rule 171 B-2 pillar); a violation is
+   SHAFT_CLEARANCE_VIOLATION naming the nearest development (directive §10
+   "minimum required infrastructure clearance"); the default placement
+   satisfies it by construction, an explicit collar is judged by it.
+7. **Station drives** — a straight line station → target; horizontal length
+   ≥ radius + width/2 (must leave the shaft envelope), length ≤
+   `maximumStationAccessLength`, |grade| ≤ `ramp.max_gradient`, 2 m
+   centerline samples through the decline-context evaluator (orebody
+   buffer, cover, restricted zones, world) plus the horseshoe boundary
+   envelope (`boundary_points`); any violation →
+   SHAFT_STATION_CONNECTION_INFEASIBLE with the report retained.
+8. **Multi-shaft separation** — plan distance between axes ≥ r₁ + r₂ +
+   pillar (`minimumShaftSeparation`, default 2 × tunnel width) else the
+   later shaft is SHAFT_GEOMETRY_INVALID.
+
+Field costs: the axis cost integral `I(depth)` (trapezoid over the axis
+samples) gives each segment `I(s_b) − I(s_a)`; station drives integrate the
+cost field like Phase 08 developments. Measured (best of N, one core,
+under load): small TABULAR — shaft planning 5.8 ms, network +9 ms with the
+shaft, capability graph 44 ms (56 nodes); WARPED-301 (explicit collar,
+14 stations, 420 nodes / 432 edges) — shaft planning 37 ms, network 4.1 s
+(the pre-existing per-node max-flow surface advisory dominates),
+capability graph 4.3 s (460 required-path checks + the per-node max-flow
+egress advisory). Runtime is an observation, never a gate.
+
+### Capability graph (`capability/builder.py`)
+
+* Edge assignment: SHAFT / SHAFT_STATION_ACCESS → the owning shaft's
+  declared set (`ShaftSpec.capabilities`, role default PRODUCTION = all
+  five, SERVICE = personnel / ventilation / utility / egress, VENTILATION =
+  ventilation only); other types → `scenario.capability.edgeTypeCapabilities`
+  override (EDGE_TYPE_DECLARED) or the module default (every development
+  drive carries every capability in v0.1). RAISE has no rule → typed
+  failure. Node `supports` = union of incident edge capabilities.
+* Validation: duplicate ids, missing endpoints, network status, empty
+  network revision → FAILED with the reason.
+* Required paths: PORTAL → every LEVEL_ENTRY (PERSONNEL_ACCESS); collar →
+  every station for a shaft declaring PERSONNEL_ACCESS / MATERIAL_HAULAGE;
+  one EMERGENCY_EGRESS route to any surface node for every underground node
+  whose `supports` include PERSONNEL_ACCESS (an unoccupied ventilation
+  shaft station needs none). An unsatisfied required path is an explicit
+  FAILED graph.
+* Egress advisory: edge-disjoint routes (max-flow to a super-surface over
+  PORTAL ∪ SHAFT_COLLAR) on the EMERGENCY_EGRESS subgraph; criterion 2,
+  advisory only. Single-decline mines report 1; a production shaft lifts
+  the level entries to ≥ 2.
+* `can_reach`: deterministic BFS (fewest edges, neighbours in edge-id
+  order) on the undirected projection; the physical answer ignores
+  capabilities, the capability answer filters edges; both are returned.
+

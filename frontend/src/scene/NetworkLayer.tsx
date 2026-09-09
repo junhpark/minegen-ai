@@ -10,6 +10,10 @@ const NODE_COLORS: Record<string, string> = {
   // Phase 20B: turnouts on the main ramp and the ramp terminal
   RAMP_JUNCTION: '#f2c14e',
   RAMP_END: '#9aa3ad',
+  // Phase 20C.2B shaft infrastructure
+  SHAFT_COLLAR: '#c7a0e8',
+  SHAFT_STATION: '#e9d8ff',
+  SHAFT_BOTTOM: '#9aa3ad',
 }
 const NODE_SIZES: Record<string, number> = {
   PORTAL: 8,
@@ -18,6 +22,9 @@ const NODE_SIZES: Record<string, number> = {
   STOPE_ACCESS: 4.5,
   RAMP_JUNCTION: 6,
   RAMP_END: 4,
+  SHAFT_COLLAR: 8,
+  SHAFT_STATION: 5,
+  SHAFT_BOTTOM: 4,
 }
 const EDGE_COLORS: Record<string, string> = {
   RAMP: '#7fd4b8',
@@ -26,6 +33,7 @@ const EDGE_COLORS: Record<string, string> = {
   CROSSCUT: '#deb46a',
   RAISE: '#c7a0e8',
   SHAFT: '#c7a0e8',
+  SHAFT_STATION_ACCESS: '#b48ad6',
 }
 
 /**

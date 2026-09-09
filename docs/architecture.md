@@ -56,6 +56,8 @@ parent/child (CLAUDE.md rule 13).
       geometry/        centerline, tunnel profile, tunnel mesh (gravity-aligned
                        sweep), mesh utils
       network/         MineNetwork graph, builder, metrics
+      shafts/          Phase 20C.2B vertical shaft planner + shafts.json contract
+      capability/      Phase 20C.2B capability graph (semantics over network ids)
       mining/          MiningMethod strategy interface, longhole open stoping,
                        stope generator, rule-based method selector
       scheduling/      MineTask, dependencies, scheduler, timeline state
@@ -171,7 +173,11 @@ go under `geology`, not at the scenario root.
   `tunnel_mesh.json` (Phase 06 report, always persisted with explicit status),
   `tunnel_mesh.glb` (excavation mesh, SUCCESS only), `levels.json` (Phase 08
   typed LevelsPayload — the validated centerline artifact owning DRIFT and
-  CROSSCUT geometry, rule 71), `stopes.json` (Phase 09 typed StopesPayload —
+  CROSSCUT geometry, rule 71), `shafts.json` (Phase 20C.2B typed
+  ShaftsPayload — the validated geometry artifact owning shaft axes,
+  stations and station drives, rule 182; optional), `capability_graph.json`
+  (Phase 20C.2B typed CapabilityGraphPayload — capability semantics over
+  MineNetwork ids, no geometry, rule 185), `stopes.json` (Phase 09 typed StopesPayload —
   planned stope prisms in the analytic orebody frame, rule 75), `network.json` (Phase 07/08 typed
   NetworkPayload — deterministic serialization of the typed contract, never
   a raw NetworkX dump), `timeline.json` (Phase 10 typed TimelinePayload —
@@ -909,6 +915,64 @@ bit-compatible; WARPED stopes remain the typed Phase 09 boundary. The
 artifact ownership, invalidation chains and downstream builders (network,
 development mesh, timeline, communication, sensors) are unchanged — they
 consume the same `levels.json` contract.
+
+## Phase 20C.2B — shaft infrastructure + capability graph
+
+Three layers are kept apart (rules 182–185):
+
+| layer | owner | says |
+|---|---|---|
+| geometry | `layout_v2_selected.json` / `decline_smoothed.json`, `level_accesses.json`, `levels.json`, **`shafts.json`** | where things are |
+| topology | `network.json` (MineNetwork) | what connects to what |
+| capability | **`capability_graph.json`** | what a connection may be used for |
+
+**Shaft** (`shafts/`, rules 182–184). A shaft is an infrastructure
+primitive ADDED to the selected layout — never a layout-v2 family, never a
+replacement for the ramp, never placed by an optimizer. `scenario.shafts`
+declares explicit `ShaftSpec`s (empty = no shaft; every no-shaft artifact
+is unchanged). The deterministic planner puts a vertical axis on a terrain
+collar (explicit plan position, or the documented default: `collarStandoff`
+beyond the footwall-most level-development extent along the away-from-ore
+direction through the target-level entry centroid), one SHAFT_STATION per REQUIRED level at the elevation of that
+level's nearest EXISTING development node (LEVEL_ENTRY or drift
+breakpoint), a straight validated station drive to that node, and a sump
+bottom; axis and circular envelope pass the shared `DesignCostEvaluator`
+gates under `DesignContext.shaft` (orebody buffer hard — penetration
+forbidden; restricted zones and world bounds hard; terrain break-through
+only in the collar zone; no surface-cover rule because a shaft breaks the
+surface by definition). Every failure is typed (`ShaftFailureCode`); one
+infeasible required station fails the shaft. `shafts.json` owns the
+geometry in one flat `centerlines` list so `GeometryRef{artifact,
+segmentIndex}` is unchanged. Lifecycle: levels → shafts → network;
+`levelsRevision` binds the artifact to the levels it was planned against
+(409 SHAFTS_STALE otherwise). MineNetwork adds SHAFT_COLLAR /
+SHAFT_STATION / SHAFT_BOTTOM nodes, VERTICAL `SHAFT` edges (null
+gradients, `verticalDrop`, CIRCULAR section) and `SHAFT_STATION_ACCESS`
+edges welded onto the existing level node; PORTAL ∪ SHAFT_COLLAR is the
+surface set of the rule-70 advisory. The timeline sinks each segment from
+the collar and drives stations from the shaft (rule 174 start nodes); the
+infrastructure domain treats both new edge types as physical tunnel
+geometry (network-geodesic = 3-D length). Shaft mesh, inclined shafts,
+placement optimization and shaft-only mines are out of scope (rule 26
+reserves a parallel-transport frame for near-vertical sweeps).
+
+**Capability graph** (`capability/`, rule 185). A semantic overlay that
+references MineNetwork node / edge ids and owns nothing else. Each edge's
+capability set comes from an EXPLICIT source — the declared (or module
+default) set per physical edge type, or the owning shaft's declared set for
+shaft edges — and node `supports` are derived from incident edges. It
+validates references, duplicates and revision synchronization
+(`networkRevision` = the file revision of `network.json`; 409
+CAPABILITY_GRAPH_STALE when the network moved on), evaluates required
+capability paths (portal → level entries, collar → stations for shafts
+declaring personnel / haulage, one EMERGENCY_EGRESS route for every
+personnel-reachable underground node) and reports the edge-disjoint egress
+advisory on the capability-filtered subgraph — an advisory, not a
+compliance claim (Phase 20D). `can_reach(source, target, capability)`
+answers physical and capability reachability separately
+(`GET …/design/capability-graph/path`). Capability ≠ capacity: no
+tonnes/hour, people/hour, airflow or hoist cycle is modelled. Lifecycle:
+network → capability graph; regenerating the graph touches nothing else.
 
 ## Verification tiers (VA-01)
 
