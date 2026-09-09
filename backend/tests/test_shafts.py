@@ -7,6 +7,7 @@ accesses → level development → deterministic shaft planning."""
 from __future__ import annotations
 
 import json
+from itertools import pairwise
 from typing import Any
 
 import numpy as np
@@ -270,3 +271,101 @@ def test_failed_levels_artifact_is_not_consumable(
     res = _plan(sc, world, bad, ShaftSpec())
     assert res.status == "FAILED" and "not consumable" in (res.failure_reason or "")
     assert res.shafts == []
+
+
+# -- MineNetwork integration (directive §51, rules 182–184) --------------- #
+
+
+def _network(sc: Scenario, levels: dict[str, Any], shafts: ShaftsPayload | None) -> Any:
+    from minegen.network.builder import MineNetworkBuilder
+
+    fx = load_fixture("tabular_small_selected")
+    return MineNetworkBuilder(sc).build(
+        fx["effectiveRamp"],
+        "rev",
+        levels_payload=levels,
+        geometry_artifact="layout_v2_selected.json",
+        accesses_payload=fx["levelAccesses"],
+        shafts_payload=shafts.model_dump(mode="json", by_alias=True) if shafts else None,
+    )
+
+
+def test_network_integrates_shaft_nodes_edges_and_geometry_refs(
+    tabular_levels: tuple[Scenario, SyntheticWorld, dict[str, Any]],
+) -> None:
+    sc, world, levels = tabular_levels
+    shafts = _plan(sc, world, levels, ShaftSpec())
+    assert shafts.status == "SUCCESS"
+    without = _network(sc, levels, None).payload
+    res = _network(sc, levels, shafts)
+    net = res.payload
+    assert net.status == "SUCCESS", net.failure_reason
+    assert net.validation is not None and net.validation.connected and net.validation.synchronized
+    node_ids = [n.id for n in net.nodes]
+    assert len(set(node_ids)) == len(node_ids)
+    edge_ids = [e.id for e in net.edges]
+    assert len(set(edge_ids)) == len(edge_ids)
+    shaft = shafts.shafts[0]
+    n_st = len(shaft.stations)
+    assert "SHAFT_COLLAR:SHAFT-01" in node_ids and "SHAFT_BOTTOM:SHAFT-01" in node_ids
+    stations = [n for n in net.nodes if n.type.value == "SHAFT_STATION"]
+    assert [n.id for n in stations] == [s.station_id for s in shaft.stations]
+    shaft_edges = [e for e in net.edges if e.type.value == "SHAFT"]
+    access_edges = [e for e in net.edges if e.type.value == "SHAFT_STATION_ACCESS"]
+    assert len(shaft_edges) == n_st + 1 and len(access_edges) == n_st
+    # vertical edges: no gradient, explicit vertical drop, circular section
+    for e in shaft_edges:
+        assert e.orientation == "VERTICAL"
+        assert e.mean_gradient_signed is None and e.max_abs_gradient is None
+        assert e.vertical_drop is not None and e.vertical_drop > 0
+        assert e.cross_section.shape == "CIRCULAR" and e.cross_section.width == 6.0
+        assert e.geometry_ref.artifact == "shafts.json"
+        assert shafts.centerlines[e.geometry_ref.segment_index].id == e.id
+    # the axis chain is collar → stations → bottom
+    chain = [
+        "SHAFT_COLLAR:SHAFT-01",
+        *[s.station_id for s in shaft.stations],
+        "SHAFT_BOTTOM:SHAFT-01",
+    ]
+    assert [(e.from_node, e.to_node) for e in shaft_edges] == list(pairwise(chain))
+    # station drives end on EXISTING level nodes (no new node was created)
+    existing = {n.id for n in without.nodes}
+    for e in access_edges:
+        assert e.orientation == "DEVELOPMENT" and e.from_node in [
+            s.station_id for s in shaft.stations
+        ]
+        assert e.to_node in existing
+        assert e.geometry_ref.artifact == "shafts.json"
+        assert shafts.centerlines[e.geometry_ref.segment_index].id == e.id
+    # nothing else changed versus the no-shaft network
+    assert [n.id for n in without.nodes] == [
+        n.id for n in net.nodes if not n.id.startswith("SHAFT")
+    ]
+    assert [e.id for e in without.edges] == [
+        e.id for e in net.edges if e.type.value not in ("SHAFT", "SHAFT_STATION_ACCESS")
+    ]
+    assert net.metrics is not None and without.metrics is not None
+    assert net.metrics.shaft_count == 1 and net.metrics.shaft_station_count == n_st
+    assert without.metrics.shaft_count == 0 and without.metrics.shaft_edge_count == 0
+    assert net.metrics.total_shaft_length3d == pytest.approx(
+        shaft.metrics.total_shaft_length3d if shaft.metrics else 0
+    )
+    # the shaft collar is a second surface node: every underground node now
+    # has one more edge-disjoint surface path than before (advisory only)
+    before = {
+        p.node_id: p.independent_surface_paths for p in without.surface_path_advisory[0].per_node
+    }
+    after = {p.node_id: p.independent_surface_paths for p in net.surface_path_advisory[0].per_node}
+    assert all(after[k] >= before[k] for k in before)
+    assert any(after[k] > before[k] for k in before)
+
+
+def test_network_refuses_failed_or_stale_shaft_artifacts(
+    tabular_levels: tuple[Scenario, SyntheticWorld, dict[str, Any]],
+) -> None:
+    sc, world, levels = tabular_levels
+    failed = _plan(sc, world, levels, ShaftSpec(level_ids=["L01", "L99"]))
+    assert failed.status == "FAILED"
+    res = _network(sc, levels, failed)
+    assert res.payload.status == "FAILED" and "not consumable" in (res.payload.failure_reason or "")
+    assert res.payload.nodes == [] and res.payload.edges == []

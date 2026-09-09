@@ -17,11 +17,13 @@ from typing import Any
 import numpy as np
 
 from minegen.core.artifacts import (
+    CAPABILITY_GRAPH_ARTIFACT,
     LAYOUT_V2_ARTIFACT,
     LAYOUT_V2_SELECTED_ARTIFACT,
     LEGACY_RAMP_ARTIFACT,
     LEVEL_ACCESSES_ARTIFACT,
     RAMP_SOURCE_FILE,
+    SHAFTS_ARTIFACT,
 )
 from minegen.core.enums import DistanceContract, OrebodyType
 from minegen.core.models import Scenario
@@ -63,6 +65,8 @@ from minegen.services.effective_ramp import (
 )
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
+from minegen.shafts.models import ShaftsPayload
+from minegen.shafts.planner import ShaftPlanner
 from minegen.world.synthetic_world import SyntheticWorld
 
 
@@ -91,6 +95,24 @@ class LevelsNotGeneratedError(LookupError):
 
 class NetworkNotFoundError(LookupError):
     """network.json does not exist for the scenario."""
+
+
+class ShaftsNotGeneratedError(LookupError):
+    """shafts.json does not exist for the scenario (Phase 20C.2B)."""
+
+
+class ShaftsStaleError(RuntimeError):
+    """shafts.json was planned against a different ``levels.json`` revision
+    than the one on disk (Phase 20C.2B, rule 184): the network builder
+    fails closed instead of welding stations onto moved level nodes."""
+
+    code = "SHAFTS_STALE"
+
+    def __init__(self, scenario_id: str) -> None:
+        super().__init__(
+            f"the shaft artifact of scenario '{scenario_id}' belongs to a previous "
+            "level-development revision; POST …/design/shafts again"
+        )
 
 
 class DevelopmentMeshNotGeneratedError(LookupError):
@@ -690,6 +712,7 @@ class DesignService:
             path.unlink()
         # the development mesh is a derivative of levels + level accesses
         self._delete_development_mesh_artifacts(scenario_id)
+        self._delete_shafts_artifact(scenario_id)  # rule 184: stations weld onto levels
 
     def _levels_input_paths(self, scenario_id: str) -> list[Path]:
         # cross-section + mining lattice config from scenario.json, orebody
@@ -741,6 +764,7 @@ class DesignService:
             path = self.levels_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(serialized, encoding="utf-8")
+            self._delete_shafts_artifact(scenario_id)  # rule 184: levels → shafts
             self._delete_network_artifact(scenario_id)  # rule 74: rebuild, never patch
             self._delete_stopes_artifact(scenario_id)  # rule 79 chain
             self._delete_timeline_artifact(scenario_id)  # rule 86 chain
@@ -904,6 +928,88 @@ class DesignService:
         path = self.network_path(scenario_id)
         if path.exists():
             path.unlink()
+        self._delete_capability_graph_artifact(scenario_id)  # rule 185: network → capability
+
+    # -- shafts (Phase 20C.2B, rules 182–184) --------------------------------- #
+
+    def shafts_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / SHAFTS_ARTIFACT
+
+    def capability_graph_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / CAPABILITY_GRAPH_ARTIFACT
+
+    def _delete_shafts_artifact(self, scenario_id: str) -> None:
+        path = self.shafts_path(scenario_id)
+        if path.exists():
+            path.unlink()
+
+    def _delete_capability_graph_artifact(self, scenario_id: str) -> None:
+        path = self.capability_graph_path(scenario_id)
+        if path.exists():
+            path.unlink()
+
+    def _shafts_input_paths(self, scenario_id: str) -> list[Path]:
+        # shaft specs + gates from scenario.json, geology via arrays.npz, the
+        # active ramp (clearance policy identity), station targets from levels.json
+        return [*self._levels_input_paths(scenario_id), Path(self.levels_path(scenario_id))]
+
+    def shafts_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._shafts_input_paths(scenario_id))
+
+    def generate_shafts(self, scenario_id: str) -> ShaftsPayload:
+        """Phase 20C.2B: deterministic vertical shaft planning against the
+        validated ``levels.json`` (rule 183). Synchronous (milliseconds).
+        Regenerating shafts invalidates the network and everything below it
+        (timeline, communication, sensors, capability graph) and nothing
+        upstream (rule 184). The evaluators carry the ACTIVE ramp's clearance
+        policy (rule 172), like every other downstream builder."""
+        fingerprint = self.shafts_fingerprint(scenario_id)
+        levels_payload = self.levels(scenario_id)  # 409 if not generated
+        levels_revision = file_revision(self.levels_path(scenario_id)) or ""
+        scenario, world = self.worlds.load(scenario_id)
+        policy = self._active_clearance_policy(scenario_id, world)
+        axis_ev = DesignCostEvaluator(
+            world, scenario.design, DesignContext.shaft(scenario.design), clearance=policy
+        )
+        access_ev = DesignCostEvaluator(world, scenario.design, clearance=policy)
+        source_revision = hashlib.sha256(
+            json.dumps(fingerprint.entries, sort_keys=True).encode()
+        ).hexdigest()[:16]
+        planner = ShaftPlanner(scenario, world, axis_ev, access_ev)
+        payload = planner.build(
+            levels_payload.model_dump(mode="json", by_alias=True), source_revision, levels_revision
+        )
+        serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
+        with self.store.lock(scenario_id):
+            if self.shafts_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            path = self.shafts_path(scenario_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(serialized, encoding="utf-8")
+            self._delete_network_artifact(scenario_id)  # rule 184: shafts → network
+            self._delete_timeline_artifact(scenario_id)
+            self._delete_communication_artifact(scenario_id)
+            self._delete_sensors_artifact(scenario_id)
+        return payload
+
+    def shafts(self, scenario_id: str) -> ShaftsPayload:
+        self.store.get(scenario_id)
+        path = self.shafts_path(scenario_id)
+        if not path.is_file():
+            raise ShaftsNotGeneratedError(scenario_id)
+        return ShaftsPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+
+    def shafts_if_present(self, scenario_id: str) -> ShaftsPayload | None:
+        """The shaft artifact for the downstream builders: ``None`` when no
+        shaft was generated (shafts are OPTIONAL, rule 184); a persisted
+        artifact must belong to the current levels revision (fail closed)."""
+        path = self.shafts_path(scenario_id)
+        if not path.is_file():
+            return None
+        payload = ShaftsPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        if payload.levels_revision != (file_revision(self.levels_path(scenario_id)) or ""):
+            raise ShaftsStaleError(scenario_id)
+        return payload
 
     def _network_input_paths(self, scenario_id: str) -> list[Path]:
         # the network consumes cross-section config from scenario.json, the
@@ -913,6 +1019,7 @@ class DesignService:
             Path(self.store.scenario_path(scenario_id)),
             *self._ramp_input_paths(scenario_id),
             Path(self.levels_path(scenario_id)),
+            Path(self.shafts_path(scenario_id)),  # Phase 20C.2B (optional owner)
         ]
 
     def network_fingerprint(self, scenario_id: str) -> InputFingerprint:
@@ -927,6 +1034,7 @@ class DesignService:
         smoothed_payload = self.effective_ramp(scenario_id)  # 409 if not available
         accesses_payload = self.active_level_accesses(scenario_id)
         levels_payload = self.levels(scenario_id)  # 409 if not generated (rule 74)
+        shafts_payload = self.shafts_if_present(scenario_id)  # optional (rule 184)
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
             json.dumps(fingerprint.entries, sort_keys=True).encode()
@@ -938,6 +1046,11 @@ class DesignService:
             levels_payload=levels_payload.model_dump(mode="json", by_alias=True),
             geometry_artifact=str(smoothed_payload.get("owningArtifact", LEGACY_RAMP_ARTIFACT)),
             accesses_payload=accesses_payload,
+            shafts_payload=(
+                shafts_payload.model_dump(mode="json", by_alias=True)
+                if shafts_payload is not None
+                else None
+            ),
         )
         # deterministic serialization of the TYPED contract (rule 69): field
         # order is the model definition order, values are JSON-mode primitives

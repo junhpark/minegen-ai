@@ -268,7 +268,7 @@ class ShaftPlanner:
                     ShaftFailureCode.SHAFT_BOTTOM_OUT_OF_BOUNDS,
                     f"shaft bottom z={bottom[2]:.2f} lies below the model floor",
                 )
-            validation = self._validate_axis(collar, bottom, radius)
+            validation, axis_cost = self._validate_axis(collar, bottom, radius)
         except _ShaftFailureError as exc:
             return Shaft(
                 shaft_id=spec.shaft_id,
@@ -308,6 +308,8 @@ class ShaftPlanner:
             length = float(abs(a[2] - b[2]))
             shaft_total += length
             segment_indices.append(len(centerlines))
+            # segment field cost: the axis cost integral between the two depths
+            s_a, s_b = float(collar[2] - a[2]), float(collar[2] - b[2])
             centerlines.append(
                 ShaftCenterline(
                     id=f"SHAFT:{spec.shaft_id}:SEG{k:02d}",
@@ -316,6 +318,7 @@ class ShaftPlanner:
                     level_id=level_ids[k] if k < len(level_ids) else None,
                     centerline=Centerline(points=[*map(float, a), *map(float, b)]),
                     length3d=length,
+                    field_cost=float(axis_cost(s_b) - axis_cost(s_a)) if validation.valid else 0.0,
                 )
             )
         depth = float(collar[2] - bottom[2])
@@ -475,9 +478,19 @@ class ShaftPlanner:
 
     def _validate_axis(
         self, collar: FloatArray, bottom: FloatArray, radius: float
-    ) -> ShaftValidation:
+    ) -> tuple[ShaftValidation, Any]:
+        """Axis + envelope validation; also returns the cumulative axis
+        cost integral ``I(depth)`` (trapezoid over the axis samples) so each
+        segment's field cost is ``I(s_b) − I(s_a)``."""
         axis = _sample_line(collar, bottom, self.axis_spacing)
         axis_eval = self.axis_ev.evaluate_points(axis)
+        depth = collar[2] - axis[:, 2]
+        cost = np.where(axis_eval.valid, axis_eval.total_cost_per_m, 0.0)
+        cum = np.concatenate([[0.0], np.cumsum(0.5 * (cost[1:] + cost[:-1]) * np.diff(depth))])
+
+        def axis_cost(s: float) -> float:
+            return float(np.interp(s, depth, cum))
+
         counts = _reason_counts(axis_eval.rejection_reasons)
         axis_invalid = int((~axis_eval.valid).sum())
         # circular envelope rings (rule 183): terrain break-through is
@@ -506,7 +519,7 @@ class ShaftPlanner:
         merged = dict(counts)
         for k, v in env_counts.items():
             merged[k] = merged.get(k, 0) + v
-        return ShaftValidation(
+        validation = ShaftValidation(
             axis_samples=int(axis.shape[0]),
             axis_invalid_samples=axis_invalid,
             envelope_samples=int(env.shape[0]),
@@ -516,6 +529,7 @@ class ShaftPlanner:
             rejection_counts=dict(sorted(merged.items())),
             valid=axis_invalid == 0 and env_invalid == 0,
         )
+        return validation, axis_cost
 
     def _station(
         self,
@@ -617,6 +631,7 @@ class ShaftPlanner:
                 level_id=level_id,
                 centerline=Centerline(points=[*map(float, point), *map(float, end)]),
                 length3d=length,
+                field_cost=field_cost,
             )
         )
         return ShaftStation(

@@ -53,6 +53,8 @@ class ShaftCenterline(ApiModel):
     level_id: str | None = None
     centerline: Centerline
     length3d: float = Field(alias="length3d")
+    #: ∫ cost/m ds of the shared design cost field along the polyline
+    field_cost: float
 
 
 class ConnectionTarget(ApiModel):
