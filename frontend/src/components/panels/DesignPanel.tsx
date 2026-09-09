@@ -415,20 +415,23 @@ export function DesignPanel() {
             ) : null}
           </div>
           {shafts.shafts.map((sh) => (
-            <div key={sh.shaftId} className="mt-1 flex justify-between text-mute">
-              <span className={sh.status === 'OK' ? '' : 'text-danger'}>
+            <div key={sh.shaftId} className="mt-1 text-mute">
+              <div className={sh.status === 'OK' ? '' : 'text-danger'}>
                 {sh.shaftId} · {sh.role.toLowerCase()} ·{' '}
                 {sh.collarSource === 'EXPLICIT' ? 'explicit collar' : 'default collar'}
-              </span>
-              <span>
-                {sh.status === 'OK'
-                  ? `${sh.stations.map((st) => st.levelId).join(' ')} · ${sh.capabilities.length} capabilities`
-                  : `${sh.failureCode ?? 'FAILED'}`}
-              </span>
+                {sh.status === 'OK' ? '' : ` · ${sh.failureCode ?? 'FAILED'}`}
+              </div>
+              {sh.status === 'OK' ? (
+                <div className="break-words">
+                  stations {sh.stations.map((st) => st.levelId).join(' ')} ·{' '}
+                  {sh.capabilities.length} capabilities · collar z {sh.collar[2].toFixed(0)} m ·
+                  bottom z {sh.bottom[2].toFixed(0)} m
+                </div>
+              ) : null}
             </div>
           ))}
           {shafts.status === 'FAILED' ? (
-            <div className="mt-1 text-danger">{shafts.failureReason}</div>
+            <div className="mt-1 break-words text-danger">{shafts.failureReason}</div>
           ) : null}
           {shaftSpecCount === 0 ? (
             <div className="mt-1 text-mute">
