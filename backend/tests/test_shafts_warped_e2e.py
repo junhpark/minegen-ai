@@ -6,6 +6,7 @@ same hard gates under the candidate's certified clearance policy (rule
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import numpy as np
@@ -108,6 +109,8 @@ def test_warped_301_shaft_network_and_capability_chain(
     assert cap.egress_advisory is not None
     routes = {p.node_id: p.independent_egress_routes for p in cap.egress_advisory.per_node}
     assert all(routes[n] >= 2 for n in routes if n.startswith("LEVEL_ENTRY:"))
-    # runtime observation (directive §56): recorded, never a gate
+    # runtime observation (directive §56): recorded in the metrics, never a
+    # gate — no wall-clock threshold is asserted
     assert shafts.metrics is not None and cap.metrics is not None
-    assert shafts.metrics.planning_seconds < 30.0 and cap.metrics.build_seconds < 30.0
+    assert math.isfinite(shafts.metrics.planning_seconds) and shafts.metrics.planning_seconds >= 0
+    assert math.isfinite(cap.metrics.build_seconds) and cap.metrics.build_seconds >= 0

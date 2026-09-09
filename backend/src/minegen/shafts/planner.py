@@ -143,6 +143,53 @@ def _development_samples(levels_payload: dict[str, Any]) -> list[tuple[str, Floa
     return out
 
 
+def plan_distance_to_polyline(
+    xy: FloatArray, points: FloatArray, z_lo: float, z_hi: float
+) -> tuple[float | None, int]:
+    """EXACT minimum plan (2-D) distance from ``xy`` to a 3-D polyline after
+    clipping every segment to the elevation band ``[z_lo, z_hi]``.
+
+    Each segment is first restricted to the parameter interval whose z lies
+    inside the band (a segment touching the band at one point contributes
+    that point; a horizontal segment contributes whole or nothing), then the
+    point-to-segment distance is evaluated on the CLIPPED segment in plan.
+    Returns ``(distance, clipped segments checked)``; ``(None, 0)`` when no
+    part of the polyline lies inside the band. Vectorized NumPy, no
+    per-segment Python loop.
+    """
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if pts.shape[0] == 0:
+        return None, 0
+    if pts.shape[0] == 1:
+        if z_lo <= pts[0, 2] <= z_hi:
+            return float(np.hypot(pts[0, 0] - xy[0], pts[0, 1] - xy[1])), 1
+        return None, 0
+    a, b = pts[:-1], pts[1:]
+    dz = b[:, 2] - a[:, 2]
+    sloped = np.abs(dz) > 1e-12
+    safe_dz = np.where(sloped, dz, 1.0)
+    t_at_lo = (z_lo - a[:, 2]) / safe_dz
+    t_at_hi = (z_hi - a[:, 2]) / safe_dz
+    t0 = np.where(sloped, np.maximum(0.0, np.minimum(t_at_lo, t_at_hi)), 0.0)
+    t1 = np.where(sloped, np.minimum(1.0, np.maximum(t_at_lo, t_at_hi)), 1.0)
+    flat_inside = (~sloped) & (a[:, 2] >= z_lo) & (a[:, 2] <= z_hi)
+    keep = np.where(sloped, t1 >= t0, flat_inside)
+    if not bool(keep.any()):
+        return None, 0
+    a2, b2 = a[keep, :2], b[keep, :2]
+    seg = b2 - a2
+    p0 = a2 + t0[keep, None] * seg
+    p1 = a2 + t1[keep, None] * seg
+    v = p1 - p0
+    w = xy[None, :2] - p0
+    l2 = np.einsum("ij,ij->i", v, v)
+    s = np.where(l2 > 0.0, np.einsum("ij,ij->i", w, v) / np.where(l2 > 0.0, l2, 1.0), 0.0)
+    s = np.clip(s, 0.0, 1.0)
+    closest = p0 + s[:, None] * v
+    d = np.hypot(xy[0] - closest[:, 0], xy[1] - closest[:, 1])
+    return float(d.min()), int(keep.sum())
+
+
 def level_breakpoints(levels_payload: dict[str, Any]) -> dict[str, list[_Breakpoint]]:
     """Every EXISTING level-development node the network builder will
     create for a level (rule 73 breakpoints): the LEVEL_ENTRY plus every
@@ -584,7 +631,11 @@ class ShaftPlanner:
         development inside the shaft's depth range (directive §10). Required
         plan distance = radius + tunnel_width/2 + pillar, the rule 171 B-2
         pillar default (2 × tunnel width) unless ``minimumShaftSeparation``
-        declares another. A hard gate, never a score."""
+        declares another. The measured distance is the EXACT plan
+        point-to-segment distance to every development centerline segment
+        CLIPPED to the depth band (``plan_distance_to_polyline``) — never a
+        vertex-only distance, which misses a segment passing the axis
+        between two samples. A hard gate, never a score."""
         width = self.scenario.ramp.tunnel_width
         cfg = self.scenario.shafts
         pillar = (
@@ -598,19 +649,17 @@ class ShaftPlanner:
         best_id: str | None = None
         checked = 0
         for dev_id, pts in self._dev_samples:
-            mask = (pts[:, 2] >= z_lo) & (pts[:, 2] <= z_hi)
-            if not bool(mask.any()):
+            dmin, n_seg = plan_distance_to_polyline(collar[:2], pts, z_lo, z_hi)
+            if dmin is None:
                 continue
-            d = np.hypot(pts[mask, 0] - collar[0], pts[mask, 1] - collar[1])
-            checked += int(mask.sum())
-            dmin = float(d.min())
+            checked += n_seg
             if best is None or dmin < best:
                 best, best_id = dmin, dev_id
         return DevelopmentClearanceReport(
             minimum_plan_distance=best,
             required_plan_distance=required,
             nearest_development_id=best_id,
-            samples_checked=checked,
+            segments_checked=checked,
             valid=best is None or best >= required,
         )
 

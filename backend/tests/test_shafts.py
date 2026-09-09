@@ -27,7 +27,7 @@ from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
 from minegen.shafts.models import ShaftFailureCode, ShaftsPayload
-from minegen.shafts.planner import ShaftPlanner, level_breakpoints
+from minegen.shafts.planner import ShaftPlanner, level_breakpoints, plan_distance_to_polyline
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 from tests.verification_support import load_fixture
 
@@ -496,3 +496,84 @@ def test_axis_too_close_to_an_existing_development_is_a_clearance_violation(
     ok = _plan(sc, world, levels, ShaftSpec()).shafts[0]
     assert ok.validation is not None and ok.validation.development_clearance is not None
     assert ok.validation.development_clearance.valid
+
+
+def test_development_clearance_catches_a_segment_passing_the_axis_between_samples(
+    tabular_levels: tuple[Scenario, SyntheticWorld, dict[str, Any]],
+) -> None:
+    """Regression: the rock-pillar gate measures the EXACT plan point-to-
+    segment distance, never the vertex-only distance. A synthetic drift
+    whose two vertices sit 60 m either side of the axis but whose segment
+    passes THROUGH the axis at its midpoint must be a violation."""
+    sc, world, levels = tabular_levels
+    ok = _plan(sc, world, levels, ShaftSpec()).shafts[0]
+    assert ok.status == "OK" and ok.validation is not None
+    dc0 = ok.validation.development_clearance
+    assert dc0 is not None and dc0.valid
+    cx, cy, _ = ok.collar
+    z_mid = 0.5 * (ok.collar[2] + ok.bottom[2])
+    synthetic = {
+        "id": "CROSSCUT:SYNTH:MIDPOINT",
+        "kind": "CROSSCUT",
+        "levelId": levels["levels"][0]["levelId"],
+        "centerline": {"points": [[cx - 60.0, cy, z_mid], [cx + 60.0, cy, z_mid]]},
+    }
+    patched = json.loads(json.dumps(levels))
+    patched["developments"].append(synthetic)
+    # vertex-only reading of the synthetic segment: 60 m (would pass)
+    vertex_only = min(np.hypot(px - cx, py - cy) for px, py, _ in synthetic["centerline"]["points"])
+    assert vertex_only == pytest.approx(60.0)
+    res = _plan(sc, world, patched, ShaftSpec(collar=Point2D(x=cx, y=cy)))
+    assert res.status == "FAILED"
+    (shaft,) = res.shafts
+    assert shaft.failure_code is ShaftFailureCode.SHAFT_CLEARANCE_VIOLATION
+    assert shaft.validation is not None
+    dc = shaft.validation.development_clearance
+    assert dc is not None and not dc.valid
+    assert dc.minimum_plan_distance == pytest.approx(0.0, abs=1e-9)
+    assert dc.nearest_development_id == "CROSSCUT:SYNTH:MIDPOINT"
+    assert dc.segments_checked == dc0.segments_checked + 1
+
+
+def test_plan_distance_clips_an_inclined_segment_straddling_the_depth_band() -> None:
+    """Regression: an inclined segment crossing the depth-band boundary is
+    clipped to the band BEFORE the plan distance is measured. Two mirrored
+    cases: (i) the near vertex lies OUTSIDE the band, so the exact distance
+    is the clipped intersection point's distance (not the far in-band
+    vertex, not the excluded near vertex); (ii) the near vertex lies INSIDE
+    the band and the far one outside, so the distance is the in-band
+    vertex's."""
+    xy = np.array([0.0, 0.0])
+    z_lo, z_hi = 100.0, 200.0
+    # (i) from (0, 0, 80) [below the band, at the axis] rising to (100, 0, 180)
+    # [inside]: the band is entered at z = 100 → x = 20 → exact distance 20 m.
+    seg = np.array([[0.0, 0.0, 80.0], [100.0, 0.0, 180.0]])
+    d, n = plan_distance_to_polyline(xy, seg, z_lo, z_hi)
+    assert n == 1 and d == pytest.approx(20.0)
+    # the vertex-only reading (in-band vertices only) would say 100 m — wrong
+    in_band = seg[(seg[:, 2] >= z_lo) & (seg[:, 2] <= z_hi)]
+    assert np.hypot(in_band[:, 0], in_band[:, 1]).min() == pytest.approx(100.0)
+    # reversed point order gives the same answer
+    d_rev, _ = plan_distance_to_polyline(xy, seg[::-1].copy(), z_lo, z_hi)
+    assert d_rev == pytest.approx(20.0)
+    # (ii) mirrored at the UPPER boundary: from (5, 0, 150) [inside] rising to
+    # (0, 0, 250) [above the band, at the axis]: the excluded vertex must not
+    # count (not 0 m), the in-band vertex is not the answer either (not 5 m);
+    # the band is left at z = 200 → x = 2.5 → exact distance 2.5 m
+    seg2 = np.array([[5.0, 0.0, 150.0], [0.0, 0.0, 250.0]])
+    d2, n2 = plan_distance_to_polyline(xy, seg2, z_lo, z_hi)
+    assert n2 == 1 and d2 == pytest.approx(2.5)
+    # a segment entirely outside the band contributes nothing
+    assert plan_distance_to_polyline(
+        xy, np.array([[1.0, 0.0, 10.0], [1.0, 0.0, 90.0]]), z_lo, z_hi
+    ) == (None, 0)
+    # a segment touching the band at exactly one point contributes that point
+    d3, n3 = plan_distance_to_polyline(
+        xy, np.array([[7.0, 0.0, 90.0], [3.0, 0.0, 100.0]]), z_lo, z_hi
+    )
+    assert n3 == 1 and d3 == pytest.approx(3.0)
+    # a horizontal in-band segment: exact interior point (perpendicular foot)
+    d4, _ = plan_distance_to_polyline(
+        xy, np.array([[-50.0, 4.0, 150.0], [50.0, 4.0, 150.0]]), z_lo, z_hi
+    )
+    assert d4 == pytest.approx(4.0)

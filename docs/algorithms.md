@@ -1267,9 +1267,14 @@ Per declared `ShaftSpec`, deterministically:
    RESTRICTED_ZONE → SHAFT_RESTRICTED_ZONE_INTERSECTION, OUTSIDE_WORLD →
    SHAFT_BOTTOM_OUT_OF_BOUNDS; ring samples above terrain are permitted
    only within one diameter of the collar (SHAFT_TERRAIN_INVALID deeper).
-6. **Development clearance** — the minimum PLAN distance from the axis to
-   every level-development centerline sample inside the shaft's depth range
-   must be ≥ radius + tunnel_width/2 + pillar (`minimumShaftSeparation`,
+6. **Development clearance** — the EXACT minimum PLAN point-to-segment
+   distance from the axis to every level-development centerline segment
+   CLIPPED to the shaft's depth band (`plan_distance_to_polyline`: each
+   segment is restricted to the parameter interval whose z lies inside the
+   band, then the 2-D point-to-segment distance is evaluated on the clipped
+   segment — a vertex-only distance would miss a segment passing the axis
+   between two samples and would mis-clip an inclined segment that straddles
+   the band boundary) must be ≥ radius + tunnel_width/2 + pillar (`minimumShaftSeparation`,
    default 2 × tunnel width — the rule 171 B-2 pillar); a violation is
    SHAFT_CLEARANCE_VIOLATION naming the nearest development (directive §10
    "minimum required infrastructure clearance"); the default placement

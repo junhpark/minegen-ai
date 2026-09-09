@@ -104,15 +104,17 @@ class ShaftProfile(ApiModel):
 
 class DevelopmentClearanceReport(ApiModel):
     """Shaft-to-existing-development rock pillar (rule 183, directive §10
-    "minimum required infrastructure clearance"): the minimum PLAN distance
-    from the axis to every level-development centerline sample inside the
-    shaft's depth range must be ≥ radius + tunnel_width/2 + pillar. Station
-    drives are planned afterwards and are exempt by construction."""
+    "minimum required infrastructure clearance"): the EXACT minimum PLAN
+    point-to-segment distance from the axis to every level-development
+    centerline segment clipped to the shaft's depth band must be
+    ≥ radius + tunnel_width/2 + pillar. ``segmentsChecked`` counts the
+    clipped segments that intersect the band. Station drives are planned
+    afterwards and are exempt by construction."""
 
     minimum_plan_distance: float | None
     required_plan_distance: float
     nearest_development_id: str | None
-    samples_checked: int
+    segments_checked: int
     valid: bool
 
 
