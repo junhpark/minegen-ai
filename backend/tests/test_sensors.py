@@ -222,7 +222,7 @@ def test_unsupported_asset_and_edge_types(tmp_path) -> None:  # type: ignore[no-
     assert "UNSUPPORTED_SENSOR_ASSET_TYPE" in (p.failure_reason or "")
     sc = _scenario(tmp_path)
     shaft = json.loads(json.dumps(network))
-    shaft["edges"][0]["type"] = "SHAFT"
+    shaft["edges"][0]["type"] = "RAISE"  # SHAFT is supported since Phase 20C.2B
     p = _build(sc, shaft, smoothed, levels)
     assert p.status == "FAILED"
     assert "UNSUPPORTED_SENSOR_EDGE_TYPE" in (p.failure_reason or "")

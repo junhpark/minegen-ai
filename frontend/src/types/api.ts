@@ -1,7 +1,7 @@
 // Wire types mirroring backend/src/minegen/core/models.py (camelCase).
 // Coordinates are ENU Z-up meters. Never store Three.js coordinates in these.
 
-import type { AssetType } from '@/types/enums'
+import type { AssetType, Capability } from '@/types/enums'
 import type { MiningMethodType, OrebodyType } from './enums'
 
 export interface Point3D {
@@ -171,6 +171,9 @@ export interface ScheduleConfig {
   rampAdvanceMPerDay: number
   driftAdvanceMPerDay: number
   crosscutAdvanceMPerDay: number
+  /** Phase 20C.2B synthetic shaft rates (optional on older documents) */
+  shaftSinkMPerDay?: number
+  shaftStationAccessAdvanceMPerDay?: number
   stopePreparationDays: number
   stopingTonnesPerDay: number
   muckingTonnesPerDay: number
@@ -241,6 +244,34 @@ export interface ScenarioCreate {
    * three user-facing score group weights). Optional on the client so older
    * documents round-trip; the backend fills defaults. */
   layout?: LayoutV2Config
+  /** Phase 20C.2B shaft infrastructure (rules 182–184): explicit
+   * parameters only; empty specs = no shaft. The backend plans and
+   * validates every shaft — the client never derives shaft geometry. */
+  shafts?: ShaftPlanningConfig
+  /** Phase 20C.2B capability configuration (rule 185): declared
+   * per-edge-type capability sets (null = backend defaults). */
+  capability?: CapabilityConfig
+}
+
+export interface ShaftSpec {
+  shaftId: string
+  role: 'PRODUCTION' | 'SERVICE' | 'VENTILATION'
+  collar: { x: number; y: number } | null
+  diameter: number
+  levelIds: string[]
+  bottomSumpDepth: number
+  collarStandoff: number
+  capabilities: Capability[] | null
+}
+
+export interface ShaftPlanningConfig {
+  specs: ShaftSpec[]
+  maximumStationAccessLength: number
+  minimumShaftSeparation: number | null
+}
+
+export interface CapabilityConfig {
+  edgeTypeCapabilities: Record<string, Capability[]> | null
 }
 
 export interface LayoutScoreWeights {

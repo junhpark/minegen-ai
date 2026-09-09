@@ -91,6 +91,7 @@ def test_nodes_edges_attributes_and_geometry_reference(tmp_path) -> None:  # typ
         "width": sc.ramp.tunnel_width,
         "height": sc.ramp.tunnel_height,
         "analyticArea": shape.analytic_area,
+        "shape": "HORSESHOE",  # Phase 20C.2B: CIRCULAR only for a shaft axis
     }
     assert e1["simulation"] == {
         "haulage": None,

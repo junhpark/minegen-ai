@@ -35,6 +35,7 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
       { id: 'levelAccesses', label: 'Ramp junctions & level accesses', phase: 20 },
       { id: 'levels', label: 'Level drifts (centerline)', phase: 8 },
       { id: 'crosscuts', label: 'Crosscuts (centerline)', phase: 8 },
+      { id: 'shafts', label: 'Shafts (axis · stations · station drives)', phase: 20 },
     ],
   },
   {

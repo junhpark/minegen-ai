@@ -3829,8 +3829,8 @@
   "authority": "DEVELOPMENT_ACCELERATION_ONLY \u2014 never release evidence (VA-01 \u00a720)",
   "faultCount": 1,
   "fixtureVersion": 1,
-  "generatedAt": "2026-09-07T23:21:42+00:00",
-  "generatedFromGitSha": "96bc5763f4a0f20a5ecae9057641ca466903a300",
+  "generatedAt": "2026-09-09T16:45:16+00:00",
+  "generatedFromGitSha": "154e2815ee2e29187ffb8bd3f83497c0439a7c80",
   "scenarioPreset": "tests.conftest.small_scenario",
   "schemaVersion": 1,
   "seed": 42,
@@ -3838,6 +3838,9 @@
   "upstreamFingerprint": "81b6930a85ade2c931e2067fcee417eb5ba81478b2ea3b710360122bd2c7c4c7"
  },
  "scenario": {
+  "capability": {
+   "edgeTypeCapabilities": null
+  },
   "design": {
    "baseCostPerM": 1.0,
    "bottomMiningMargin": 10.0,
@@ -3920,7 +3923,7 @@
     "std": 12.0
    }
   },
-  "id": "828bb9d0ea62",
+  "id": "eeadb9c6bf6c",
   "infrastructure": {
    "communication": {
     "assetType": "MESH_ROUTER",
@@ -4065,11 +4068,18 @@
    "levelAccessAdvanceMPerDay": 4.0,
    "muckingTonnesPerDay": 1500.0,
    "rampAdvanceMPerDay": 4.0,
+   "shaftSinkMPerDay": 1.5,
+   "shaftStationAccessAdvanceMPerDay": 4.0,
    "stopePreparationDays": 5.0,
    "stopingTonnesPerDay": 1000.0
   },
   "schemaVersion": 2,
   "seed": 42,
+  "shafts": {
+   "maximumStationAccessLength": 200.0,
+   "minimumShaftSeparation": null,
+   "specs": []
+  },
   "terrain": {
    "baseElevation": 100.0,
    "gridSpacing": 10.0,

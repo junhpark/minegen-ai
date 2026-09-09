@@ -42,6 +42,7 @@ from minegen.core.artifacts import (
     LEGACY_RAMP_ARTIFACT,
     LEVEL_ACCESSES_ARTIFACT,
     RAMP_OWNING_ARTIFACTS,
+    SHAFTS_ARTIFACT,
 )
 from minegen.core.models import Scenario
 from minegen.design.profile import build_profile
@@ -122,7 +123,8 @@ def _surface_path_counts(
     graph: nx.MultiDiGraph[str], portal_ids: list[str], targets: list[str]
 ) -> dict[str, int]:
     """Edge-disjoint physical path count from each target node to ANY
-    PORTAL-type surface node, on the UNDIRECTED projection (rule 69).
+    surface node (PORTAL, and a SHAFT_COLLAR when a shaft exists — Phase
+    20C.2B), on the UNDIRECTED projection (rule 69).
     Parallel physical edges legitimately count as parallel capacity, so the
     multigraph collapses to a capacity graph and the count is a max-flow."""
     cap: nx.Graph[str] = nx.Graph()
@@ -170,6 +172,7 @@ class MineNetworkBuilder:
         levels_payload: dict[str, Any] | None = None,
         geometry_artifact: str = GEOMETRY_ARTIFACT,
         accesses_payload: dict[str, Any] | None = None,
+        shafts_payload: dict[str, Any] | None = None,
     ) -> NetworkBuildResult:
         """``smoothed_payload`` is the Effective Ramp (Phase 05 shape) and
         ``geometry_artifact`` names the derived file that owns it (rule 149:
@@ -181,7 +184,15 @@ class MineNetworkBuilder:
         LEVEL_ACCESS edge from its junction to the TRUE LEVEL_ENTRY, and
         level developments hang off that entry — a main-ramp RL crossing is
         never a level entry. Without it (LEGACY Phase 05 artifact) the
-        segment ends are the level entries, unchanged."""
+        segment ends are the level entries, unchanged.
+
+        Phase 20C.2B (rules 182–184): with ``shafts_payload`` (the
+        ``shafts.json`` contract) every shaft adds SHAFT_COLLAR /
+        SHAFT_STATION / SHAFT_BOTTOM nodes, VERTICAL ``SHAFT`` edges along
+        the axis and ``SHAFT_STATION_ACCESS`` edges welded onto the EXISTING
+        level node each station targets; the shaft artifact stays the sole
+        geometry owner. Without it the network is byte-for-byte the no-shaft
+        network (shafts are optional infrastructure)."""
         if geometry_artifact not in RAMP_OWNING_ARTIFACTS:
             return _failed(
                 source_revision,
@@ -203,6 +214,19 @@ class MineNetworkBuilder:
                 source_revision,
                 "prerequisite levels artifact status "
                 f"{levels_payload.get('status')!r} is not consumable (rule 74)",
+            )
+        if shafts_payload is not None and shafts_payload.get("status") != "SUCCESS":
+            return _failed(
+                source_revision,
+                "prerequisite shaft artifact status "
+                f"{shafts_payload.get('status')!r} is not consumable (rule 184): a FAILED "
+                "shaft plan never yields a network with partial shaft geometry",
+            )
+        if shafts_payload is not None and levels_payload is None:
+            return _failed(
+                source_revision,
+                "shaft stations weld onto level-development nodes: a shaft artifact "
+                "requires the levels artifact (rule 183)",
             )
 
         segments = smoothed_payload["segments"]
@@ -486,6 +510,19 @@ class MineNetworkBuilder:
                     **edge.model_dump(mode="json", by_alias=True),
                 )
 
+            # -- Phase 20C.2B shafts: collar / stations / bottom + station drives --- #
+            if shafts_payload is not None:
+                shaft_failure = self._add_shafts(
+                    shafts_payload, nodes, edges, graph, breakpoint_node
+                )
+                if shaft_failure is not None:
+                    return _failed(source_revision, shaft_failure)
+                for cl in shafts_payload["centerlines"]:
+                    pts = np.asarray(cl["centerline"]["points"], dtype=np.float64).reshape(-1, 3)
+                    seg = float(np.linalg.norm(np.diff(pts, axis=0), axis=1).sum())
+                    max_edge_len_err = max(max_edge_len_err, abs(seg - float(cl["length3d"])))
+                max_weld = max(max_weld, self._shaft_weld)
+
         # -- validation on the undirected physical projection (rule 69) ----- #
         undirected = graph.to_undirected(as_view=True)
         components = nx.number_connected_components(undirected)
@@ -514,8 +551,10 @@ class MineNetworkBuilder:
         # -- surface-path redundancy advisory (rule 70, no legal claim) ----- #
         # rule 73: the advisory covers EVERY underground physical node, not
         # only level entries (JUNCTION and STOPE_ACCESS included)
-        underground = [n for n in nodes if n.type is not NodeType.PORTAL]
-        counts = _surface_path_counts(graph, [portal.id], [n.id for n in underground])
+        surface_types = (NodeType.PORTAL, NodeType.SHAFT_COLLAR)
+        surface_ids = [n.id for n in nodes if n.type in surface_types]
+        underground = [n for n in nodes if n.type not in surface_types]
+        counts = _surface_path_counts(graph, surface_ids, [n.id for n in underground])
         advisory = SurfacePathAdvisory(
             criterion=ADVISORY_CRITERION,
             required_paths=REQUIRED_SURFACE_PATHS,
@@ -536,6 +575,8 @@ class MineNetworkBuilder:
         access_edges = [e for e in edges if e.type is EdgeType.LEVEL_ACCESS]
         drift_edges = [e for e in edges if e.type is EdgeType.DRIFT]
         crosscut_edges = [e for e in edges if e.type is EdgeType.CROSSCUT]
+        shaft_edges = [e for e in edges if e.type is EdgeType.SHAFT]
+        station_edges = [e for e in edges if e.type is EdgeType.SHAFT_STATION_ACCESS]
         metrics = NetworkMetrics(
             node_count=len(nodes),
             edge_count=len(edges),
@@ -550,6 +591,12 @@ class MineNetworkBuilder:
             total_ramp_length3d=float(math.fsum(e.length3d for e in ramp_edges)),
             total_drift_length3d=float(math.fsum(e.length3d for e in drift_edges)),
             total_crosscut_length3d=float(math.fsum(e.length3d for e in crosscut_edges)),
+            shaft_count=sum(1 for n in nodes if n.type is NodeType.SHAFT_COLLAR),
+            shaft_station_count=sum(1 for n in nodes if n.type is NodeType.SHAFT_STATION),
+            shaft_edge_count=len(shaft_edges),
+            shaft_station_access_edge_count=len(station_edges),
+            total_shaft_length3d=float(math.fsum(e.length3d for e in shaft_edges)),
+            total_shaft_station_access_length3d=float(math.fsum(e.length3d for e in station_edges)),
             minimum_elevation=float(min(elevations)),
             vertical_drop_from_portal=float(portal.position[2] - min(elevations)),
         )
@@ -564,3 +611,147 @@ class MineNetworkBuilder:
             surface_path_advisory=[advisory],
         )
         return NetworkBuildResult(graph, payload)
+
+    # -- Phase 20C.2B shaft integration (rules 182–184) --------------------- #
+
+    _shaft_weld: float = 0.0
+
+    def _add_shafts(
+        self,
+        shafts_payload: dict[str, Any],
+        nodes: list[NetworkNode],
+        edges: list[NetworkEdge],
+        graph: nx.MultiDiGraph[str],
+        breakpoint_node: Any,
+    ) -> str | None:
+        """Adds every shaft of the artifact. Nodes: ``SHAFT_COLLAR:<id>``,
+        ``SHAFT_STATION:<id>:<level>``, ``SHAFT_BOTTOM:<id>``. Edges reference
+        ``shafts.json`` by centerline index; a station drive ends on the
+        EXISTING level node its connection target names (welded through the
+        same ``breakpoint_node`` the level developments use). Returns a
+        failure reason or ``None``."""
+        self._shaft_weld = 0.0
+        centerlines = shafts_payload["centerlines"]
+
+        def add_node(node: NetworkNode) -> None:
+            nodes.append(node)
+            graph.add_node(node.id, **node.model_dump(mode="json", by_alias=True))
+
+        def add_edge(edge: NetworkEdge) -> None:
+            edges.append(edge)
+            graph.add_edge(
+                edge.from_node,
+                edge.to_node,
+                key=edge.id,
+                **edge.model_dump(mode="json", by_alias=True),
+            )
+
+        for shaft in shafts_payload["shafts"]:
+            if shaft.get("status") != "OK":
+                return f"shaft {shaft.get('shaftId')} is {shaft.get('status')!r} in shafts.json"
+            sid = str(shaft["shaftId"])
+            profile = shaft["profile"]
+            cross_section = CrossSection(
+                width=float(profile["diameter"]),
+                height=float(profile["diameter"]),
+                analytic_area=float(profile["analyticArea"]),
+                shape="CIRCULAR",
+            )
+            collar = shaft["collar"]
+            collar_node = NetworkNode(
+                id=f"{NodeType.SHAFT_COLLAR.value}:{sid}",
+                type=NodeType.SHAFT_COLLAR,
+                position=(float(collar[0]), float(collar[1]), float(collar[2])),
+                elevation=float(collar[2]),
+            )
+            add_node(collar_node)
+            chain: list[NetworkNode] = [collar_node]
+            for st in shaft["stations"]:
+                if st.get("status") != "OK":
+                    return f"shaft {sid} station {st.get('stationId')} is not OK"
+                p = st["point"]
+                snode = NetworkNode(
+                    id=str(st["stationId"]),
+                    type=NodeType.SHAFT_STATION,
+                    position=(float(p[0]), float(p[1]), float(p[2])),
+                    level_id=str(st["levelId"]),
+                    elevation=float(p[2]),
+                )
+                add_node(snode)
+                chain.append(snode)
+            bottom = shaft["bottom"]
+            bottom_node = NetworkNode(
+                id=f"{NodeType.SHAFT_BOTTOM.value}:{sid}",
+                type=NodeType.SHAFT_BOTTOM,
+                position=(float(bottom[0]), float(bottom[1]), float(bottom[2])),
+                elevation=float(bottom[2]),
+            )
+            add_node(bottom_node)
+            chain.append(bottom_node)
+            seg_indices = [int(i) for i in shaft["segmentIndices"]]
+            if len(seg_indices) != len(chain) - 1:
+                return f"shaft {sid} declares {len(seg_indices)} segments for {len(chain)} nodes"
+            for k, idx in enumerate(seg_indices):
+                cl = centerlines[idx]
+                pts = np.asarray(cl["centerline"]["points"], dtype=np.float64).reshape(-1, 3)
+                a, b = chain[k], chain[k + 1]
+                self._shaft_weld = max(
+                    self._shaft_weld,
+                    float(np.linalg.norm(pts[0] - np.asarray(a.position))),
+                    float(np.linalg.norm(pts[-1] - np.asarray(b.position))),
+                )
+                add_edge(
+                    NetworkEdge(
+                        id=str(cl["id"]),
+                        type=EdgeType.SHAFT,
+                        from_node=a.id,
+                        to_node=b.id,
+                        length3d=float(np.linalg.norm(pts[-1] - pts[0])),
+                        mean_gradient_signed=None,
+                        max_abs_gradient=None,
+                        orientation="VERTICAL",
+                        vertical_drop=float(a.position[2] - b.position[2]),
+                        cross_section=cross_section,
+                        effective_source="ANALYTIC",
+                        field_cost=float(cl.get("fieldCost") or 0.0),
+                        geometry_ref=GeometryRef(artifact=SHAFTS_ARTIFACT, segment_index=idx),
+                        simulation=SimulationSlots(),
+                    )
+                )
+            # station drives → the existing level node (rule 183)
+            dev_cross_section = CrossSection(
+                width=self.scenario.ramp.tunnel_width,
+                height=self.scenario.ramp.tunnel_height,
+                analytic_area=self._shape.analytic_area,
+            )
+            for st, snode in zip(shaft["stations"], chain[1:-1], strict=True):
+                idx = int(st["accessCenterlineIndex"])
+                cl = centerlines[idx]
+                pts = np.asarray(cl["centerline"]["points"], dtype=np.float64).reshape(-1, 3)
+                target = st["connectionTarget"]
+                level_node = breakpoint_node(
+                    str(target["levelId"]), float(target["stationU"]), pts[-1]
+                )
+                self._shaft_weld = max(
+                    self._shaft_weld,
+                    float(np.linalg.norm(pts[0] - np.asarray(snode.position))),
+                    float(np.linalg.norm(pts[-1] - np.asarray(level_node.position))),
+                )
+                length_3d, mean_signed, max_abs = _polyline_metrics(pts)
+                add_edge(
+                    NetworkEdge(
+                        id=str(cl["id"]),
+                        type=EdgeType.SHAFT_STATION_ACCESS,
+                        from_node=snode.id,
+                        to_node=level_node.id,
+                        length3d=length_3d,
+                        mean_gradient_signed=mean_signed,
+                        max_abs_gradient=max_abs,
+                        cross_section=dev_cross_section,
+                        effective_source="ANALYTIC",
+                        field_cost=float(st["report"]["fieldCost"]),
+                        geometry_ref=GeometryRef(artifact=SHAFTS_ARTIFACT, segment_index=idx),
+                        simulation=SimulationSlots(),
+                    )
+                )
+        return None

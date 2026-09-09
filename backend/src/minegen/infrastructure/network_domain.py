@@ -13,7 +13,7 @@ or UI concepts — those belong to the per-phase strategies and builders.
 All failures are typed: ``DomainValidationError`` carries the exact reason
 message a builder should serialize, and ``UnsupportedEdgeTypeError`` lets
 each builder emit its own phase token (``UNSUPPORTED_COMMUNICATION_EDGE_TYPE``
-/ ``UNSUPPORTED_SENSOR_EDGE_TYPE``) for RAISE/SHAFT edges. Malformed input
+/ ``UNSUPPORTED_SENSOR_EDGE_TYPE``) for RAISE edges. Malformed input
 never escapes as KeyError/IndexError/ValueError.
 """
 
@@ -25,18 +25,34 @@ from typing import Any
 
 import numpy as np
 
-from minegen.core.artifacts import LEVEL_ACCESSES_ARTIFACT, RAMP_OWNING_ARTIFACTS
+from minegen.core.artifacts import (
+    LEVEL_ACCESSES_ARTIFACT,
+    RAMP_OWNING_ARTIFACTS,
+    SHAFTS_ARTIFACT,
+)
 from minegen.infrastructure.models import CandidateSite, DemandPoint
 
 LENGTH_SYNC_TOLERANCE = 1e-6  # m — recomputed centerline vs edge.length3d
 ENDPOINT_TOLERANCE = 1e-6  # m — centerline ends vs from/to node positions
 
-_SUPPORTED_EDGE_TYPES = ("RAMP", "LEVEL_ACCESS", "DRIFT", "CROSSCUT")
+# Phase 20C.2B: SHAFT (vertical axis) and SHAFT_STATION_ACCESS edges are
+# physical tunnel geometry owned by shafts.json; network-geodesic distance
+# along them is their 3-D length like every other edge. RAISE stays unsupported.
+_SUPPORTED_EDGE_TYPES = (
+    "RAMP",
+    "LEVEL_ACCESS",
+    "DRIFT",
+    "CROSSCUT",
+    "SHAFT",
+    "SHAFT_STATION_ACCESS",
+)
 _OWNING_ARTIFACTS: dict[str, tuple[str, ...]] = {
     "RAMP": RAMP_OWNING_ARTIFACTS,
     "LEVEL_ACCESS": (LEVEL_ACCESSES_ARTIFACT,),
     "DRIFT": ("levels.json",),
     "CROSSCUT": ("levels.json",),
+    "SHAFT": (SHAFTS_ARTIFACT,),
+    "SHAFT_STATION_ACCESS": (SHAFTS_ARTIFACT,),
 }
 
 SampleRow = tuple[str, str | None, str | None, float | None, tuple[float, float, float]]
@@ -47,7 +63,7 @@ class DomainValidationError(Exception):
 
 
 class UnsupportedEdgeTypeError(Exception):
-    """A physically unsupported edge type (RAISE/SHAFT) was encountered."""
+    """A physically unsupported edge type (RAISE) was encountered."""
 
     def __init__(self, edge_id: str, edge_type: str) -> None:
         super().__init__(edge_id, edge_type)
@@ -105,6 +121,7 @@ class InfrastructureNetworkDomain:
         smoothed_payload: dict[str, Any],
         levels_payload: dict[str, Any],
         accesses_payload: dict[str, Any] | None = None,
+        shafts_payload: dict[str, Any] | None = None,
     ) -> InfrastructureNetworkDomain:
         """§11 shared gates. Raises typed errors; never Key/Index/ValueError."""
         if network_payload.get("status") != "SUCCESS":
@@ -144,7 +161,12 @@ class InfrastructureNetworkDomain:
         geometries: dict[str, EdgeGeometry] = {}
         for e in edge_list:
             geometries[e["id"]] = cls._resolve_geometry(
-                e, nodes, smoothed_payload, levels_payload, accesses_payload or {}
+                e,
+                nodes,
+                smoothed_payload,
+                levels_payload,
+                accesses_payload or {},
+                shafts_payload or {},
             )
 
         node_order = sorted(nodes)
@@ -226,6 +248,7 @@ class InfrastructureNetworkDomain:
         smoothed_payload: dict[str, Any],
         levels_payload: dict[str, Any],
         accesses_payload: dict[str, Any],
+        shafts_payload: dict[str, Any] | None = None,
     ) -> EdgeGeometry:
         expected_artifacts = _OWNING_ARTIFACTS[e["type"]]
         ref = e.get("geometryRef")
@@ -247,6 +270,8 @@ class InfrastructureNetworkDomain:
             owners = smoothed_payload.get("segments")
         elif artifact == LEVEL_ACCESSES_ARTIFACT:
             owners = accesses_payload.get("accesses")
+        elif artifact == SHAFTS_ARTIFACT:
+            owners = (shafts_payload or {}).get("centerlines")
         else:
             owners = levels_payload.get("developments")
         container = "effectiveCenterline" if is_ramp else "centerline"

@@ -8,12 +8,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import Field
 
 from minegen.api.deps import get_design_service, get_job_service
+from minegen.capability.models import CapabilityGraphPayload, CapabilityPathQuery
+from minegen.core.enums import Capability
 from minegen.core.models import ApiModel, ErrorDetail
 from minegen.layout.search import ClearancePolicyReconstructionError
 from minegen.levels.models import LevelsPayload
 from minegen.mining.models import StopesPayload
 from minegen.scheduling.models import TimelinePayload
 from minegen.services.design_service import (
+    CapabilityGraphNotGeneratedError,
+    CapabilityGraphStaleError,
     DeclineNotGeneratedError,
     DesignService,
     DevelopmentMeshNotGeneratedError,
@@ -25,12 +29,15 @@ from minegen.services.design_service import (
     LevelAccessesNotGeneratedError,
     LevelsNotGeneratedError,
     NetworkNotFoundError,
+    ShaftsNotGeneratedError,
+    ShaftsStaleError,
     SmoothedNotGeneratedError,
     StaleInputsError,
     StopesNotGeneratedError,
     TargetsNotGeneratedError,
     TimelineNotGeneratedError,
     TunnelNotGeneratedError,
+    UnknownNetworkNodeError,
     UnsupportedOrebodyError,
 )
 from minegen.services.job_service import JobAlreadyRunningError, JobService
@@ -39,6 +46,7 @@ from minegen.services.world_service import (
     WorldArtifactIncompatibleError,
     WorldNotGeneratedError,
 )
+from minegen.shafts.models import ShaftsPayload
 
 router = APIRouter(prefix="/scenarios/{scenario_id}/design", tags=["design"])
 
@@ -127,6 +135,25 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             "LEVELS_NOT_GENERATED",
             f"scenario '{scenario_id}' has no level developments; POST …/design/levels first",
         )
+    if isinstance(exc, ShaftsNotGeneratedError):
+        return _error(
+            404,
+            "SHAFTS_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no shaft artifact; POST …/design/shafts first",
+        )
+    if isinstance(exc, ShaftsStaleError):
+        return _error(status.HTTP_409_CONFLICT, ShaftsStaleError.code, str(exc))
+    if isinstance(exc, CapabilityGraphNotGeneratedError):
+        return _error(
+            404,
+            "CAPABILITY_GRAPH_NOT_GENERATED",
+            f"scenario '{scenario_id}' has no capability graph; "
+            "POST …/design/capability-graph first",
+        )
+    if isinstance(exc, CapabilityGraphStaleError):
+        return _error(status.HTTP_409_CONFLICT, CapabilityGraphStaleError.code, str(exc))
+    if isinstance(exc, UnknownNetworkNodeError):
+        return _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "UNKNOWN_NETWORK_NODE", str(exc))
     if isinstance(exc, StopesNotGeneratedError):
         return _error(
             status.HTTP_409_CONFLICT,
@@ -323,6 +350,68 @@ def generate_levels(scenario_id: str, svc: Service) -> LevelsPayload:
 def get_levels(scenario_id: str, svc: Service) -> LevelsPayload:
     try:
         return svc.levels(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.post("/shafts")
+def generate_shafts(scenario_id: str, svc: Service) -> ShaftsPayload:
+    """Phase 20C.2B (rules 182–184): synchronous deterministic shaft planning
+    against the validated level developments; optional infrastructure."""
+    try:
+        return svc.generate_shafts(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.get("/shafts")
+def get_shafts(scenario_id: str, svc: Service) -> ShaftsPayload:
+    try:
+        return svc.shafts(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.post("/capability-graph")
+def generate_capability_graph(scenario_id: str, svc: Service) -> CapabilityGraphPayload:
+    """Phase 20C.2B (rule 185): capability semantics over the persisted
+    MineNetwork; synchronous, touches nothing else."""
+    try:
+        return svc.generate_capability_graph(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.get("/capability-graph")
+def get_capability_graph(scenario_id: str, svc: Service) -> CapabilityGraphPayload:
+    try:
+        return svc.capability_graph(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _guard(scenario_id, exc) from exc
+
+
+@router.get("/capability-graph/path")
+def capability_path(
+    scenario_id: str,
+    svc: Service,
+    source: Annotated[str, Query(min_length=1, max_length=200)],
+    target: Annotated[str, Query(min_length=1, max_length=200)],
+    capability: Capability,
+) -> CapabilityPathQuery:
+    """``can_reach(source, target, capability)``: physical reachability and
+    capability-compatible reachability are reported separately."""
+    try:
+        return svc.capability_path(scenario_id, source, target, capability)
     except HTTPException:
         raise
     except Exception as exc:

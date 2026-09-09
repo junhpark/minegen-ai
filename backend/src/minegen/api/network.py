@@ -19,6 +19,7 @@ from minegen.services.design_service import (
     DesignService,
     LevelsNotGeneratedError,
     NetworkNotFoundError,
+    ShaftsStaleError,
     SmoothedNotGeneratedError,
     StaleInputsError,
 )
@@ -70,6 +71,8 @@ def _guard(scenario_id: str, exc: Exception) -> HTTPException:
             "STALE_INPUTS",
             "network inputs changed during generation; retry",
         )
+    if isinstance(exc, ShaftsStaleError):
+        return _error(status.HTTP_409_CONFLICT, ShaftsStaleError.code, str(exc))
     raise exc
 
 

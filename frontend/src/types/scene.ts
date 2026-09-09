@@ -1,4 +1,4 @@
-import type { AssetType } from '@/types/enums'
+import type { AssetType, Capability } from '@/types/enums'
 
 // Scene / world payloads mirroring backend/src/minegen/export/scene_manifest.py.
 // Coordinates ENU Z-up meters. Converted only in scene/ components.
@@ -401,6 +401,158 @@ export interface LevelAccessSummary {
   connectorWords?: Record<string, number>
 }
 
+/** derived/shafts.json (Phase 20C.2B, rules 182–184): the ONLY owner of
+ * shaft geometry — collar, axis segments, bottom, stations, station drives.
+ * Rendered as delivered; nothing is reconstructed on the client. */
+export interface ShaftCenterline {
+  id: string
+  shaftId: string
+  kind: 'SHAFT_SEGMENT' | 'STATION_ACCESS'
+  levelId: string | null
+  centerline: { points: number[] }
+  length3d: number
+  fieldCost: number
+}
+
+export interface ShaftStation {
+  stationId: string
+  levelId: string
+  elevation: number
+  point: [number, number, number]
+  connectionTarget: {
+    nodeKind: 'LEVEL_ENTRY' | 'JUNCTION'
+    levelId: string
+    stationU: number
+    position: [number, number, number]
+    planDistanceToAxis: number
+  } | null
+  accessCenterlineIndex: number | null
+  status: 'OK' | 'FAILED'
+  failureCode?: string | null
+  failureReason?: string | null
+}
+
+export interface Shaft {
+  shaftId: string
+  role: 'PRODUCTION' | 'SERVICE' | 'VENTILATION'
+  capabilities: Capability[]
+  profile: { shape: 'CIRCULAR'; diameter: number; analyticArea: number }
+  collar: [number, number, number]
+  collarSource: 'EXPLICIT' | 'DEFAULT_DERIVED'
+  bottom: [number, number, number]
+  stations: ShaftStation[]
+  segmentIndices: number[]
+  validation: { valid: boolean; rejectionCounts: Record<string, number> } | null
+  metrics: {
+    depth: number
+    stationCount: number
+    totalShaftLength3d: number
+    totalStationAccessLength3d: number
+    nominalExcavationVolume: number
+  } | null
+  status: 'OK' | 'FAILED'
+  failureCode?: string | null
+  failureReason?: string | null
+}
+
+export interface ShaftsPayload {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  sourceRevision: string
+  levelsRevision: string
+  shafts: Shaft[]
+  centerlines: ShaftCenterline[]
+  metrics: {
+    shaftCount: number
+    stationCount: number
+    totalShaftLength3d: number
+    totalStationAccessLength3d: number
+    planningSeconds: number
+  } | null
+}
+
+/** derived/capability_graph.json (Phase 20C.2B, rule 185): capability
+ * semantics over MineNetwork ids — no geometry, no topology of its own.
+ * Capability ≠ capacity. */
+export interface CapabilityGraphPayload {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  sourceRevision: string
+  networkRevision: string
+  networkSourceRevision: string
+  capabilities: Capability[]
+  nodes: {
+    nodeId: string
+    nodeType: string
+    supports: Capability[]
+    source: string
+    surface: boolean
+    levelId: string | null
+  }[]
+  edges: {
+    edgeId: string
+    edgeType: string
+    capabilities: Capability[]
+    restrictions: Capability[]
+    source: string
+    shaftId: string | null
+  }[]
+  surfaceNodeIds: string[]
+  requiredPaths: {
+    id: string
+    capability: Capability
+    sourceNodeId: string
+    targetNodeId: string
+    rule: string
+    physicalReachable: boolean
+    capabilityReachable: boolean
+    pathEdgeIds: string[] | null
+    satisfied: boolean
+  }[]
+  egressAdvisory: {
+    capability: 'EMERGENCY_EGRESS'
+    criterion: string
+    requiredRoutes: number
+    advisoryOnly: boolean
+    surfaceNodeIds: string[]
+    perNode: {
+      nodeId: string
+      levelId: string | null
+      independentEgressRoutes: number
+      meetsCriterion: boolean
+    }[]
+  } | null
+  validation: {
+    referencedNodesExist: boolean
+    referencedEdgesExist: boolean
+    noDuplicateNodeIds: boolean
+    noDuplicateEdgeIds: boolean
+    networkRevisionMatches: boolean
+    requiredPathsSatisfied: boolean
+    valid: boolean
+    failureReason: string | null
+  } | null
+  metrics: {
+    nodeCount: number
+    edgeCount: number
+    surfaceNodeCount: number
+    edgesPerCapability: Record<string, number>
+    requiredPathCount: number
+    requiredPathsSatisfiedCount: number
+    buildSeconds: number
+  } | null
+}
+
+export interface CapabilityPathQuery {
+  sourceNodeId: string
+  targetNodeId: string
+  capability: Capability
+  physicalReachable: boolean
+  capabilityReachable: boolean
+  pathNodeIds: string[]
+  pathEdgeIds: string[]
+}
+
 /** derived/level_accesses.json (rule 157) */
 export interface LevelAccessesPayload {
   status: 'SUCCESS' | 'FAILED'
@@ -632,7 +784,16 @@ export interface RampSourceSummary {
 
 export interface NetworkNode {
   id: string
-  type: 'PORTAL' | 'LEVEL_ENTRY' | 'JUNCTION' | 'STOPE_ACCESS' | 'RAMP_JUNCTION' | 'RAMP_END'
+  type:
+    | 'PORTAL'
+    | 'LEVEL_ENTRY'
+    | 'JUNCTION'
+    | 'STOPE_ACCESS'
+    | 'RAMP_JUNCTION'
+    | 'RAMP_END'
+    | 'SHAFT_COLLAR'
+    | 'SHAFT_STATION'
+    | 'SHAFT_BOTTOM'
   position: [number, number, number]
   levelId?: string | null
   candidateId?: string | null
@@ -977,13 +1138,21 @@ export interface SimulationSlots {
 
 export interface NetworkEdge {
   id: string
-  type: 'RAMP' | 'LEVEL_ACCESS' | 'DRIFT' | 'CROSSCUT' | 'RAISE' | 'SHAFT'
+  type: 'RAMP' | 'LEVEL_ACCESS' | 'DRIFT' | 'CROSSCUT' | 'RAISE' | 'SHAFT' | 'SHAFT_STATION_ACCESS'
   fromNode: string
   toNode: string
   length3d: number
-  meanGradientSigned: number
-  maxAbsGradient: number
-  crossSection: { width: number; height: number; analyticArea: number }
+  /** null for a VERTICAL (shaft axis) edge — no horizontal length (Phase 20C.2B) */
+  meanGradientSigned: number | null
+  maxAbsGradient: number | null
+  orientation?: 'DEVELOPMENT' | 'VERTICAL'
+  verticalDrop?: number | null
+  crossSection: {
+    width: number
+    height: number
+    analyticArea: number
+    shape?: 'HORSESHOE' | 'CIRCULAR'
+  }
   effectiveSource: EffectiveSource | 'ANALYTIC'
   fieldCost: number
   geometryRef: { artifact: string; segmentIndex: number }
@@ -994,6 +1163,13 @@ export interface NetworkMetrics {
   rampJunctionCount?: number
   levelAccessEdgeCount?: number
   totalLevelAccessLength3d?: number
+  /** Phase 20C.2B shaft counters (zero without a shaft) */
+  shaftCount?: number
+  shaftStationCount?: number
+  shaftEdgeCount?: number
+  shaftStationAccessEdgeCount?: number
+  totalShaftLength3d?: number
+  totalShaftStationAccessLength3d?: number
   nodeCount: number
   edgeCount: number
   levelCount: number
@@ -1197,7 +1373,11 @@ export interface WorldScene {
   /** closeout v3 §4: level access / drift / crosscut excavation meshes */
   developmentMesh: DevelopmentMeshReport | null
   levels: LevelsPayload | null
+  /** Phase 20C.2B optional shaft infrastructure (levels → shafts → network) */
+  shafts?: ShaftsPayload | null
   network: NetworkPayload | null
+  /** Phase 20C.2B capability semantics over the network (network → capability) */
+  capabilityGraph?: CapabilityGraphPayload | null
   stopes: StopesPayload | null
   timeline: TimelinePayload | null
   communication: CommunicationPayload | null

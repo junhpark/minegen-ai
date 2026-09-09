@@ -46,6 +46,7 @@ class InfrastructureService:
             Path(self.design.network_path(scenario_id)),
             *self.design._ramp_input_paths(scenario_id),
             Path(self.design.levels_path(scenario_id)),
+            Path(self.design.shafts_path(scenario_id)),  # Phase 20C.2B optional owner
         ]
 
     def communication_fingerprint(self, scenario_id: str) -> InputFingerprint:
@@ -63,6 +64,7 @@ class InfrastructureService:
         source_revision = hashlib.sha256(
             json.dumps(fingerprint.entries, sort_keys=True).encode()
         ).hexdigest()[:16]
+        shafts_payload = self.design.shafts_if_present(scenario_id)
         builder = CommunicationBuilder(scenario)
         payload = builder.build(
             network_payload.model_dump(mode="json", by_alias=True),
@@ -70,6 +72,11 @@ class InfrastructureService:
             levels_payload.model_dump(mode="json", by_alias=True),
             source_revision,
             accesses_payload=accesses_payload,
+            shafts_payload=(
+                shafts_payload.model_dump(mode="json", by_alias=True)
+                if shafts_payload is not None
+                else None
+            ),
         )
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):
@@ -109,6 +116,7 @@ class InfrastructureService:
         source_revision = hashlib.sha256(
             json.dumps(fingerprint.entries, sort_keys=True).encode()
         ).hexdigest()[:16]
+        shafts_payload = self.design.shafts_if_present(scenario_id)
         builder = SensorBuilder(scenario)
         payload = builder.build(
             network_payload.model_dump(mode="json", by_alias=True),
@@ -116,6 +124,11 @@ class InfrastructureService:
             levels_payload.model_dump(mode="json", by_alias=True),
             source_revision,
             accesses_payload=accesses_payload,
+            shafts_payload=(
+                shafts_payload.model_dump(mode="json", by_alias=True)
+                if shafts_payload is not None
+                else None
+            ),
         )
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):

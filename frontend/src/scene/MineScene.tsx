@@ -19,6 +19,7 @@ import { TunnelMeshLayer } from './TunnelMeshLayer'
 import { DevelopmentMeshLayer } from './DevelopmentMeshLayer'
 import { LevelDevelopmentLayer } from './LevelDevelopmentLayer'
 import { NetworkLayer } from './NetworkLayer'
+import { ShaftLayer } from './ShaftLayer'
 import { StopeLayer } from './StopeLayer'
 import { TimelineDevelopmentLayer } from './TimelineDevelopmentLayer'
 import { TemporalExcavationLayer } from './TemporalExcavationLayer'
@@ -174,6 +175,9 @@ export function MineScene() {
           showCrosscuts={visible.has('crosscuts')}
         />
       ) : null}
+      {showStatic && scene?.shafts && visible.has('shafts') ? (
+        <ShaftLayer shafts={scene.shafts} />
+      ) : null}
       {scene?.network && visible.has('network') ? <NetworkLayer network={scene.network} /> : null}
       {communicationActive && scene?.communication && visible.has('routers') ? (
         <CommunicationRouterLayer communication={scene.communication} />
@@ -208,6 +212,7 @@ export function MineScene() {
           smoothed={scene.smoothedDecline}
           levels={scene.levels}
           levelAccesses={scene.levelAccesses}
+          shafts={scene.shafts ?? null}
           skipEdgeIds={excavation4D ? excavationCovered : null}
         />
       ) : null}

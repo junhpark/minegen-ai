@@ -7,8 +7,11 @@ import type {
   ScenarioRealizeRequest,
   ScenarioSummary,
 } from '@/types/api'
+import type { Capability } from '@/types/enums'
 import type {
   AccessTargetsPayload,
+  CapabilityGraphPayload,
+  CapabilityPathQuery,
   CommunicationPayload,
   CostEvaluationRow,
   DeclinePayload,
@@ -21,6 +24,7 @@ import type {
   RampSourceSummary,
   NetworkPayload,
   SensorPayload,
+  ShaftsPayload,
   SliceAxis,
   SliceField,
   SlicePayload,
@@ -180,6 +184,21 @@ export const api = {
   generateTimeline: (id: string) =>
     request<TimelinePayload>(`/scenarios/${id}/design/timeline`, { method: 'POST' }),
   getTimeline: (id: string) => request<TimelinePayload>(`/scenarios/${id}/design/timeline`),
+  /** Phase 20C.2B shaft planning (rules 182–184): synchronous, optional. */
+  generateShafts: (id: string) =>
+    request<ShaftsPayload>(`/scenarios/${id}/design/shafts`, { method: 'POST' }),
+  getShafts: (id: string) => request<ShaftsPayload>(`/scenarios/${id}/design/shafts`),
+  /** Phase 20C.2B capability graph (rule 185): synchronous semantic layer. */
+  generateCapabilityGraph: (id: string) =>
+    request<CapabilityGraphPayload>(`/scenarios/${id}/design/capability-graph`, {
+      method: 'POST',
+    }),
+  getCapabilityGraph: (id: string) =>
+    request<CapabilityGraphPayload>(`/scenarios/${id}/design/capability-graph`),
+  capabilityPath: (id: string, source: string, target: string, capability: Capability) =>
+    request<CapabilityPathQuery>(
+      `/scenarios/${id}/design/capability-graph/path?${new URLSearchParams({ source, target, capability }).toString()}`,
+    ),
   /** Synchronous Phase 07 network generation (reserved /network namespace). */
   generateNetwork: (id: string) =>
     request<NetworkPayload>(`/scenarios/${id}/network/generate`, { method: 'POST' }),

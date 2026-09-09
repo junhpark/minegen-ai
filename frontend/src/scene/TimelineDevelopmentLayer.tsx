@@ -24,17 +24,22 @@ import {
 import type {
   LevelAccessesPayload,
   LevelsPayload,
+  ShaftsPayload,
   SmoothedDeclinePayload,
   TimelinePayload,
 } from '@/types/scene'
 
 export const LEVEL_ACCESSES_ARTIFACT = 'level_accesses.json'
+/** Phase 20C.2B: shaft axes + station drives are owned by shafts.json */
+export const SHAFTS_ARTIFACT = 'shafts.json'
 
 const COLORS: Record<string, string> = {
   RAMP: '#7fd4b8',
   LEVEL_ACCESS: '#f2c14e',
   DRIFT: '#8fb8de',
   CROSSCUT: '#deb46a',
+  SHAFT: '#c7a0e8',
+  SHAFT_STATION_ACCESS: '#b48ad6',
 }
 
 /**
@@ -49,12 +54,15 @@ export function TimelineDevelopmentLayer({
   smoothed,
   levels,
   levelAccesses = null,
+  shafts = null,
   skipEdgeIds = null,
 }: {
   timeline: TimelinePayload
   smoothed: SmoothedDeclinePayload
   levels: LevelsPayload
   levelAccesses?: LevelAccessesPayload | null
+  /** Phase 20C.2B: owner of SHAFT / SHAFT_STATION_ACCESS geometryRefs */
+  shafts?: ShaftsPayload | null
   /** Phase 20B.2-F: developments already shown as progressive excavation
    * meshes keep no duplicate centerline; unmapped ones still draw here */
   skipEdgeIds?: ReadonlySet<string> | null
@@ -74,7 +82,9 @@ export function TimelineDevelopmentLayer({
           ? smoothed.segments[ref.segmentIndex]?.effectiveCenterline.points
           : ref.artifact === LEVEL_ACCESSES_ARTIFACT
             ? (levelAccesses?.accesses[ref.segmentIndex]?.centerline?.points ?? undefined)
-            : levels.developments[ref.segmentIndex]?.centerline.points
+            : ref.artifact === SHAFTS_ARTIFACT
+              ? shafts?.centerlines[ref.segmentIndex]?.centerline.points
+              : levels.developments[ref.segmentIndex]?.centerline.points
       if (!points) continue
       const clipped =
         state === 'DEVELOPING'
@@ -93,7 +103,7 @@ export function TimelineDevelopmentLayer({
       })
     }
     return out
-  }, [timeline, smoothed, levels, levelAccesses, currentDay, skipEdgeIds])
+  }, [timeline, smoothed, levels, levelAccesses, shafts, currentDay, skipEdgeIds])
 
   return (
     <group>

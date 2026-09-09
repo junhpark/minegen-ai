@@ -6,17 +6,21 @@ import { PanelSection } from '@/components/layout/PanelSection'
 import { developmentMeshScope } from '@/components/panels/developmentMeshScope'
 import { useJobPoll } from '@/components/panels/useJobPoll'
 import {
+  afterCapabilityGraphRegen,
   afterDevelopmentMeshRegen,
   afterLevelsRegen,
   afterNetworkRegen,
+  afterShaftsRegen,
   afterStopesRegen,
   afterTimelineRegen,
 } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import type {
+  CapabilityGraphPayload,
   DevelopmentMeshReport,
   LevelsPayload,
+  ShaftsPayload,
   StopesPayload,
   TimelinePayload,
   TunnelMeshReport,
@@ -31,6 +35,7 @@ import type {
  */
 export function DesignPanel() {
   const scene = useScenarioStore((s) => s.scene)
+  const scenarioDoc = useScenarioStore((s) => s.scenario)
   // Phase 17.1 §1: derived results are written through `applyScene`, which
   // re-reads the scene INSIDE the store and drops any write whose epoch is
   // no longer active.
@@ -137,6 +142,34 @@ export function DesignPanel() {
     },
   })
 
+  // Phase 20C.2B shafts (rules 182–184): optional infrastructure planned
+  // against the level developments; regenerating them invalidates the
+  // network and everything below it.
+  const shafts = scene?.shafts ?? null
+  const shaftSpecCount = scenarioDoc?.shafts?.specs.length ?? 0
+  const generateShafts = useMutation({
+    mutationFn: async () => {
+      if (!scene) throw new Error('generate levels first')
+      return api.generateShafts(scene.scenarioId)
+    },
+    onSuccess: (payload: ShaftsPayload) => {
+      applyScene(epoch, (current) => afterShaftsRegen(current, payload))
+      setLayerVisible('shafts', true)
+    },
+  })
+
+  // Phase 20C.2B capability graph (rule 185): semantics over the network
+  const capabilityGraph = scene?.capabilityGraph ?? null
+  const generateCapabilityGraph = useMutation({
+    mutationFn: async () => {
+      if (!scene) throw new Error('generate the network first')
+      return api.generateCapabilityGraph(scene.scenarioId)
+    },
+    onSuccess: (payload: CapabilityGraphPayload) => {
+      applyScene(epoch, (current) => afterCapabilityGraphRegen(current, payload))
+    },
+  })
+
   // Phase 07/08 network
   const generateNetwork = useMutation({
     mutationFn: async () => {
@@ -153,7 +186,9 @@ export function DesignPanel() {
     generateTunnel.error ??
     generateDevelopmentMesh.error ??
     generateLevels.error ??
+    generateShafts.error ??
     generateNetwork.error ??
+    generateCapabilityGraph.error ??
     generateStopes.error ??
     generateTimeline.error
   const errorText =
@@ -355,6 +390,65 @@ export function DesignPanel() {
 
       <button
         type="button"
+        onClick={() => generateShafts.mutate()}
+        disabled={!levelsReady || generateShafts.isPending || generateLevels.isPending}
+        className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {generateShafts.isPending
+          ? 'Planning shafts…'
+          : shafts
+            ? 'Regenerate shafts'
+            : `Plan shafts (Phase 20C.2B · ${String(shaftSpecCount)} declared)`}
+      </button>
+      {shafts ? (
+        <div className="readout mt-2 text-[11px]">
+          <div className="flex justify-between text-chalk-dim">
+            <span className={shafts.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+              {shafts.status}
+            </span>
+            {shafts.metrics ? (
+              <span>
+                {shafts.metrics.shaftCount} shaft{shafts.metrics.shaftCount === 1 ? '' : 's'} ·{' '}
+                {shafts.metrics.stationCount} stations ·{' '}
+                {shafts.metrics.totalShaftLength3d.toFixed(0)} m sunk
+              </span>
+            ) : null}
+          </div>
+          {shafts.shafts.map((sh) => (
+            <div key={sh.shaftId} className="mt-1 text-mute">
+              <div className={sh.status === 'OK' ? '' : 'text-danger'}>
+                {sh.shaftId} · {sh.role.toLowerCase()} ·{' '}
+                {sh.collarSource === 'EXPLICIT' ? 'explicit collar' : 'default collar'}
+                {sh.status === 'OK' ? '' : ` · ${sh.failureCode ?? 'FAILED'}`}
+              </div>
+              {sh.status === 'OK' ? (
+                <div className="break-words">
+                  stations {sh.stations.map((st) => st.levelId).join(' ')} ·{' '}
+                  {sh.capabilities.length} capabilities · collar z {sh.collar[2].toFixed(0)} m ·
+                  bottom z {sh.bottom[2].toFixed(0)} m
+                </div>
+              ) : null}
+            </div>
+          ))}
+          {shafts.status === 'FAILED' ? (
+            <div className="mt-1 break-words text-danger">{shafts.failureReason}</div>
+          ) : null}
+          {shaftSpecCount === 0 ? (
+            <div className="mt-1 text-mute">
+              no shaft declared in scenario.shafts — the mine stays ramp-only (shafts are optional
+              infrastructure, never a layout family)
+            </div>
+          ) : null}
+          <div className="mt-1 text-mute">
+            vertical axis on the terrain collar, one station per developed level welded onto an
+            existing level node, station drives validated on the delivered polyline (rules 182–184);
+            the network references shafts.json, never owns it
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
         onClick={() => generateNetwork.mutate()}
         disabled={
           !rampReady || !levelsReady || generateNetwork.isPending || generateLevels.isPending
@@ -398,14 +492,88 @@ export function DesignPanel() {
           ) : (
             <div className="mt-1 text-danger">{network.failureReason}</div>
           )}
+          {network.metrics?.shaftCount ? (
+            <div className="mt-1 flex justify-between text-mute">
+              <span>
+                {network.metrics.shaftCount} shaft{network.metrics.shaftCount === 1 ? '' : 's'} ·{' '}
+                {network.metrics.shaftStationCount ?? 0} stations
+              </span>
+              <span>
+                {(network.metrics.totalShaftLength3d ?? 0).toFixed(0)} m axis ·{' '}
+                {(network.metrics.totalShaftStationAccessLength3d ?? 0).toFixed(0)} m station drives
+              </span>
+            </div>
+          ) : null}
           <div className="mt-1 text-mute">
             Mine network — the mine as a graph of PORTAL, RAMP_JUNCTION, RAMP_END, LEVEL_ENTRY,
-            JUNCTION and STOPE_ACCESS nodes joined by RAMP, LEVEL_ACCESS, DRIFT and CROSSCUT edges.
-            It answers connectivity / surface-egress questions and is the topology the schedule,
-            communication and sensor planning build on.
+            JUNCTION, STOPE_ACCESS and (with a shaft) SHAFT_COLLAR / SHAFT_STATION / SHAFT_BOTTOM
+            nodes joined by RAMP, LEVEL_ACCESS, DRIFT, CROSSCUT, SHAFT and SHAFT_STATION_ACCESS
+            edges. It answers connectivity / surface-egress questions and is the topology the
+            schedule, communication and sensor planning build on.
           </div>
           <div className="mt-1 text-mute">
             rebuilt from the owning centerline artifacts, never patched (rules 68–74, 160)
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => generateCapabilityGraph.mutate()}
+        disabled={
+          !network ||
+          network.status === 'FAILED' ||
+          generateCapabilityGraph.isPending ||
+          generateNetwork.isPending
+        }
+        className="plate mt-3 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {generateCapabilityGraph.isPending
+          ? 'Assigning capabilities…'
+          : capabilityGraph
+            ? 'Regenerate capability graph'
+            : 'Build capability graph (Phase 20C.2B)'}
+      </button>
+      {capabilityGraph ? (
+        <div className="readout mt-2 text-[11px]">
+          <div className="flex justify-between text-chalk-dim">
+            <span className={capabilityGraph.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+              {capabilityGraph.status}
+            </span>
+            {capabilityGraph.metrics ? (
+              <span>
+                {capabilityGraph.metrics.edgeCount} edges ·{' '}
+                {capabilityGraph.metrics.surfaceNodeCount} surface nodes · required paths{' '}
+                {capabilityGraph.metrics.requiredPathsSatisfiedCount}/
+                {capabilityGraph.metrics.requiredPathCount}
+              </span>
+            ) : null}
+          </div>
+          {capabilityGraph.metrics ? (
+            <div className="mt-1 flex flex-wrap gap-x-3 text-mute">
+              {Object.entries(capabilityGraph.metrics.edgesPerCapability).map(([cap, n]) => (
+                <span key={cap}>
+                  {cap.toLowerCase().replace(/_/g, ' ')} {n}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {capabilityGraph.egressAdvisory ? (
+            <div className="mt-1 text-mute">
+              egress routes (advisory, {capabilityGraph.egressAdvisory.requiredRoutes} edge-disjoint
+              criterion):{' '}
+              {capabilityGraph.egressAdvisory.perNode.filter((p) => p.meetsCriterion).length}/
+              {capabilityGraph.egressAdvisory.perNode.length} nodes meet it · surface{' '}
+              {capabilityGraph.egressAdvisory.surfaceNodeIds.join(', ')}
+            </div>
+          ) : null}
+          {capabilityGraph.status === 'FAILED' ? (
+            <div className="mt-1 text-danger">{capabilityGraph.failureReason}</div>
+          ) : null}
+          <div className="mt-1 text-mute">
+            what each connection MAY be used for (personnel, haulage, ventilation path, utilities,
+            emergency egress) — typed tags over network ids, never a capacity, never geometry (rule
+            185); shaft edges take the shaft&apos;s declared set
           </div>
         </div>
       ) : null}

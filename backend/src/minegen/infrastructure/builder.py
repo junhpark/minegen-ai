@@ -79,6 +79,7 @@ class CommunicationBuilder:
         levels_payload: dict[str, Any],
         source_revision: str,
         accesses_payload: dict[str, Any] | None = None,
+        shafts_payload: dict[str, Any] | None = None,
     ) -> CommunicationPayload:
         cfg = self.config
         # -- supported asset gate (§2): never silently substitute ------------ #
@@ -94,13 +95,13 @@ class CommunicationBuilder:
         # the builder never reimplements them
         try:
             domain = InfrastructureNetworkDomain.build(
-                network_payload, smoothed_payload, levels_payload, accesses_payload
+                network_payload, smoothed_payload, levels_payload, accesses_payload, shafts_payload
             )
         except UnsupportedEdgeTypeError as exc:
             return _failed(
                 source_revision,
                 f"UNSUPPORTED_COMMUNICATION_EDGE_TYPE: edge {exc.edge_id} has type "
-                f"{exc.edge_type} — RAISE/SHAFT communication planning is deferred "
+                f"{exc.edge_type} — RAISE communication planning is deferred "
                 "until owning geometry exists",
             )
         except DomainValidationError as exc:

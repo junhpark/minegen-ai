@@ -13,6 +13,11 @@ LAYOUT_V2_SELECTED_ARTIFACT = "layout_v2_selected.json"
 #: Phase 20B: ramp junctions + level-access branches of the selected candidate
 LEVEL_ACCESSES_ARTIFACT = "level_accesses.json"
 LEVELS_ARTIFACT = "levels.json"
+#: Phase 20C.2B: shaft axes, stations and station drives (rule 182)
+SHAFTS_ARTIFACT = "shafts.json"
+#: Phase 20C.2B: capability semantics over MineNetwork ids (rule 185) —
+#: owns NO geometry, so it is not a geometryRef owner
+CAPABILITY_GRAPH_ARTIFACT = "capability_graph.json"
 RAMP_SOURCE_FILE = "ramp_source.json"
 
 #: every artifact that may own RAMP geometry (Phase 05 legacy smoothed

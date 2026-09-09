@@ -52,6 +52,20 @@ class DesignContext:
         )
 
     @classmethod
+    def shaft(cls, cfg: DesignConfig) -> DesignContext:
+        """Phase 20C.2B shaft axis context (rule 183): a shaft breaks the
+        surface by definition, so ``minimum_surface_cover`` (a decline
+        centerline constraint) is not applied; the orebody exclusion buffer,
+        world bounds, terrain and restricted zones stay hard."""
+        return cls(
+            name="shaft",
+            orebody_exclusion_buffer=cfg.orebody_exclusion_buffer,
+            allow_inside_orebody=False,
+            minimum_surface_cover=0.0,
+            restricted_zones=tuple(cfg.restricted_zones),
+        )
+
+    @classmethod
     def crosscut(cls, cfg: DesignConfig) -> DesignContext:
         """Phase 08 crosscut context (rule 72): the crosscut deliberately
         reaches the orebody contact, so the orebody exclusion is disabled

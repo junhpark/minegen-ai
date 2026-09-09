@@ -8,36 +8,27 @@ serialization. ``networkx`` stays strictly the in-memory topology engine.
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Literal
 
 from pydantic import Field
 
+from minegen.core.enums import EdgeType as EdgeType
+from minegen.core.enums import NodeType as NodeType
 from minegen.core.models import ApiModel
 
-
-class NodeType(StrEnum):
-    PORTAL = "PORTAL"
-    LEVEL_ENTRY = "LEVEL_ENTRY"
-    JUNCTION = "JUNCTION"  # reserved (Phase 08+)
-    STOPE_ACCESS = "STOPE_ACCESS"  # reserved (Phase 09+)
-    RAMP_JUNCTION = "RAMP_JUNCTION"  # Phase 20B: turnout on the main ramp
-    RAMP_END = "RAMP_END"  # Phase 20B: main-ramp terminal below the last turnout
-
-
-class EdgeType(StrEnum):
-    RAMP = "RAMP"
-    LEVEL_ACCESS = "LEVEL_ACCESS"  # Phase 20B: RAMP_JUNCTION → LEVEL_ENTRY branch
-    DRIFT = "DRIFT"  # reserved (Phase 08+)
-    CROSSCUT = "CROSSCUT"  # reserved (Phase 08+)
-    RAISE = "RAISE"  # reserved
-    SHAFT = "SHAFT"  # reserved
+# Phase 20C.2B enum unification: the MineNetwork contract uses the ONE core
+# enumeration (``core/enums.py``, mirrored by the frontend); the former
+# network-local subset is gone and every persisted value is unchanged.
+# ``NodeType`` / ``EdgeType`` stay importable from here for existing callers.
 
 
 class CrossSection(ApiModel):
     width: float
     height: float
     analytic_area: float
+    #: HORSESHOE for every development drive; CIRCULAR for a shaft axis
+    #: (``width == height == diameter``) — Phase 20C.2B
+    shape: Literal["HORSESHOE", "CIRCULAR"] = "HORSESHOE"
 
 
 class GeometryRef(ApiModel):
@@ -79,8 +70,14 @@ class NetworkEdge(ApiModel):
     # explicit alias: the established artifact contract uses "length3d"
     # (matching the Phase 06 report), not to_camel's "length3D"
     length3d: float = Field(alias="length3d")
-    mean_gradient_signed: float  # Δz / horizontal length; negative = descending
-    max_abs_gradient: float  # always ≥ 0
+    #: Δz / horizontal length (negative = descending) and max |local
+    #: gradient| — defined for DEVELOPMENT edges only; a VERTICAL edge
+    #: (shaft axis) has no horizontal length, so both are ``null`` (rule 34
+    #: forbids ±inf) and ``verticalDrop`` carries its extent instead
+    mean_gradient_signed: float | None
+    max_abs_gradient: float | None
+    orientation: Literal["DEVELOPMENT", "VERTICAL"] = "DEVELOPMENT"
+    vertical_drop: float | None = None  # VERTICAL edges: collar-side z − deeper z
     cross_section: CrossSection
     effective_source: Literal["SMOOTHED", "RAW_FALLBACK", "ANALYTIC", "PARAMETRIC_V2"]
     field_cost: float
@@ -103,6 +100,15 @@ class NetworkMetrics(ApiModel):
     total_ramp_length3d: float = Field(alias="totalRampLength3d")
     total_drift_length3d: float = Field(alias="totalDriftLength3d", default=0.0)
     total_crosscut_length3d: float = Field(alias="totalCrosscutLength3d", default=0.0)
+    #: Phase 20C.2B shaft infrastructure (zero without a shaft)
+    shaft_count: int = 0
+    shaft_station_count: int = 0
+    shaft_edge_count: int = 0
+    shaft_station_access_edge_count: int = 0
+    total_shaft_length3d: float = Field(alias="totalShaftLength3d", default=0.0)
+    total_shaft_station_access_length3d: float = Field(
+        alias="totalShaftStationAccessLength3d", default=0.0
+    )
     minimum_elevation: float
     vertical_drop_from_portal: float
 
