@@ -75,7 +75,11 @@ class NodeType(StrEnum):
     #: Phase 20B: terminal of the main ramp below the last turnout
     RAMP_END = "RAMP_END"
     STOPE_ACCESS = "STOPE_ACCESS"
+    #: Phase 20C.2B shaft infrastructure (rules 182–184): surface collar,
+    #: level station on the shaft axis, sump bottom
+    SHAFT_COLLAR = "SHAFT_COLLAR"
     SHAFT_STATION = "SHAFT_STATION"
+    SHAFT_BOTTOM = "SHAFT_BOTTOM"
     CRUSHER = "CRUSHER"
     REFUGE = "REFUGE"
     FAN = "FAN"
@@ -91,6 +95,30 @@ class EdgeType(StrEnum):
     CROSSCUT = "CROSSCUT"
     RAISE = "RAISE"
     SHAFT = "SHAFT"
+    #: Phase 20C.2B: short station drive from a SHAFT_STATION to an existing
+    #: level-development node (owned by ``shafts.json``, never by the shaft axis)
+    SHAFT_STATION_ACCESS = "SHAFT_STATION_ACCESS"
+
+
+class ShaftRole(StrEnum):
+    """Declared engineering role of a shaft (Phase 20C.2B). The role seeds
+    the shaft's default capability set; it never changes shaft geometry or
+    validation."""
+
+    PRODUCTION = "PRODUCTION"
+    SERVICE = "SERVICE"
+    VENTILATION = "VENTILATION"
+
+
+class Capability(StrEnum):
+    """Phase 20C.2B capability taxonomy (rule 185): WHAT a physical
+    connection may be used for — never HOW MUCH (capacity is out of scope)."""
+
+    PERSONNEL_ACCESS = "PERSONNEL_ACCESS"
+    MATERIAL_HAULAGE = "MATERIAL_HAULAGE"
+    VENTILATION_PATH = "VENTILATION_PATH"
+    UTILITY_SERVICE = "UTILITY_SERVICE"
+    EMERGENCY_EGRESS = "EMERGENCY_EGRESS"
 
 
 class ObjectState(StrEnum):
@@ -113,6 +141,9 @@ class TaskType(StrEnum):
     DEVELOP_LEVEL = "DEVELOP_LEVEL"
     DEVELOP_CROSSCUT = "DEVELOP_CROSSCUT"
     DEVELOP_RAISE = "DEVELOP_RAISE"
+    #: Phase 20C.2B: shaft sinking (collar → deeper) and station drives
+    DEVELOP_SHAFT = "DEVELOP_SHAFT"
+    DEVELOP_SHAFT_STATION_ACCESS = "DEVELOP_SHAFT_STATION_ACCESS"
     STOPE_PREPARATION = "STOPE_PREPARATION"
     STOPING = "STOPING"
     MUCKING = "MUCKING"

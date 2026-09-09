@@ -21,9 +21,12 @@ from pydantic.alias_generators import to_camel
 from minegen.core.enums import (
     FAMILY_ORDER,
     AssetType,
+    Capability,
+    EdgeType,
     MiningMethodType,
     OrebodyType,
     ScenarioPreset,
+    ShaftRole,
 )
 
 
@@ -55,6 +58,14 @@ class Point3D(ApiModel):
 
     def distance_to(self, other: Point3D) -> float:
         return math.dist(self.as_tuple(), other.as_tuple())
+
+
+class Point2D(ApiModel):
+    """Plan (horizontal) position; the elevation is derived (e.g. a shaft
+    collar sits ON the terrain surface, rule 182)."""
+
+    x: float
+    y: float
 
 
 class Vector3D(Point3D):
@@ -569,6 +580,10 @@ class ScheduleConfig(ApiModel):
     level_access_advance_m_per_day: PositiveFloat = 4.0
     drift_advance_m_per_day: PositiveFloat = 5.0
     crosscut_advance_m_per_day: PositiveFloat = 4.0
+    #: Phase 20C.2B shaft sinking / station-drive rates — SYNTHETIC planning
+    #: defaults, never calibrated productivity
+    shaft_sink_m_per_day: PositiveFloat = 1.5
+    shaft_station_access_advance_m_per_day: PositiveFloat = 4.0
     stope_preparation_days: PositiveFloat = 5.0
     stoping_tonnes_per_day: PositiveFloat = 1000.0
     mucking_tonnes_per_day: PositiveFloat = 1500.0
@@ -828,6 +843,120 @@ class LayoutV2Config(ApiModel):
         return self
 
 
+# --------------------------------------------------------------------------- #
+# Phase 20C.2B — shaft infrastructure + capability graph configuration
+# --------------------------------------------------------------------------- #
+
+#: default capability set per declared shaft role (rule 185): a planning
+#: convention that seeds ``ShaftSpec.capabilities`` — always persisted
+#: resolved, editable per shaft, never inferred from geometry alone
+SHAFT_ROLE_DEFAULT_CAPABILITIES: dict[ShaftRole, tuple[Capability, ...]] = {
+    ShaftRole.PRODUCTION: (
+        Capability.PERSONNEL_ACCESS,
+        Capability.MATERIAL_HAULAGE,
+        Capability.VENTILATION_PATH,
+        Capability.UTILITY_SERVICE,
+        Capability.EMERGENCY_EGRESS,
+    ),
+    ShaftRole.SERVICE: (
+        Capability.PERSONNEL_ACCESS,
+        Capability.VENTILATION_PATH,
+        Capability.UTILITY_SERVICE,
+        Capability.EMERGENCY_EGRESS,
+    ),
+    ShaftRole.VENTILATION: (Capability.VENTILATION_PATH,),
+}
+
+
+class ShaftSpec(ApiModel):
+    """One declared vertical shaft (Phase 20C.2B, rules 182–184). A shaft is
+    an infrastructure primitive ADDED to the selected layout — never a
+    layout-v2 family and never a replacement for the ramp. Its geometry is
+    planned deterministically by the backend from these explicit parameters;
+    no placement optimization exists."""
+
+    shaft_id: Annotated[str, Field(pattern=r"^[A-Z0-9][A-Z0-9\-]{0,31}$")] = "SHAFT-01"
+    role: ShaftRole = ShaftRole.PRODUCTION
+    #: explicit collar PLAN position (elevation always from the terrain);
+    #: ``None`` → the deterministic default placement (rule 182)
+    collar: Point2D | None = None
+    #: circular excavation diameter (m)
+    diameter: Annotated[float, Field(gt=0.0, le=15.0)] = 6.0
+    #: level ids the shaft must serve with a station; empty → every level
+    #: with a SUCCESS level development. Every listed level is REQUIRED.
+    level_ids: list[str] = Field(default_factory=list)
+    #: sump below the lowest station (m) — the shaft bottom
+    bottom_sump_depth: PositiveFloat = 10.0
+    #: default-placement plan stand-off from the target-level entry centroid
+    #: away from the orebody plan centre (m) — planning default, never
+    #: statutory; unused for an explicit collar
+    collar_standoff: PositiveFloat = 40.0
+    #: declared capabilities (rule 185); ``None`` → the role default,
+    #: resolved at validation so the persisted scenario is explicit
+    capabilities: list[Capability] | None = None
+
+    @model_validator(mode="after")
+    def _resolve_capabilities(self) -> ShaftSpec:
+        if self.capabilities is None:
+            self.capabilities = list(SHAFT_ROLE_DEFAULT_CAPABILITIES[self.role])
+        elif len(set(self.capabilities)) != len(self.capabilities):
+            raise ValueError("shaft capabilities must be unique")
+        if len(set(self.level_ids)) != len(self.level_ids):
+            raise ValueError("shaft levelIds must be unique")
+        return self
+
+
+class ShaftPlanningConfig(ApiModel):
+    """Phase 20C.2B shaft planning parameters. ``specs`` empty (the default)
+    means no shaft: every no-shaft artifact is unchanged (rule 184)."""
+
+    specs: list[ShaftSpec] = Field(default_factory=list)
+    #: hard ceiling on one station drive (m) — SHAFT_STATION_CONNECTION_INFEASIBLE
+    maximum_station_access_length: PositiveFloat = 200.0
+    #: minimum plan clearance between two shaft envelopes (m); ``None`` →
+    #: 2 × tunnel width (the rule 171 rock-pillar default)
+    minimum_shaft_separation: PositiveFloat | None = None
+
+    @model_validator(mode="after")
+    def _unique_ids(self) -> ShaftPlanningConfig:
+        ids = [s.shaft_id for s in self.specs]
+        if len(set(ids)) != len(ids):
+            raise ValueError("shaft ids must be unique")
+        return self
+
+
+#: default capability set per physical edge type (rule 185): every
+#: development drive may carry every capability in v0.1; SHAFT and
+#: SHAFT_STATION_ACCESS edges take the owning shaft's DECLARED set instead
+EDGE_TYPE_DEFAULT_CAPABILITIES: dict[EdgeType, tuple[Capability, ...]] = {
+    EdgeType.RAMP: tuple(Capability),
+    EdgeType.LEVEL_ACCESS: tuple(Capability),
+    EdgeType.DRIFT: tuple(Capability),
+    EdgeType.CROSSCUT: tuple(Capability),
+}
+
+
+class CapabilityConfig(ApiModel):
+    """Phase 20C.2B capability-graph configuration (rule 185). Declared
+    per-edge-type capability sets; ``None`` keeps the module defaults.
+    Capability is a typed tag (may / may not) — never a capacity."""
+
+    edge_type_capabilities: dict[EdgeType, list[Capability]] | None = None
+
+    @model_validator(mode="after")
+    def _validate(self) -> CapabilityConfig:
+        if self.edge_type_capabilities is not None:
+            for etype, caps in self.edge_type_capabilities.items():
+                if etype in (EdgeType.SHAFT, EdgeType.SHAFT_STATION_ACCESS):
+                    raise ValueError(
+                        f"{etype.value} capabilities are declared per shaft "
+                        "(ShaftSpec.capabilities), not per edge type"
+                    )
+                if len(set(caps)) != len(caps):
+                    raise ValueError(f"duplicate capability for edge type {etype.value}")
+        return self
+
+
 class ScenarioCreate(ApiModel):
     """Payload for ``POST /scenarios``. Every field has a default so an empty
     body produces a valid baseline scenario."""
@@ -861,6 +990,10 @@ class ScenarioCreate(ApiModel):
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)
     #: Phase 20A layout-v2 search configuration (additive; schema v2 stays)
     layout: LayoutV2Config = Field(default_factory=LayoutV2Config)
+    #: Phase 20C.2B shaft infrastructure + capability semantics (additive;
+    #: empty specs = no shaft, schema v2 stays)
+    shafts: ShaftPlanningConfig = Field(default_factory=ShaftPlanningConfig)
+    capability: CapabilityConfig = Field(default_factory=CapabilityConfig)
 
     @model_validator(mode="before")
     @classmethod
