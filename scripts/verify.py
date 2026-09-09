@@ -152,13 +152,13 @@ class Runner:
     # -- gates ----------------------------------------------------------------- #
 
     def backend_static(self) -> None:
-        self.run("ruff-check", [str(BACKEND / ".venv" / "bin" / "ruff"), "check", "."], BACKEND)
-        self.run(
-            "ruff-format",
-            [str(BACKEND / ".venv" / "bin" / "ruff"), "format", "--check", "."],
-            BACKEND,
-        )
-        self.run("mypy", [str(BACKEND / ".venv" / "bin" / "mypy"), "src"], BACKEND)
+        # tools are invoked through the interpreter (``-m``) so the same
+        # runner works in the local .venv AND on a CI runner where the dev
+        # extras are installed into the system Python (no .venv/bin/*)
+        py = _python()
+        self.run("ruff-check", [py, "-m", "ruff", "check", "."], BACKEND)
+        self.run("ruff-format", [py, "-m", "ruff", "format", "--check", "."], BACKEND)
+        self.run("mypy", [py, "-m", "mypy", "src"], BACKEND)
 
     def frontend_full(self) -> None:
         npm = shutil.which("npm") or "npm"
