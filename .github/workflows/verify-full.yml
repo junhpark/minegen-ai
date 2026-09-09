@@ -1,0 +1,65 @@
+# VA-01 FULL tier (additive — the original ci.yml stays untouched until the
+# same-HEAD old/new FULL equivalence is proven, §34). Authoritative: the exact
+# gate list of ci.yml, pytest UNFILTERED, plus the mechanical collection
+# coverage proof (collected(FULL) == collected(all)). A FULL result is merge
+# evidence only for the HEAD it ran on (gitHead in the summary).
+name: Verify FULL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: verify-full-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-backend:
+    name: FULL backend (ruff · mypy · pytest unfiltered · coverage proof)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install
+        working-directory: backend
+        run: pip install -e ".[dev]"
+      - name: verify full (backend)
+        run: python scripts/verify.py full --backend-only
+      - name: Upload verification summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-full-backend
+          path: backend/.verification/
+          retention-days: 14
+
+  full-frontend:
+    name: FULL frontend (typecheck · lint · prettier · vitest · build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: typecheck
+        run: npm run typecheck
+      - name: lint
+        run: npm run lint
+      - name: prettier --check
+        run: npx prettier --check "src/**/*.{ts,tsx,css}"
+      - name: vitest
+        run: npm test
+      - name: build
+        run: npm run build

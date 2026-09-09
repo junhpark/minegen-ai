@@ -909,3 +909,29 @@ bit-compatible; WARPED stopes remain the typed Phase 09 boundary. The
 artifact ownership, invalidation chains and downstream builders (network,
 development mesh, timeline, communication, sensors) are unchanged — they
 consume the same `levels.json` contract.
+
+## Verification tiers (VA-01)
+
+Verification is tiered so the inner loop is fast while release evidence stays
+complete (`scripts/verify.py`; details and the baseline profile in
+`docs/verification.md`):
+
+| tier | command | scope | authority |
+|---|---|---|---|
+| FAST | `python scripts/verify.py fast` | ruff · format · mypy · pytest `-m "not slow and not golden and not survey and not e2e and not legacy_regression and not benchmark"` (491 of 564 tests at VA-01) incl. cached canaries | development only |
+| FEATURE | `python scripts/verify.py feature` | FAST ∪ `canary` (clean TABULAR-REFERENCE / WARPED-301 pipelines, fixture freshness) | milestone gate |
+| FULL | `python scripts/verify.py full [--closeout] [--legacy]` | every old-CI gate, pytest UNFILTERED, frontend gates, mechanical coverage proof; `--closeout` adds golden / survey / screen-audit compact summaries, `--legacy` the 22-case suite | merge evidence for its exact HEAD |
+| BENCHMARK | `python scripts/verify.py benchmark` | reference-case stage runtimes → `runtime-summary.json` | observation only |
+
+Invariants: `collected(FULL) == collected(unfiltered)` and
+`excludedFromFast ⊆ FULL` (`verify.py collect-full`, pinned by
+`tests/test_verification_tiers.py`); markers are assigned centrally in
+`backend/tests/conftest.py` (module / test / expensive-fixture tables) under
+`--strict-markers`. Session-shared upstream fixtures are read-only with a
+teardown fingerprint check. Cached verification fixtures
+(`backend/tests/fixtures/verification/`, generator
+`scripts/generate_verification_fixtures.py`) carry a content fingerprint that
+FULL re-derives cleanly — a mismatch is an explicit STALE VERIFICATION
+FIXTURE failure. Outputs: `backend/.verification/verification-summary.json`
+plus per-step logs (git-ignored). CI: `verify-fast.yml` / `verify-full.yml`
+run alongside the original `ci.yml` until same-HEAD equivalence is proven.
