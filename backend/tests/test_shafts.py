@@ -369,3 +369,104 @@ def test_network_refuses_failed_or_stale_shaft_artifacts(
     res = _network(sc, levels, failed)
     assert res.payload.status == "FAILED" and "not consumable" in (res.payload.failure_reason or "")
     assert res.payload.nodes == [] and res.payload.edges == []
+
+
+# -- downstream consumers: timeline + infrastructure (directive amendment A3) -- #
+
+
+def _stopes(sc: Scenario, world: SyntheticWorld, levels: dict[str, Any]) -> dict[str, Any]:
+    from minegen.mining.methods.base import strategy_for
+
+    strategy = strategy_for(sc.mining.method)
+    assert strategy is not None
+    hard = DesignCostEvaluator(world, sc.design, DesignContext.crosscut(sc.design))
+    payload = strategy.generate(sc, world, levels, hard, "rev")
+    assert payload.status == "SUCCESS", payload.failure_reason
+    return payload.model_dump(mode="json", by_alias=True)
+
+
+def test_timeline_sinks_the_shaft_from_the_collar_and_drives_stations_from_the_shaft(
+    tabular_levels: tuple[Scenario, SyntheticWorld, dict[str, Any]],
+) -> None:
+    from minegen.scheduling.builder import MineTimelineBuilder
+
+    sc, world, levels = tabular_levels
+    fx = load_fixture("tabular_small_selected")
+    shafts = _plan(sc, world, levels, ShaftSpec())
+    stopes = _stopes(sc, world, levels)
+    net = _network(sc, levels, shafts).payload.model_dump(mode="json", by_alias=True)
+    net_plain = _network(sc, levels, None).payload.model_dump(mode="json", by_alias=True)
+    shafts_dict = shafts.model_dump(mode="json", by_alias=True)
+    build = MineTimelineBuilder(sc).build
+    tl = build(net, stopes, fx["effectiveRamp"], levels, "rev", fx["levelAccesses"], shafts_dict)
+    assert tl.status == "SUCCESS", tl.failure_reason
+    plain = build(net_plain, stopes, fx["effectiveRamp"], levels, "rev", fx["levelAccesses"])
+    assert plain.status == "SUCCESS", plain.failure_reason
+    tasks = {t.id: t for t in tl.tasks}
+    shaft_edges = [e for e in net["edges"] if e["type"] == "SHAFT"]
+    access_edges = [e for e in net["edges"] if e["type"] == "SHAFT_STATION_ACCESS"]
+    # one DEVELOP_SHAFT task per axis segment, chained collar → deeper
+    prev = None
+    for e in shaft_edges:
+        t = tasks[f"TASK:DEVELOP:{e['id']}"]
+        assert t.task_type.value == "DEVELOP_SHAFT"
+        assert t.basis.rate == sc.schedule.shaft_sink_m_per_day
+        assert t.duration_days == pytest.approx(e["length3d"] / sc.schedule.shaft_sink_m_per_day)
+        assert t.dependencies == ([] if prev is None else [prev])
+        prev = t.id
+    # a station drive waits for the sinking task that reaches its station
+    sink_by_station = {e["toNode"]: f"TASK:DEVELOP:{e['id']}" for e in shaft_edges}
+    for e in access_edges:
+        t = tasks[f"TASK:DEVELOP:{e['id']}"]
+        assert t.task_type.value == "DEVELOP_SHAFT_STATION_ACCESS"
+        assert t.dependencies == [sink_by_station[e["fromNode"]]]
+        assert t.start_day == pytest.approx(tasks[sink_by_station[e["fromNode"]]].end_day)
+    # excavation direction: shaft from the collar side, drive from the station
+    by_edge = {d.edge_id: d for d in tl.developments}
+    for e in shaft_edges + access_edges:
+        d = by_edge[e["id"]]
+        assert d.excavation_start_node == e["fromNode"] and d.progress_direction == 1
+        assert d.geometry_ref.artifact == "shafts.json"
+        assert d.point_chainage_fractions == [0.0, 1.0]
+    # the ramp-rooted level schedule is unchanged by the shaft (rule 85)
+    plain_tasks = {t.id: t for t in plain.tasks}
+    for tid, t in plain_tasks.items():
+        assert tasks[tid].start_day == pytest.approx(t.start_day)
+        assert tasks[tid].end_day == pytest.approx(t.end_day)
+        assert tasks[tid].dependencies == t.dependencies
+    assert set(tasks) - set(plain_tasks) == {
+        f"TASK:DEVELOP:{e['id']}" for e in shaft_edges + access_edges
+    }
+
+
+def test_infrastructure_domain_and_communication_accept_shaft_edges(
+    tabular_levels: tuple[Scenario, SyntheticWorld, dict[str, Any]],
+) -> None:
+    from minegen.infrastructure.builder import CommunicationBuilder
+    from minegen.infrastructure.network_domain import InfrastructureNetworkDomain
+
+    sc, world, levels = tabular_levels
+    fx = load_fixture("tabular_small_selected")
+    shafts = _plan(sc, world, levels, ShaftSpec())
+    net = _network(sc, levels, shafts).payload.model_dump(mode="json", by_alias=True)
+    shafts_dict = shafts.model_dump(mode="json", by_alias=True)
+    domain = InfrastructureNetworkDomain.build(
+        net, fx["effectiveRamp"], levels, fx["levelAccesses"], shafts_dict
+    )
+    assert np.all(np.isfinite(domain.node_dist))
+    collar = domain.node_index["SHAFT_COLLAR:SHAFT-01"]
+    bottom = domain.node_index["SHAFT_BOTTOM:SHAFT-01"]
+    shaft = shafts.shafts[0]
+    assert shaft.metrics is not None
+    # geodesic collar → bottom along the axis is the shaft length (3-D, vertical)
+    assert domain.node_dist[collar, bottom] == pytest.approx(shaft.metrics.total_shaft_length3d)
+    comm = CommunicationBuilder(sc).build(
+        net, fx["effectiveRamp"], levels, "rev", fx["levelAccesses"], shafts_dict
+    )
+    assert comm.status == "SUCCESS", comm.failure_reason
+    # a shaft artifact whose edges are present but the payload is withheld
+    # is a typed domain failure (never a KeyError)
+    from minegen.infrastructure.network_domain import DomainValidationError
+
+    with pytest.raises(DomainValidationError, match="out of range"):
+        InfrastructureNetworkDomain.build(net, fx["effectiveRamp"], levels, fx["levelAccesses"])

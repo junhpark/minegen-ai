@@ -30,7 +30,11 @@ from typing import Any, Literal
 
 import numpy as np
 
-from minegen.core.artifacts import LEVEL_ACCESSES_ARTIFACT, RAMP_OWNING_ARTIFACTS
+from minegen.core.artifacts import (
+    LEVEL_ACCESSES_ARTIFACT,
+    RAMP_OWNING_ARTIFACTS,
+    SHAFTS_ARTIFACT,
+)
 from minegen.core.enums import ObjectState, TaskType
 from minegen.core.models import Scenario
 from minegen.network.models import GeometryRef
@@ -56,6 +60,9 @@ _DEV_TASK_TYPE = {
     "LEVEL_ACCESS": TaskType.DEVELOP_LEVEL_ACCESS,
     "DRIFT": TaskType.DEVELOP_LEVEL,
     "CROSSCUT": TaskType.DEVELOP_CROSSCUT,
+    # Phase 20C.2B: shaft sinking collar → deeper, station drives from the station
+    "SHAFT": TaskType.DEVELOP_SHAFT,
+    "SHAFT_STATION_ACCESS": TaskType.DEVELOP_SHAFT_STATION_ACCESS,
 }
 
 
@@ -112,7 +119,12 @@ def solve_earliest_start(tasks: dict[str, TimelineTask]) -> str | None:
     return None
 
 
-_OWNING_ARTIFACTS = (*RAMP_OWNING_ARTIFACTS, LEVEL_ACCESSES_ARTIFACT, "levels.json")
+_OWNING_ARTIFACTS = (
+    *RAMP_OWNING_ARTIFACTS,
+    LEVEL_ACCESSES_ARTIFACT,
+    "levels.json",
+    SHAFTS_ARTIFACT,
+)
 
 
 def _resolve_centerline(
@@ -120,6 +132,7 @@ def _resolve_centerline(
     smoothed_payload: dict[str, Any],
     levels_payload: dict[str, Any],
     accesses_payload: dict[str, Any] | None = None,
+    shafts_payload: dict[str, Any] | None = None,
 ) -> tuple[list[float] | None, str | None]:
     """Safely resolve a GeometryRef to its owning centerline points
     (blocker 2): malformed references return a reason, never raise
@@ -137,6 +150,9 @@ def _resolve_centerline(
         container = "effectiveCenterline"
     elif artifact == LEVEL_ACCESSES_ARTIFACT:
         owners = (accesses_payload or {}).get("accesses")
+        container = "centerline"
+    elif artifact == SHAFTS_ARTIFACT:
+        owners = (shafts_payload or {}).get("centerlines")
         container = "centerline"
     else:
         owners = levels_payload.get("developments")
@@ -180,6 +196,7 @@ class MineTimelineBuilder:
         levels_payload: dict[str, Any],
         source_revision: str,
         accesses_payload: dict[str, Any] | None = None,
+        shafts_payload: dict[str, Any] | None = None,
     ) -> TimelinePayload:
         sch = self.schedule
         # -- prerequisite gates (rule 86): FAILED inputs never schedule ------ #
@@ -239,6 +256,8 @@ class MineTimelineBuilder:
             "LEVEL_ACCESS": (sch.level_access_advance_m_per_day, "m/day"),
             "DRIFT": (sch.drift_advance_m_per_day, "m/day"),
             "CROSSCUT": (sch.crosscut_advance_m_per_day, "m/day"),
+            "SHAFT": (sch.shaft_sink_m_per_day, "m/day"),
+            "SHAFT_STATION_ACCESS": (sch.shaft_station_access_advance_m_per_day, "m/day"),
         }
         for e in edges:
             etype = e["type"]
@@ -246,8 +265,7 @@ class MineTimelineBuilder:
                 return _failed(
                     source_revision,
                     f"UNSUPPORTED_DEVELOPMENT_TYPE: edge {e['id']} has type {etype} — "
-                    "RAISE/SHAFT scheduling is not implemented in Phase 10 and is "
-                    "never silently ignored",
+                    "RAISE scheduling is not implemented and is never silently ignored",
                 )
             rate, rate_unit = rate_by_type[etype]
             length = float(e["length3d"])
@@ -331,6 +349,54 @@ class MineTimelineBuilder:
             tid = dev_task_by_edge[e["id"]]
             tasks[tid].dependencies.append(ramp_task)
             ramp_task_by_entry[e["toNode"]] = tid
+            start_node_by_edge[e["id"]] = str(e["fromNode"])
+
+        # -- Phase 20C.2B shafts: sink collar → deeper, then station drives ---- #
+        # A shaft is sunk from its SHAFT_COLLAR (a surface node) segment by
+        # segment; a station drive starts once the sinking task reaches its
+        # SHAFT_STATION and is excavated FROM the station toward the level
+        # node (rule 174). Level development stays rooted at the ramp access
+        # (rule 85) — a shaft adds connectivity, never a second root.
+        shaft_by_from: dict[str, dict[str, Any]] = {}
+        for e in edges:
+            if e["type"] == "SHAFT":
+                if e["fromNode"] in shaft_by_from:
+                    return _failed(source_revision, f"shaft chain branches at {e['fromNode']}")
+                shaft_by_from[e["fromNode"]] = e
+        shaft_task_by_station: dict[str, str] = {}
+        collar_ids = sorted(n["id"] for n in node_list if n["type"] == "SHAFT_COLLAR")
+        for cid in collar_ids:
+            cursor = cid
+            prev_shaft_task: str | None = None
+            walked_shaft: set[str] = set()
+            while cursor in shaft_by_from:
+                if cursor in walked_shaft:
+                    return _failed(source_revision, f"shaft chain from {cid} contains a cycle")
+                walked_shaft.add(cursor)
+                e = shaft_by_from.pop(cursor)
+                tid = dev_task_by_edge[e["id"]]
+                if prev_shaft_task is not None:
+                    tasks[tid].dependencies.append(prev_shaft_task)
+                shaft_task_by_station[e["toNode"]] = tid
+                start_node_by_edge[e["id"]] = str(e["fromNode"])
+                prev_shaft_task = tid
+                cursor = e["toNode"]
+        if shaft_by_from:
+            leftovers = sorted(e["id"] for e in shaft_by_from.values())
+            return _failed(
+                source_revision, f"shaft edges are not reachable from a SHAFT_COLLAR: {leftovers}"
+            )
+        for e in sorted(
+            (e for e in edges if e["type"] == "SHAFT_STATION_ACCESS"), key=lambda e: e["id"]
+        ):
+            sink_task = shaft_task_by_station.get(e["fromNode"])
+            if sink_task is None:
+                return _failed(
+                    source_revision,
+                    f"no SHAFT sinking task reaches the station {e['fromNode']} of {e['id']}",
+                )
+            tid = dev_task_by_edge[e["id"]]
+            tasks[tid].dependencies.append(sink_task)
             start_node_by_edge[e["id"]] = str(e["fromNode"])
 
         # -- level-development access precedence (§7, rule 85) --------------- #
@@ -573,7 +639,7 @@ class MineTimelineBuilder:
         for e in edges:
             ref = e["geometryRef"]
             points, resolve_failure = _resolve_centerline(
-                ref, smoothed_payload, levels_payload, accesses_payload
+                ref, smoothed_payload, levels_payload, accesses_payload, shafts_payload
             )
             if points is None:
                 return _failed(

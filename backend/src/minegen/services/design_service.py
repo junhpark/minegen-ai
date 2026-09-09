@@ -875,6 +875,7 @@ class DesignService:
             Path(self.stopes_path(scenario_id)),
             *self._ramp_input_paths(scenario_id),
             Path(self.levels_path(scenario_id)),
+            Path(self.shafts_path(scenario_id)),  # Phase 20C.2B optional owner
         ]
 
     def timeline_fingerprint(self, scenario_id: str) -> InputFingerprint:
@@ -890,6 +891,7 @@ class DesignService:
         smoothed_payload = self.effective_ramp(scenario_id)
         accesses_payload = self.active_level_accesses(scenario_id)
         levels_payload = self.levels(scenario_id)
+        shafts_payload = self.shafts_if_present(scenario_id)  # optional (rule 184)
         scenario = self.store.get(scenario_id)
         source_revision = hashlib.sha256(
             json.dumps(fingerprint.entries, sort_keys=True).encode()
@@ -902,6 +904,11 @@ class DesignService:
             levels_payload.model_dump(mode="json", by_alias=True),
             source_revision,
             accesses_payload=accesses_payload,
+            shafts_payload=(
+                shafts_payload.model_dump(mode="json", by_alias=True)
+                if shafts_payload is not None
+                else None
+            ),
         )
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):
