@@ -16,6 +16,12 @@ from typing import Any
 
 import numpy as np
 
+from minegen.capability.builder import (
+    CapabilityGraphBuilder,
+    can_reach,
+    query_graph_from,
+)
+from minegen.capability.models import CapabilityGraphPayload, CapabilityPathQuery
 from minegen.core.artifacts import (
     CAPABILITY_GRAPH_ARTIFACT,
     LAYOUT_V2_ARTIFACT,
@@ -25,7 +31,7 @@ from minegen.core.artifacts import (
     RAMP_SOURCE_FILE,
     SHAFTS_ARTIFACT,
 )
-from minegen.core.enums import DistanceContract, OrebodyType
+from minegen.core.enums import Capability, DistanceContract, OrebodyType
 from minegen.core.models import Scenario
 from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import ClearancePolicy, DesignCostEvaluator, clearance_policy_for
@@ -99,6 +105,31 @@ class NetworkNotFoundError(LookupError):
 
 class ShaftsNotGeneratedError(LookupError):
     """shafts.json does not exist for the scenario (Phase 20C.2B)."""
+
+
+class CapabilityGraphNotGeneratedError(LookupError):
+    """capability_graph.json does not exist for the scenario (Phase 20C.2B)."""
+
+
+class CapabilityGraphStaleError(RuntimeError):
+    """capability_graph.json was built over a different ``network.json``
+    revision than the one on disk (rule 185): never silently reused."""
+
+    code = "CAPABILITY_GRAPH_STALE"
+
+    def __init__(self, scenario_id: str) -> None:
+        super().__init__(
+            f"the capability graph of scenario '{scenario_id}' belongs to a previous "
+            "network revision; POST …/design/capability-graph again"
+        )
+
+
+class UnknownNetworkNodeError(LookupError):
+    """A capability path query names a node id the network does not have."""
+
+    def __init__(self, node_id: str) -> None:
+        super().__init__(f"network node '{node_id}' does not exist")
+        self.node_id = node_id
 
 
 class ShaftsStaleError(RuntimeError):
@@ -1018,6 +1049,78 @@ class DesignService:
             raise ShaftsStaleError(scenario_id)
         return payload
 
+    # -- capability graph (Phase 20C.2B, rule 185) --------------------------- #
+
+    def _capability_input_paths(self, scenario_id: str) -> list[Path]:
+        # declared capability config from scenario.json, topology from
+        # network.json, shaft-declared sets from shafts.json (optional owner)
+        return [
+            Path(self.store.scenario_path(scenario_id)),
+            Path(self.network_path(scenario_id)),
+            Path(self.shafts_path(scenario_id)),
+        ]
+
+    def capability_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return InputFingerprint.capture(self._capability_input_paths(scenario_id))
+
+    def generate_capability_graph(self, scenario_id: str) -> CapabilityGraphPayload:
+        """Semantic layer over the persisted MineNetwork (rule 185): explicit
+        capability assignment, reference / revision validation, required
+        capability paths and the egress advisory. Synchronous; touches
+        nothing upstream and nothing downstream."""
+        fingerprint = self.capability_fingerprint(scenario_id)
+        network_payload = self.network(scenario_id)  # NetworkNotFoundError if absent
+        shafts_payload = self.shafts_if_present(scenario_id)
+        network_revision = file_revision(self.network_path(scenario_id)) or ""
+        scenario = self.store.get(scenario_id)
+        source_revision = hashlib.sha256(
+            json.dumps(fingerprint.entries, sort_keys=True).encode()
+        ).hexdigest()[:16]
+        payload = CapabilityGraphBuilder(scenario).build(
+            network_payload.model_dump(mode="json", by_alias=True),
+            shafts_payload.model_dump(mode="json", by_alias=True) if shafts_payload else None,
+            source_revision,
+            network_revision,
+        )
+        serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
+        with self.store.lock(scenario_id):
+            if self.capability_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            path = self.capability_graph_path(scenario_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(serialized, encoding="utf-8")
+        return payload
+
+    def capability_graph(self, scenario_id: str) -> CapabilityGraphPayload:
+        """The persisted graph, refused (409) when ``network.json`` moved on
+        without it — silent reuse of a stale semantic layer is forbidden."""
+        self.store.get(scenario_id)
+        path = self.capability_graph_path(scenario_id)
+        if not path.is_file():
+            raise CapabilityGraphNotGeneratedError(scenario_id)
+        payload = CapabilityGraphPayload.model_validate(
+            json.loads(path.read_text(encoding="utf-8"))
+        )
+        if payload.network_revision != (file_revision(self.network_path(scenario_id)) or ""):
+            raise CapabilityGraphStaleError(scenario_id)
+        return payload
+
+    def capability_path(
+        self, scenario_id: str, source: str, target: str, capability: Capability
+    ) -> CapabilityPathQuery:
+        """``can_reach(source, target, capability)`` (directive §35): the
+        physical answer and the capability-filtered answer, distinct."""
+        cap = self.capability_graph(scenario_id)
+        network = self.network(scenario_id)
+        graph = query_graph_from(
+            network.model_dump(mode="json", by_alias=True),
+            cap.model_dump(mode="json", by_alias=True),
+        )
+        for nid in (source, target):
+            if nid not in graph.node_ids:
+                raise UnknownNetworkNodeError(nid)
+        return can_reach(graph, source, target, capability)
+
     def _network_input_paths(self, scenario_id: str) -> list[Path]:
         # the network consumes cross-section config from scenario.json, the
         # RAMP centerlines from the smoothed artifact (rule 68) and the level
@@ -1071,6 +1174,7 @@ class DesignService:
             self._delete_timeline_artifact(scenario_id)  # rule 86: rebuild, never patch
             self._delete_communication_artifact(scenario_id)  # rule 92
             self._delete_sensors_artifact(scenario_id)  # rule 98
+            self._delete_capability_graph_artifact(scenario_id)  # rule 185: network → capability
         return result.payload
 
     def network(self, scenario_id: str) -> NetworkPayload:
