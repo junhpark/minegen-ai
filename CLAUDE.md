@@ -1658,3 +1658,33 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      and capability reachability separately. The five v0.1 capabilities are
      typed may / may-not tags; tonnes/hour, people/hour, airflow and hoist
      cycles are never modelled here.
+
+186. Construction ServiceReference (Phase 20C.4 — "align the reference, not
+     the threshold"). The layout-v2 ramp corridor and the level-development
+     anchors share ONE spacing reference. A candidate's ore-facing corridor
+     lateral is `footwall_edge(z)·n + footwallStandoff + delta(z)`, where
+     `delta` (`layout/reference.py`, built once per search from the
+     WORLD-policy offset traces stage 4 already caches under the token
+     `"WORLD"`, trace interior only) is `max(0, support +
+     RAMP_CORRIDOR_MARGIN_WIDTHS × width − current lateral)` over the
+     reference points inside the ramp's OWN along-extent — SPIRAL: the rim
+     `R` about the axis; SWITCHBACK: `leg/2 + R_min` about the shared leg
+     centre, consumed as the PAIR-BAND maximum (± 2 cycles) against the most
+     ore-ward track edge inside the band, because a near leg placed at a
+     pair start serves every level of its pair — piecewise-linear in z,
+     constant beyond the levels and never negative: the corridor is only
+     ever moved OUTWARD, an empty footprint is 0 (never a whole-trace
+     fallback), and the lateral projection can only over-shoot the
+     perpendicular need on an oblique backbone. It is a CONSERVATIVE
+     CONSTRUCTION reference, not the candidate's stage-4 field: the REFINED
+     candidate backbone never lies outward of it (dominance, tested against
+     the section grid resolution). Inactive — `delta` exactly `0.0`,
+     geometry bit-identical — on TABULAR (analytic path) and for an explicit
+     `layout.footwallStandoff`; LONGITUDINAL is unchanged (deferred). No
+     hard gate, threshold, score coefficient, screen semantic or
+     access-planner authority changes with it: the access planner still
+     decides service and typed failures stay typed. Every candidate reports
+     `derived.corridorCorrection` and the search reports
+     `performance.serviceReference`. Ramp ↔ level-drift proximity is
+     measured by no gate (Gate C step 0 observation); a separation
+     DIAGNOSTIC, never a gate, is a follow-up.

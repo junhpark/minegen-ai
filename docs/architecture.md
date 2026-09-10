@@ -880,7 +880,7 @@ files. Git LFS is deliberately not used. Policy:
   …); its full JSON is deleted when the next phase's baseline lands.
 - A golden a test references is exempt from deletion (grep `backend/tests`
   before deleting — `phase17_baseline.json`, `phase19_warped_vein.json`,
-  `phase20c2a_layout_v2.json` are referenced today).
+  `phase20c4_layout_v2.json` are referenced today).
 - The legacy 22-case golden files (`phase17_baseline`, `phase18_after_migration`,
   `phase19_full`, `phase20a_full`, `phase20b_full`, `phase20b_closeout_full`)
   are the regression lock of rule 132 and are NEVER deleted.
