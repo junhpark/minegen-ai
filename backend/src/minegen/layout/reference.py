@@ -95,7 +95,7 @@ class DeltaProfile:
     returns exactly ``0.0`` so an unaffected corridor is bit-identical to
     the pre-reference geometry."""
 
-    __slots__ = ("_d_asc", "_deltas", "_levels", "_z_asc", "zero")
+    __slots__ = ("_d_asc", "_deltas", "_levels", "_z", "_z_asc", "zero")
 
     def __init__(self, elevations: FloatArray, deltas: FloatArray, level_ids: tuple[str, ...]):
         z = np.asarray(elevations, dtype=np.float64)
@@ -105,6 +105,7 @@ class DeltaProfile:
         order = np.argsort(z)  # np.interp needs ascending abscissae
         self._z_asc = z[order]
         self._d_asc = d[order]
+        self._z = z
         self._deltas = d
         self._levels = level_ids
         self.zero = bool(d.size == 0 or not np.any(d > 0.0))
@@ -128,6 +129,47 @@ class DeltaProfile:
             "maxDelta": self.max_delta,
             "deltas": {lid: float(d) for lid, d in zip(self._levels, self._deltas, strict=True)},
         }
+
+    def band_max(self, half_band: float) -> DeltaProfile:
+        """The running maximum of this profile over ``[z − half_band,
+        z + half_band]`` — for a corridor whose lateral is fixed at discrete
+        elevations but serves a vertical span (a SWITCHBACK leg placed at a
+        pair start serves every level of its pair, Gate C step 3). Still
+        piecewise-linear, never negative, ≥ the base profile everywhere; the
+        zero profile stays the exact zero profile."""
+        if self.zero:
+            return self
+        return BandMaxProfile(self, float(half_band))
+
+
+class BandMaxProfile(DeltaProfile):
+    """``max`` of a base ``DeltaProfile`` over a vertical band (see
+    ``DeltaProfile.band_max``). Evaluated exactly: the maximum of a
+    piecewise-linear function over an interval is attained at a knot inside
+    the interval or at an interval end."""
+
+    __slots__ = ("_base", "_half_band")
+
+    def __init__(self, base: DeltaProfile, half_band: float):
+        super().__init__(base._z, base._deltas, base._levels)
+        self._base = base
+        self._half_band = max(0.0, float(half_band))
+
+    def __call__(self, z: float) -> float:
+        if self.zero:
+            return 0.0
+        lo, hi = float(z) - self._half_band, float(z) + self._half_band
+        inside = (self._z_asc >= lo) & (self._z_asc <= hi)
+        best = float(np.max(self._d_asc[inside])) if bool(inside.any()) else 0.0
+        return max(best, self._base(lo), self._base(hi))
+
+    def to_dict(self) -> dict[str, Any]:
+        out = self._base.to_dict()
+        out["bandHalfM"] = self._half_band
+        out["bandMaxDeltas"] = {
+            lid: float(self(float(z))) for lid, z in zip(self._levels, self._z, strict=True)
+        }
+        return out
 
 
 ZERO_PROFILE = DeltaProfile(np.zeros(0), np.zeros(0), ())

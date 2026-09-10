@@ -315,3 +315,38 @@ def test_reference_delta_is_positive_on_the_failing_307_spiral() -> None:
     legacy = replace(ctx, reference=None)
     rebuilt = build_family(cand.params, legacy)
     assert hasattr(rebuilt, "points") and not np.array_equal(rebuilt.points, cand.points)
+
+
+def test_band_max_profile_is_the_exact_running_maximum_and_keeps_the_zero_profile() -> None:
+    """A corridor fixed at discrete elevations that serves a vertical span
+    (SWITCHBACK pairs) reads the running maximum of delta over ± half_band —
+    exact (knots inside the band or the band ends), ≥ the base profile, still
+    never negative, and the zero profile stays the exact zero profile."""
+    base = DeltaProfile(
+        np.array([0.0, -25.0, -50.0, -75.0, -100.0]),
+        np.array([0.0, 0.0, 20.0, 0.0, 4.0]),
+        ("A", "B", "C", "D", "E"),
+    )
+    band = base.band_max(50.0)
+    assert not band.zero and band.max_delta == 20.0
+    # the 20 m knot at −50 is inside every band that reaches it
+    for z in (0.0, -10.0, -50.0, -90.0, -100.0):
+        assert band(z) == 20.0, z
+    # band [−151, −51]: knots −75 (0) and −100 (4) inside, ends base(−51) = 19.2, base(−151) = 4
+    assert band(-101.0) == pytest.approx(19.2)
+    # band [−160, −60]: the upper end base(−60) = 12 wins
+    assert band(-110.0) == pytest.approx(12.0) and band(-110.0) == pytest.approx(base(-60.0))
+    # band [−20, 80] never reaches the 20 m knot at −50: exactly 0
+    assert band(30.0) == 0.0
+    for z in np.linspace(60.0, -160.0, 45):
+        lo, hi = z - 50.0, z + 50.0
+        grid = np.linspace(lo, hi, 2001)
+        brute = max(float(base(float(g))) for g in grid)
+        assert band(float(z)) == pytest.approx(brute, abs=1e-6), z
+        assert band(float(z)) >= base(float(z)) - 1e-12
+    payload = band.to_dict()
+    assert payload["bandHalfM"] == 50.0
+    assert payload["deltas"] == {"A": 0.0, "B": 0.0, "C": 20.0, "D": 0.0, "E": 4.0}
+    assert payload["bandMaxDeltas"] == {"A": 20.0, "B": 20.0, "C": 20.0, "D": 20.0, "E": 20.0}
+    zero = DeltaProfile(np.array([0.0, -25.0]), np.zeros(2), ("A", "B"))
+    assert zero.band_max(50.0) is zero and ZERO_PROFILE.band_max(50.0) is ZERO_PROFILE

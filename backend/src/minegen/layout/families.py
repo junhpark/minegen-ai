@@ -562,6 +562,7 @@ def corridor_profile(
     along: FloatArray,
     centres: FloatArray,
     half: float,
+    base_band_half: float = 0.0,
 ) -> tuple[DeltaProfile, list[dict[str, Any]]]:
     """Outward corridor correction ``delta(z)`` of ONE family corridor under
     the search's construction ``ServiceReference`` (Phase 20C.4, rule 170):
@@ -570,17 +571,33 @@ def corridor_profile(
     half-extent — the ramp's OWN along-extent (SWITCHBACK ``leg/2 + R_min``,
     SPIRAL ``R``). The corridor's current ore-facing lateral per level is
     ``footwall_edge(z)·n + standoff``; the returned profile adds
-    ``max(0, support + margin − that)`` interpolated in z. Without a
-    reference, or with an inactive one (TABULAR, explicit stand-off), the
-    exact zero profile is returned and the geometry is bit-identical."""
+    ``max(0, support + margin − that)`` interpolated in z. A corridor whose
+    lateral is fixed at discrete elevations but serves a vertical span (a
+    SWITCHBACK near leg placed at a pair start) passes ``base_band_half``:
+    its base lateral per level is then the most ore-ward track-edge lateral
+    inside ``± base_band_half`` of the level (the edge is linear in z, so the
+    band ends suffice), so the correction also covers the edge drift the leg
+    lags behind. Without a reference, or with an inactive one (TABULAR,
+    explicit stand-off), the exact zero profile is returned and the geometry
+    is bit-identical."""
     ref = ctx.reference
     if ref is None or not ref.active:
         return ZERO_PROFILE, []
     if ref.elevations.shape[0] != len(ctx.levels):
         raise ValueError("corridor_profile: the reference and the context disagree on the levels")
     n2 = np.asarray(n, dtype=np.float64)[:2]
+    b = max(0.0, float(base_band_half))
+    edge = ctx.track.footwall_edge
     base = np.asarray(
-        [float(ctx.track.footwall_edge(lv.elevation) @ n2) + ctx.standoff for lv in ctx.levels],
+        [
+            ctx.standoff
+            + (
+                float(edge(lv.elevation) @ n2)
+                if b == 0.0
+                else min(float(edge(lv.elevation - b) @ n2), float(edge(lv.elevation + b) @ n2))
+            )
+            for lv in ctx.levels
+        ],
         dtype=np.float64,
     )
     return ref.profile(n2, np.asarray(along, dtype=np.float64)[:2], np.asarray(centres), half, base)
@@ -959,6 +976,18 @@ def build_switchback(
     near_lateral = ctx.standoff  # ore-facing leg
     leg_lateral0 = near_lateral if first_moves_away else near_lateral + 2.0 * r_min + station
     leg_len_nominal = drop_per_cycle / g - math.pi * r_min - station
+    # Phase 20C.4 (rule 170): the near leg's lateral is the construction
+    # ServiceReference lateral — track edge + stand-off + the outward
+    # correction delta(z) that keeps six widths from every level backbone the
+    # stack runs alongside. Footprint = the ramp's own along-extent: every
+    # leg is stacked on ONE along-centre (the track centroid at the join
+    # elevation) and each hairpin adds R_min beyond the leg end (Gate C step
+    # 0). delta enters exactly where the track edge does — the corridor
+    # anchor at the join elevation and the per-pair lateral drift — so an
+    # inactive reference (delta ≡ 0.0) leaves the stack bit-identical. The
+    # stack consumes the PAIR-BAND maximum of delta (± 2 cycles): a near leg
+    # placed at a pair start serves every level its pair passes.
+    footprint_half = 0.5 * leg_len_nominal + r_min
     if leg_len_nominal < ctx.cfg.min_straight_length:
         return FamilyInfeasible(
             InfeasibleReason.LEG_TOO_SHORT,
@@ -973,8 +1002,20 @@ def build_switchback(
     # depends on the approach length, so iterate the fixed point (5 rounds)
     z_join = z1
     start_xy = ctx.portal[:2]
+    profile = ZERO_PROFILE
+    correction_levels: list[dict[str, Any]] = []
     for _ in range(5):
-        corridor_center = tr.footwall_edge(z_join) + n_hat * leg_lateral0
+        leg_centre = np.full(len(ctx.levels), float(tr.centroid(z_join) @ leg_dir))
+        # a near leg placed at a pair start serves every level of its pair
+        # (and the mid-pair near leg takes the smaller boundary lateral), so
+        # the stack reads the PAIR-BAND maximum of delta measured against the
+        # most ore-ward track edge inside the same band (the edge drift a leg
+        # lags behind) — outward-only and exact zero when inactive
+        raw_profile, correction_levels = corridor_profile(
+            ctx, n_hat, leg_dir, leg_centre, footprint_half, base_band_half=2.0 * drop_per_cycle
+        )
+        profile = raw_profile.band_max(2.0 * drop_per_cycle)
+        corridor_center = tr.footwall_edge(z_join) + n_hat * (leg_lateral0 + profile(z_join))
         centroid_along = float((tr.centroid(z_join) - corridor_center) @ leg_dir)
         start_xy = corridor_center + leg_dir * (centroid_along - 0.5 * leg_len_nominal)
         probe = Path(
@@ -1010,7 +1051,9 @@ def build_switchback(
         # radius — hairpins are never shrunk below R_min
         z_a = path.pose.z
         z_pair = max(z_a - 2.0 * drop_per_cycle, ctx.z_last)
-        pair_drift = float((tr.footwall_edge(z_pair) - tr.footwall_edge(z_a)) @ n_hat)
+        pair_drift = float((tr.footwall_edge(z_pair) - tr.footwall_edge(z_a)) @ n_hat) + (
+            profile(z_pair) - profile(z_a)
+        )
         d_cur = path.pose.direction
         right_cur = np.array([d_cur[1], -d_cur[0]])
         move_sign = float(np.sign((sense * right_cur) @ n_hat))
@@ -1059,6 +1102,8 @@ def build_switchback(
             "cycles": cycle + 1,
             "stationLength": station,
             "legSpacing": 2.0 * r_min + station,
+            "corridorCorrection": profile.to_dict(),
+            "corridorCorrectionLevels": correction_levels,
         },
     )
 

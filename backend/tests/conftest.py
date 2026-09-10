@@ -99,6 +99,7 @@ TEST_MARKERS: dict[str, tuple[str, ...]] = {
     "test_warped_vein_is_accepted_by_layout_v2_but_not_by_the_legacy_pipeline": ("slow",),
     # Phase 20C.4 service reference on a fresh WARPED-307 world + search
     "test_reference_delta_is_positive_on_the_failing_307_spiral": ("slow",),
+    "test_307_failing_candidates_now_hold_the_separation_at_every_rl_crossing": ("slow",),
 }
 #: fixtures whose mere request makes a test expensive (a clean WARPED-301
 #: world + search ≈ 60 s): every consumer is `slow`, mechanically — so FAST
