@@ -1,4 +1,4 @@
-# ruff: noqa: E501, SIM115, E741  # diagnostic script (not production)
+# ruff: noqa: E501, SIM115, E741, RUF001  # diagnostic script (not production)
 """Regenerate the Gate B shadow artifact + contract markdown from the candidate-exact shadow run."""
 
 import json
