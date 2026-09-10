@@ -36,7 +36,7 @@ CROSSING_SAMPLE_TOLERANCE_M = 1.0
 def _spiral_frame(
     search: LayoutV2Search, res: LayoutSearchResult, cand: CandidateResult
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
-    track = search._track
+    track = search.context.track
     assert cand.params.entry_orientation_deg is not None
     n = np.asarray(rotate(track.w_h, cand.params.entry_orientation_deg), dtype=np.float64)[:2]
     along = np.array([n[1], -n[0]])
@@ -66,8 +66,8 @@ def test_spiral_rim_holds_the_corridor_intent_against_the_construction_backbone(
     outward of the construction backbone support; the correction is exactly
     the reference profile (outward only) and is reported on the candidate."""
     search, res = warped_301_search
-    ctx = search._ctx
-    ref = search._reference
+    ctx = search.context
+    ref = search.context.reference
     assert ctx is not None and ref is not None and ref.active
     winner = res.candidate(res.winner_id or "")
     assert winner is not None and winner.params.family.value == "SPIRAL"
@@ -112,7 +112,7 @@ def test_uncorrected_candidates_are_bit_identical_and_the_reference_only_moves_o
     reference; every corrected one keeps its family invariants (helix radius
     / leg spacing unchanged) and only moves its corridor outward."""
     search, res = warped_301_search
-    ctx = search._ctx
+    ctx = search.context
     assert ctx is not None
     legacy_ctx: LayoutContext = replace(ctx, reference=None)
     identical = corrected = 0
@@ -150,7 +150,7 @@ def _switchback_frame(
     search: LayoutV2Search, cand: CandidateResult
 ) -> tuple[np.ndarray, np.ndarray]:
     """(n away from the ore, leg direction) of a SWITCHBACK candidate."""
-    track = search._track
+    track = search.context.track
     assert cand.params.principal_orientation_deg is not None
     leg_dir = np.asarray(
         rotate(track.u_h, cand.params.principal_orientation_deg), dtype=np.float64
@@ -230,8 +230,8 @@ def test_switchback_stack_holds_the_corridor_intent_and_keeps_its_family_invaria
     R_min and the leg spacing / nominal leg length are untouched; a
     zero-profile stack is bit-identical to the reference-less build."""
     search, res = warped_301_search
-    ctx = search._ctx
-    ref = search._reference
+    ctx = search.context
+    ref = search.context.reference
     assert ctx is not None and ref is not None and ref.active
     legacy_ctx: LayoutContext = replace(ctx, reference=None)
     levels = res.serviceable_levels
@@ -262,7 +262,7 @@ def test_switchback_stack_holds_the_corridor_intent_and_keeps_its_family_invaria
         # (hence every leg's start) shifts slightly with the corridor, and the
         # legacy near leg follows the linear track edge, so the comparison
         # allows exactly the edge shift between the two legs' start elevations
-        edge = search._track.footwall_edge
+        edge = search.context.track.footwall_edge
         for (z_new, _, lat_new), (z_old, _, lat_old) in zip(new_near, old_near, strict=False):
             edge_shift = abs(float((edge(z_new) - edge(z_old)) @ n))
             assert lat_new >= lat_old - edge_shift - 1e-6, (
@@ -316,7 +316,7 @@ def test_307_failing_candidates_now_hold_the_separation_at_every_rl_crossing() -
     )
     search = LayoutV2Search(sc, generate_world(sc))
     res = search.run()
-    ref = search._reference
+    ref = search.context.reference
     assert ref is not None and ref.active
     levels = res.serviceable_levels
     half_interval = 0.5 * abs(levels[1].elevation - levels[0].elevation)

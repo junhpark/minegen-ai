@@ -135,6 +135,16 @@ importers — reserved namespaces, not implementations. `docs/architecture.md`
 is corrected accordingly in this step; its per-phase decision records keep
 their original wording.
 
+**Correction, AC-01C.** The table above is the pinned `d58c794` snapshot and
+its `file:line` entry points stay pinned there. AC-01C has since split
+`layout/search.py` (1,553 → 1,036 lines): the result DTOs and their
+serialization moved to `layout/results.py`, the clearance certification
+(`ClearanceReport`, `anchor_standoff`, `build_candidate_policy`, the new
+`CandidateCertification`) to `layout/certification.py`, and the selection /
+level-access materialization to `layout/materialize.py`. Every name stays
+importable from `layout.search` through an explicit `__all__`, so the
+`layout/search.py::…` citations elsewhere in the docs remain literally true.
+
 ## 6. Artifact dependency and invalidation, as-is
 
 Three mechanisms carry the whole lifecycle, all in

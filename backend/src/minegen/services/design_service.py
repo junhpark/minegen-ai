@@ -46,14 +46,10 @@ from minegen.design.progress import (
 from minegen.design.smoothing import DeclineSmoother
 from minegen.design.targets import AccessTargetSet, generate_access_targets, resolve_portal
 from minegen.design.tunnel_mesh import TunnelMeshBuilder
-from minegen.layout.search import (
-    CandidateStatus,
-    ClearancePolicyReconstructionError,
-    LayoutSearchResult,
-    LayoutV2Search,
-    materialize_effective_ramp,
-    materialize_level_accesses,
-)
+from minegen.layout.certification import ClearancePolicyReconstructionError
+from minegen.layout.materialize import materialize_effective_ramp, materialize_level_accesses
+from minegen.layout.results import CandidateStatus, LayoutSearchResult
+from minegen.layout.search import LayoutV2Search
 from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
 from minegen.levels.models import LevelsPayload
 from minegen.mining.methods.base import strategy_for, unsupported_method_payload

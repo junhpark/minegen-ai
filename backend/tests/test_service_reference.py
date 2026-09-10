@@ -62,7 +62,7 @@ def _spiral_footprint(
     """(n, along, per-level centres, half) of a SPIRAL candidate's rim."""
     cand = res.candidate(candidate_id)
     assert cand is not None and cand.params.entry_orientation_deg is not None
-    track = search._track
+    track = search.context.track
     n = np.asarray(rotate(track.w_h, cand.params.entry_orientation_deg), dtype=np.float64)[:2]
     along = np.array([n[1], -n[0]])
     radius = float(cand.derived["radius"])
@@ -102,11 +102,11 @@ def test_tabular_reference_is_inactive_and_every_family_is_bit_identical(
     tabular_search: tuple[LayoutV2Search, LayoutSearchResult],
 ) -> None:
     search, res = tabular_search
-    ref = search._reference
+    ref = search.context.reference
     assert ref is not None and not ref.active and ref.inactive_reason == INACTIVE_TABULAR
     assert res.performance["serviceReference"]["active"] is False
     assert res.performance["serviceReference"]["inactiveReason"] == INACTIVE_TABULAR
-    ctx = search._ctx
+    ctx = search.context
     assert ctx is not None and ctx.reference is ref
     legacy = replace(ctx, reference=None)
     compared = 0
@@ -136,11 +136,11 @@ def test_explicit_footwall_standoff_keeps_the_legacy_corridor(
     warped_301_search: tuple[LayoutV2Search, LayoutSearchResult],
 ) -> None:
     search, res = warped_301_search
-    assert search._sections is not None and search._track is not None
+    assert search.context.sections is not None and search.context.track is not None
     ref = build_service_reference(
-        search._sections,
+        search.context.sections,
         res.serviceable_levels,
-        search._track.w_h,
+        search.context.track.w_h,
         orebody=search.world.orebody,
         clearance=search.policy.signed_clearance,
         basis=search.policy.basis,
@@ -169,7 +169,7 @@ def test_warped_reference_is_active_deterministic_and_corrects_outward_only(
     warped_301_search: tuple[LayoutV2Search, LayoutSearchResult],
 ) -> None:
     search, res = warped_301_search
-    ref = search._reference
+    ref = search.context.reference
     assert ref is not None and ref.active and ref.inactive_reason is None
     assert ref.basis == search.policy.basis == "COARSE_CONSERVATIVE"
     assert ref.standoff_source == "DEFAULT_OFFSET_PLUS_CORRIDOR_MARGIN"
@@ -183,7 +183,7 @@ def test_warped_reference_is_active_deterministic_and_corrects_outward_only(
     winner = res.winner_id
     assert winner is not None and winner.startswith("SPIRAL")
     n, along, centres, half = _spiral_footprint(search, res, winner)
-    ctx = search._ctx
+    ctx = search.context
     assert ctx is not None
     prof_a, rec_a = corridor_profile(ctx, n, along, centres, half)
     prof_b, rec_b = corridor_profile(ctx, n, along, centres, half)
@@ -217,11 +217,11 @@ def test_reference_reads_the_same_world_trace_stage_4_caches(
     WORLD-token offset traces (one per serviceable level at the world anchor
     stand-off) that stage-4 coarse anchors read."""
     search, res = warped_301_search
-    assert search._sections is not None and search._reference is not None
-    world_keys = {k for k in search._sections._offsets if k[4] == "WORLD"}
+    assert search.context.sections is not None and search.context.reference is not None
+    world_keys = {k for k in search.context.sections._offsets if k[4] == "WORLD"}
     assert len(world_keys) == len(res.serviceable_levels)
     standoffs = {k[2] for k in world_keys}
-    assert standoffs == {round(search._reference.anchor_standoff, 6)}
+    assert standoffs == {round(search.context.reference.anchor_standoff, 6)}
 
 
 # --------------------------------------------------------------------------- #
@@ -248,8 +248,8 @@ def test_stage_4_backbone_never_lies_outward_of_the_construction_backbone(
     _, policy, refinement = search.candidate_policy(res, winner)
     assert policy.basis == cand.clearance.basis == "REFINED_CONSERVATIVE"
     assert refinement["applied"] is True
-    ref = search._reference
-    sections, track = search._sections, search._track
+    ref = search.context.reference
+    sections, track = search.context.sections, search.context.track
     assert ref is not None and sections is not None and track is not None
     assert sections.resolution is not None
     tolerance = float(sections.resolution.effective_spacing)  # grid-resolution boundary (rule 177)
@@ -299,10 +299,10 @@ def test_reference_delta_is_positive_on_the_failing_307_spiral() -> None:
     world: SyntheticWorld = generate_world(sc)
     search = LayoutV2Search(sc, world)
     res = search.run()
-    ref = search._reference
+    ref = search.context.reference
     assert ref is not None and ref.active
     n, along, centres, half = _spiral_footprint(search, res, "SPIRAL-n1-CW-e+0-g0.100")
-    ctx = search._ctx
+    ctx = search.context
     assert ctx is not None
     prof, records = corridor_profile(ctx, n, along, centres, half)
     alongside = [r for r in records if r["pointsInFootprint"] > 0]
@@ -377,8 +377,8 @@ def _synthetic_switchback_setup(
     import dataclasses
 
     search, res = warped_301_search
-    ctx = search._ctx
-    ref = search._reference
+    ctx = search.context
+    ref = search.context.reference
     assert ctx is not None and ref is not None and ref.active
     n = np.array([1.0, 0.0])
     along = np.array([0.0, 1.0])

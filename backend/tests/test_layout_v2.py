@@ -1506,7 +1506,7 @@ def test_shortlist_reconstruction_holds_on_a_conservative_case_with_failed_detai
     )
     search = LayoutV2Search(sc, generate_world(sc))
     res = search.run()
-    assert search._reference is not None and not search._reference.active
+    assert search.context.reference is not None and not search.context.reference.active
     assert res.clearance_basis == "COARSE_CONSERVATIVE"
     shortlisted = {c.candidate_id for c in res.candidates if c.shortlisted}
     failed_in_shortlist = [

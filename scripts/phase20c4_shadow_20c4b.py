@@ -60,7 +60,7 @@ for preset, seed in JOBS:
     world = generate_world(sc)
     search = LayoutV2Search(sc, world)
     res = search.run()
-    track, sections, policy = search._track, search._sections, search.policy
+    track, sections, policy = search.context.track, search.context.sections, search.policy
     width = sc.ramp.tunnel_width
     margin = RAMP_CORRIDOR_MARGIN_WIDTHS * width
     req = res.required_clearance

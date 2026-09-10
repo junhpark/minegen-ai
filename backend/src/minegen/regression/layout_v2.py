@@ -33,12 +33,9 @@ from typing import Any
 
 from minegen.core.enums import ScenarioPreset
 from minegen.core.models import Scenario
-from minegen.layout.search import (
-    CandidateStatus,
-    LayoutV2Search,
-    materialize_effective_ramp,
-    materialize_level_accesses,
-)
+from minegen.layout.materialize import materialize_effective_ramp, materialize_level_accesses
+from minegen.layout.results import CandidateStatus
+from minegen.layout.search import LayoutV2Search
 from minegen.services.scenario_realizer import ScenarioRealizationError, realize_scenario
 from minegen.world.synthetic_world import generate_world
 

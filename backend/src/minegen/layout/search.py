@@ -27,11 +27,9 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-import numpy.typing as npt
 
 from minegen.core.models import (
     LayoutV2Config,
@@ -41,9 +39,7 @@ from minegen.core.models import (
 from minegen.design.constraints import DesignContext, RejectionReason
 from minegen.design.cost_field import (
     ClearancePolicy,
-    ConservativeClearance,
     DesignCostEvaluator,
-    RefinedConservativeClearance,
     clearance_policy_for,
 )
 from minegen.design.exposure import measure_exposure
@@ -58,17 +54,20 @@ from minegen.layout.access import (
     MIN_DEVELOPMENT_TRACE_LENGTH,
     SCREEN_HEURISTIC,
     SCREEN_NECESSARY_CONDITION,
-    AnchorFailure,
-    LevelAccessPlan,
-    LevelDevelopmentAnchor,
     build_anchor,
     geometric_access_screen,
     plan_level_accesses,
 )
+from minegen.layout.certification import (
+    CandidateCertification,
+    ClearancePolicyReconstructionError,
+    ClearanceReport,
+    build_candidate_policy,
+)
+from minegen.layout.certification import anchor_standoff as _anchor_standoff
 from minegen.layout.families import (
     FAMILY_ORDER,
     RAMP_CORRIDOR_MARGIN_WIDTHS,
-    CandidateParams,
     FamilyGeometry,
     FamilyInfeasible,
     InfeasibleReason,
@@ -84,26 +83,77 @@ from minegen.layout.geometry import (
     Crossing,
     analyze_centerline,
     find_crossing,
-    insert_vertices,
-    split_at,
 )
 from minegen.layout.levels import LevelSections, RequiredLevel, required_levels
+from minegen.layout.materialize import (
+    LAYOUT_V2_SELECTED_ARTIFACT,
+    LEVEL_ACCESSES_ARTIFACT,
+    RAMP_END_SEGMENT_ID,
+    SOURCE_KIND_PARAMETRIC_V2,
+    chainage_of,
+    materialize_effective_ramp,
+    materialize_level_accesses,
+)
 from minegen.layout.reference import ServiceReference, build_service_reference
+from minegen.layout.results import (
+    LAYOUT_V2_VERSION,
+    CandidateResult,
+    CandidateStatus,
+    FloatArray,
+    LayoutSearchResult,
+    LevelServiceRecord,
+    Scores,
+    Stage,
+)
 from minegen.layout.sections import SectionGeometryError, resolve_section_resolution
 from minegen.layout.validation import validate_delivered_centerline
 from minegen.world.orebody import TabularOrebody
 from minegen.world.synthetic_world import SyntheticWorld
 
-FloatArray = npt.NDArray[np.float64]
-
-LAYOUT_V2_VERSION = 1
-SOURCE_KIND_PARAMETRIC_V2 = "PARAMETRIC_V2"
-#: owning artifact name of a materialized layout-v2 effective ramp
-LAYOUT_V2_SELECTED_ARTIFACT = "layout_v2_selected.json"
-#: owning artifact of the ramp junctions + level access branches (Phase 20B)
-LEVEL_ACCESSES_ARTIFACT = "level_accesses.json"
-#: segment id of the main-ramp tail below the last turnout
-RAMP_END_SEGMENT_ID = "RAMP_END"
+#: every name that was importable from ``layout.search`` before AC-01C keeps
+#: importing from here (explicit re-export: mypy strict has no implicit one)
+__all__ = [
+    "DEV_ACCESS_COEF",
+    "GEOM_CLEARANCE_COEF",
+    "GEOM_CURVATURE_COEF",
+    "GEOM_HAIRPIN_COEF",
+    "GEOM_HALF_TURN_COEF",
+    "GEOM_REVERSAL_COEF",
+    "GEOM_TURNING_COEF",
+    "GEO_CORE_COEF",
+    "GEO_CROSSING_COEF",
+    "GEO_DAMAGE_COEF",
+    "GEO_POOR_ROCK_COEF",
+    "GRADIENT_TOLERANCE",
+    "LAYOUT_V2_SELECTED_ARTIFACT",
+    "LAYOUT_V2_VERSION",
+    "LEVEL_ACCESSES_ARTIFACT",
+    "RADIUS_TOLERANCE",
+    "RAMP_END_SEGMENT_ID",
+    "SCORE_TIE_TOLERANCE",
+    "SOURCE_KIND_PARAMETRIC_V2",
+    "CandidateResult",
+    "CandidateStatus",
+    "ClearancePolicyReconstructionError",
+    "ClearanceReport",
+    "FloatArray",
+    "LayoutSearchResult",
+    "LayoutV2Search",
+    "LevelServiceRecord",
+    "Scores",
+    "Stage",
+    "chainage_of",
+    "cheap_checks",
+    "cheap_proxy",
+    "level_screen_problems",
+    "level_service",
+    "materialize_effective_ramp",
+    "materialize_level_accesses",
+    "required_clearance",
+    "score_candidate",
+    "screen_authority",
+    "shortlist_key",
+]
 
 # -- documented internal score coefficients (§27) ----------------------------- #
 #: DEVELOPMENT: ramp length / grade-limited ideal length, plus the mean
@@ -154,300 +204,6 @@ SCORE_TIE_TOLERANCE = 1e-9
 RADIUS_TOLERANCE = 0.05
 #: gradient numerical tolerance on the delivered centerline
 GRADIENT_TOLERANCE = 1e-9
-
-
-class CandidateStatus:
-    FEASIBLE = "FEASIBLE"
-    INFEASIBLE = "INFEASIBLE"
-    NOT_VALIDATED = "NOT_VALIDATED"  # cheap-feasible but outside the shortlist
-
-
-class Stage:
-    CONSTRUCT = "CONSTRUCT"
-    CHEAP = "CHEAP"
-    DETAILED = "DETAILED"
-
-
-@dataclass
-class LevelServiceRecord:
-    """Cheap ACCESS-POTENTIAL screen of one required level against the main
-    ramp (Phase 20A semantics, kept as a stage-2 screen in Phase 20B): the
-    ramp's RL crossing and its horizontal distance to the orebody footprint.
-    ``within_reach`` is NOT "served" — a level is served only by a validated
-    level access (``LevelAccess.ok``, rule 156)."""
-
-    level_id: str
-    elevation: float
-    within_reach: bool
-    connection_position: FloatArray | None = None
-    connection_chainage: float | None = None
-    access_distance: float | None = None
-    unserved_reason: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "levelId": self.level_id,
-            "elevation": self.elevation,
-            "withinReach": self.within_reach,
-            "referencePosition": (
-                [float(v) for v in self.connection_position]
-                if self.connection_position is not None
-                else None
-            ),
-            "referenceChainage": self.connection_chainage,
-            "footprintDistance": self.access_distance,
-            "screenReason": self.unserved_reason,
-        }
-
-
-class ClearancePolicyReconstructionError(RuntimeError):
-    """The candidate-specific clearance policy could not be rebuilt to match
-    the candidate's recorded stage-4 report (Phase 20B.1-v2 1.1). Downstream
-    consumers fail closed instead of silently judging the design under a
-    different certification."""
-
-    code = "LAYOUT_V2_CLEARANCE_MISMATCH"
-
-    def __init__(self, candidate_id: str, detail: str) -> None:
-        super().__init__(
-            f"cannot reconstruct the stage-4 clearance policy of layout-v2 candidate "
-            f"'{candidate_id}': {detail}; regenerate the layout catalogue"
-        )
-        self.candidate_id = candidate_id
-
-
-def _refinement_key(refinement: dict[str, Any] | None) -> tuple[Any, ...]:
-    """Provenance of one stage-4 refinement decision, rounded so a rebuilt
-    window compares equal to its recorded (JSON round-tripped) report."""
-    r = refinement or {}
-    spacing = r.get("latticeSpacing")
-    return (
-        bool(r.get("applied")),
-        r.get("reason"),
-        int(r["factor"]) if r.get("factor") is not None else None,
-        tuple(round(float(v), 9) for v in spacing) if spacing else None,
-        tuple(int(v) for v in r["shape"]) if r.get("shape") else None,
-        int(r["cellCount"]) if r.get("cellCount") is not None else None,
-        round(float(r["errorBound"]), 9) if r.get("errorBound") is not None else None,
-    )
-
-
-@dataclass
-class ClearanceReport:
-    basis: str
-    required: float
-    conservative_minimum: float
-    approximate_minimum: float | None
-    error_bound: float | None
-    satisfied: bool
-    #: Phase 20B.1 C-2: what the stage-4 local refinement actually did for
-    #: THIS candidate ({applied, factor, reason, windowCells, latticeSpacing})
-    refinement: dict[str, Any] | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "clearanceBasis": self.basis,
-            "requiredClearance": self.required,
-            "conservativeMinimumClearance": self.conservative_minimum,
-            "approximateMinimumClearance": self.approximate_minimum,
-            "clearanceErrorBound": self.error_bound,
-            "satisfied": self.satisfied,
-            "refinement": self.refinement,
-        }
-
-
-@dataclass
-class Scores:
-    development: float
-    geology: float
-    geometry: float
-    total: float
-    components: dict[str, float] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "development": self.development,
-            "geology": self.geology,
-            "geometry": self.geometry,
-            "total": self.total,
-            "components": dict(self.components),
-        }
-
-
-@dataclass
-class CandidateResult:
-    params: CandidateParams
-    status: str = CandidateStatus.INFEASIBLE
-    stage_reached: str = Stage.CONSTRUCT
-    failure_reasons: list[str] = field(default_factory=list)
-    failure_detail: str | None = None
-    diagnostics: CenterlineDiagnostics | None = None
-    level_service: list[LevelServiceRecord] = field(default_factory=list)
-    scores: Scores | None = None
-    clearance: ClearanceReport | None = None
-    exposure: dict[str, Any] | None = None
-    validation: dict[str, Any] | None = None
-    access_plan: LevelAccessPlan | None = None
-    anchors: list[LevelDevelopmentAnchor | AnchorFailure | None] = field(default_factory=list)
-    derived: dict[str, Any] = field(default_factory=dict)
-    pieces: list[dict[str, Any]] = field(default_factory=list)
-    points: FloatArray | None = None
-    crossings: list[Crossing | None] = field(default_factory=list)
-    shortlisted: bool = False
-    cheap_proxy: float | None = None
-    #: Phase 20C.1-Q geometric access screen (evaluator-free stage-4 gates,
-    #: spacing ignored; NECESSARY_CONDITION under EXACT, HEURISTIC under
-    #: conservative clearance; never a rejection)
-    access_screen: dict[str, Any] | None = None
-    rank: int | None = None
-
-    @property
-    def candidate_id(self) -> str:
-        return self.params.candidate_id
-
-    @property
-    def screened_count(self) -> int:
-        """Levels passing the cheap access-potential screen."""
-        return sum(1 for r in self.level_service if r.within_reach)
-
-    @property
-    def screen_blocked(self) -> int:
-        """Levels the geometric access screen reports BLOCKED (0 before it ran).
-        What that PROVES depends on the clearance policy — see
-        ``screen_authority`` and ``access_screen["authority"]``: a necessary
-        condition under an exact distance contract, a heuristic under a
-        conservative one."""
-        return int(self.access_screen["blockedCount"]) if self.access_screen else 0
-
-    @property
-    def screen_authority(self) -> str:
-        """``NECESSARY_CONDITION`` | ``HEURISTIC`` (empty before the screen ran)."""
-        return str(self.access_screen["authority"]) if self.access_screen else ""
-
-    @property
-    def accessible_count(self) -> int | None:
-        """Levels with a validated level access (None before stage 4)."""
-        if self.access_plan is None:
-            return None
-        return sum(1 for a in self.access_plan.accesses if a.ok)
-
-    def to_dict(self, *, include_points: bool) -> dict[str, Any]:
-        d: dict[str, Any] = {
-            "candidateId": self.candidate_id,
-            "family": self.params.family.value,
-            "parameters": self.params.to_dict(),
-            "status": self.status,
-            "stageReached": self.stage_reached,
-            "failureReasons": list(self.failure_reasons),
-            "failureDetail": self.failure_detail,
-            "shortlisted": self.shortlisted,
-            "rank": self.rank,
-            "screenedLevels": self.screened_count,
-            "accessibleLevels": self.accessible_count,
-            "requiredLevels": len(self.level_service),
-            "rampLevelReferences": [r.to_dict() for r in self.level_service],
-            "access": self.access_plan.summary() if self.access_plan else None,
-            "levelAccesses": (
-                [a.to_dict(include_points=include_points) for a in self.access_plan.accesses]
-                if self.access_plan
-                else None
-            ),
-            "diagnostics": self.diagnostics.to_dict() if self.diagnostics else None,
-            "scores": self.scores.to_dict() if self.scores else None,
-            "clearance": self.clearance.to_dict() if self.clearance else None,
-            "exposure": self.exposure,
-            "validation": self.validation,
-            "derived": _finite_dict(self.derived),
-            "pieces": self.pieces,
-            "cheapProxy": self.cheap_proxy,
-            "accessScreen": self.access_screen,
-        }
-        if include_points and self.points is not None:
-            d["centerline"] = {
-                "points": [float(v) for v in self.points.ravel()],
-                "pointCount": int(self.points.shape[0]),
-            }
-        else:
-            d["centerline"] = None
-        return d
-
-
-def _finite_dict(d: dict[str, Any]) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for k, v in d.items():
-        if isinstance(v, float | np.floating):
-            out[k] = float(v) if math.isfinite(float(v)) else None
-        elif isinstance(v, np.integer):
-            out[k] = int(v)
-        elif isinstance(v, np.bool_):
-            out[k] = bool(v)
-        else:
-            out[k] = v
-    return out
-
-
-@dataclass
-class LayoutSearchResult:
-    levels: list[RequiredLevel]  # every required level from the generic generator
-    serviceable_ids: list[str]  # those intersecting the orebody solid
-    track: dict[str, Any] | None
-    portal: FloatArray
-    portal_generated: bool
-    candidates: list[CandidateResult]
-    shortlist: list[str]
-    ranking: list[str]
-    winner_id: str | None
-    clearance_basis: str
-    clearance_error_bound: float
-    required_clearance: float
-    access_reach: float
-    standoff: float
-    performance: dict[str, Any]
-    config: dict[str, Any]
-
-    @property
-    def serviceable_levels(self) -> list[RequiredLevel]:
-        return [lv for lv in self.levels if lv.level_id in self.serviceable_ids]
-
-    def candidate(self, candidate_id: str) -> CandidateResult | None:
-        for c in self.candidates:
-            if c.candidate_id == candidate_id:
-                return c
-        return None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "layoutVersion": LAYOUT_V2_VERSION,
-            "status": "SUCCESS" if self.winner_id is not None else "NO_FEASIBLE_CANDIDATE",
-            "portal": [float(v) for v in self.portal],
-            "portalGenerated": self.portal_generated,
-            "requiredLevels": [
-                {
-                    "levelId": lv.level_id,
-                    "index": lv.index,
-                    "elevation": lv.elevation,
-                    "hasOrebodySection": lv.level_id in self.serviceable_ids,
-                }
-                for lv in self.levels
-            ],
-            "serviceableLevelCount": len(self.serviceable_ids),
-            "footwallTrack": self.track,
-            "candidateCount": len(self.candidates),
-            "feasibleCount": sum(
-                1 for c in self.candidates if c.status == CandidateStatus.FEASIBLE
-            ),
-            "shortlist": list(self.shortlist),
-            "ranking": list(self.ranking),
-            "winnerId": self.winner_id,
-            "clearanceBasis": self.clearance_basis,
-            "clearanceErrorBound": self.clearance_error_bound,
-            "requiredClearance": self.required_clearance,
-            "accessReach": self.access_reach,
-            "footwallStandoff": self.standoff,
-            "performance": self.performance,
-            "searchConfig": self.config,
-            "candidates": [c.to_dict(include_points=c.shortlisted) for c in self.candidates],
-        }
 
 
 # --------------------------------------------------------------------------- #
@@ -710,21 +466,27 @@ class LayoutV2Search:
         #: candidate-specific clearance policy can be rebuilt after the fact
         self._ctx: LayoutContext | None = None
 
+    @property
+    def context(self) -> LayoutContext:
+        """The ONLY sanctioned view of post-run state (AC-01C): the stage
+        context of the last ``run()`` — serviceable levels, the level
+        sections (including their offset-trace cache), the footwall track
+        and the construction ServiceReference. The objects are the very ones
+        the search used; a search that has not run — or that returned
+        early on a section-geometry failure or with no serviceable level —
+        has no context and raises."""
+        if self._ctx is None:
+            raise RuntimeError("LayoutV2Search.run() has not built a stage context")
+        return self._ctx
+
     def anchor_standoff(self, required: float, policy: ClearancePolicy | None = None) -> float:
         """Level-entry stand-off from the footwall edge: the configured /
         ramp value, raised for a conservative clearance policy so the entry
         itself satisfies ``required + errorBound`` (rule 146 honesty). With a
         stage-4 REFINED_CONSERVATIVE policy the smaller refined bound is what
         raises it (C-2), so entries move back toward the configured value."""
-        base = (
-            self.cfg.access.anchor_standoff
-            if self.cfg.access.anchor_standoff is not None
-            else self.scenario.ramp.footwall_access_offset
-        )
         p = policy if policy is not None else self.policy
-        if p.basis != "EXACT":
-            return max(base, required + float(p.error_bound) + 1.0)
-        return base
+        return _anchor_standoff(self.cfg, self.scenario.ramp, required, p)
 
     def run(
         self, on_progress: ProgressCallback = no_progress, *, detailed_all: bool = False
@@ -1055,15 +817,9 @@ class LayoutV2Search:
         evaluator, policy, refinement = self._candidate_policy(
             cand, self._ctx, result.required_clearance
         )
-        recorded = cand.clearance
-        if policy.basis != recorded.basis or _refinement_key(refinement) != _refinement_key(
-            recorded.refinement
-        ):
-            raise ClearancePolicyReconstructionError(
-                candidate_id,
-                f"rebuilt policy {policy.basis} {_refinement_key(refinement)} != recorded "
-                f"{recorded.basis} {_refinement_key(recorded.refinement)}",
-            )
+        CandidateCertification.from_report(cand.candidate_id, cand.clearance).verify(
+            policy, refinement
+        )
         return evaluator, policy, refinement
 
     def _candidate_policy(
@@ -1078,56 +834,20 @@ class LayoutV2Search:
         coarse certification, so refinement can only certify MORE, never
         admit an optimistic distance. A window over the cell budget skips
         refinement with an explicit diagnostic."""
-        policy: ClearancePolicy = self.policy
-        factor = int(self.cfg.clearance_refinement_factor)
-        refinement: dict[str, Any] = {"applied": False, "factor": factor, "reason": None}
-        if not isinstance(policy, ConservativeClearance):
-            refinement["reason"] = "NOT_APPLICABLE_EXACT_BASIS"
-            return self.evaluator, policy, refinement
-        if factor <= 1:
-            refinement["reason"] = "DISABLED"
-            return self.evaluator, policy, refinement
-        builder = getattr(self.world.orebody, "refined_clearance_window", None)
-        if builder is None:
-            refinement["reason"] = "UNSUPPORTED_OREBODY"
-            return self.evaluator, policy, refinement
         assert cand.points is not None
         assert self._sections is not None and self._track is not None
-        coarse = policy.signed_clearance(cand.points)
-        needy = [cand.points[coarse < req_clear + 1e-9]]
-        standoff_coarse = self.anchor_standoff(req_clear, policy)
-        for lv in ctx.levels:
-            a = build_anchor(
-                self.world.orebody,
-                lv,
-                self._sections,
-                self._track,
-                cand.points,
-                standoff_coarse,
-                self.scenario.mining.method.value,
-                clearance=policy.signed_clearance,
-                policy_token="WORLD",
-                minimum_clearance=req_clear,
-            )
-            if a is not None and not isinstance(a, AnchorFailure):
-                needy.append(a.position[None, :])
-        pts = np.vstack([p for p in needy if p.shape[0]])
-        pad = req_clear + float(policy.error_bound) + 2.0
-        window = builder(pts, pad, factor, int(self.cfg.clearance_refinement_max_cells))
-        if window is None:
-            refinement["reason"] = "BUDGET_EXCEEDED"
-            return self.evaluator, policy, refinement
-        refined = RefinedConservativeClearance(
-            coarse=policy, window=window, error_bound=float(window.error_bound)
-        )
-        refinement.update({"applied": True, "reason": "APPLIED", **window.info()})
-        evaluator = DesignCostEvaluator(
+        return build_candidate_policy(
             self.world,
-            self.scenario.design,
-            DesignContext.decline(self.scenario.design),
-            clearance=refined,
+            self.scenario,
+            self.cfg,
+            world_policy=self.policy,
+            world_evaluator=self.evaluator,
+            points=cand.points,
+            levels=ctx.levels,
+            sections=self._sections,
+            track=self._track,
+            required_clearance=req_clear,
         )
-        return evaluator, refined, refinement
 
     def _detailed_stage(self, cand: CandidateResult, ctx: LayoutContext, req_clear: float) -> None:
         assert cand.points is not None and cand.diagnostics is not None
@@ -1283,6 +1003,12 @@ def _shortlist_key(c: CandidateResult) -> tuple[int, float, int, str]:
     return (c.screen_blocked, c.cheap_proxy or math.inf, _family_rank(c), c.candidate_id)
 
 
+#: public alias of the stage-3 key (AC-01C) — the SAME function object the
+#: search sorts with, so an external reconstruction proves the shortlist
+#: against production's own ordering (rule 176 keeps naming ``_shortlist_key``)
+shortlist_key = _shortlist_key
+
+
 def _rank_key(c: CandidateResult) -> tuple[int, float, int, str]:
     assert c.scores is not None
     total = round(c.scores.total / SCORE_TIE_TOLERANCE) * SCORE_TIE_TOLERANCE
@@ -1309,245 +1035,3 @@ def _event(
         candidate_id=candidate_id,
         candidate_status=status,
     )
-
-
-# --------------------------------------------------------------------------- #
-# Effective ramp materialization (rule 149)
-# --------------------------------------------------------------------------- #
-
-
-def materialize_effective_ramp(
-    result: LayoutSearchResult,
-    cand: CandidateResult,
-    evaluator: DesignCostEvaluator,
-    source_revision: str,
-) -> dict[str, Any]:
-    """Materialize the MAIN RAMP of a FEASIBLE candidate as the Effective Ramp
-    (rule 149). Phase 20B (rule 157): the validated delivered centerline is
-    split at the EXACT ramp-junction points of its level-access plan — the
-    turnouts are the RAMP segment boundaries (network RAMP_JUNCTION nodes);
-    a tail below the last turnout is the ``RAMP_END`` segment. A level's RL
-    crossing is recorded only as a diagnostic reference; it is never a
-    segment boundary, never a level entry. Level accesses are NOT ramp
-    segments — they live in ``level_accesses.json``. No smoothing, no
-    re-sampling: the geometry is the validated candidate centerline itself.
-    """
-    if cand.status != CandidateStatus.FEASIBLE or cand.points is None:
-        raise ValueError(f"candidate {cand.candidate_id} is not FEASIBLE")
-    plan = cand.access_plan
-    if plan is None or not plan.feasible:
-        raise ValueError(f"candidate {cand.candidate_id} has no feasible level-access plan")
-    pts_raw = cand.points
-    ch = chainage_of(pts_raw)
-    junctions = [
-        _JunctionMark(a.level_id, float(a.junction_chainage or 0.0), a.junction_position)
-        for a in plan.accesses
-    ]
-    junctions.sort(key=lambda j: j.chainage)
-    crossings = [_crossing_at_chainage(pts_raw, ch, j.chainage) for j in junctions]
-    pts, idx = insert_vertices(pts_raw, crossings)
-    for j, i in zip(junctions, idx, strict=True):
-        # exact weld: the inserted vertex IS the planned junction position
-        if j.position is not None:
-            pts[i] = np.asarray(j.position, dtype=np.float64)
-    pieces = split_at(pts, idx)
-    # tail below the last turnout
-    tail = pts[idx[-1] :].copy() if idx and idx[-1] < pts.shape[0] - 1 else None
-    labels: list[tuple[str, str | None, dict[str, Any] | None]] = [
-        (
-            f"RAMP_JUNCTION:{j.level_id}",
-            j.level_id,
-            {"levelId": j.level_id, "chainage": j.chainage, "position": [float(v) for v in pts[i]]},
-        )
-        for j, i in zip(junctions, idx, strict=True)
-    ]
-    if tail is not None and tail.shape[0] >= 2:
-        pieces.append(tail)
-        labels.append((RAMP_END_SEGMENT_ID, None, None))
-    segments: list[dict[str, Any]] = []
-    raw_total = 0.0
-    cost_total = 0.0
-    max_grade = 0.0
-    radii: list[float] = []
-    bounds = [*idx, pts.shape[0] - 1] if tail is not None and tail.shape[0] >= 2 else list(idx)
-    for k, (piece, (segment_id, level_id, junction)) in enumerate(zip(pieces, labels, strict=True)):
-        start_t = _tangent(pts, bounds[k - 1] if k > 0 else 0, shared=k > 0)
-        end_t = _tangent(pts, bounds[k], shared=k < len(pieces) - 1)
-        diag = analyze_centerline(piece) if piece.shape[0] >= 2 else None
-        ev = evaluator.evaluate_points(piece)
-        finite = ev.base_cost + ev.rock_penalty + ev.fault_penalty + ev.orebody_penalty
-        seg_len = np.linalg.norm(np.diff(piece, axis=0), axis=1)
-        mid_cost = 0.5 * (finite[:-1] + finite[1:])
-        field_cost = float(np.sum(mid_cost * seg_len))
-        length = float(np.sum(seg_len))
-        raw_total += length
-        cost_total += field_cost
-        if diag is not None:
-            max_grade = max(max_grade, diag.max_abs_gradient)
-            if diag.min_plan_radius is not None:
-                radii.append(diag.min_plan_radius)
-        segments.append(
-            {
-                "segmentId": segment_id,
-                "levelId": level_id,
-                "candidateId": cand.candidate_id,
-                "smoothed": None,
-                "effectiveSource": SOURCE_KIND_PARAMETRIC_V2,
-                "effectiveCenterline": {
-                    "points": [float(v) for v in piece.ravel()],
-                    "pointCount": int(piece.shape[0]),
-                },
-                "boundaryTangents": {
-                    "start": [float(v) for v in start_t],
-                    "end": [float(v) for v in end_t],
-                },
-                "terminalKind": "RAMP_JUNCTION" if junction else "RAMP_END",
-                "rampJunction": junction,
-                "report": {
-                    "rawLength": length,
-                    "smoothedLength": None,
-                    "fieldCostRaw": field_cost,
-                    "fieldCostSmoothed": None,
-                    "fieldCostDeltaPct": None,
-                    "maxGradient": diag.max_abs_gradient if diag else 0.0,
-                    "minPlanRadius": diag.min_plan_radius if diag else None,
-                    "maxDeviationFromRaw": 0.0,
-                    "endpointPositionError": 0.0,
-                    "startHeadingErrorDeg": 0.0,
-                    "endHeadingErrorDeg": 0.0,
-                    "invalidSampleCount": 0,
-                    "rejectionReasonCounts": {},
-                    "monotonicityViolations": 0,
-                    "gradeViolations": 0,
-                    "radiusViolations": 0,
-                    "corridorViolations": 0,
-                    "repairs": 0,
-                    "valid": True,
-                    "effectiveSource": SOURCE_KIND_PARAMETRIC_V2,
-                    "fallbackReason": None,
-                },
-            }
-        )
-    references = [
-        {
-            "levelId": r.level_id,
-            "elevation": r.elevation,
-            "position": [float(v) for v in r.connection_position]
-            if r.connection_position is not None
-            else None,
-            "chainage": r.connection_chainage,
-            "footprintDistance": r.access_distance,
-        }
-        for r in cand.level_service
-    ]
-    return {
-        "status": "SUCCESS",
-        "sourceKind": SOURCE_KIND_PARAMETRIC_V2,
-        "sourceRevision": source_revision,
-        "candidateId": cand.candidate_id,
-        "family": cand.params.family.value,
-        "failureReason": None,
-        "portal": [float(v) for v in result.portal],
-        "segments": segments,
-        "rampJunctions": [s["rampJunction"] for s in segments if s["rampJunction"]],
-        "rampLevelReferences": references,
-        "levelAccessArtifact": LEVEL_ACCESSES_ARTIFACT,
-        "totals": {
-            "segments": len(segments),
-            "smoothedSegments": 0,
-            "fallbackSegments": 0,
-            "rawLength": raw_total,
-            "effectiveLength": raw_total,
-            "fieldCostRaw": cost_total,
-            "fieldCostEffective": cost_total,
-            "fieldCostDeltaPct": None,
-            "maxGradient": max_grade,
-            "minimumPlanRadius": float(min(radii)) if radii else None,
-            "maxDeviation": 0.0,
-        },
-        "diagnostics": cand.diagnostics.to_dict() if cand.diagnostics else None,
-        "clearance": cand.clearance.to_dict() if cand.clearance else None,
-        "scores": cand.scores.to_dict() if cand.scores else None,
-        "access": plan.summary(),
-    }
-
-
-def materialize_level_accesses(
-    result: LayoutSearchResult,
-    cand: CandidateResult,
-    source_revision: str,
-    mining_method: str,
-) -> dict[str, Any]:
-    """``level_accesses.json`` (rule 157): the ramp junctions and level-access
-    branches of the selected candidate — the ONLY owner of that geometry.
-    Every ``levelEntry`` is the authoritative LEVEL_ENTRY the level
-    development starts from."""
-    if cand.status != CandidateStatus.FEASIBLE or cand.access_plan is None:
-        raise ValueError(f"candidate {cand.candidate_id} is not FEASIBLE")
-    plan = cand.access_plan
-    return {
-        "status": "SUCCESS" if plan.feasible else "FAILED",
-        "failureReason": None
-        if plan.feasible
-        else "; ".join(f"{a.level_id}: {a.failure_reason}" for a in plan.accesses if not a.ok),
-        "sourceRevision": source_revision,
-        "rampSource": "LAYOUT_V2",
-        "rampArtifact": LAYOUT_V2_SELECTED_ARTIFACT,
-        "candidateId": cand.candidate_id,
-        "family": cand.params.family.value,
-        "miningMethod": mining_method,
-        # the basis the candidate's accesses were actually validated under
-        # (stage-4 REFINED_CONSERVATIVE when refinement applied), never the
-        # catalogue's whole-body search basis (Phase 20B.1-v2 1.1)
-        "clearanceBasis": cand.clearance.basis if cand.clearance else result.clearance_basis,
-        "clearanceErrorBound": cand.clearance.error_bound if cand.clearance else None,
-        "clearanceRefinement": cand.clearance.refinement if cand.clearance else None,
-        "requiredClearance": result.required_clearance,
-        "anchors": [a.to_dict() if a else None for a in cand.anchors],
-        "accesses": [a.to_dict(include_points=True) for a in plan.accesses],
-        "summary": plan.summary(),
-    }
-
-
-@dataclass(frozen=True)
-class _JunctionMark:
-    level_id: str
-    chainage: float
-    position: FloatArray | None
-
-
-def chainage_of(points: FloatArray) -> FloatArray:
-    seg = np.linalg.norm(np.diff(points, axis=0), axis=1)
-    return np.asarray(np.concatenate([[0.0], np.cumsum(seg)]))
-
-
-def _crossing_at_chainage(points: FloatArray, ch: FloatArray, s: float) -> Crossing:
-    """Exact vertex position at 3-D chainage ``s`` as a Crossing so the
-    shared ``insert_vertices`` machinery can split there."""
-    i = int(np.searchsorted(ch, s, side="right") - 1)
-    i = min(max(i, 0), points.shape[0] - 2)
-    seg = float(ch[i + 1] - ch[i])
-    t = (s - float(ch[i])) / seg if seg > 1e-12 else 0.0
-    t = min(max(t, 0.0), 1.0)
-    p = points[i] + t * (points[i + 1] - points[i])
-    return Crossing(float(p[2]), i, float(t), np.asarray(p, dtype=np.float64), float(s))
-
-
-def _tangent(pts: FloatArray, vertex: int, *, shared: bool) -> FloatArray:
-    """Unit 3-D tangent at a vertex: mean of the incoming and outgoing chord
-    directions when the vertex is shared by two segments, otherwise the
-    single available chord (portal start / terminal end)."""
-    n = pts.shape[0]
-    dirs: list[FloatArray] = []
-    if vertex > 0:
-        d = pts[vertex] - pts[vertex - 1]
-        dirs.append(d / max(float(np.linalg.norm(d)), 1e-12))
-    if vertex < n - 1:
-        d = pts[vertex + 1] - pts[vertex]
-        dirs.append(d / max(float(np.linalg.norm(d)), 1e-12))
-    if not shared and vertex == 0 and len(dirs) > 1:
-        dirs = dirs[1:]
-    if not shared and vertex == n - 1 and len(dirs) > 1:
-        dirs = dirs[:1]
-    t = np.sum(np.asarray(dirs), axis=0)
-    return np.asarray(t / max(float(np.linalg.norm(t)), 1e-12))
