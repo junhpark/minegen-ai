@@ -22,3 +22,6 @@ data/
 .vscode/
 .idea/
 .DS_Store
+
+# agent worktrees (created inside the repo by tooling; never part of the source)
+.claude/
