@@ -947,6 +947,17 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
 `docs/roadmap.md`. "Digital Twin" is reserved for the future measured-mine
 (LiDAR / 3DGS) track and is never used for the synthetic sandbox.
 
+## Architecture consolidation baseline (AC)
+
+`docs/consolidation-baseline.md` fixes the reviewed baseline for the AC
+sequence: the baseline SHA, the verified module / artifact-lifecycle map, the
+scope index of the rules below (which rule carries the CURRENT authority for a
+subject, and which rules describe a legacy path or record a past measurement),
+and the change prohibitions every consolidation step accepts. It is a map, not
+an authority: it adds no rule, deletes none, reinterprets none, and every rule
+below keeps its number and its text. When it and a rule disagree about the
+code, the code and the rule win and the map is corrected.
+
 126. Claude Code MAY create local commits after the scoped implementation
      and all required quality gates pass. Claude Code MUST NOT push,
      force-push, merge, create or update pull requests, or perform any

@@ -44,29 +44,45 @@ parent/child (CLAUDE.md rule 13).
 
 ## Backend module map
 
+Verified at the consolidation baseline (`docs/consolidation-baseline.md` §5,
+main `d58c794`), with per-package sizes and entry points. Earlier revisions of
+this map attributed the tunnel sweep to `geometry/` and described
+`simulation/` as solver adapters; both were aspirational and are corrected
+here. Per-phase decision records below keep their original wording.
+
     minegen/
-      core/            enums, Pydantic models, coordinate utilities, units
-      world/           terrain, authoritative orebody solid, numerical field
-                       lattice (FieldGrid), SpatialFieldSet (rock quality, grade,
-                       fault measurements; batch sample()), geology generators
-      design/          cost field, level access targets, motion primitives,
-                       smoothing + shared sample validation (Phase 05),
-                       chained Hybrid-A* decline generator, smoothing,
-                       constraints, level generator, mine designer
-      geometry/        centerline, tunnel profile, tunnel mesh (gravity-aligned
-                       sweep), mesh utils
+      core/            enums, Pydantic models, coordinate utilities, units,
+                       derived-artifact filename constants
+      world/           terrain, authoritative orebody solid (analytic +
+                       implicit), numerical field lattice (FieldGrid),
+                       SpatialFieldSet (rock quality, grade, fault
+                       measurements; batch sample()), geology generators
+      design/          cost field + clearance policies, level access targets,
+                       motion primitives, chained Hybrid-A* decline generator,
+                       smoothing + shared sample validation (Phase 05), tunnel
+                       profile, tunnel mesh and development mesh
+                       (gravity-aligned sweeps), constraints
+      layout/          parametric layout v2: family enumeration and geometry,
+                       delivered-centerline validation, section / footwall
+                       trace, level-access planner, construction
+                       ServiceReference, staged search and ranking
+      levels/          level development builder (drift / crosscut) + payload
       network/         MineNetwork graph, builder, metrics
       shafts/          Phase 20C.2B vertical shaft planner + shafts.json contract
       capability/      Phase 20C.2B capability graph (semantics over network ids)
       mining/          MiningMethod strategy interface, longhole open stoping,
-                       stope generator, rule-based method selector
+                       stope generator, typed unsupported-method failure
       scheduling/      MineTask, dependencies, scheduler, timeline state
-      infrastructure/  candidate sites, demand points, coverage models,
-                       PlacementProblem, placement optimizers
-      simulation/      adapters for external haulage / ventilation solvers
+      infrastructure/  shared network domain, candidate sites, demand points,
+                       coverage models, placement solver
+      regression/      golden suites, comparisons and audits (CLI)
       export/          scene manifest, JSON, glTF
-      services/        scenario persistence, async job service
+      services/        scenario persistence, world / design / infrastructure
+                       orchestration, async job service
       api/             FastAPI routers (thin; no algorithms)
+      geometry/        RESERVED namespace — empty, zero importers
+      simulation/      RESERVED namespace — empty, zero importers; no solver
+                       and no adapter exists
 
 Layering (CLAUDE.md rule 5): `core` ← algorithms (`world`, `design`, …) ←
 `services` ← `api`. Algorithms never import FastAPI. The API never
@@ -221,7 +237,8 @@ go under `geology`, not at the scenario root.
 Production reserve estimation, regulatory certification, full geostatistics,
 FEM/DEM, CFD ventilation, full-wave RF, dispatch optimization, NPV
 optimization, multi-user, photorealism. APIs are shaped so these can be
-attached later (`simulation/interfaces.py`).
+attached later; the `simulation/` package is a reserved empty namespace, not
+an adapter layer.
 
 ## Phase 13 — first-person walkthrough runtime (rules 99–104)
 

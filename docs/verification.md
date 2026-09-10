@@ -126,10 +126,51 @@ failure prints the failed step, the failed test ids, the first actionable
 traceback and the log path. Everything else lives in `backend/.verification/`
 (git-ignored): `<mode>-<step>.log`, `<mode>-pytest.xml`,
 `verification-summary.json` (`mode`, `gitHead`, `gitDirty`, `elapsedSeconds`,
-`fullAuthority`, backend / frontend gate statuses and counts, steps, failed
-tests), `golden-summary.json`, `survey-detail.json`, `runtime-summary.json`.
-A FULL summary is release evidence only when `gitHead` equals the PR head and
-`gitDirty` is false.
+`fullAuthority`, `authority`, `sourceIdentity`, `ci`, backend / frontend gate
+statuses and counts, steps, failed tests), `golden-summary.json`,
+`survey-detail.json`, `runtime-summary.json`.
+
+## Release authority (AC-01A)
+
+`fullAuthority` is a JUDGEMENT over the whole run, not "the mode was full and
+nothing failed". `evaluate_authority()` grants it only when ALL of these hold,
+and returns a typed reason for each one that does not (`authority.reasons` is
+empty if and only if authority is granted):
+
+| condition | withheld with |
+|---|---|
+| the FULL tier ran | `MODE_NOT_FULL:<mode>` |
+| no step recorded a failure | `GATE_FAILURE_RECORDED`, `GATE_FAILED:<gate>` |
+| every required gate executed — `ruff-check`, `ruff-format`, `mypy`, `pytest-full`, `fe-typecheck`, `fe-lint`, `fe-prettier`, `fe-vitest`, `fe-build` | `GATE_NOT_RUN:<gate>` |
+| the pytest step that ACTUALLY ran carried no `-m` selection | `PYTEST_FULL_FILTERED` |
+| the collection-coverage proof (rule 181) was produced and satisfied | `COVERAGE_PROOF_MISSING`, `COVERAGE_PROOF_FAILED` |
+| the unfiltered run EXECUTED everything it collected (`executedFull` from the junit report == `collectedFull`) | `EXECUTION_COVERAGE_MISMATCH:<executed>!=<collected>` |
+| the working tree was clean at the FIRST gate and at the LAST | `WORKTREE_DIRTY_AT_START`, `WORKTREE_DIRTY_AT_END` |
+| the source did not change during the run (`sourceIdentity.digest` over HEAD + porcelain status) | `SOURCE_CHANGED_DURING_RUN` |
+
+A partial run reports what it actually covered:
+`authority.components.backendFullSuite` / `frontendFullSuite`. CI's
+`verify.py full --backend-only` job is therefore a COMPONENT — true backend
+component authority, `release` false with the five frontend gates named.
+`python scripts/verify.py authority A.json B.json` combines component
+summaries of ONE revision into a single verdict (`gateSource` names which
+component proved each gate) and exits non-zero when authority is withheld.
+It re-derives every component from the evidence recorded in its own summary
+(steps, tier, source identity, coverage) rather than from that summary's
+`authority` block, and refuses a component that cannot name its revision
+(`COMPONENT_REVISION_UNKNOWN`) or carries no evidence
+(`COMPONENT_EVIDENCE_MISSING`).
+
+`certifiedSha` / `certifiedShaKind` say WHICH commit a result certifies: on a
+GitHub `pull_request` run the checkout is a synthetic merge commit that exists
+in no branch, so the summary records it as `PULL_REQUEST_MERGE_SIMULATION`
+alongside `ci.prHeadSha` — and `PULL_REQUEST_SHA_UNVERIFIED` when the event
+payload could not be read, never the reassuring `PULL_REQUEST_HEAD`.
+`collected(FULL) == collected(unfiltered)` is true by construction and proves
+nothing on its own; the executed-vs-collected condition above is the part
+that does. A FULL summary is release evidence only for its own
+`certifiedSha`, and `fullAuthority` values recorded in phase documents before
+AC-01A were produced under the weaker expression.
 
 ## CI
 
