@@ -22,7 +22,7 @@ from minegen.regression.layout_v2 import (
 )
 
 GOLDEN_DIR = Path(__file__).resolve().parents[1] / "golden"
-BASELINE = GOLDEN_DIR / "phase20c2a_layout_v2.json"
+BASELINE = GOLDEN_DIR / "phase20c4_layout_v2.json"
 
 
 def test_layout_v2_baseline_is_committed() -> None:
@@ -79,8 +79,14 @@ def test_layout_v2_baseline_is_committed() -> None:
         for r in rs
         if not cid.startswith("LONGITUDINAL")
     }
-    # the physically infeasible implicit body stays an explicit failure
-    assert by_key["WARPED_VEIN-307"]["contract"]["status"] == "NO_FEASIBLE_CANDIDATE"
+    # Phase 20C.4: WARPED-307 was never physically infeasible — Gate A proved
+    # its level-access failures REFERENCE_CAUSED (corridor placed from the
+    # global track edge, anchors on the certified level set, separation ≈ 7 m);
+    # with the corridor and anchors sharing the construction ServiceReference
+    # (rule 186) it is SUCCESS under every unchanged hard gate. ACCESS-INFEASIBLE
+    # above remains the explicit-failure detector.
+    assert by_key["WARPED_VEIN-307"]["contract"]["status"] == "SUCCESS"
+    assert by_key["WARPED_VEIN-307"]["contract"]["feasibleCount"] > 0
 
 
 @pytest.mark.parametrize("key", SMOKE_KEYS)

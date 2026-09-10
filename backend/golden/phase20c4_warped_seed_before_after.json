@@ -1,0 +1,1418 @@
+{
+ "label": "phase20c4_warped_seed_before_after",
+ "baselineLabel": "phase20c2a_warped_seed_survey",
+ "currentLabel": "phase20c4_warped_seed_survey",
+ "baselineGitHead": "422cfd3e107285b9306b6764dd78226ebb053709",
+ "currentGitHead": "925ce25d28d3731ce87afde9deabf36afaaba5e9",
+ "seedCount": 32,
+ "seeds": [
+  301,
+  302,
+  303,
+  304,
+  305,
+  306,
+  307,
+  308,
+  309,
+  310,
+  311,
+  312,
+  313,
+  314,
+  315,
+  316,
+  317,
+  318,
+  319,
+  320,
+  321,
+  322,
+  323,
+  324,
+  325,
+  326,
+  327,
+  328,
+  329,
+  330,
+  331,
+  332
+ ],
+ "semantics": "Phase 20C.4 Gate D: fixed 32-seed RANDOM_WARPED_VEIN survey (301-332), the 20C.2A / 20C.3A baseline tree vs the Gate C tree (construction ServiceReference read by the SPIRAL and SWITCHBACK corridors; LONGITUDINAL, gates, thresholds, scores and the screen unchanged). Diagnostic only: no threshold, coefficient or gate was changed to move these numbers; winner changes are listed, never hidden.",
+ "layout": {
+  "successCountBefore": 19,
+  "successCountAfter": 29,
+  "statusFlips": {
+   "NO_FEASIBLE_CANDIDATE->SUCCESS": 10
+  },
+  "identicalSeeds": 0,
+  "changedSeeds": [
+   {
+    "seed": 301,
+    "diffs": {
+     "cheapFeasibleCount": {
+      "before": 51,
+      "after": 48
+     },
+     "bestConservativeClearance": {
+      "before": 37.483922,
+      "after": 41.210536
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "DETAILED:ABOVE_TERRAIN"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "INSUFFICIENT_RAMP_PILLAR",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 302,
+    "diffs": {
+     "detailedCount": {
+      "before": 3,
+      "after": 2
+     },
+     "cheapFeasibleCount": {
+      "before": 3,
+      "after": 2
+     },
+     "bestConservativeClearance": {
+      "before": 116.814791,
+      "after": 116.813014
+     }
+    }
+   },
+   {
+    "seed": 303,
+    "diffs": {
+     "status": {
+      "before": "NO_FEASIBLE_CANDIDATE",
+      "after": "SUCCESS"
+     },
+     "winnerId": {
+      "before": null,
+      "after": "SPIRAL-n1-CCW-e+45-g0.120"
+     },
+     "winnerFamily": {
+      "before": null,
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 0,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 45,
+      "after": 39
+     },
+     "bestAccessibleLevels": {
+      "before": 9,
+      "after": 10
+     },
+     "winnerAccessibleLevels": {
+      "before": null,
+      "after": 10
+     },
+     "bestConservativeClearance": {
+      "before": 24.922554,
+      "after": 69.983857
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CHEAP:TURN_RADIUS"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 304,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p-20-CCW-g0.120",
+      "after": "SWITCHBACK-k1-p+0-CCW-g0.120"
+     },
+     "detailedFeasibleCount": {
+      "before": 6,
+      "after": 11
+     },
+     "cheapFeasibleCount": {
+      "before": 40,
+      "after": 31
+     },
+     "bestConservativeClearance": {
+      "before": 49.915904,
+      "after": 65.245185
+     }
+    }
+   },
+   {
+    "seed": 305,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p+20-CCW-g0.100",
+      "after": "SWITCHBACK-k1-p+0-CW-g0.120"
+     },
+     "detailedFeasibleCount": {
+      "before": 5,
+      "after": 11
+     },
+     "cheapFeasibleCount": {
+      "before": 41,
+      "after": 31
+     },
+     "bestConservativeClearance": {
+      "before": 47.148086,
+      "after": 48.228867
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": "TURNOUT_NOT_STRAIGHT"
+     }
+    }
+   },
+   {
+    "seed": 306,
+    "diffs": {
+     "cheapFeasibleCount": {
+      "before": 38,
+      "after": 34
+     },
+     "bestAccessibleLevels": {
+      "before": 6,
+      "after": 0
+     },
+     "bestConservativeClearance": {
+      "before": 24.914873,
+      "after": 50.678296
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 307,
+    "diffs": {
+     "status": {
+      "before": "NO_FEASIBLE_CANDIDATE",
+      "after": "SUCCESS"
+     },
+     "winnerId": {
+      "before": null,
+      "after": "SPIRAL-n1-CCW-e+0-g0.120"
+     },
+     "winnerFamily": {
+      "before": null,
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 0,
+      "after": 11
+     },
+     "cheapFeasibleCount": {
+      "before": 56,
+      "after": 50
+     },
+     "bestAccessibleLevels": {
+      "before": 4,
+      "after": 9
+     },
+     "winnerAccessibleLevels": {
+      "before": null,
+      "after": 9
+     },
+     "bestConservativeClearance": {
+      "before": 26.418382,
+      "after": 61.996343
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": "INSUFFICIENT_RAMP_PILLAR"
+     }
+    }
+   },
+   {
+    "seed": 308,
+    "diffs": {
+     "status": {
+      "before": "NO_FEASIBLE_CANDIDATE",
+      "after": "SUCCESS"
+     },
+     "winnerId": {
+      "before": null,
+      "after": "SPIRAL-n1-CCW-e-45-g0.120"
+     },
+     "winnerFamily": {
+      "before": null,
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 0,
+      "after": 9
+     },
+     "cheapFeasibleCount": {
+      "before": 49,
+      "after": 41
+     },
+     "bestAccessibleLevels": {
+      "before": 6,
+      "after": 10
+     },
+     "winnerAccessibleLevels": {
+      "before": null,
+      "after": 10
+     },
+     "bestConservativeClearance": {
+      "before": 30.092288,
+      "after": 62.295255
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "DETAILED:ABOVE_TERRAIN"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 309,
+    "diffs": {
+     "status": {
+      "before": "NO_FEASIBLE_CANDIDATE",
+      "after": "SUCCESS"
+     },
+     "winnerId": {
+      "before": null,
+      "after": "SWITCHBACK-k1-p-20-CCW-g0.120"
+     },
+     "winnerFamily": {
+      "before": null,
+      "after": "SWITCHBACK"
+     },
+     "detailedFeasibleCount": {
+      "before": 0,
+      "after": 2
+     },
+     "cheapFeasibleCount": {
+      "before": 46,
+      "after": 33
+     },
+     "bestAccessibleLevels": {
+      "before": 6,
+      "after": 8
+     },
+     "winnerAccessibleLevels": {
+      "before": null,
+      "after": 8
+     },
+     "bestConservativeClearance": {
+      "before": 42.088629,
+      "after": 63.794762
+     },
+     "dominantLevelAccessFailure": {
+      "before": "INSUFFICIENT_RAMP_PILLAR",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 310,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "after": "SWITCHBACK-k1-p-20-CCW-g0.120"
+     },
+     "detailedFeasibleCount": {
+      "before": 5,
+      "after": 9
+     },
+     "cheapFeasibleCount": {
+      "before": 41,
+      "after": 29
+     },
+     "bestConservativeClearance": {
+      "before": 50.61707,
+      "after": 54.820204
+     },
+     "dominantLevelAccessFailure": {
+      "before": "TURNOUT_NOT_STRAIGHT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 311,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "after": "SPIRAL-n1-CW-e+0-g0.120"
+     },
+     "winnerFamily": {
+      "before": "SWITCHBACK",
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 9,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 42,
+      "after": 35
+     },
+     "bestConservativeClearance": {
+      "before": 43.480633,
+      "after": 44.03351
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CHEAP:TURN_RADIUS"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 312,
+    "diffs": {
+     "status": {
+      "before": "NO_FEASIBLE_CANDIDATE",
+      "after": "SUCCESS"
+     },
+     "winnerId": {
+      "before": null,
+      "after": "SPIRAL-n1-CCW-e+0-g0.120"
+     },
+     "winnerFamily": {
+      "before": null,
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 0,
+      "after": 11
+     },
+     "cheapFeasibleCount": {
+      "before": 47,
+      "after": 37
+     },
+     "bestAccessibleLevels": {
+      "before": 10,
+      "after": 12
+     },
+     "winnerAccessibleLevels": {
+      "before": null,
+      "after": 12
+     },
+     "bestConservativeClearance": {
+      "before": 26.111513,
+      "after": 58.282021
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "DETAILED:ABOVE_TERRAIN"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "INSUFFICIENT_RAMP_PILLAR",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 313,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k2-p+20-CW-g0.120",
+      "after": "SWITCHBACK-k1-p+0-CCW-g0.120"
+     },
+     "detailedFeasibleCount": {
+      "before": 1,
+      "after": 6
+     },
+     "cheapFeasibleCount": {
+      "before": 40,
+      "after": 31
+     },
+     "bestConservativeClearance": {
+      "before": 50.507307,
+      "after": 60.104165
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": "INSUFFICIENT_RAMP_PILLAR"
+     }
+    }
+   },
+   {
+    "seed": 314,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p-20-CCW-g0.120",
+      "after": "SPIRAL-n1-CW-e+0-g0.100"
+     },
+     "winnerFamily": {
+      "before": "SWITCHBACK",
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 5,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 47,
+      "after": 39
+     },
+     "bestConservativeClearance": {
+      "before": 53.364235,
+      "after": 61.319486
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CONSTRUCT:LEG_TOO_SHORT"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 315,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p+20-CCW-g0.100",
+      "after": "SPIRAL-n1-CW-e-45-g0.120"
+     },
+     "winnerFamily": {
+      "before": "SWITCHBACK",
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 7,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 44,
+      "after": 38
+     },
+     "bestConservativeClearance": {
+      "before": 56.186142,
+      "after": 59.369529
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CHEAP:TURN_RADIUS"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 316,
+    "diffs": {
+     "status": {
+      "before": "NO_FEASIBLE_CANDIDATE",
+      "after": "SUCCESS"
+     },
+     "winnerId": {
+      "before": null,
+      "after": "SPIRAL-n1-CW-e+0-g0.120"
+     },
+     "winnerFamily": {
+      "before": null,
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 0,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 52,
+      "after": 46
+     },
+     "bestAccessibleLevels": {
+      "before": 7,
+      "after": 8
+     },
+     "winnerAccessibleLevels": {
+      "before": null,
+      "after": 8
+     },
+     "bestConservativeClearance": {
+      "before": 25.100515,
+      "after": 58.932631
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CONSTRUCT:LEG_TOO_SHORT"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 317,
+    "diffs": {
+     "detailedFeasibleCount": {
+      "before": 2,
+      "after": 4
+     },
+     "cheapFeasibleCount": {
+      "before": 45,
+      "after": 40
+     },
+     "bestConservativeClearance": {
+      "before": 40.382484,
+      "after": 57.973757
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 318,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "after": "SPIRAL-n1-CW-e+45-g0.100"
+     },
+     "winnerFamily": {
+      "before": "SWITCHBACK",
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 3,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 52,
+      "after": 42
+     },
+     "bestConservativeClearance": {
+      "before": 31.77602,
+      "after": 45.075683
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CHEAP:TURN_RADIUS"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 319,
+    "diffs": {
+     "status": {
+      "before": "NO_FEASIBLE_CANDIDATE",
+      "after": "SUCCESS"
+     },
+     "winnerId": {
+      "before": null,
+      "after": "SPIRAL-n1-CW-e+45-g0.120"
+     },
+     "winnerFamily": {
+      "before": null,
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 0,
+      "after": 9
+     },
+     "cheapFeasibleCount": {
+      "before": 37,
+      "after": 32
+     },
+     "bestAccessibleLevels": {
+      "before": 11,
+      "after": 14
+     },
+     "winnerAccessibleLevels": {
+      "before": null,
+      "after": 14
+     },
+     "bestConservativeClearance": {
+      "before": 22.530718,
+      "after": 50.091755
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "DETAILED:ABOVE_TERRAIN"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 320,
+    "diffs": {
+     "status": {
+      "before": "NO_FEASIBLE_CANDIDATE",
+      "after": "SUCCESS"
+     },
+     "winnerId": {
+      "before": null,
+      "after": "SPIRAL-n1-CW-e+0-g0.120"
+     },
+     "winnerFamily": {
+      "before": null,
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 0,
+      "after": 11
+     },
+     "cheapFeasibleCount": {
+      "before": 59,
+      "after": 46
+     },
+     "bestAccessibleLevels": {
+      "before": 8,
+      "after": 11
+     },
+     "winnerAccessibleLevels": {
+      "before": null,
+      "after": 11
+     },
+     "bestConservativeClearance": {
+      "before": 26.469245,
+      "after": 57.276751
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "DETAILED:ABOVE_TERRAIN"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 321,
+    "diffs": {
+     "cheapFeasibleCount": {
+      "before": 39,
+      "after": 28
+     },
+     "bestConservativeClearance": {
+      "before": 55.075597,
+      "after": 56.950021
+     }
+    }
+   },
+   {
+    "seed": 322,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p+20-CCW-g0.120",
+      "after": "SPIRAL-n1-CW-e+0-g0.100"
+     },
+     "winnerFamily": {
+      "before": "SWITCHBACK",
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 11,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 38,
+      "after": 28
+     },
+     "bestConservativeClearance": {
+      "before": 92.585243,
+      "after": 76.996394
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CHEAP:TURN_RADIUS"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 323,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k2-p+20-CCW-g0.100",
+      "after": "SPIRAL-n1-CW-e+0-g0.120"
+     },
+     "winnerFamily": {
+      "before": "SWITCHBACK",
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 2,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 41,
+      "after": 38
+     },
+     "bestConservativeClearance": {
+      "before": 42.95704,
+      "after": 58.670172
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CHEAP:TURN_RADIUS"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 324,
+    "diffs": {
+     "status": {
+      "before": "NO_FEASIBLE_CANDIDATE",
+      "after": "SUCCESS"
+     },
+     "winnerId": {
+      "before": null,
+      "after": "SPIRAL-n1-CW-e+45-g0.100"
+     },
+     "winnerFamily": {
+      "before": null,
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 0,
+      "after": 5
+     },
+     "cheapFeasibleCount": {
+      "before": 56,
+      "after": 46
+     },
+     "bestAccessibleLevels": {
+      "before": 4,
+      "after": 8
+     },
+     "winnerAccessibleLevels": {
+      "before": null,
+      "after": 8
+     },
+     "bestConservativeClearance": {
+      "before": 27.324053,
+      "after": 62.90401
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 325,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p-20-CCW-g0.120",
+      "after": "SWITCHBACK-k1-p+0-CW-g0.120"
+     },
+     "detailedFeasibleCount": {
+      "before": 5,
+      "after": 11
+     },
+     "cheapFeasibleCount": {
+      "before": 38,
+      "after": 32
+     },
+     "bestConservativeClearance": {
+      "before": 42.481018,
+      "after": 58.482076
+     },
+     "dominantLevelAccessFailure": {
+      "before": "INSUFFICIENT_RAMP_PILLAR",
+      "after": "GRADE_LIMIT"
+     }
+    }
+   },
+   {
+    "seed": 326,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p+20-CCW-s50-g0.100",
+      "after": "SPIRAL-n1-CCW-e+0-g0.120"
+     },
+     "winnerFamily": {
+      "before": "SWITCHBACK",
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 1,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 53,
+      "after": 43
+     },
+     "bestConservativeClearance": {
+      "before": 28.837972,
+      "after": 54.741483
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CONSTRUCT:LEG_TOO_SHORT"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 327,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p+20-CW-g0.120",
+      "after": "SPIRAL-n1-CW-e+0-g0.120"
+     },
+     "winnerFamily": {
+      "before": "SWITCHBACK",
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 10,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 42,
+      "after": 35
+     },
+     "bestConservativeClearance": {
+      "before": 99.823245,
+      "after": 51.910727
+     },
+     "dominantFailure": {
+      "before": "DETAILED:OREBODY_CLEARANCE",
+      "after": "CHEAP:TURN_RADIUS"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 328,
+    "diffs": {
+     "status": {
+      "before": "NO_FEASIBLE_CANDIDATE",
+      "after": "SUCCESS"
+     },
+     "winnerId": {
+      "before": null,
+      "after": "SPIRAL-n1-CW-e+45-g0.120"
+     },
+     "winnerFamily": {
+      "before": null,
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 0,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 53,
+      "after": 42
+     },
+     "bestAccessibleLevels": {
+      "before": 10,
+      "after": 11
+     },
+     "winnerAccessibleLevels": {
+      "before": null,
+      "after": 11
+     },
+     "bestConservativeClearance": {
+      "before": 26.932742,
+      "after": 52.751006
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CHEAP:TURN_RADIUS"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 329,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p-20-CW-g0.120",
+      "after": "SPIRAL-n1-CCW-e+45-g0.120"
+     },
+     "winnerFamily": {
+      "before": "SWITCHBACK",
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 4,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 53,
+      "after": 44
+     },
+     "bestConservativeClearance": {
+      "before": 28.845011,
+      "after": 48.555025
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CHEAP:TURN_RADIUS"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 330,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p-20-CW-g0.120",
+      "after": "SWITCHBACK-k1-p+0-CCW-g0.120"
+     },
+     "detailedFeasibleCount": {
+      "before": 10,
+      "after": 8
+     },
+     "cheapFeasibleCount": {
+      "before": 42,
+      "after": 40
+     },
+     "bestConservativeClearance": {
+      "before": 43.908002,
+      "after": 55.609741
+     },
+     "dominantFailure": {
+      "before": "DETAILED:OREBODY_CLEARANCE",
+      "after": "DETAILED:ABOVE_TERRAIN"
+     }
+    }
+   },
+   {
+    "seed": 331,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p-20-CW-g0.120",
+      "after": "SPIRAL-n1-CW-e+0-g0.120"
+     },
+     "winnerFamily": {
+      "before": "SWITCHBACK",
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 6,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 44,
+      "after": 42
+     },
+     "bestConservativeClearance": {
+      "before": 44.352732,
+      "after": 59.486663
+     },
+     "dominantFailure": {
+      "before": "DETAILED:OREBODY_CLEARANCE",
+      "after": "CONSTRUCT:LEG_TOO_SHORT"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   },
+   {
+    "seed": 332,
+    "diffs": {
+     "winnerId": {
+      "before": "SWITCHBACK-k1-p+20-CW-g0.100",
+      "after": "SPIRAL-n1-CW-e+0-g0.120"
+     },
+     "winnerFamily": {
+      "before": "SWITCHBACK",
+      "after": "SPIRAL"
+     },
+     "detailedFeasibleCount": {
+      "before": 2,
+      "after": 12
+     },
+     "cheapFeasibleCount": {
+      "before": 50,
+      "after": 42
+     },
+     "bestConservativeClearance": {
+      "before": 28.680823,
+      "after": 55.708405
+     },
+     "dominantFailure": {
+      "before": "DETAILED:LEVEL_ACCESS_INFEASIBLE",
+      "after": "CONSTRUCT:LEG_TOO_SHORT"
+     },
+     "dominantLevelAccessFailure": {
+      "before": "GRADE_LIMIT",
+      "after": null
+     }
+    }
+   }
+  ],
+  "dominantFailureHistogramBefore": {
+   "DETAILED:ABOVE_TERRAIN": 8,
+   "DETAILED:LEVEL_ACCESS_INFEASIBLE": 21,
+   "DETAILED:OREBODY_CLEARANCE": 3
+  },
+  "dominantFailureHistogramAfter": {
+   "CHEAP:TURN_RADIUS": 9,
+   "CONSTRUCT:LEG_TOO_SHORT": 5,
+   "DETAILED:ABOVE_TERRAIN": 14,
+   "DETAILED:LEVEL_ACCESS_INFEASIBLE": 4
+  },
+  "levelAccessFailureReasonsBefore": {
+   "CONNECTOR_UNAVAILABLE": 66,
+   "GRADE_LIMIT": 350,
+   "INSUFFICIENT_RAMP_PILLAR": 96,
+   "TURNOUT_NOT_STRAIGHT": 77
+  },
+  "levelAccessFailureReasonsAfter": {
+   "GRADE_LIMIT": 3,
+   "INSUFFICIENT_RAMP_PILLAR": 2,
+   "TURNOUT_NOT_STRAIGHT": 6
+  },
+  "feasibleCandidatesBefore": 104,
+  "feasibleCandidatesAfter": 296,
+  "winnerFamilyBefore": {
+   "SPIRAL": 1,
+   "SWITCHBACK": 18
+  },
+  "winnerFamilyAfter": {
+   "SPIRAL": 21,
+   "SWITCHBACK": 8
+  },
+  "runtimeSecondsBefore": 1782.9141920370002,
+  "runtimeSecondsAfter": 2621.2469294989996,
+  "runtimeNote": "wall-clock only (observation, not a gate)"
+ },
+ "perSeed": [
+  {
+   "seed": 301,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SPIRAL-n1-CW-e+0-g0.120",
+   "winnerAfter": "SPIRAL-n1-CW-e+0-g0.120",
+   "feasibleBefore": 10,
+   "feasibleAfter": 10
+  },
+  {
+   "seed": 302,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+   "winnerBefore": null,
+   "winnerAfter": null,
+   "feasibleBefore": 0,
+   "feasibleAfter": 0
+  },
+  {
+   "seed": 303,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": null,
+   "winnerAfter": "SPIRAL-n1-CCW-e+45-g0.120",
+   "feasibleBefore": 0,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 304,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "winnerAfter": "SWITCHBACK-k1-p+0-CCW-g0.120",
+   "feasibleBefore": 6,
+   "feasibleAfter": 11
+  },
+  {
+   "seed": 305,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "winnerAfter": "SWITCHBACK-k1-p+0-CW-g0.120",
+   "feasibleBefore": 5,
+   "feasibleAfter": 11
+  },
+  {
+   "seed": 306,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+   "winnerBefore": null,
+   "winnerAfter": null,
+   "feasibleBefore": 0,
+   "feasibleAfter": 0
+  },
+  {
+   "seed": 307,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": null,
+   "winnerAfter": "SPIRAL-n1-CCW-e+0-g0.120",
+   "feasibleBefore": 0,
+   "feasibleAfter": 11
+  },
+  {
+   "seed": 308,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": null,
+   "winnerAfter": "SPIRAL-n1-CCW-e-45-g0.120",
+   "feasibleBefore": 0,
+   "feasibleAfter": 9
+  },
+  {
+   "seed": 309,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": null,
+   "winnerAfter": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "feasibleBefore": 0,
+   "feasibleAfter": 2
+  },
+  {
+   "seed": 310,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "winnerAfter": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "feasibleBefore": 5,
+   "feasibleAfter": 9
+  },
+  {
+   "seed": 311,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "winnerAfter": "SPIRAL-n1-CW-e+0-g0.120",
+   "feasibleBefore": 9,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 312,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": null,
+   "winnerAfter": "SPIRAL-n1-CCW-e+0-g0.120",
+   "feasibleBefore": 0,
+   "feasibleAfter": 11
+  },
+  {
+   "seed": 313,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k2-p+20-CW-g0.120",
+   "winnerAfter": "SWITCHBACK-k1-p+0-CCW-g0.120",
+   "feasibleBefore": 1,
+   "feasibleAfter": 6
+  },
+  {
+   "seed": 314,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "winnerAfter": "SPIRAL-n1-CW-e+0-g0.100",
+   "feasibleBefore": 5,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 315,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "winnerAfter": "SPIRAL-n1-CW-e-45-g0.120",
+   "feasibleBefore": 7,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 316,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": null,
+   "winnerAfter": "SPIRAL-n1-CW-e+0-g0.120",
+   "feasibleBefore": 0,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 317,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "winnerAfter": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "feasibleBefore": 2,
+   "feasibleAfter": 4
+  },
+  {
+   "seed": 318,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "winnerAfter": "SPIRAL-n1-CW-e+45-g0.100",
+   "feasibleBefore": 3,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 319,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": null,
+   "winnerAfter": "SPIRAL-n1-CW-e+45-g0.120",
+   "feasibleBefore": 0,
+   "feasibleAfter": 9
+  },
+  {
+   "seed": 320,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": null,
+   "winnerAfter": "SPIRAL-n1-CW-e+0-g0.120",
+   "feasibleBefore": 0,
+   "feasibleAfter": 11
+  },
+  {
+   "seed": 321,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "NO_FEASIBLE_CANDIDATE",
+   "winnerBefore": null,
+   "winnerAfter": null,
+   "feasibleBefore": 0,
+   "feasibleAfter": 0
+  },
+  {
+   "seed": 322,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "winnerAfter": "SPIRAL-n1-CW-e+0-g0.100",
+   "feasibleBefore": 11,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 323,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k2-p+20-CCW-g0.100",
+   "winnerAfter": "SPIRAL-n1-CW-e+0-g0.120",
+   "feasibleBefore": 2,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 324,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": null,
+   "winnerAfter": "SPIRAL-n1-CW-e+45-g0.100",
+   "feasibleBefore": 0,
+   "feasibleAfter": 5
+  },
+  {
+   "seed": 325,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "winnerAfter": "SWITCHBACK-k1-p+0-CW-g0.120",
+   "feasibleBefore": 5,
+   "feasibleAfter": 11
+  },
+  {
+   "seed": 326,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p+20-CCW-s50-g0.100",
+   "winnerAfter": "SPIRAL-n1-CCW-e+0-g0.120",
+   "feasibleBefore": 1,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 327,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p+20-CW-g0.120",
+   "winnerAfter": "SPIRAL-n1-CW-e+0-g0.120",
+   "feasibleBefore": 10,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 328,
+   "layoutBefore": "NO_FEASIBLE_CANDIDATE",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": null,
+   "winnerAfter": "SPIRAL-n1-CW-e+45-g0.120",
+   "feasibleBefore": 0,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 329,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p-20-CW-g0.120",
+   "winnerAfter": "SPIRAL-n1-CCW-e+45-g0.120",
+   "feasibleBefore": 4,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 330,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p-20-CW-g0.120",
+   "winnerAfter": "SWITCHBACK-k1-p+0-CCW-g0.120",
+   "feasibleBefore": 10,
+   "feasibleAfter": 8
+  },
+  {
+   "seed": 331,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p-20-CW-g0.120",
+   "winnerAfter": "SPIRAL-n1-CW-e+0-g0.120",
+   "feasibleBefore": 6,
+   "feasibleAfter": 12
+  },
+  {
+   "seed": 332,
+   "layoutBefore": "SUCCESS",
+   "layoutAfter": "SUCCESS",
+   "winnerBefore": "SWITCHBACK-k1-p+20-CW-g0.100",
+   "winnerAfter": "SPIRAL-n1-CW-e+0-g0.120",
+   "feasibleBefore": 2,
+   "feasibleAfter": 12
+  }
+ ]
+}

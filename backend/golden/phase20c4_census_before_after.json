@@ -1,0 +1,1565 @@
+{
+ "artifact": "phase20c4_census_before_after",
+ "gate": "D",
+ "auditType": "CONTROLLED_COMPARISON_VS_20C3A_CENSUS",
+ "baseline": {
+  "artifact": "phase20c3a_failure_census",
+  "baselineGitSha": "7463c49086dd98536e80f6654412db148bea5328",
+  "censusSeeds": [
+   302,
+   303,
+   306,
+   307,
+   308,
+   309,
+   312,
+   316,
+   319,
+   320,
+   321,
+   324,
+   328
+  ],
+  "detailedCandidates": 147,
+  "populations": {
+   "MULTI_CLUSTER_CLEARANCE": 37,
+   "PORTAL_APPROACH": 22,
+   "LEVEL_ACCESS_PROBLEM": 76,
+   "LOCAL_REPAIR_GEOMETRY_RULE": 5,
+   "FIRST_LEG_GLOBAL_ABOVE_TERRAIN": 6,
+   "PORTAL_ARTIFACT_ONLY": 1
+  }
+ },
+ "current": {
+  "gitSha": "925ce25d28d3731ce87afde9deabf36afaaba5e9",
+  "detailedCandidates": 146,
+  "populations": {
+   "PORTAL_APPROACH": 28,
+   "FEASIBLE": 94,
+   "MULTI_CLUSTER_CLEARANCE": 7,
+   "FIRST_LEG_GLOBAL_ABOVE_TERRAIN": 10,
+   "LOCAL_REPAIR_GEOMETRY_RULE": 6,
+   "LEVEL_ACCESS_PROBLEM": 1
+  },
+  "seedsSuccess": 10,
+  "seedsNoFeasible": 3
+ },
+ "classToPopulation": {
+  "LEVEL_ACCESS_PROBLEM": "LEVEL_ACCESS_PROBLEM",
+  "FAMILY_CONSTRUCTION_PROBLEM:PORTAL_APPROACH": "PORTAL_APPROACH",
+  "OTHER_NON_REPAIRABLE:MULTI_CLUSTER": "MULTI_CLUSTER_CLEARANCE",
+  "GLOBAL_GEOMETRY_PROBLEM:SPAN": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
+  "LOCAL_REPAIR_CANDIDATE": "LOCAL_REPAIR_GEOMETRY_RULE",
+  "PORTAL_ARTIFACT_ONLY": "PORTAL_ARTIFACT_ONLY",
+  "FEASIBLE": "FEASIBLE"
+ },
+ "semantics": "The 13 NO_FEASIBLE seeds of the 20C.3A census re-run with the SAME census script under the Gate C tree (construction ServiceReference read by the SPIRAL and SWITCHBACK corridors). Per-candidate transitions are reported for every baseline DETAILED candidate (NOT_DETAILED = no longer in the shortlist); candidates DETAILED only now are listed separately. The census is a historical diagnostic baseline, never an optimization target; no threshold, coefficient or gate was changed to move these numbers. PHYSICALLY_LOCAL_REPAIRABLE is not re-derived.",
+ "perSeed": [
+  {
+   "seed": 302,
+   "before": "NO_FEASIBLE",
+   "after": "NO_FEASIBLE",
+   "detailedBefore": 3,
+   "detailedAfter": 2,
+   "feasibleBefore": 0,
+   "feasibleAfter": 0,
+   "serviceableLevels": 9
+  },
+  {
+   "seed": 303,
+   "before": "NO_FEASIBLE",
+   "after": "SUCCESS",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 12,
+   "serviceableLevels": 10
+  },
+  {
+   "seed": 306,
+   "before": "NO_FEASIBLE",
+   "after": "NO_FEASIBLE",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 0,
+   "serviceableLevels": 11
+  },
+  {
+   "seed": 307,
+   "before": "NO_FEASIBLE",
+   "after": "SUCCESS",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 11,
+   "serviceableLevels": 9
+  },
+  {
+   "seed": 308,
+   "before": "NO_FEASIBLE",
+   "after": "SUCCESS",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 9,
+   "serviceableLevels": 10
+  },
+  {
+   "seed": 309,
+   "before": "NO_FEASIBLE",
+   "after": "SUCCESS",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 2,
+   "serviceableLevels": 8
+  },
+  {
+   "seed": 312,
+   "before": "NO_FEASIBLE",
+   "after": "SUCCESS",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 11,
+   "serviceableLevels": 12
+  },
+  {
+   "seed": 316,
+   "before": "NO_FEASIBLE",
+   "after": "SUCCESS",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 12,
+   "serviceableLevels": 8
+  },
+  {
+   "seed": 319,
+   "before": "NO_FEASIBLE",
+   "after": "SUCCESS",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 9,
+   "serviceableLevels": 14
+  },
+  {
+   "seed": 320,
+   "before": "NO_FEASIBLE",
+   "after": "SUCCESS",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 11,
+   "serviceableLevels": 11
+  },
+  {
+   "seed": 321,
+   "before": "NO_FEASIBLE",
+   "after": "NO_FEASIBLE",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 0,
+   "serviceableLevels": 9
+  },
+  {
+   "seed": 324,
+   "before": "NO_FEASIBLE",
+   "after": "SUCCESS",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 5,
+   "serviceableLevels": 8
+  },
+  {
+   "seed": 328,
+   "before": "NO_FEASIBLE",
+   "after": "SUCCESS",
+   "detailedBefore": 12,
+   "detailedAfter": 12,
+   "feasibleBefore": 0,
+   "feasibleAfter": 12,
+   "serviceableLevels": 11
+  }
+ ],
+ "transitions": {
+  "FIRST_LEG_GLOBAL_ABOVE_TERRAIN->FIRST_LEG_GLOBAL_ABOVE_TERRAIN": 2,
+  "FIRST_LEG_GLOBAL_ABOVE_TERRAIN->NOT_DETAILED": 4,
+  "LEVEL_ACCESS_PROBLEM->FEASIBLE": 24,
+  "LEVEL_ACCESS_PROBLEM->NOT_DETAILED": 52,
+  "LOCAL_REPAIR_GEOMETRY_RULE->LOCAL_REPAIR_GEOMETRY_RULE": 1,
+  "LOCAL_REPAIR_GEOMETRY_RULE->NOT_DETAILED": 4,
+  "MULTI_CLUSTER_CLEARANCE->FEASIBLE": 7,
+  "MULTI_CLUSTER_CLEARANCE->LOCAL_REPAIR_GEOMETRY_RULE": 1,
+  "MULTI_CLUSTER_CLEARANCE->MULTI_CLUSTER_CLEARANCE": 1,
+  "MULTI_CLUSTER_CLEARANCE->NOT_DETAILED": 26,
+  "MULTI_CLUSTER_CLEARANCE->PORTAL_APPROACH": 2,
+  "PORTAL_APPROACH->NOT_DETAILED": 17,
+  "PORTAL_APPROACH->PORTAL_APPROACH": 5,
+  "PORTAL_ARTIFACT_ONLY->NOT_DETAILED": 1
+ },
+ "newlyDetailed": {
+  "count": 103,
+  "populations": {
+   "FEASIBLE": 63,
+   "FIRST_LEG_GLOBAL_ABOVE_TERRAIN": 8,
+   "MULTI_CLUSTER_CLEARANCE": 6,
+   "PORTAL_APPROACH": 21,
+   "LEVEL_ACCESS_PROBLEM": 1,
+   "LOCAL_REPAIR_GEOMETRY_RULE": 4
+  }
+ },
+ "perCandidate": [
+  {
+   "seed": 302,
+   "candidateId": "SPIRAL-n1-CW-e+45-g0.120",
+   "family": "SPIRAL",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 302,
+   "candidateId": "SWITCHBACK-k2-p+20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "PORTAL_APPROACH",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 302,
+   "candidateId": "SWITCHBACK-k2-p+20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "PORTAL_APPROACH",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 303,
+   "candidateId": "SPIRAL-n1-CCW-e+45-g0.120",
+   "family": "SPIRAL",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 303,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 303,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 303,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 303,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 303,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 303,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 303,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 303,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 303,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 303,
+   "candidateId": "SWITCHBACK-k2-p+0-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 303,
+   "candidateId": "SWITCHBACK-k2-p+20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 306,
+   "candidateId": "SPIRAL-n1-CCW-e+45-g0.120",
+   "family": "SPIRAL",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 306,
+   "candidateId": "SWITCHBACK-k1-p+0-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
+   "after": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 306,
+   "candidateId": "SWITCHBACK-k1-p+0-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
+   "after": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 306,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 306,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 306,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 306,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 306,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "MULTI_CLUSTER_CLEARANCE",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 306,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 306,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LOCAL_REPAIR_GEOMETRY_RULE",
+   "after": "LOCAL_REPAIR_GEOMETRY_RULE",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 306,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 306,
+   "candidateId": "SWITCHBACK-k2-p+20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 307,
+   "candidateId": "SPIRAL-n1-CW-e+0-g0.100",
+   "family": "SPIRAL",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 307,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 307,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 307,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 307,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 307,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 307,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 307,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 307,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 307,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 307,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 307,
+   "candidateId": "SWITCHBACK-k2-p-20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 308,
+   "candidateId": "SPIRAL-n1.5-CCW-e-45-g0.100",
+   "family": "SPIRAL",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 308,
+   "candidateId": "SWITCHBACK-k1-p+0-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 308,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 308,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 308,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 308,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 308,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 308,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 308,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 308,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 308,
+   "candidateId": "SWITCHBACK-k2-p+20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LOCAL_REPAIR_GEOMETRY_RULE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 308,
+   "candidateId": "SWITCHBACK-k2-p-20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LOCAL_REPAIR_GEOMETRY_RULE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 309,
+   "candidateId": "SPIRAL-n1-CCW-e-45-g0.100",
+   "family": "SPIRAL",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 309,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "PORTAL_APPROACH",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 309,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "PORTAL_APPROACH",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 309,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 309,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 309,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 309,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "PORTAL_APPROACH",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 309,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 309,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 309,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 309,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 309,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 312,
+   "candidateId": "SPIRAL-n1-CCW-e+45-g0.120",
+   "family": "SPIRAL",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 312,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 312,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 312,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 312,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 312,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 312,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 312,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 312,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 312,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 312,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 312,
+   "candidateId": "SWITCHBACK-k2-p+20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 316,
+   "candidateId": "SPIRAL-n1-CW-e+45-g0.120",
+   "family": "SPIRAL",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 316,
+   "candidateId": "SWITCHBACK-k1-p+0-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 316,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 316,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 316,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 316,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 316,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 316,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 316,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 316,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 316,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 316,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 319,
+   "candidateId": "SPIRAL-n1-CW-e+0-g0.120",
+   "family": "SPIRAL",
+   "before": "PORTAL_ARTIFACT_ONLY",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 319,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 319,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "PORTAL_APPROACH",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 319,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 319,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 319,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 319,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 319,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 319,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 319,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 319,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 319,
+   "candidateId": "SWITCHBACK-k2-p+20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 320,
+   "candidateId": "SPIRAL-n1-CCW-e+0-g0.100",
+   "family": "SPIRAL",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 320,
+   "candidateId": "SWITCHBACK-k1-p+0-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 320,
+   "candidateId": "SWITCHBACK-k1-p+0-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 320,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 320,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 320,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 320,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 320,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 320,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 320,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 320,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 320,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SPIRAL-n1-CW-e+45-g0.100",
+   "family": "SPIRAL",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SWITCHBACK-k1-p+0-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SWITCHBACK-k2-p+20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SWITCHBACK-k2-p+20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 321,
+   "candidateId": "SWITCHBACK-k2-p+20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 324,
+   "candidateId": "SPIRAL-n1.5-CCW-e+0-g0.120",
+   "family": "SPIRAL",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 324,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "PORTAL_APPROACH",
+   "after": "PORTAL_APPROACH",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 324,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "LOCAL_REPAIR_GEOMETRY_RULE",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
+  },
+  {
+   "seed": 324,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 324,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 324,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 324,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 324,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 324,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LOCAL_REPAIR_GEOMETRY_RULE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 324,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 324,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LOCAL_REPAIR_GEOMETRY_RULE",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 324,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 328,
+   "candidateId": "SPIRAL-n1-CW-e+45-g0.120",
+   "family": "SPIRAL",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 328,
+   "candidateId": "SWITCHBACK-k1-p+0-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 328,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 328,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 328,
+   "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 328,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 328,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 328,
+   "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 328,
+   "candidateId": "SWITCHBACK-k1-p+20-CW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "MULTI_CLUSTER_CLEARANCE",
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
+  },
+  {
+   "seed": 328,
+   "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 328,
+   "candidateId": "SWITCHBACK-k1-p-20-CW-s50-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  },
+  {
+   "seed": 328,
+   "candidateId": "SWITCHBACK-k2-p-20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "before": "LEVEL_ACCESS_PROBLEM",
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
+  }
+ ]
+}

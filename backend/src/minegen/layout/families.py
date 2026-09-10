@@ -47,6 +47,12 @@ from minegen.core.enums import FAMILY_ORDER as FAMILY_ORDER
 from minegen.core.enums import RampFamily as RampFamily
 from minegen.core.models import LayoutV2Config, RampConstraints
 from minegen.layout.levels import LevelSections, RequiredLevel, level_intervals
+from minegen.layout.reference import (
+    ZERO_PROFILE,
+    DeltaProfile,
+    ServiceReference,
+    WindowRequirementProfile,
+)
 from minegen.world.orebody import Orebody
 
 FloatArray = npt.NDArray[np.float64]
@@ -537,6 +543,10 @@ class LayoutContext:
     cfg: LayoutV2Config
     world_half_x: float
     world_half_y: float
+    #: Phase 20C.4 conservative construction reference (``layout.reference``);
+    #: ``None`` (or an inactive reference) leaves every corridor exactly where
+    #: the global track edge + stand-off puts it — bit-identical legacy path
+    reference: ServiceReference | None = None
 
     @property
     def standoff(self) -> float:
@@ -549,6 +559,193 @@ class LayoutContext:
     def inside_world(self, xy: FloatArray) -> bool:
         m = self.cfg.world_margin
         return bool(abs(xy[0]) <= self.world_half_x - m and abs(xy[1]) <= self.world_half_y - m)
+
+
+def corridor_profile(
+    ctx: LayoutContext,
+    n: FloatArray,
+    along: FloatArray,
+    centres: FloatArray,
+    half: float,
+) -> tuple[DeltaProfile, list[dict[str, Any]]]:
+    """Outward corridor correction ``delta(z)`` of ONE family corridor under
+    the search's construction ``ServiceReference`` (Phase 20C.4, rule 170):
+    lateral unit ``n`` (away from the ore), along unit ``along``, the
+    footprint along-centre per serviceable level and the footprint
+    half-extent — the ramp's OWN along-extent (SWITCHBACK ``leg/2 + R_min``,
+    SPIRAL ``R``). The corridor's current ore-facing lateral per level is
+    ``footwall_edge(z)·n + standoff``; the returned profile adds
+    ``max(0, support + margin − that)`` interpolated in z — the profile of a
+    corridor that serves every elevation CONTINUOUSLY (the SPIRAL helix). A
+    corridor placed at discrete elevations uses
+    ``switchback_corridor_profile``. Without a reference, or with an
+    inactive one (TABULAR, explicit stand-off), the exact zero profile is
+    returned and the geometry is bit-identical."""
+    ref = ctx.reference
+    if ref is None or not ref.active:
+        return ZERO_PROFILE, []
+    if ref.elevations.shape[0] != len(ctx.levels):
+        raise ValueError("corridor_profile: the reference and the context disagree on the levels")
+    n2 = np.asarray(n, dtype=np.float64)[:2]
+    edge = ctx.track.footwall_edge
+    base = np.asarray(
+        [ctx.standoff + float(edge(lv.elevation) @ n2) for lv in ctx.levels], dtype=np.float64
+    )
+    return ref.profile(n2, np.asarray(along, dtype=np.float64)[:2], np.asarray(centres), half, base)
+
+
+def _arc_chord_shortfall(radius: float, angle: float, spacing: float) -> float:
+    """``R·θ − Σ chords`` of ``Path.arc``'s discretization (n = ceil(R·θ /
+    spacing) equal chords): the horizontal length the chord-descent rule
+    (``dz = gradient × chord``) does not descend."""
+    n = max(1, math.ceil(radius * angle / spacing))
+    return radius * angle - n * 2.0 * radius * math.sin(angle / (2.0 * n))
+
+
+def switchback_pair_descent_closure(
+    r_min: float, gradient: float, spacing: float, station: float
+) -> float:
+    """Upper bound of the elevation by which one leg + hairpin PAIR of
+    ``build_switchback`` descends LESS than its nominal ``2·drop``: the
+    straights descend exactly, the two hairpin arcs descend per chord
+    (``Path.arc``), so the next near leg starts at most this far ABOVE the
+    nominal ``z_pair`` at which its correction is read. Within one chord
+    count ``n`` the shortfall grows linearly with R and drops when ``n``
+    increments, so its supremum over R ≥ R_min sits at the top of the first
+    chord-count segment (R = n₀·spacing/θ) — evaluated exactly, for the
+    plain π hairpin and the station form (two π/2 arcs), the larger taken."""
+    worst = 0.0
+    for angle, arcs in ((math.pi, 1), (math.pi / 2.0, 2)):
+        n0 = max(1, math.ceil(r_min * angle / spacing))
+        radii = [r_min] + [n * spacing / angle for n in (n0, n0 + 1)]
+        worst = max(worst, arcs * max(_arc_chord_shortfall(r, angle, spacing) for r in radii))
+    return gradient * 2.0 * worst  # two hairpins per pair
+
+
+def switchback_corridor_profile(
+    ctx: LayoutContext,
+    n: FloatArray,
+    along: FloatArray,
+    centres: FloatArray,
+    half: float,
+    drop_per_cycle: float,
+    level_interval: float,
+    far_first: bool,
+    descent_closure: float = 0.0,
+) -> tuple[DeltaProfile, list[dict[str, Any]]]:
+    """The corridor profile a SWITCHBACK stack consumes — ONE vertical
+    window and ONE parity-derived edge term, both derived from the stacking
+    mechanics of ``build_switchback`` (Phase 20C.4 follow-up), applied to
+    the ABSOLUTE per-level requirement ``Q_L = support_L + margin``
+    (``WindowRequirementProfile``).
+
+    Delivered near-leg lateral. ``build_switchback`` applies ``delta`` EXACTLY
+    at every near-leg start (the anchor carries the first near leg's value;
+    at each near-leg cycle the step to the next near leg, starting at
+    ``z_pair = z_a − 2·drop``, widens the away hairpin when outward and is
+    carried into the next toward hairpin when inward), so a near leg that
+    STARTS at ``z`` and spans ``[z − drop, z]`` sits at
+
+        near(z) = legacy_near(z) + delta(z)
+
+    where ``legacy_near`` is the reference-less stack. The legacy stack
+    follows the linear track edge through the pair drift ``edge(z_a −
+    2·drop) − edge(z_a)`` (outward drift applied by the hairpin after a NEAR
+    leg, inward drift by the hairpin after a FAR leg, never below R_min):
+    with a NEAR first leg every near leg sits at ``edge(z)·n + standoff``
+    (START-anchored); with a FAR first leg the first near leg (starting at
+    ``z_join − drop``) is placed by the WHOLE first pair's drift and every
+    near leg carries one cycle drop of edge lag —
+    ``legacy_near(z) = standoff + edge(z ∓ drop)·n`` (the ore-ward
+    neighbour). Both parities are verified in ``test_service_reference``
+    and on the delivered 301 stacks.
+
+    Window. A near leg starting at ``z`` occupies ``[z − drop, z]``;
+    attributing every leg elevation to its NEAREST level plane (uniform
+    spacing, ``± dz/2``) the placement at ``z`` must honour every level
+    inside
+
+        W(z) = max Q_L over z_L ∈ [z − drop − dz/2, z + dz/2]
+
+    and nothing outside it — one window, no second band. Hence
+
+        delta(z) = max(0, W(z) − base(z)),
+        base(z)  = standoff + edge(z)·n                       (near first)
+                 = standoff + min edge(z')·n, z' ∈ {z − drop, z, z + drop}
+                                                                (far first)
+
+    (the track edge is linear in z, the band ends suffice; the far-first
+    minimum over both neighbours covers an inward- and an outward-drifting
+    edge). ``descent_closure`` (``switchback_pair_descent_closure``) extends
+    the window ABOVE by the elevation one pair can descend less than its
+    nominal ``2·drop`` under the chord-descent rule, because the correction
+    of a near leg is read at the nominal ``z_pair`` while the leg starts at
+    most that far above it — a derived closure of a few centimetres, never
+    a tolerance on a requirement. The hairpin station changes the leg
+    spacing and the horizontal
+    cycle length, not the cycle drop (window station-independent); the
+    last pair's clamp ``z_pair = max(z_a − 2·drop, z_last)`` places the
+    deepest near leg with ``delta(z_last)``, whose window holds the deepest
+    level. The near leg actually spans ``[z − drop + ε, z]`` (``ε`` the
+    hairpin's own descent); the full cycle drop is the conservative closure.
+
+    The pre-follow-up implementation applied a ± 2·drop band-minimum of the
+    edge AND a ± 2·drop running maximum of delta on top (up to ± 4·drop)
+    and folded delta into the interleaved edge drift; neither width was
+    derived and the pair-window test
+    (``test_switchback_window_is_the_pair_span_derived_from_the_leg_geometry``)
+    is red on it. Inactive reference → exact ``ZERO_PROFILE`` (bit-identical
+    geometry, as for every family); stage 4 stays the service authority on
+    the delivered polyline."""
+    ref = ctx.reference
+    if ref is None or not ref.active:
+        return ZERO_PROFILE, []
+    if ref.elevations.shape[0] != len(ctx.levels):
+        raise ValueError(
+            "switchback_corridor_profile: the reference and the context disagree on the levels"
+        )
+    n2 = np.asarray(n, dtype=np.float64)[:2]
+    edge = ctx.track.footwall_edge
+    standoff = ctx.standoff
+    drop = max(0.0, float(drop_per_cycle))
+    lag = drop if far_first else 0.0
+
+    def edge_lateral(z: float) -> float:
+        return float(edge(z) @ n2)
+
+    def base(z: float) -> float:
+        if lag == 0.0:
+            return standoff + edge_lateral(z)
+        return standoff + min(edge_lateral(z - lag), edge_lateral(z), edge_lateral(z + lag))
+
+    base_at_levels = np.asarray(
+        [standoff + edge_lateral(lv.elevation) for lv in ctx.levels], dtype=np.float64
+    )
+    _, records = ref.level_deltas(
+        n2, np.asarray(along, dtype=np.float64)[:2], np.asarray(centres), half, base_at_levels
+    )
+    requirements: list[float | None] = [
+        None if rec["support"] is None else float(rec["support"]) + ref.margin for rec in records
+    ]
+    half_interval = 0.5 * max(0.0, float(level_interval))
+    profile = WindowRequirementProfile(
+        ref.elevations,
+        ref.level_ids,
+        requirements,
+        base,
+        below=drop + half_interval,
+        above=half_interval + max(0.0, float(descent_closure)),
+    )
+    profile.extras = {
+        "farFirst": bool(far_first),
+        "edgeLagM": lag,
+        "descentClosureM": max(0.0, float(descent_closure)),
+    }
+    for rec, q in zip(records, requirements, strict=True):
+        rec["requirement"] = q
+        rec["effectiveBaseLateral"] = base(float(rec["elevation"]))
+        rec["windowDelta"] = profile(float(rec["elevation"]))
+    return profile, records
 
 
 @dataclass
@@ -659,9 +856,20 @@ def build_spiral(params: CandidateParams, ctx: LayoutContext) -> FamilyGeometry 
     sense = 1.0 if params.turn_sense == "CW" else -1.0
     d_hat = rotate(ctx.track.w_h, params.entry_orientation_deg)
     offset = ctx.standoff + radius
+    # Phase 20C.4 (rule 170): the rim's ore-facing lateral is the construction
+    # ServiceReference lateral — track edge + stand-off + the outward
+    # correction delta(z) that keeps six widths from every level backbone the
+    # rim runs alongside (footprint = the rim, |along − axis·along| ≤ R).
+    # Inactive reference → delta ≡ 0.0 → bit-identical helix.
+    along = np.array([d_hat[1], -d_hat[0]])
+    rim_centres = np.asarray(
+        [float(ctx.track.footwall_edge(lv.elevation) @ along) for lv in ctx.levels],
+        dtype=np.float64,
+    )
+    profile, correction_levels = corridor_profile(ctx, d_hat, along, rim_centres, radius)
 
     def axis_at(z: float) -> FloatArray:
-        return np.asarray(ctx.track.footwall_edge(z) + d_hat * offset)
+        return np.asarray(ctx.track.footwall_edge(z) + d_hat * (offset + profile(z)))
 
     portal = ctx.portal
     # approach: straight from the portal to the tangent point of the circle at
@@ -761,6 +969,8 @@ def build_spiral(params: CandidateParams, ctx: LayoutContext) -> FamilyGeometry 
             "approachGradient": g_app,
             "joinElevation": z_join,
             "dropPerTurn": 2.0 * math.pi * radius * g,
+            "corridorCorrection": profile.to_dict(),
+            "corridorCorrectionLevels": correction_levels,
         },
     )
 
@@ -911,6 +1121,20 @@ def build_switchback(
     near_lateral = ctx.standoff  # ore-facing leg
     leg_lateral0 = near_lateral if first_moves_away else near_lateral + 2.0 * r_min + station
     leg_len_nominal = drop_per_cycle / g - math.pi * r_min - station
+    # Phase 20C.4 (rule 170): the near leg's lateral is the construction
+    # ServiceReference lateral — track edge + stand-off + the outward
+    # correction delta(z) that keeps six widths from every level backbone the
+    # stack runs alongside. Footprint = the ramp's own along-extent: every
+    # leg is stacked on ONE along-centre (the track centroid at the join
+    # elevation) and each hairpin adds R_min beyond the leg end (Gate C step
+    # 0). delta is applied at the corridor anchor and EXACTLY at every
+    # near-leg start (the loop below), so an inactive reference
+    # (delta ≡ 0.0) leaves the stack bit-identical. The stack consumes ONE
+    # derived window of the absolute requirement
+    # (switchback_corridor_profile: the level planes a near leg starting at
+    # z occupies, [z − drop − dz/2, z + dz/2]) and, for a far-first stack,
+    # the one-cycle edge lag its first pair imposes.
+    footprint_half = 0.5 * leg_len_nominal + r_min
     if leg_len_nominal < ctx.cfg.min_straight_length:
         return FamilyInfeasible(
             InfeasibleReason.LEG_TOO_SHORT,
@@ -925,8 +1149,32 @@ def build_switchback(
     # depends on the approach length, so iterate the fixed point (5 rounds)
     z_join = z1
     start_xy = ctx.portal[:2]
+    descent_closure = switchback_pair_descent_closure(r_min, g, ctx.cfg.sample_spacing, station)
+    profile = ZERO_PROFILE
+    correction_levels: list[dict[str, Any]] = []
     for _ in range(5):
-        corridor_center = tr.footwall_edge(z_join) + n_hat * leg_lateral0
+        leg_centre = np.full(len(ctx.levels), float(tr.centroid(z_join) @ leg_dir))
+        # the correction is applied EXACTLY at every near-leg start (below),
+        # so the value read at z places the near leg [z − drop, z]: the stack
+        # reads the requirement window derived from that (see
+        # switchback_corridor_profile) — outward-only, exact zero when inactive
+        profile, correction_levels = switchback_corridor_profile(
+            ctx,
+            n_hat,
+            leg_dir,
+            leg_centre,
+            footprint_half,
+            drop_per_cycle,
+            dz,
+            far_first=not first_moves_away,
+            descent_closure=descent_closure,
+        )
+        # the anchor carries the correction of the FIRST NEAR leg: the leg
+        # that starts at the join (near first) or one cycle drop below it
+        # (far first — the far leg sits 2·R + station outward of it)
+        z_first_near = z_join if first_moves_away else z_join - drop_per_cycle
+        delta_anchor = profile(z_first_near)
+        corridor_center = tr.footwall_edge(z_join) + n_hat * (leg_lateral0 + delta_anchor)
         centroid_along = float((tr.centroid(z_join) - corridor_center) @ leg_dir)
         start_xy = corridor_center + leg_dir * (centroid_along - 0.5 * leg_len_nominal)
         probe = Path(
@@ -954,6 +1202,19 @@ def build_switchback(
     sense = first_sense
     cycle = 0
     max_cycles = 4 * k * (len(ctx.levels) + 8)
+    # Phase 20C.4 follow-up: the corridor correction delta is consumed
+    # EXACTLY, separately from the edge drift. ``delta_applied`` is the delta
+    # the current near leg embodies; at every near-leg cycle the step to the
+    # NEXT near leg (starting at z_pair) is split by sign — an outward step
+    # widens THIS (away) hairpin, an inward step is carried into the NEXT
+    # (toward) hairpin — so every near leg lands at legacy + delta(its start)
+    # whatever the pair phase, and delta ≡ 0 leaves every radius, leg and
+    # sample bit-identical. Folding delta into the interleaved edge drift
+    # (the pre-follow-up consumption) lost a step that only one of the two
+    # pair phases saw (1.5 m inward of the legacy build on 301 k2-p-20).
+    delta_applied = delta_anchor
+    carried_inward = 0.0  # inward delta step waiting for the next toward hairpin
+    pair_step_mag = 0.0  # |delta step| of the pair the current cycle belongs to
     while path.pose.z > ctx.z_last + 1e-9 and cycle < max_cycles:
         # corridor drift toward the dip direction: the footwall edge moves with
         # depth, so over every PAIR of cycles the legs must shift by the edge
@@ -969,10 +1230,28 @@ def build_switchback(
         radius = r_min
         if move_sign * pair_drift > 0.0:
             radius = r_min + abs(pair_drift) / 2.0
+        if move_sign > 0.0:
+            # this leg is a NEAR leg and its hairpin moves AWAY: the next
+            # near leg starts at z_pair
+            step = profile(z_pair) - delta_applied
+            delta_applied = profile(z_pair)
+            pair_step_mag = abs(step)
+            carried_inward = max(0.0, -step)
+            radius += max(0.0, step) / 2.0
+        else:
+            # this leg is a FAR leg and its hairpin moves TOWARD the ore:
+            # apply the inward step of the pair (never below R_min)
+            radius += carried_inward / 2.0
+            carried_inward = 0.0
         # both legs of a pair share ONE length so the stack stays aligned
         # along strike: the pair drops 2·ΔZ/k over 2·L + π·(2·R_min +
-        # |drift|/2) + 2·station, i.e. L = ΔZ/(k·g) − π·(R_min + |drift|/4) − s
-        leg = drop_per_cycle / g - math.pi * (r_min + abs(pair_drift) / 4.0) - station
+        # |drift|/2 + |step|/2) + 2·station, i.e.
+        # L = ΔZ/(k·g) − π·(R_min + |drift|/4 + |step|/4) − s
+        leg = (
+            drop_per_cycle / g
+            - math.pi * (r_min + abs(pair_drift) / 4.0 + pair_step_mag / 4.0)
+            - station
+        )
         if leg < ctx.cfg.min_straight_length:
             return FamilyInfeasible(
                 InfeasibleReason.LEG_TOO_SHORT,
@@ -1011,6 +1290,8 @@ def build_switchback(
             "cycles": cycle + 1,
             "stationLength": station,
             "legSpacing": 2.0 * r_min + station,
+            "corridorCorrection": profile.to_dict(),
+            "corridorCorrectionLevels": correction_levels,
         },
     )
 

@@ -1325,3 +1325,133 @@ egress advisory). Runtime is an observation, never a gate.
   order) on the undirected projection; the physical answer ignores
   capabilities, the capability answer filters edges; both are returned.
 
+
+## Phase 20C.4 — level-access reference consistency: the construction ServiceReference (`layout/reference.py`, rule 186)
+
+Gate A (`docs/verification/phase20c4_reference_audit.md`) proved the cause
+of the 20C.3A LEVEL_ACCESS_PROBLEM population: the ramp corridor (rule 170)
+was placed from the GLOBAL linear `FootwallTrack` edge while the level
+anchors (rules 158 / 178) sit on the CERTIFIED clearance level set of each
+level plane, so on irregular bodies the intended six-width separation
+collapsed to ≈ 7 m (nearest approach p50 6.8 m on 122 failed levels, every
+control level ≥ 23.7 m) and the level-access planner failed typed
+(GRADE_LIMIT is the plurality label of all lattice rejections; the binding
+gates were plan separation / rock pillar / connector). Gate B
+(`phase20c4_gate_b_contract.md`) fixed the contract; Gate C step 0
+(`phase20c4_c0_f1.md`) resolved open finding F1.
+
+### Contract
+
+One construction reference per search (`build_service_reference`,
+`LayoutV2Search.run`): for every serviceable level the INTERIOR of the
+rule 178 offset development trace at the WORLD anchor stand-off — the very
+cached trace (token `"WORLD"`) stage 4 builds for coarse anchors, so no
+second clearance field exists. A family asks `corridor_profile(ctx, n,
+along, centres, half)` for a `DeltaProfile` of ITS corridor:
+
+    support(L)  = max { p·n : p ∈ reference(L), |p·along − centre(L)| ≤ half }
+    delta(L)    = max(0, support(L) + RAMP_CORRIDOR_MARGIN_WIDTHS·width − (footwall_edge(z_L)·n + standoff))
+    lateral(z)  = footwall_edge(z)·n + standoff + delta(z)     delta piecewise-linear in z, constant beyond the levels
+
+`delta ≥ 0` (the corridor only moves outward), an empty footprint is 0
+(never a whole-trace fallback — the 322 L08 / L09 artefact of Gate B), and
+the footprint is the ramp's OWN along-extent: SPIRAL the rim `R` about the
+axis (`build_spiral`: `axis(z) = edge(z) + d̂·(standoff + R + delta(z))`,
+`drifting_helix` reads it per sample); SWITCHBACK `leg/2 + R_min` about the
+shared leg centre (`build_switchback`: the corridor anchor at the join
+elevation and the per-pair drift `edge(z_pair) − edge(z_a)` gain
+`delta(z_pair) − delta(z_a)`). The lateral projection over the along
+window can only over-shoot the perpendicular need on an oblique backbone
+(305 L05: 25.7 m against a 15.1 m shortfall at 27.8°), never under-shoot it.
+
+**Pair-window rule (SWITCHBACK) — derived, not chosen.** `build_switchback`
+applies `delta` EXACTLY at every near-leg start: the corridor anchor carries
+the first near leg's value (the join for a near-first stack, one cycle drop
+below it for a far-first stack) and at every near-leg cycle the step to the
+next near leg (starting at `z_pair = z_a − 2·drop`) widens the away hairpin
+when outward and is carried into the next toward hairpin when inward — never
+below `R_min`, the pair leg length pays `π·|step|/4` exactly as it pays the
+edge drift. A near leg starting at `z` therefore sits at
+`legacy_near(z) + delta(z)` whatever the pair phase, and `delta ≡ 0` is
+bit-identical. The legacy stack follows the linear track edge through the
+interleaved pair drift (outward drift through the hairpin after a near leg,
+inward through the hairpin after a far leg): near-first → every near leg at
+`edge(z)·n + standoff` (START-anchored); far-first → the first near leg is
+placed by the whole first pair's drift and every near leg lags one cycle
+drop of edge (`edge(z ∓ drop)`, the ore-ward neighbour). With every leg
+elevation attributed to its nearest level plane (uniform spacing, `± dz/2`),
+a placement at `z` must honour the ABSOLUTE requirement `Q_L = support_L +
+margin` of every level in `[z − drop − dz/2, z + dz/2]` and nothing outside
+it: `WindowRequirementProfile` — `delta(z) = max(0, W(z) − base(z))`,
+`base = standoff + edge(z)·n` (near first) or `standoff + min edge(z')·n`
+over `z' ∈ {z − drop, z, z + drop}` (far first); the window's upper edge
+carries the derived chord-descent closure (`switchback_pair_descent_closure`,
+≈ 6 mm at 2 m sampling: one pair descends at most that much less than its
+nominal `2·drop`, so the near leg starts at most that far above the nominal
+`z_pair` its delta is read at). The station changes the leg
+spacing, not the cycle drop (window station-independent); the last pair's
+clamp places the deepest near leg with `delta(z_last)`, whose window holds
+the deepest level. The pre-follow-up implementation applied a ± 2·drop
+band-minimum of the edge AND a ± 2·drop running maximum of `delta` on top
+(up to ± 4·drop, neither width derived) and folded `delta` into the
+interleaved edge drift, which lost a step seen by one pair phase only
+(1.5 m inward of the legacy build on 301 k2-p-20); the pair-window test
+(`test_switchback_window_is_the_pair_span_derived_from_the_leg_geometry`)
+was recorded RED on it (`docs/verification/phase20c4_gate_c.md` §11) and is
+green on the derived window. Stage 4 stays the service authority on the
+delivered polyline. The spiral axis follows the edge continuously and needs
+no window.
+
+**Construction vs candidate field.** The reference is built at stage 1
+under the WORLD (coarse) policy; stage 4 may refine the bound and move an
+entry ore-ward, never outward (`RefinedConservativeClearance =
+max(coarse, refined)`), so the candidate backbone never lies outward of the
+construction backbone inside the same footprint — asserted on the 301
+winner against the section grid resolution
+(`test_stage_4_backbone_never_lies_outward_of_the_construction_backbone`).
+
+**Inactive (bit-identical).** TABULAR (rule 43 line and track edge are one
+analytic plane), an explicit `layout.footwallStandoff` (the user's number IS
+the corridor), and every candidate whose profile is zero: `offset + 0.0` /
+`x + (0.0 − 0.0)` are exact, proven by `np.array_equal` against the
+reference-less build (TABULAR: every family; WARPED-301: every zero-profile
+candidate). LONGITUDINAL is deferred unchanged. Per-level trace failures
+are reported (`performance.serviceReference.traceFailures`), never hidden.
+
+**What does not change.** Enumeration, stage-2 screen semantics and
+authority, stage-3 ordering, stage-4 authority, the candidate-specific
+clearance policy, anchor trace-chainage semantics, every level-access hard
+gate, score coefficients, Effective Ramp ownership, shafts, MineNetwork and
+the capability graph. Ramp ↔ level-drift proximity is measured by no gate
+(C0: the current 305 L05 / L07 and 301 L03–L10 winners sit in the
+15–30 m ENCROACH band); a separation DIAGNOSTIC — never a gate — is a
+follow-up candidate.
+
+### Gate C step 0 — F1
+
+322 L08 / L09: no backbone point inside the footprint (whole-trace
+fallback in the shadow), ramp ≥ 102 m from the level backbone —
+WINDOW_ARTEFACT. 305 L12: a window centred on the terminal hairpin plus
+the along margin over a 33° oblique backbone, support point 125.6 m from
+the ramp — WINDOW_ARTEFACT. 305 L05 / L07: the leg-end hairpin 14.9 /
+19.6 m (plan), 18.1 / 22.1 m (3-D, 10 m below the RL) from the WORLD
+backbone and 21.2 / 26.3 m from the CANDIDATE backbone the drift is
+developed on — GENUINE ENCROACHMENT, no crossing near a level plane, no
+excavation conflict (≥ 15 m): the mechanism the contract corrects.
+SWITCHBACK entered Gate C under the two footprint refinements.
+
+### Causal regressions (tests)
+
+`tests/test_service_reference.py` (profile semantics, TABULAR inactive +
+bit-identical, explicit stand-off legacy, WARPED-301 active / deterministic
+/ outward-only / empty-footprint-zero, same cached WORLD traces, stage-4
+dominance, window-profile semantics, the derived SWITCHBACK pair window
+(red on the double band, green on the derived window), 307 spiral delta > 0) and
+`tests/test_corridor_reference_integration.py` (301 spiral RL crossings ≥
+support + 6 widths and moved by exactly the profile; zero-profile
+candidates bit-identical; 301 switchback near legs clear every level plane
+within half an interval of their z-span and move outward cycle by cycle
+— the legacy near legs sat 0.2 m from the backbone, the corrected ones
+33–48 m outward; 307 SPIRAL-n1-CW-e+0-g0.100 and
+SWITCHBACK-k1-p+0-CW-s50-g0.120 hold six widths at every RL crossing they
+run alongside — a SEPARATION regression, never a success-count assertion).
