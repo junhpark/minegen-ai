@@ -175,10 +175,14 @@ def _leg_runs(
     """Straight leg runs of a switchback stack as (z_top, z_bottom, lateral):
     maximal runs of samples whose heading is parallel to the leg direction.
     Hairpins (and their stations) are excluded, so the laterals are the
-    legs' own — comparable between two builds whose z phase differs."""
+    legs' own — comparable between two builds whose z phase differs. The
+    lateral is the MEDIAN over the run (robust to an end sample)."""
     seg = points[1:, :2] - points[:-1, :2]
     hat = seg / np.maximum(np.linalg.norm(seg, axis=1), 1e-12)[:, None]
-    on_leg = np.abs(hat @ leg_dir) > 0.999
+    # straight legs are exactly parallel to the leg direction (a hairpin
+    # reverses the heading by exactly π); a looser threshold admits the last
+    # chord of a wide hairpin (1.6° off at R = 35 m) and lifts the run's top
+    on_leg = np.abs(hat @ leg_dir) > 1.0 - 1e-9
     runs: list[tuple[float, float, float]] = []
     start: int | None = None
     for i, flag in enumerate(on_leg):
@@ -189,13 +193,17 @@ def _leg_runs(
                 (
                     float(points[start, 2]),
                     float(points[i, 2]),
-                    float(np.mean(points[start : i + 1, :2] @ n)),
+                    float(np.median(points[start : i + 1, :2] @ n)),
                 )
             )
             start = None
     if start is not None:
         runs.append(
-            (float(points[start, 2]), float(points[-1, 2]), float(np.mean(points[start:, :2] @ n)))
+            (
+                float(points[start, 2]),
+                float(points[-1, 2]),
+                float(np.median(points[start:, :2] @ n)),
+            )
         )
     return runs
 
@@ -216,8 +224,8 @@ def test_switchback_stack_holds_the_corridor_intent_and_keeps_its_family_invaria
 ) -> None:
     """Every constructed SWITCHBACK candidate: each near leg lies at least six
     widths outward of the construction backbone support of every level whose
-    plane is within half an interval of the leg's own z-span (the pair-band
-    rule); every near leg moved outward (never inward) against the
+    plane is within half an interval of the leg's own z-span (the derived
+    pair window + parity edge term); every near leg moved outward (never inward) against the
     reference-less build, cycle by cycle; hairpin radii never shrink below
     R_min and the leg spacing / nominal leg length are untouched; a
     zero-profile stack is bit-identical to the reference-less build."""
@@ -250,9 +258,19 @@ def test_switchback_stack_holds_the_corridor_intent_and_keeps_its_family_invaria
         new_near = _near_legs(_leg_runs(cand.points, leg_dir, n))
         old_near = _near_legs(_leg_runs(rebuilt.points, leg_dir, n))
         assert new_near and old_near, cand.candidate_id
-        # outward only, cycle by cycle (the stack's z phase may shift slightly)
-        for (_, _, lat_new), (_, _, lat_old) in zip(new_near, old_near, strict=False):
-            assert lat_new >= lat_old - 1e-6, (cand.candidate_id, lat_new, lat_old)
+        # outward only, cycle by cycle: the corrected stack's join elevation
+        # (hence every leg's start) shifts slightly with the corridor, and the
+        # legacy near leg follows the linear track edge, so the comparison
+        # allows exactly the edge shift between the two legs' start elevations
+        edge = search._track.footwall_edge
+        for (z_new, _, lat_new), (z_old, _, lat_old) in zip(new_near, old_near, strict=False):
+            edge_shift = abs(float((edge(z_new) - edge(z_old)) @ n))
+            assert lat_new >= lat_old - edge_shift - 1e-6, (
+                cand.candidate_id,
+                (z_new, lat_new),
+                (z_old, lat_old),
+                edge_shift,
+            )
         # the intent: every near leg clears every level plane near its z-span
         records = cand.derived["corridorCorrectionLevels"]
         assert len(records) == len(levels)

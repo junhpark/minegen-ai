@@ -1669,13 +1669,23 @@ Product name and direction, and the phases after 17.1 (D0, 18–23), live in
      RAMP_CORRIDOR_MARGIN_WIDTHS × width − current lateral)` over the
      reference points inside the ramp's OWN along-extent — SPIRAL: the rim
      `R` about the axis; SWITCHBACK: `leg/2 + R_min` about the shared leg
-     centre, consumed as the PAIR-BAND maximum (± 2 cycles) against the most
-     ore-ward track edge inside the band, because a near leg placed at a
-     pair start serves every level of its pair — piecewise-linear in z,
-     constant beyond the levels and never negative: the corridor is only
-     ever moved OUTWARD, an empty footprint is 0 (never a whole-trace
-     fallback), and the lateral projection can only over-shoot the
-     perpendicular need on an oblique backbone. It is a CONSERVATIVE
+     centre, consumed through ONE vertical window DERIVED from the stacking
+     mechanics (`switchback_corridor_profile`): `delta` is applied EXACTLY
+     at every near-leg start (an outward step widens the away hairpin, an
+     inward step is carried into the next toward hairpin; never below
+     R_min), so the near leg starting at z sits at `legacy + delta(z)` and
+     honours the ABSOLUTE requirement `support + margin` of every level
+     inside `[z − drop − dz/2, z + dz/2]` (the planes its span occupies)
+     with the legacy base subtracted — the track edge at z for a near-first
+     stack, the ore-ward edge of `z ± drop` for a far-first stack whose
+     first pair lags one cycle — no second band, no undeclared width (the
+     pre-follow-up double ± 2·drop band folded into the interleaved edge
+     drift is the recorded red-test evidence). The SPIRAL profile is
+     piecewise-linear in z, constant beyond the levels; every profile is
+     never negative: the corridor is only ever moved OUTWARD, an empty
+     footprint is 0 (never a whole-trace fallback), and the lateral
+     projection can only over-shoot the perpendicular need on an oblique
+     backbone. It is a CONSERVATIVE
      CONSTRUCTION reference, not the candidate's stage-4 field: the REFINED
      candidate backbone never lies outward of it (dominance, tested against
      the section grid resolution). Inactive — `delta` exactly `0.0`,

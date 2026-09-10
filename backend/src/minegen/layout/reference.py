@@ -40,10 +40,17 @@ per level and the footprint half-extent — the ramp's OWN along-extent
     support   = max over reference points inside the footprint of p·n
     delta     = max(0, support + margin − (footwall_edge(z)·n + standoff))
 
-and the corridor lateral becomes ``footwall_edge(z)·n + standoff + delta(z)``
-with ``delta`` piecewise-linear in z between required levels, constant
-beyond them and never negative — the corridor is only ever moved OUTWARD,
-so a placement that already holds the intent is unchanged. An empty
+and the corridor lateral becomes ``footwall_edge(z)·n + standoff + delta(z)``.
+A corridor that serves every elevation continuously (the SPIRAL helix)
+takes ``delta`` piecewise-linear in z between required levels and constant
+beyond them (``DeltaProfile``); a corridor placed at DISCRETE elevations
+(the SWITCHBACK stack, which applies ``delta`` exactly at every near-leg
+start) takes the absolute requirement ``support + margin`` of every level
+inside one window derived from its stacking mechanics
+(``WindowRequirementProfile``, derivation in
+``families.switchback_corridor_profile``). Both are never negative — the
+corridor is only ever moved OUTWARD, so a placement that already holds the
+intent is unchanged. An empty
 footprint (no reference point alongside the ramp at that level) yields
 delta 0, never a whole-trace fallback. The lateral projection over the
 along-window can only over-shoot the perpendicular need on an oblique
@@ -130,45 +137,85 @@ class DeltaProfile:
             "deltas": {lid: float(d) for lid, d in zip(self._levels, self._deltas, strict=True)},
         }
 
-    def band_max(self, half_band: float) -> DeltaProfile:
-        """The running maximum of this profile over ``[z − half_band,
-        z + half_band]`` — for a corridor whose lateral is fixed at discrete
-        elevations but serves a vertical span (a SWITCHBACK leg placed at a
-        pair start serves every level of its pair, Gate C step 3). Still
-        piecewise-linear, never negative, ≥ the base profile everywhere; the
-        zero profile stays the exact zero profile."""
-        if self.zero:
-            return self
-        return BandMaxProfile(self, float(half_band))
 
+class WindowRequirementProfile(DeltaProfile):
+    """``delta(z)`` for a corridor whose lateral is FIXED at discrete
+    elevations but serves a vertical span — the SWITCHBACK stack (Phase
+    20C.4 follow-up; the derivation lives in
+    ``families.switchback_corridor_profile``). Per level ``i`` the ABSOLUTE
+    corridor requirement is ``Q_i = support_i + margin`` (``None`` where the
+    footprint holds no reference point). A placement at elevation ``z``
+    must honour every level plane inside ONE window
+    ``[z − below, z + above]``::
 
-class BandMaxProfile(DeltaProfile):
-    """``max`` of a base ``DeltaProfile`` over a vertical band (see
-    ``DeltaProfile.band_max``). Evaluated exactly: the maximum of a
-    piecewise-linear function over an interval is attained at a knot inside
-    the interval or at an interval end."""
+        W(z)      = max{ Q_i : z_i ∈ [z − below, z + above] }   (empty → none)
+        delta(z)  = max(0, W(z) − base(z))
 
-    __slots__ = ("_base", "_half_band")
+    with ``base(z) = footwall_edge(z)·n + standoff`` evaluated at the
+    placement elevation itself — no second band and no edge band-min. The
+    corridor lateral ``base + delta`` is therefore ``max(base(z), W(z))``:
+    the requirement is locally constant over the window width, the base is
+    the track's linear edge. The profile may jump where a level enters or
+    leaves the window (the stack reads it at discrete elevations only); it
+    is never negative and the exact zero profile is returned when no level
+    carries a requirement."""
 
-    def __init__(self, base: DeltaProfile, half_band: float):
-        super().__init__(base._z, base._deltas, base._levels)
-        self._base = base
-        self._half_band = max(0.0, float(half_band))
+    __slots__ = ("_above", "_base_fn", "_below", "_req", "extras")
+
+    def __init__(
+        self,
+        elevations: FloatArray,
+        level_ids: tuple[str, ...],
+        requirements: list[float | None],
+        base_fn: Callable[[float], float],
+        below: float,
+        above: float,
+    ):
+        z = np.asarray(elevations, dtype=np.float64)
+        if len(requirements) != z.shape[0]:
+            raise ValueError("WindowRequirementProfile: one requirement per level is required")
+        super().__init__(z, np.zeros(z.shape[0], dtype=np.float64), level_ids)
+        self._req = np.asarray(
+            [np.nan if q is None else float(q) for q in requirements], dtype=np.float64
+        )
+        self._base_fn = base_fn
+        self._below = max(0.0, float(below))
+        self._above = max(0.0, float(above))
+        #: consumer-declared inspectable parameters (reported in ``to_dict``)
+        self.extras: dict[str, Any] = {}
+        has_req = bool(np.isfinite(self._req).any())
+        # exact zero only when NO level carries a requirement: a window
+        # profile can be positive between planes even when it is 0 on them
+        self.zero = not has_req
+        if has_req:
+            self._deltas = np.asarray([self._window_delta(float(zi)) for zi in z], dtype=np.float64)
+            self._d_asc = self._deltas[np.argsort(z)]
+
+    def _window_delta(self, z: float) -> float:
+        inside = (self._z >= z - self._below) & (self._z <= z + self._above)
+        inside &= np.isfinite(self._req)
+        if not bool(inside.any()):
+            return 0.0
+        return max(0.0, float(np.max(self._req[inside])) - float(self._base_fn(z)))
 
     def __call__(self, z: float) -> float:
         if self.zero:
             return 0.0
-        lo, hi = float(z) - self._half_band, float(z) + self._half_band
-        inside = (self._z_asc >= lo) & (self._z_asc <= hi)
-        best = float(np.max(self._d_asc[inside])) if bool(inside.any()) else 0.0
-        return max(best, self._base(lo), self._base(hi))
+        return self._window_delta(float(z))
+
+    @property
+    def window(self) -> tuple[float, float]:
+        return self._below, self._above
 
     def to_dict(self) -> dict[str, Any]:
-        out = self._base.to_dict()
-        out["bandHalfM"] = self._half_band
-        out["bandMaxDeltas"] = {
-            lid: float(self(float(z))) for lid, z in zip(self._levels, self._z, strict=True)
+        out = super().to_dict()
+        out["windowBelowM"] = self._below
+        out["windowAboveM"] = self._above
+        out["requirements"] = {
+            lid: (None if not np.isfinite(q) else float(q))
+            for lid, q in zip(self._levels, self._req, strict=True)
         }
+        out.update(self.extras)
         return out
 
 

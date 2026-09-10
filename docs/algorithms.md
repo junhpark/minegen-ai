@@ -1364,16 +1364,43 @@ elevation and the per-pair drift `edge(z_pair) − edge(z_a)` gain
 window can only over-shoot the perpendicular need on an oblique backbone
 (305 L05: 25.7 m against a 15.1 m shortfall at 27.8°), never under-shoot it.
 
-**Pair-band rule (SWITCHBACK).** A near leg placed at a pair start keeps one
-lateral while it serves every level of its pair, and the mid-pair near leg
-(a stack whose first leg is the far leg) takes the SMALLER of the two pair
-boundary laterals. The stack therefore consumes `DeltaProfile.band_max(2 ×
-drop_per_cycle)` — the exact running maximum of `delta` over ± two cycles
-(knots inside the band or the band ends) — measured against the most
-ore-ward track-edge lateral inside the same band (`corridor_profile(...,
-base_band_half)`, the edge drift a leg lags behind: 2.9 m on 301
-SWITCHBACK-k1-p-20-CW-g0.120 L04). The spiral axis follows the edge
-continuously and needs neither.
+**Pair-window rule (SWITCHBACK) — derived, not chosen.** `build_switchback`
+applies `delta` EXACTLY at every near-leg start: the corridor anchor carries
+the first near leg's value (the join for a near-first stack, one cycle drop
+below it for a far-first stack) and at every near-leg cycle the step to the
+next near leg (starting at `z_pair = z_a − 2·drop`) widens the away hairpin
+when outward and is carried into the next toward hairpin when inward — never
+below `R_min`, the pair leg length pays `π·|step|/4` exactly as it pays the
+edge drift. A near leg starting at `z` therefore sits at
+`legacy_near(z) + delta(z)` whatever the pair phase, and `delta ≡ 0` is
+bit-identical. The legacy stack follows the linear track edge through the
+interleaved pair drift (outward drift through the hairpin after a near leg,
+inward through the hairpin after a far leg): near-first → every near leg at
+`edge(z)·n + standoff` (START-anchored); far-first → the first near leg is
+placed by the whole first pair's drift and every near leg lags one cycle
+drop of edge (`edge(z ∓ drop)`, the ore-ward neighbour). With every leg
+elevation attributed to its nearest level plane (uniform spacing, `± dz/2`),
+a placement at `z` must honour the ABSOLUTE requirement `Q_L = support_L +
+margin` of every level in `[z − drop − dz/2, z + dz/2]` and nothing outside
+it: `WindowRequirementProfile` — `delta(z) = max(0, W(z) − base(z))`,
+`base = standoff + edge(z)·n` (near first) or `standoff + min edge(z')·n`
+over `z' ∈ {z − drop, z, z + drop}` (far first); the window's upper edge
+carries the derived chord-descent closure (`switchback_pair_descent_closure`,
+≈ 6 mm at 2 m sampling: one pair descends at most that much less than its
+nominal `2·drop`, so the near leg starts at most that far above the nominal
+`z_pair` its delta is read at). The station changes the leg
+spacing, not the cycle drop (window station-independent); the last pair's
+clamp places the deepest near leg with `delta(z_last)`, whose window holds
+the deepest level. The pre-follow-up implementation applied a ± 2·drop
+band-minimum of the edge AND a ± 2·drop running maximum of `delta` on top
+(up to ± 4·drop, neither width derived) and folded `delta` into the
+interleaved edge drift, which lost a step seen by one pair phase only
+(1.5 m inward of the legacy build on 301 k2-p-20); the pair-window test
+(`test_switchback_window_is_the_pair_span_derived_from_the_leg_geometry`)
+was recorded RED on it (`docs/verification/phase20c4_gate_c.md` §11) and is
+green on the derived window. Stage 4 stays the service authority on the
+delivered polyline. The spiral axis follows the edge continuously and needs
+no window.
 
 **Construction vs candidate field.** The reference is built at stage 1
 under the WORLD (coarse) policy; stage 4 may refine the bound and move an
@@ -1418,7 +1445,8 @@ SWITCHBACK entered Gate C under the two footprint refinements.
 `tests/test_service_reference.py` (profile semantics, TABULAR inactive +
 bit-identical, explicit stand-off legacy, WARPED-301 active / deterministic
 / outward-only / empty-footprint-zero, same cached WORLD traces, stage-4
-dominance, band-max exactness, 307 spiral delta > 0) and
+dominance, window-profile semantics, the derived SWITCHBACK pair window
+(red on the double band, green on the derived window), 307 spiral delta > 0) and
 `tests/test_corridor_reference_integration.py` (301 spiral RL crossings ≥
 support + 6 widths and moved by exactly the profile; zero-profile
 candidates bit-identical; 301 switchback near legs clear every level plane

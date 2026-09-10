@@ -31,17 +31,18 @@
   }
  },
  "current": {
-  "gitSha": "4ed0a350ee8135f5bab06cc01891d9dd1dd85ed1",
+  "gitSha": "925ce25d28d3731ce87afde9deabf36afaaba5e9",
   "detailedCandidates": 146,
   "populations": {
-   "PORTAL_APPROACH": 42,
-   "FEASIBLE": 85,
-   "MULTI_CLUSTER_CLEARANCE": 6,
-   "FIRST_LEG_GLOBAL_ABOVE_TERRAIN": 6,
-   "LOCAL_REPAIR_GEOMETRY_RULE": 7
+   "PORTAL_APPROACH": 28,
+   "FEASIBLE": 94,
+   "MULTI_CLUSTER_CLEARANCE": 7,
+   "FIRST_LEG_GLOBAL_ABOVE_TERRAIN": 10,
+   "LOCAL_REPAIR_GEOMETRY_RULE": 6,
+   "LEVEL_ACCESS_PROBLEM": 1
   },
-  "seedsSuccess": 9,
-  "seedsNoFeasible": 4
+  "seedsSuccess": 10,
+  "seedsNoFeasible": 3
  },
  "classToPopulation": {
   "LEVEL_ACCESS_PROBLEM": "LEVEL_ACCESS_PROBLEM",
@@ -91,7 +92,7 @@
    "detailedBefore": 12,
    "detailedAfter": 12,
    "feasibleBefore": 0,
-   "feasibleAfter": 12,
+   "feasibleAfter": 11,
    "serviceableLevels": 9
   },
   {
@@ -107,11 +108,11 @@
   {
    "seed": 309,
    "before": "NO_FEASIBLE",
-   "after": "NO_FEASIBLE",
+   "after": "SUCCESS",
    "detailedBefore": 12,
    "detailedAfter": 12,
    "feasibleBefore": 0,
-   "feasibleAfter": 0,
+   "feasibleAfter": 2,
    "serviceableLevels": 8
   },
   {
@@ -141,7 +142,7 @@
    "detailedBefore": 12,
    "detailedAfter": 12,
    "feasibleBefore": 0,
-   "feasibleAfter": 5,
+   "feasibleAfter": 9,
    "serviceableLevels": 14
   },
   {
@@ -171,7 +172,7 @@
    "detailedBefore": 12,
    "detailedAfter": 12,
    "feasibleBefore": 0,
-   "feasibleAfter": 1,
+   "feasibleAfter": 5,
    "serviceableLevels": 8
   },
   {
@@ -186,29 +187,29 @@
   }
  ],
  "transitions": {
-  "FIRST_LEG_GLOBAL_ABOVE_TERRAIN->MULTI_CLUSTER_CLEARANCE": 2,
+  "FIRST_LEG_GLOBAL_ABOVE_TERRAIN->FIRST_LEG_GLOBAL_ABOVE_TERRAIN": 2,
   "FIRST_LEG_GLOBAL_ABOVE_TERRAIN->NOT_DETAILED": 4,
-  "LEVEL_ACCESS_PROBLEM->FEASIBLE": 17,
-  "LEVEL_ACCESS_PROBLEM->LOCAL_REPAIR_GEOMETRY_RULE": 1,
-  "LEVEL_ACCESS_PROBLEM->NOT_DETAILED": 56,
-  "LEVEL_ACCESS_PROBLEM->PORTAL_APPROACH": 2,
+  "LEVEL_ACCESS_PROBLEM->FEASIBLE": 24,
+  "LEVEL_ACCESS_PROBLEM->NOT_DETAILED": 52,
   "LOCAL_REPAIR_GEOMETRY_RULE->LOCAL_REPAIR_GEOMETRY_RULE": 1,
   "LOCAL_REPAIR_GEOMETRY_RULE->NOT_DETAILED": 4,
-  "MULTI_CLUSTER_CLEARANCE->FEASIBLE": 6,
+  "MULTI_CLUSTER_CLEARANCE->FEASIBLE": 7,
   "MULTI_CLUSTER_CLEARANCE->LOCAL_REPAIR_GEOMETRY_RULE": 1,
-  "MULTI_CLUSTER_CLEARANCE->NOT_DETAILED": 25,
-  "MULTI_CLUSTER_CLEARANCE->PORTAL_APPROACH": 5,
+  "MULTI_CLUSTER_CLEARANCE->MULTI_CLUSTER_CLEARANCE": 1,
+  "MULTI_CLUSTER_CLEARANCE->NOT_DETAILED": 26,
+  "MULTI_CLUSTER_CLEARANCE->PORTAL_APPROACH": 2,
   "PORTAL_APPROACH->NOT_DETAILED": 17,
   "PORTAL_APPROACH->PORTAL_APPROACH": 5,
   "PORTAL_ARTIFACT_ONLY->NOT_DETAILED": 1
  },
  "newlyDetailed": {
-  "count": 106,
+  "count": 103,
   "populations": {
-   "FEASIBLE": 62,
-   "FIRST_LEG_GLOBAL_ABOVE_TERRAIN": 6,
-   "MULTI_CLUSTER_CLEARANCE": 4,
-   "PORTAL_APPROACH": 30,
+   "FEASIBLE": 63,
+   "FIRST_LEG_GLOBAL_ABOVE_TERRAIN": 8,
+   "MULTI_CLUSTER_CLEARANCE": 6,
+   "PORTAL_APPROACH": 21,
+   "LEVEL_ACCESS_PROBLEM": 1,
    "LOCAL_REPAIR_GEOMETRY_RULE": 4
   }
  },
@@ -294,9 +295,9 @@
    "candidateId": "SWITCHBACK-k1-p+20-CW-g0.120",
    "family": "SWITCHBACK",
    "before": "MULTI_CLUSTER_CLEARANCE",
-   "after": "FEASIBLE",
-   "afterStatus": "FEASIBLE",
-   "afterFailureReasons": []
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
   },
   {
    "seed": 303,
@@ -366,29 +367,31 @@
    "candidateId": "SWITCHBACK-k1-p+0-CCW-s50-g0.100",
    "family": "SWITCHBACK",
    "before": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
-   "after": "NOT_DETAILED",
-   "afterStatus": null,
-   "afterFailureReasons": null
+   "after": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
   },
   {
    "seed": 306,
    "candidateId": "SWITCHBACK-k1-p+0-CCW-s50-g0.120",
    "family": "SWITCHBACK",
    "before": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
-   "after": "NOT_DETAILED",
-   "afterStatus": null,
-   "afterFailureReasons": null
+   "after": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
   },
   {
    "seed": 306,
    "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
    "family": "SWITCHBACK",
    "before": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
-   "after": "MULTI_CLUSTER_CLEARANCE",
-   "afterStatus": "INFEASIBLE",
-   "afterFailureReasons": [
-    "ABOVE_TERRAIN"
-   ]
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
   },
   {
    "seed": 306,
@@ -404,29 +407,25 @@
    "candidateId": "SWITCHBACK-k1-p+20-CCW-s50-g0.120",
    "family": "SWITCHBACK",
    "before": "FIRST_LEG_GLOBAL_ABOVE_TERRAIN",
-   "after": "MULTI_CLUSTER_CLEARANCE",
-   "afterStatus": "INFEASIBLE",
-   "afterFailureReasons": [
-    "ABOVE_TERRAIN"
-   ]
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
   },
   {
    "seed": 306,
    "candidateId": "SWITCHBACK-k1-p+20-CW-g0.100",
    "family": "SWITCHBACK",
    "before": "MULTI_CLUSTER_CLEARANCE",
-   "after": "PORTAL_APPROACH",
-   "afterStatus": "INFEASIBLE",
-   "afterFailureReasons": [
-    "ABOVE_TERRAIN"
-   ]
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
   },
   {
    "seed": 306,
    "candidateId": "SWITCHBACK-k1-p+20-CW-g0.120",
    "family": "SWITCHBACK",
    "before": "MULTI_CLUSTER_CLEARANCE",
-   "after": "PORTAL_APPROACH",
+   "after": "MULTI_CLUSTER_CLEARANCE",
    "afterStatus": "INFEASIBLE",
    "afterFailureReasons": [
     "ABOVE_TERRAIN"
@@ -446,9 +445,11 @@
    "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.120",
    "family": "SWITCHBACK",
    "before": "LOCAL_REPAIR_GEOMETRY_RULE",
-   "after": "NOT_DETAILED",
-   "afterStatus": null,
-   "afterFailureReasons": null
+   "after": "LOCAL_REPAIR_GEOMETRY_RULE",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
   },
   {
    "seed": 306,
@@ -554,9 +555,9 @@
    "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
    "family": "SWITCHBACK",
    "before": "MULTI_CLUSTER_CLEARANCE",
-   "after": "NOT_DETAILED",
-   "afterStatus": null,
-   "afterFailureReasons": null
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
   },
   {
    "seed": 307,
@@ -644,9 +645,9 @@
    "candidateId": "SWITCHBACK-k1-p+20-CW-g0.120",
    "family": "SWITCHBACK",
    "before": "LEVEL_ACCESS_PROBLEM",
-   "after": "NOT_DETAILED",
-   "afterStatus": null,
-   "afterFailureReasons": null
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
   },
   {
    "seed": 308,
@@ -729,11 +730,9 @@
    "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.120",
    "family": "SWITCHBACK",
    "before": "MULTI_CLUSTER_CLEARANCE",
-   "after": "PORTAL_APPROACH",
-   "afterStatus": "INFEASIBLE",
-   "afterFailureReasons": [
-    "ABOVE_TERRAIN"
-   ]
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
   },
   {
    "seed": 309,
@@ -778,20 +777,18 @@
    "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.100",
    "family": "SWITCHBACK",
    "before": "LEVEL_ACCESS_PROBLEM",
-   "after": "NOT_DETAILED",
-   "afterStatus": null,
-   "afterFailureReasons": null
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
   },
   {
    "seed": 309,
    "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
    "family": "SWITCHBACK",
    "before": "LEVEL_ACCESS_PROBLEM",
-   "after": "PORTAL_APPROACH",
-   "afterStatus": "INFEASIBLE",
-   "afterFailureReasons": [
-    "ABOVE_TERRAIN"
-   ]
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
   },
   {
    "seed": 309,
@@ -870,9 +867,9 @@
    "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
    "family": "SWITCHBACK",
    "before": "LEVEL_ACCESS_PROBLEM",
-   "after": "FEASIBLE",
-   "afterStatus": "FEASIBLE",
-   "afterFailureReasons": []
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
   },
   {
    "seed": 312,
@@ -888,9 +885,9 @@
    "candidateId": "SWITCHBACK-k1-p-20-CCW-s50-g0.120",
    "family": "SWITCHBACK",
    "before": "LEVEL_ACCESS_PROBLEM",
-   "after": "NOT_DETAILED",
-   "afterStatus": null,
-   "afterFailureReasons": null
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
   },
   {
    "seed": 312,
@@ -1052,9 +1049,9 @@
    "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
    "family": "SWITCHBACK",
    "before": "LEVEL_ACCESS_PROBLEM",
-   "after": "NOT_DETAILED",
-   "afterStatus": null,
-   "afterFailureReasons": null
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
   },
   {
    "seed": 319,
@@ -1070,11 +1067,9 @@
    "candidateId": "SWITCHBACK-k1-p+20-CW-s50-g0.120",
    "family": "SWITCHBACK",
    "before": "PORTAL_APPROACH",
-   "after": "PORTAL_APPROACH",
-   "afterStatus": "INFEASIBLE",
-   "afterFailureReasons": [
-    "ABOVE_TERRAIN"
-   ]
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
   },
   {
    "seed": 319,
@@ -1189,9 +1184,9 @@
    "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
    "family": "SWITCHBACK",
    "before": "LEVEL_ACCESS_PROBLEM",
-   "after": "NOT_DETAILED",
-   "afterStatus": null,
-   "afterFailureReasons": null
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
   },
   {
    "seed": 320,
@@ -1360,29 +1355,31 @@
    "candidateId": "SWITCHBACK-k1-p+0-CW-s50-g0.120",
    "family": "SWITCHBACK",
    "before": "PORTAL_APPROACH",
-   "after": "NOT_DETAILED",
-   "afterStatus": null,
-   "afterFailureReasons": null
+   "after": "PORTAL_APPROACH",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
   },
   {
    "seed": 324,
    "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.100",
    "family": "SWITCHBACK",
    "before": "MULTI_CLUSTER_CLEARANCE",
-   "after": "NOT_DETAILED",
-   "afterStatus": null,
-   "afterFailureReasons": null
+   "after": "LOCAL_REPAIR_GEOMETRY_RULE",
+   "afterStatus": "INFEASIBLE",
+   "afterFailureReasons": [
+    "ABOVE_TERRAIN"
+   ]
   },
   {
    "seed": 324,
    "candidateId": "SWITCHBACK-k1-p+20-CCW-g0.120",
    "family": "SWITCHBACK",
    "before": "LEVEL_ACCESS_PROBLEM",
-   "after": "PORTAL_APPROACH",
-   "afterStatus": "INFEASIBLE",
-   "afterFailureReasons": [
-    "ABOVE_TERRAIN"
-   ]
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
   },
   {
    "seed": 324,
@@ -1407,11 +1404,9 @@
    "candidateId": "SWITCHBACK-k1-p+20-CW-g0.120",
    "family": "SWITCHBACK",
    "before": "MULTI_CLUSTER_CLEARANCE",
-   "after": "LOCAL_REPAIR_GEOMETRY_RULE",
-   "afterStatus": "INFEASIBLE",
-   "afterFailureReasons": [
-    "ABOVE_TERRAIN"
-   ]
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
   },
   {
    "seed": 324,
@@ -1427,11 +1422,9 @@
    "candidateId": "SWITCHBACK-k1-p-20-CCW-g0.120",
    "family": "SWITCHBACK",
    "before": "LOCAL_REPAIR_GEOMETRY_RULE",
-   "after": "LOCAL_REPAIR_GEOMETRY_RULE",
-   "afterStatus": "INFEASIBLE",
-   "afterFailureReasons": [
-    "ABOVE_TERRAIN"
-   ]
+   "after": "NOT_DETAILED",
+   "afterStatus": null,
+   "afterFailureReasons": null
   },
   {
    "seed": 324,
@@ -1456,11 +1449,9 @@
    "candidateId": "SWITCHBACK-k1-p-20-CW-s50-g0.120",
    "family": "SWITCHBACK",
    "before": "LEVEL_ACCESS_PROBLEM",
-   "after": "LOCAL_REPAIR_GEOMETRY_RULE",
-   "afterStatus": "INFEASIBLE",
-   "afterFailureReasons": [
-    "ABOVE_TERRAIN"
-   ]
+   "after": "FEASIBLE",
+   "afterStatus": "FEASIBLE",
+   "afterFailureReasons": []
   },
   {
    "seed": 328,

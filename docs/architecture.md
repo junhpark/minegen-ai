@@ -878,6 +878,10 @@ files. Git LFS is deliberately not used. Policy:
 - Every earlier phase keeps its CSV summary plus the comparison / audit JSON
   files (`*_vs_*_layout.json`, `*_shortlist_audit.json`, `*_turning_burden_audit.json`,
   …); its full JSON is deleted when the next phase's baseline lands.
+- HISTORICAL_DIAGNOSTIC artifacts (the failure census, the reference audit, the gate shadow,
+  the F1 investigation, survey before/after tables) are not retention targets and are never
+  deleted; a superseded phase's full layout golden keeps its provenance in git history
+  (the deleted blob is one `git show <sha>:backend/golden/<file>` away).
 - A golden a test references is exempt from deletion (grep `backend/tests`
   before deleting — `phase17_baseline.json`, `phase19_warped_vein.json`,
   `phase20c4_layout_v2.json` are referenced today).

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
+from typing import Any
 
 import numpy as np
 import pytest
@@ -28,6 +29,7 @@ from minegen.core.models import Scenario
 from minegen.layout.access import MIN_DEVELOPMENT_TRACE_LENGTH
 from minegen.layout.families import (
     RAMP_CORRIDOR_MARGIN_WIDTHS,
+    LayoutContext,
     build_family,
     corridor_profile,
     rotate,
@@ -37,6 +39,7 @@ from minegen.layout.reference import (
     INACTIVE_TABULAR,
     ZERO_PROFILE,
     DeltaProfile,
+    WindowRequirementProfile,
     build_service_reference,
 )
 from minegen.layout.search import LayoutSearchResult, LayoutV2Search
@@ -317,36 +320,190 @@ def test_reference_delta_is_positive_on_the_failing_307_spiral() -> None:
     assert hasattr(rebuilt, "points") and not np.array_equal(rebuilt.points, cand.points)
 
 
-def test_band_max_profile_is_the_exact_running_maximum_and_keeps_the_zero_profile() -> None:
-    """A corridor fixed at discrete elevations that serves a vertical span
-    (SWITCHBACK pairs) reads the running maximum of delta over ± half_band —
-    exact (knots inside the band or the band ends), ≥ the base profile, still
-    never negative, and the zero profile stays the exact zero profile."""
-    base = DeltaProfile(
-        np.array([0.0, -25.0, -50.0, -75.0, -100.0]),
-        np.array([0.0, 0.0, 20.0, 0.0, 4.0]),
-        ("A", "B", "C", "D", "E"),
+def test_window_requirement_profile_semantics() -> None:
+    """The window profile is ``max(0, max Q inside [z − below, z + above] −
+    base(z))``: the base is read at the placement elevation itself, an empty
+    window (or a level without support) contributes nothing, a level entering
+    the window may jump the profile, and a profile with no requirement at all
+    is the exact zero profile."""
+    z = np.array([0.0, -25.0, -50.0, -75.0])
+    req: list[float | None] = [None, 60.0, 20.0, None]
+
+    def base(zz: float) -> float:
+        return 30.0 + 0.2 * zz  # linear track edge + stand-off
+
+    prof = WindowRequirementProfile(z, ("A", "B", "C", "D"), req, base, below=15.0, above=10.0)
+    assert not prof.zero and prof.window == (15.0, 10.0)
+    # window of z = -25: [-40, -15] → only B (60): 60 − base(−25) = 60 − 25
+    assert prof(-25.0) == pytest.approx(35.0)
+    # z = -40: [-55, -30] → C only (20): 20 − base(−40) = 20 − 22 → clamped 0
+    assert prof(-40.0) == 0.0
+    # z = -35: [-50, -25] → B and C → 60 − base(−35) = 60 − 23
+    assert prof(-35.0) == pytest.approx(37.0)
+    # just below z = -35 B (−25) leaves the window [z − 15, z + 10]: only C
+    # remains (20 − base(−35.1) < 0 → 0) — the profile jumps at the window edge
+    assert prof(-35.1) == 0.0
+    # z = -9: [-24, 1] holds only A, which carries no requirement → 0;
+    # z = -10 puts B exactly on the window edge (inclusive)
+    assert prof(-9.0) == 0.0
+    assert prof(-10.0) == pytest.approx(60.0 - base(-10.0))
+    assert prof(1e6) == 0.0 and prof(-1e6) == 0.0  # beyond every level: no requirement
+    payload = prof.to_dict()
+    assert payload["windowBelowM"] == 15.0 and payload["windowAboveM"] == 10.0
+    assert payload["requirements"] == {"A": None, "B": 60.0, "C": 20.0, "D": None}
+    assert payload["deltas"]["B"] == pytest.approx(35.0) and payload["active"] is True
+    empty = WindowRequirementProfile(z, ("A", "B", "C", "D"), [None] * 4, base, 15.0, 10.0)
+    assert empty.zero and empty(-25.0) == 0.0 and empty.to_dict()["active"] is False
+    with pytest.raises(ValueError):
+        WindowRequirementProfile(z, ("A",), [None], base, 1.0, 1.0)
+
+
+# --------------------------------------------------------------------------- #
+# SWITCHBACK pair window — "why that width", derived from the pair geometry
+# --------------------------------------------------------------------------- #
+
+
+def _synthetic_switchback_setup(
+    warped_301_search: tuple[LayoutV2Search, LayoutSearchResult],
+    requirements: dict[str, float],
+    edge_slope: float = 0.1,
+) -> tuple[LayoutContext, np.ndarray, np.ndarray, np.ndarray, float, float, float]:
+    """A synthetic ServiceReference on the real WARPED-301 context: one
+    backbone point per level placed so that its lateral along ``n`` is
+    exactly ``requirements[level] − margin`` (so the absolute corridor
+    requirement of the level is ``requirements[level]``), and a synthetic
+    LINEAR track edge ``edge(z)·n = edge_slope · z``. Everything else (levels,
+    footprint) comes from the fixture."""
+    import dataclasses
+
+    search, res = warped_301_search
+    ctx = search._ctx
+    ref = search._reference
+    assert ctx is not None and ref is not None and ref.active
+    n = np.array([1.0, 0.0])
+    along = np.array([0.0, 1.0])
+    levels = res.serviceable_levels
+    centres = np.zeros(len(levels))
+    half = 50.0
+    backbones = []
+    for lv in levels:
+        q = requirements.get(lv.level_id)
+        if q is None:
+            backbones.append(np.zeros((0, 2)))
+        else:
+            backbones.append(np.array([[q - ref.margin, 0.0]]))
+    synthetic = dataclasses.replace(ref, backbones=tuple(backbones))
+
+    class _Track:
+        def __init__(self, base: Any) -> None:
+            self._base = base
+            self.w_h = base.w_h
+            self.u_h = base.u_h
+
+        def footwall_edge(self, z: float) -> np.ndarray:
+            return np.array([edge_slope * z, 0.0])
+
+        def centroid(self, z: float) -> np.ndarray:
+            return self._base.centroid(z)
+
+    fake_ctx = replace(ctx, reference=synthetic, track=_Track(ctx.track))
+    dz = abs(levels[1].elevation - levels[0].elevation)
+    drop = dz / 2.0  # k = 2: the pair span (2·drop) is one level interval
+    return fake_ctx, n, along, centres, half, drop, dz
+
+
+def test_switchback_window_is_the_pair_span_derived_from_the_leg_geometry(
+    warped_301_search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
+    """Why that width — derived from the stacking mechanics, not chosen.
+    ``build_switchback`` applies ``delta`` exactly at every near-leg start,
+    so the near leg starting at ``z`` (spanning ``[z − drop, z]``) sits at
+    ``legacy_near(z) + delta(z)``. Attributing every leg elevation to its
+    nearest level plane (± interval/2), the ABSOLUTE requirement a placement
+    at ``z`` must honour is the maximum over the levels inside
+    ``[z − drop − dz/2, z + dz/2]`` and nothing outside it — one window, no
+    second band. The legacy stack itself is START-anchored on the linear
+    track edge for a near-first stack and lags one cycle drop of edge for a
+    far-first stack (its first near leg is placed by the whole first pair's
+    drift), so the far-first base reads the most ore-ward edge of
+    ``z ± drop``; no ± 2·drop edge band-min."""
+    from minegen.layout.families import switchback_corridor_profile
+
+    base_req = {"L03": 40.0, "L04": 10.0, "L05": 70.0, "L06": 10.0, "L07": 10.0, "L08": 55.0}
+    ctx, n, along, centres, half, drop, dz = _synthetic_switchback_setup(
+        warped_301_search, base_req
     )
-    band = base.band_max(50.0)
-    assert not band.zero and band.max_delta == 20.0
-    # the 20 m knot at −50 is inside every band that reaches it
-    for z in (0.0, -10.0, -50.0, -90.0, -100.0):
-        assert band(z) == 20.0, z
-    # band [−151, −51]: knots −75 (0) and −100 (4) inside, ends base(−51) = 19.2, base(−151) = 4
-    assert band(-101.0) == pytest.approx(19.2)
-    # band [−160, −60]: the upper end base(−60) = 12 wins
-    assert band(-110.0) == pytest.approx(12.0) and band(-110.0) == pytest.approx(base(-60.0))
-    # band [−20, 80] never reaches the 20 m knot at −50: exactly 0
-    assert band(30.0) == 0.0
-    for z in np.linspace(60.0, -160.0, 45):
-        lo, hi = z - 50.0, z + 50.0
-        grid = np.linspace(lo, hi, 2001)
-        brute = max(float(base(float(g))) for g in grid)
-        assert band(float(z)) == pytest.approx(brute, abs=1e-6), z
-        assert band(float(z)) >= base(float(z)) - 1e-12
-    payload = band.to_dict()
-    assert payload["bandHalfM"] == 50.0
-    assert payload["deltas"] == {"A": 0.0, "B": 0.0, "C": 20.0, "D": 0.0, "E": 4.0}
-    assert payload["bandMaxDeltas"] == {"A": 20.0, "B": 20.0, "C": 20.0, "D": 20.0, "E": 20.0}
-    zero = DeltaProfile(np.array([0.0, -25.0]), np.zeros(2), ("A", "B"))
-    assert zero.band_max(50.0) is zero and ZERO_PROFILE.band_max(50.0) is ZERO_PROFILE
+    levels = ctx.levels
+    z_of = {lv.level_id: lv.elevation for lv in levels}
+    below, above = drop + 0.5 * dz, 0.5 * dz
+
+    def edge(z: float) -> float:
+        return float(ctx.track.footwall_edge(z) @ n)
+
+    def base(z: float, far_first: bool) -> float:
+        # a far-first stack carries one cycle drop of edge lag (the first
+        # pair places its first near leg): the most ore-ward edge of z ± drop
+        lat = min(edge(z - drop), edge(z), edge(z + drop)) if far_first else edge(z)
+        return lat + ctx.standoff
+
+    def expected(z: float, req: dict[str, float], far_first: bool) -> float:
+        inside = [q for lid, q in req.items() if z - below <= z_of[lid] <= z + above]
+        return max(0.0, max(inside) - base(z, far_first)) if inside else 0.0
+
+    zs = np.linspace(z_of["L03"] + 3 * dz, z_of["L08"] - 3 * dz, 121)
+    for far_first in (False, True):
+        profile, records = switchback_corridor_profile(
+            ctx, n, along, centres, half, drop, dz, far_first=far_first
+        )
+        for z in zs:
+            assert profile(float(z)) == pytest.approx(
+                expected(float(z), base_req, far_first), abs=1e-9
+            ), (far_first, z)
+        payload = profile.to_dict()
+        assert payload["farFirst"] is far_first
+        assert payload["edgeLagM"] == (drop if far_first else 0.0)
+        assert payload["windowBelowM"] == below and payload["windowAboveM"] == above
+        assert len(records) == len(levels) and all("requirement" in r for r in records)
+    # the derived descent closure extends the window ABOVE only (a near leg
+    # starts at most that far above the nominal z_pair its delta is read at)
+    p_closed, _ = switchback_corridor_profile(
+        ctx, n, along, centres, half, drop, dz, False, descent_closure=0.25
+    )
+    assert p_closed.window == (below, above + 0.25)
+    assert p_closed.to_dict()["descentClosureM"] == 0.25
+    p_near_first, _ = switchback_corridor_profile(ctx, n, along, centres, half, drop, dz, False)
+    assert all(p_closed(float(z)) >= p_near_first(float(z)) - 1e-12 for z in zs)
+    # the far-first stack is never placed ore-ward of the near-first one
+    p_far_first, _ = switchback_corridor_profile(ctx, n, along, centres, half, drop, dz, True)
+    assert all(p_far_first(float(z)) >= p_near_first(float(z)) - 1e-12 for z in zs)
+    # a requirement change OUTSIDE the window of z never moves the corridor at z;
+    # one INSIDE does — L07 is exactly one interval below L06
+    z = z_of["L06"]
+    far = dict(base_req)
+    far["L03"] = 500.0  # L03 is 3 intervals above L06: outside [z − below, z + above]
+    assert z_of["L03"] > z + above
+    p_far, _ = switchback_corridor_profile(
+        _synthetic_switchback_setup(warped_301_search, far)[0],
+        n,
+        along,
+        centres,
+        half,
+        drop,
+        dz,
+        False,
+    )
+    assert p_far(z) == pytest.approx(p_near_first(z), abs=1e-9)
+    near = dict(base_req)
+    near["L07"] = 500.0  # one interval below L06: inside the window
+    assert z - below <= z_of["L07"] <= z + above
+    p_near, _ = switchback_corridor_profile(
+        _synthetic_switchback_setup(warped_301_search, near)[0],
+        n,
+        along,
+        centres,
+        half,
+        drop,
+        dz,
+        False,
+    )
+    assert p_near(z) == pytest.approx(500.0 - base(z, False), abs=1e-9)
