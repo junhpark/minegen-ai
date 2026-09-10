@@ -87,14 +87,14 @@ the reported label is the plurality of ALL lattice junction rejections (layout/a
 
 Hard stop 4: NOT triggered — nearest approach ≤ 20 m on 98 % of failed levels and on 0 % of control levels (all served); the switchback controls 305/322 are served from the FAR leg with 108–119 m connectors (their near leg never comes within 37 m)
 
-### Mandatory counterfactual (authoritative planner, all hard gates intact)
+### Mandatory counterfactual (authoritative access planner, access hard gates retained; the shifted ramp is NOT re-validated)
 
-| counterfactual | failed levels fixed | still failed | OK levels broken | candidates feasible (of 24) |
+| counterfactual | failed levels fixed | still failed | OK levels broken | access plans feasible (of 24 candidates) |
 |---|---|---|---|---|
 | CF-ANCHOR: anchor moved away from the nearest ramp approach to the rule-171 plan separation (30 m) | 57 | 65 | 19 | 3 |
 | CF-RAMP: whole ramp rigidly shifted by the same deficit (corridor at the shared separation) | 48 | 74 | 4 | 6 |
 
-restoring the plan separation at the nearest approach (anchor moved outward or ramp rigidly shifted) flips 48–57 of the 122 failed levels to OK with every hard gate intact and makes 3–6 of 24 candidates feasible; the remainder do not flip because a rigid translation / anchor move is not the actual re-derivation (SPIRAL corridors need a re-derived radius/centre; anchors moved toward the ore hit the certified clearance floor 3.6–9.7 m < 10.59 m, so the ANCHOR cannot be the moving side)
+restoring the plan separation at the nearest approach (anchor moved outward or ramp rigidly shifted) flips 48–57 of the 122 failed levels to OK with the access hard gates retained (plan_level_accesses re-run; the shifted ramp is not re-validated) and makes the access plan of 3–6 of 24 candidates feasible (access-plan feasibility, not candidate feasibility); the remainder do not flip because a rigid translation / anchor move is not the actual re-derivation (SPIRAL corridors need a re-derived radius/centre; anchors moved toward the ore hit the certified clearance floor 3.6–9.7 m < 10.59 m, so the ANCHOR cannot be the moving side)
 
 | seed | candidate | baseline ok/failed | CF-ANCHOR ok/failed (moved, min certified clr) | CF-RAMP ok/failed (shift m, ramp clearance ok) |
 |---|---|---|---|---|

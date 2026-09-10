@@ -71,7 +71,8 @@
   "rampCrossing": "the delivered main ramp's first z-crossing of the level elevation",
   "nearestRampInWindow": "closest delivered ramp sample to the anchor inside the junction elevation window [RL−10, RL+45] (plan distance and dz)",
   "requiredRunAtGmax": "|dz| / max_gradient for the nearest approach; available run = its plan distance (a lower bound of the CS connector's horizontal length)",
-  "bindingCause": "per-level replay of the production junction lattice one junction at a time through _search_level (used=[] isolates junction spacing): SEPARATION_BOUND when every grade-feasible junction (planSep ≥ |dz|/g_max) is rejected by plan separation / rock pillar / connector availability"
+  "bindingCause": "per-level replay of the production junction lattice one junction at a time through _search_level (used=[] isolates junction spacing): SEPARATION_BOUND when every grade-feasible junction (planSep ≥ |dz|/g_max) is rejected by plan separation / rock pillar / connector availability",
+  "counterfactualScope": "CF-ANCHOR / CF-RAMP re-run the authoritative access planner with its hard gates retained; they do NOT re-validate the ramp, so 'feasible' there means access-plan feasible"
  },
  "currentContract": {
   "footwallTrackAuthority": "family construction + orientation (u_h, w_h, lateral drift) AND the corridor lateral reference (layout/families.py: footwall_edge(z) + standoff)",
@@ -1023,7 +1024,8 @@
      }
     }
    ],
-   "interpretation": "restoring the plan separation at the nearest approach (anchor moved outward or ramp rigidly shifted) flips 48–57 of the 122 failed levels to OK with every hard gate intact and makes 3–6 of 24 candidates feasible; the remainder do not flip because a rigid translation / anchor move is not the actual re-derivation (SPIRAL corridors need a re-derived radius/centre; anchors moved toward the ore hit the certified clearance floor 3.6–9.7 m < 10.59 m, so the ANCHOR cannot be the moving side)"
+   "interpretation": "restoring the plan separation at the nearest approach (anchor moved outward or ramp rigidly shifted) flips 48–57 of the 122 failed levels to OK with the ACCESS hard gates retained (plan_level_accesses re-run: separation, pillar, turnout, connector, gradient, length, clearance and envelope of the branch) and makes the ACCESS PLAN of 3–6 of 24 candidates feasible — the shifted ramp itself was NOT re-validated (cover / terrain / world / family coupling), so this is access-plan feasibility, not candidate feasibility; the remainder do not flip because a rigid translation / anchor move is not the actual re-derivation (SPIRAL corridors need a re-derived radius/centre; anchors moved toward the ore hit the certified clearance floor 3.6–9.7 m < 10.59 m, so the ANCHOR cannot be the moving side)",
+   "scope": "plan_level_accesses only; ramp-level validation (validate_delivered_centerline) of the shifted geometry not re-run"
   },
   "hardStop4": "NOT triggered — nearest approach ≤ 20 m on 98 % of failed levels and on 0 % of control levels (all served); the switchback controls 305/322 are served from the FAR leg with 108–119 m connectors (their near leg never comes within 37 m)",
   "nearestApproachFailedBelow20mFraction": 0.975,
@@ -4257,7 +4259,7 @@
   "Population A: levels whose binding cause mixes TURNOUT_NOT_STRAIGHT with separation (16 of 122) — turnout curvature is family geometry, not a reference issue",
   "counterfactuals are proxies (rigid ramp shift / anchor move), not the re-derived corridor"
  ],
- "recommendation": "PROCEED (Gate B single-source contract; Population A CONFIRMED, Population B PARTIALLY_CONFIRMED — implement the shared reference for the corridor and measure B in Gate D without assuming it)",
+ "recommendation": "PROCEED (Gate B single-source contract; Population A CONFIRMED, Population B PARTIALLY_CONFIRMED — implement the shared CONSTRUCTION reference for the corridor (WORLD policy, conservative; stage-4 candidate policies dominate it) and measure B in Gate D without assuming it)",
  "perLevelMeasurementMedians": {
   "CONTROL:42:SPIRAL": {
    "role": "CONTROL",
