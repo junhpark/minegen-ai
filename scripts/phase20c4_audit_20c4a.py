@@ -83,8 +83,8 @@ def family_n_hat(cand, track):
 
 def audit_level_access(seed, cand, res, search, world, sc, role):
     """Per-level measurements + counterfactuals for one DETAILED candidate."""
-    track = search._track
-    sections = search._sections
+    track = search.context.track
+    sections = search.context.sections
     w = np.asarray(track.w_h)[:2]
     w = w / np.linalg.norm(w)
     evaluator, policy, refinement = search.candidate_policy(res, cand.candidate_id)
@@ -329,7 +329,7 @@ def audit_level_access(seed, cand, res, search, world, sc, role):
 
 def audit_clusters(seed, cand, res, search, world, sc, cls_rec):
     """Population B: per cluster (from the census), worst sample local vs track reference."""
-    track = search._track
+    track = search.context.track
     evaluator, policy, refinement = search.candidate_policy(res, cand.candidate_id)
     bound = float(getattr(policy, "error_bound", 0.0) or 0.0)
     req = res.required_clearance

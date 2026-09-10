@@ -28,8 +28,8 @@ for job in sys.argv[1].split(","):
     search = LayoutV2Search(sc, world)
     res = search.run()
     cand = res.candidate(cid) if cid != "WINNER" else res.candidate(res.winner_id)
-    track = search._track
-    sections = search._sections
+    track = search.context.track
+    sections = search.context.sections
     policy = search.policy
     req = res.required_clearance
     w = np.asarray(track.w_h)[:2]

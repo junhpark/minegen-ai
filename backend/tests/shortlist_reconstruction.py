@@ -18,7 +18,7 @@ from minegen.layout.search import (
     CandidateStatus,
     LayoutSearchResult,
     Stage,
-    _shortlist_key,
+    shortlist_key,
 )
 
 ShortlistKey = Callable[[CandidateResult], Any]
@@ -53,7 +53,7 @@ def reconstruct_shortlist(
     give every declared family its reserved slot (rule 165) by displacing the
     tail, then re-sort by the same key. ``key`` / ``survivors`` are the test
     seams for the red-fixture proofs."""
-    k: ShortlistKey = key or _shortlist_key
+    k: ShortlistKey = key or shortlist_key
     pool = stage3_survivors(res) if survivors is None else survivors
     cheap_ok = sorted(pool, key=k)
     base = cheap_ok[:bound]

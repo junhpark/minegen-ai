@@ -141,7 +141,7 @@ def test_clearance_failure_detail_names_the_candidate_basis() -> None:
     )
     search = LayoutV2Search(sc, generate_world(sc))
     res = search.run()
-    assert search._reference is not None and not search._reference.active
+    assert search.context.reference is not None and not search.context.reference.active
     failing = [
         c
         for c in res.candidates

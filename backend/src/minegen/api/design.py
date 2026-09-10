@@ -11,7 +11,7 @@ from minegen.api.deps import get_design_service, get_job_service
 from minegen.capability.models import CapabilityGraphPayload, CapabilityPathQuery
 from minegen.core.enums import Capability
 from minegen.core.models import ApiModel, ErrorDetail
-from minegen.layout.search import ClearancePolicyReconstructionError
+from minegen.layout.certification import ClearancePolicyReconstructionError
 from minegen.levels.models import LevelsPayload
 from minegen.mining.models import StopesPayload
 from minegen.scheduling.models import TimelinePayload
