@@ -315,4 +315,26 @@ seed's SWITCHBACK candidates, m):
 - FEATURE: PASS, 524 passed / 0 failed (head 925ce25 + follow-up working tree, clean canaries).
 - Legacy 22-case golden (`python -m minegen.regression run --suite full` vs
   `golden/phase20b_closeout_full.json`): see §12.
-- FULL: recorded in §12 on the exact HEAD it ran on.
+- FULL: recorded in §12 on the exact HEAD it ran on (28e7033).
+
+## 12. FULL (authoritative) — HEAD 28e7033 (follow-up)
+
+`cd backend && python ../scripts/verify.py full` on 28e7033 (the follow-up
+commit, clean tree): **PASS in 2027.9 s** — ruff-check, ruff-format, mypy
+PASS; pytest-full **604 passed / 0 failed / 0 skipped** (1959.2 s, unfiltered;
+603 on 44dcfa1 + the window-profile unit test, the band-max test replaced by the
+pair-window test); fe-typecheck, fe-lint, fe-prettier, fe-vitest (263 passed),
+fe-build PASS; collection coverage all = 604, full = 604, fast = 519;
+`fullAuthority = True`, `gitDirty = False`
+(`backend/.verification/verification-summary.json`). The same commit's FAST
+(519 / 0) and FEATURE (524 / 0) ran on the identical tree before the commit.
+
+Legacy 22-case golden (`cd backend && python -m minegen.regression run --suite
+full --label phase20c4_followup_legacy --out <scratch>` on the follow-up tree,
+then `python -m minegen.regression compare golden/phase20b_closeout_full.json
+<scratch>/phase20c4_followup_legacy.json`): 22 cases compared, **HARD CONTRACT
+regressions 0, metric changes 0 (expected 0, unexpected 0)**, no missing / new
+cases; runtime 10509.2 → 10692.1 s (advisory; the run shared the CPU with FULL
+and the Gate D re-run). The legacy Phase 03–10 chain does not read
+`layout/families.py` or `layout/reference.py`.
+
