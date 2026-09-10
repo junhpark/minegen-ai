@@ -112,3 +112,7 @@ The 20C.3A hypothesis population is closed: LEVEL_ACCESS_INFEASIBLE falls from t
 - FAST: PASS, 519 passed / 0 failed (head 4ed0a35 + C4 working tree).
 - FEATURE: PASS, 524 passed / 0 failed (head 7ef6cea).
 - FULL: recorded in §10 on the exact Gate D HEAD it ran on.
+
+## 10. FULL (authoritative) — HEAD 44dcfa1
+
+`python scripts/verify.py full` on 44dcfa1 (the two 307 fixture tests moved to the explicit-stand-off legacy corridor): **PASS in 1615.7 s** — ruff-check, ruff-format, mypy PASS; pytest-full 603 passed / 0 failed / 0 skipped (1572.0 s); fe-typecheck, fe-lint, fe-prettier, fe-vitest (263 passed in 40 files), fe-build PASS; collection coverage all = 603, full = 603, fast = 519; `fullAuthority = True`. The previous FULL on 1dfbba0 was 601 passed / 2 failed (the two fixture tests, §3), matching the CI "Backend" and "FULL backend" failures on the pushed Gate C head 7ef6cea. This section is the only change after 44dcfa1 (docs-only follow-up).
