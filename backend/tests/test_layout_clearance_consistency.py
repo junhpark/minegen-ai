@@ -124,11 +124,24 @@ def test_clearance_failure_detail_names_the_candidate_basis() -> None:
     """1.4: WARPED seed 307 fails its shortlisted candidates on OREBODY
     clearance under the per-candidate REFINED window; the detail must say
     so — the whole-body COARSE name would misreport the certification the
-    number was measured under."""
-    sc = Scenario(
+    number was measured under.
+
+    Phase 20C.4: with the corridor read from the construction
+    ServiceReference (rule 186) seed 307 clears every level and no survey
+    seed fails on OREBODY_CLEARANCE any more. The refined-basis clearance
+    failure is exercised on the LEGACY corridor, which an EXPLICIT
+    ``layout.footwallStandoff`` (here the very 50 m the default derives)
+    preserves by contract — the reference is inactive, the geometry is the
+    pre-20C.4 one, and the failure detail contract is unchanged."""
+    base = Scenario(
         **realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 307, fault_count=1).model_dump()
     )
-    res = LayoutV2Search(sc, generate_world(sc)).run()
+    sc = base.model_copy(
+        update={"layout": base.layout.model_copy(update={"footwall_standoff": 50.0})}
+    )
+    search = LayoutV2Search(sc, generate_world(sc))
+    res = search.run()
+    assert search._reference is not None and not search._reference.active
     failing = [
         c
         for c in res.candidates

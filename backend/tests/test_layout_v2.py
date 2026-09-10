@@ -1492,12 +1492,21 @@ def test_shortlist_reconstruction_holds_on_a_conservative_case_with_failed_detai
     Phase 20C.2A: seed 301's shortlist became all-feasible under the curved
     section-trace backbone, so the decisive conservative case is now
     WARPED-307 (NO_FEASIBLE_CANDIDATE — every shortlisted candidate is
-    detailed-INFEASIBLE)."""
-    sc = Scenario(
+    detailed-INFEASIBLE). Phase 20C.4: under the construction
+    ServiceReference (rule 186) seed 307 is SUCCESS with an all-feasible
+    shortlist, so the decisive case is its LEGACY corridor, preserved by
+    contract through an EXPLICIT ``layout.footwallStandoff`` (the 50 m the
+    default derives): the reference is inactive and every shortlisted
+    candidate is detailed-INFEASIBLE as before."""
+    base = Scenario(
         **realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 307, fault_count=1).model_dump()
+    )
+    sc = base.model_copy(
+        update={"layout": base.layout.model_copy(update={"footwall_standoff": 50.0})}
     )
     search = LayoutV2Search(sc, generate_world(sc))
     res = search.run()
+    assert search._reference is not None and not search._reference.active
     assert res.clearance_basis == "COARSE_CONSERVATIVE"
     shortlisted = {c.candidate_id for c in res.candidates if c.shortlisted}
     failed_in_shortlist = [
