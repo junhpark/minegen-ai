@@ -658,6 +658,10 @@ def generate_tunnel(
             return svc.generate_tunnel(scenario_id)
         except StaleInputsError as e:
             raise _error(status.HTTP_409_CONFLICT, e.code, str(e)) from e
+        except (LayoutSelectionStaleError, ClearancePolicyReconstructionError) as e:
+            # AC-01D: the selected-certification restore fails closed with a
+            # typed 409 through the guard, never a 500
+            raise _guard(scenario_id, e) from e
     try:
         job = jobs.submit(
             scenario_id,
@@ -723,6 +727,10 @@ def generate_development_mesh(
             return svc.generate_development_mesh(scenario_id)
         except StaleInputsError as e:
             raise _error(status.HTTP_409_CONFLICT, e.code, str(e)) from e
+        except (LayoutSelectionStaleError, ClearancePolicyReconstructionError) as e:
+            # AC-01D: the selected-certification restore fails closed with a
+            # typed 409 through the guard, never a 500
+            raise _guard(scenario_id, e) from e
     try:
         job = jobs.submit(
             scenario_id,

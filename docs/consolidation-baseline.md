@@ -219,6 +219,51 @@ process therefore re-evaluates every candidate to rebuild the policy of the
 one that was already selected (AC-F02, owner AC-01D; AC-01C prepares the
 boundary).
 
+**Correction, AC-01D.** The call path above is gone. Downstream of a
+selection, `_selected_candidate_policy` now restores the selected
+candidate's certification from its RECIPE —
+`layout.certification.restore_candidate_policy`: the shared search setup
+(`layout.setup.build_search_setup`, the verbatim pre-stage-1 block
+`LayoutV2Search.run()` itself executes), the world search policy /
+evaluator (`world_search_policy`, shared with `LayoutV2Search.__init__`)
+and the selected candidate's persisted `centerline.points` from
+`layout_v2.json` (`candidate_points_from_catalogue`, normalised to a
+C-contiguous float64 `(N, 3)` array) go through the SAME
+`build_candidate_policy` recipe stage 4 used, with the serviceable required
+levels — and the result is CHECKED against the recorded certification
+(`CandidateCertification.verify`: basis, refinement provenance key, error
+bound with `None → 0.0`, isclose 1e-9). A recorded number is never turned
+into a policy; any mismatch is `ClearancePolicyReconstructionError` (409
+`LAYOUT_V2_CLEARANCE_MISMATCH`) — never a re-run, never a fallback to the
+whole-body policy, never a file write. The restore is cached per (world
+object, catalogue revision, selection revision) so one builder chain pays it
+once; the entry keeps a strong reference to its world object until the next
+restore for that scenario replaces it (the pattern `_layouts` already had),
+and a stale entry can never be served because the key requires the CURRENT
+world object. Present-but-malformed selection documents (a null or list
+`clearance` block, a non-numeric bound, a refinement the provenance key
+cannot digest) are the same typed 409, never a bare exception. `generate_levels`, `generate_shafts`, `generate_tunnel`,
+`generate_development_mesh` and everything below them make ZERO
+`LayoutV2Search.run` calls, cold or warm; the idempotent re-select /
+re-activate of the already selected candidate at the same `layoutRevision`
+also never runs it. The two sync API branches (`POST …/design/tunnel?sync`,
+`POST …/design/development-mesh?sync`) now route `LayoutSelectionStaleError`
+/ `ClearancePolicyReconstructionError` through `_guard` (409 with the
+existing codes) instead of leaking a 500.
+
+The ONE remaining re-run is `select_layout_candidate` →
+`_layout_object` → `LayoutV2Search(scenario, world).run()` for a DIFFERENT
+candidate than the persisted selection (or a first selection) in a process
+that did not generate the catalogue — explicitly DEFERRED, not hidden:
+materialization needs the full typed `CandidateResult` (`access_plan`
+objects, `anchors`, `level_service`, `diagnostics`), which the catalogue
+does not persist losslessly (no `from_dict` reconstructors exist and
+`anchors` are not in `layout_v2.json`); serving it cold means either a
+catalogue payload change (golden bytes) or exact-fidelity deserializers — a
+schema / provenance design of its own. Follow-up candidate:
+catalogue-restorable `CandidateResult` (owner to be assigned, likely
+alongside AC-01G's candidate-state work).
+
 ## 8. CLAUDE.md rule scope index
 
 **No rule is added, deleted, reworded or renumbered by this index.** Every
@@ -306,7 +351,7 @@ Numbering follows the Architecture Reality Report (2026-09-10, audit baseline
 | id | finding | status |
 |---|---|---|
 | F01 | FULL authority flag did not prove release authority | **resolved by AC-01A** (§3) |
-| F02 | consuming a saved design re-runs the whole search | open — AC-01D (boundary in AC-01C); call path verified in §7 |
+| F02 | consuming a saved design re-runs the whole search | **resolved by AC-01D (downstream)**: zero `LayoutV2Search.run` calls below a selection, cold or warm; the cold re-run of `select_layout_candidate` for a DIFFERENT candidate is deferred and recorded in §7 |
 | F03 | search context and candidate state mutate across stages | open — AC-01C / AC-01G |
 | F04 | artifact lifecycle is several hand-maintained lists | open — AC-01E; map in §6 |
 | F05 | the same artifact is stale-checked differently per read path | open — AC-01F; `WorldService.scene` raw reads listed in §6 |
@@ -323,6 +368,23 @@ after a step. No target value is promised in advance.
 
 * cold-process time to selected levels / shafts / mesh, and the number of full
   `LayoutV2Search.run` calls it costs.
+
+  **Measured, AC-01D** (one machine, `backend/.venv`, main `a91c3c1` BEFORE vs
+  the AC-01D tree AFTER; a fresh `DesignService` after `activate` = the cold
+  process, then a fresh `WorldService` + `DesignService` for the cold
+  `generate_levels`; run counts are the contract, seconds are advisory):
+
+  | case | cold policy BEFORE | cold policy AFTER | cold levels BEFORE | cold levels AFTER |
+  |---|---|---|---|---|
+  | TABULAR-small (EXACT) | 4.33 s / 1 `run()` | 0.02 s / 0 `run()` | 4.38 s / 1 | 0.06 s / 0 |
+  | WARPED-301 default (REFINED_CONSERVATIVE, factor 2) | 61.13 s / 1 `run()` | 5.25 s / 0 `run()` | 74.82 s / 1 | 12.49 s / 0 |
+
+  The second builder in the same fresh process (tunnel after levels) made 0
+  calls before and after. The AC-01C byte-identity witness reproduced the
+  catalogue / ramp / access / certification hashes exactly after the `run()`
+  setup extraction (0 differing lines), and levels.json, the tunnel and
+  development-mesh reports, both GLBs and network.json were equal between a
+  warm and a cold service over the same selection on both cases.
 * FAST / FEATURE / FULL wall time and CI runner minutes.
 * the number of lifecycle sites a new artifact must touch.
 * for a behaviour-preserving extraction: payload, geometry, ranking and

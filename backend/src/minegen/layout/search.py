@@ -36,19 +36,14 @@ from minegen.core.models import (
     RampConstraints,
     Scenario,
 )
-from minegen.design.constraints import DesignContext, RejectionReason
-from minegen.design.cost_field import (
-    ClearancePolicy,
-    DesignCostEvaluator,
-    clearance_policy_for,
-)
+from minegen.design.constraints import RejectionReason
+from minegen.design.cost_field import ClearancePolicy, DesignCostEvaluator
 from minegen.design.exposure import measure_exposure
 
 # required_clearance is re-exported here for its established import path; the
 # ONE shared definition lives in design.profile (Phase 20C.2A)
 from minegen.design.profile import build_profile, required_clearance
 from minegen.design.progress import ProgressCallback, ProgressEvent, ProgressStage, no_progress
-from minegen.design.targets import default_portal
 from minegen.layout.access import (
     BACKBONE_END_MARGIN,
     MIN_DEVELOPMENT_TRACE_LENGTH,
@@ -63,6 +58,7 @@ from minegen.layout.certification import (
     ClearancePolicyReconstructionError,
     ClearanceReport,
     build_candidate_policy,
+    world_search_policy,
 )
 from minegen.layout.certification import anchor_standoff as _anchor_standoff
 from minegen.layout.families import (
@@ -73,7 +69,6 @@ from minegen.layout.families import (
     InfeasibleReason,
     LayoutContext,
     build_family,
-    build_footwall_track,
     effective_footwall_standoff,
     enumerate_candidates,
     resolved_station_lengths,
@@ -84,7 +79,7 @@ from minegen.layout.geometry import (
     analyze_centerline,
     find_crossing,
 )
-from minegen.layout.levels import LevelSections, RequiredLevel, required_levels
+from minegen.layout.levels import LevelSections, RequiredLevel
 from minegen.layout.materialize import (
     LAYOUT_V2_SELECTED_ARTIFACT,
     LEVEL_ACCESSES_ARTIFACT,
@@ -105,9 +100,8 @@ from minegen.layout.results import (
     Scores,
     Stage,
 )
-from minegen.layout.sections import SectionGeometryError, resolve_section_resolution
+from minegen.layout.setup import build_search_setup
 from minegen.layout.validation import validate_delivered_centerline
-from minegen.world.orebody import TabularOrebody
 from minegen.world.synthetic_world import SyntheticWorld
 
 #: every name that was importable from ``layout.search`` before AC-01C keeps
@@ -444,13 +438,11 @@ class LayoutV2Search:
         self.scenario = scenario
         self.world = world
         self.cfg: LayoutV2Config = scenario.layout
-        self.policy: ClearancePolicy = clearance_policy_for(world.orebody)
-        self.evaluator = DesignCostEvaluator(
-            world,
-            scenario.design,
-            DesignContext.decline(scenario.design),
-            clearance=self.policy,
-        )
+        # AC-01D: the world policy / evaluator have ONE definition, shared
+        # with the certification restore
+        policy, evaluator = world_search_policy(scenario, world)
+        self.policy: ClearancePolicy = policy
+        self.evaluator: DesignCostEvaluator = evaluator
         self.shape = build_profile(scenario.ramp, scenario.tunnel_profile)
         #: Phase 20C.1-S: the longest declared hairpin station (+ one sample
         #: spacing) is the straight a same-sense turning run may bridge and
@@ -498,42 +490,18 @@ class LayoutV2Search:
         t0 = time.perf_counter()
         sc = self.scenario
         world = self.world
-        levels = required_levels(
-            world.orebody,
-            sc.mining.sublevel_interval,
-            sc.design.top_mining_margin,
-            sc.design.bottom_mining_margin,
+        # AC-01D: the setup block has ONE definition (layout.setup), shared
+        # with the search-object-free certification restore
+        setup = build_search_setup(sc, world)
+        levels, sections, section_error, track = (
+            setup.levels,
+            setup.sections,
+            setup.section_error,
+            setup.track,
         )
-        sections = LevelSections(world.orebody, levels, self.cfg.section_sampling_spacing)
-        # Phase 20C.2A: non-TABULAR level development anchors come from the
-        # section(z) geometry, which needs a resolved sampling resolution.
-        # Base stand-off = explicit access.anchorStandoff else the configured
-        # footwall access offset (never the honesty-raised value). A typed
-        # resolution/budget failure fails EVERY candidate closed below.
-        section_error: SectionGeometryError | None = None
-        if not isinstance(world.orebody, TabularOrebody):
-            base_standoff = (
-                self.cfg.access.anchor_standoff
-                if self.cfg.access.anchor_standoff is not None
-                else sc.ramp.footwall_access_offset
-            )
-            try:
-                sections.set_resolution(
-                    resolve_section_resolution(
-                        float(self.cfg.section_sampling_spacing), float(base_standoff)
-                    )
-                )
-            except SectionGeometryError as err:
-                section_error = err
-        track = build_footwall_track(world.orebody, sections)
         self._sections, self._track = sections, track
-        if sc.portal is not None:
-            portal = np.array(sc.portal.as_tuple(), dtype=np.float64)
-            generated = False
-        else:
-            portal = default_portal(sc, world.orebody, world.terrain)  # generic frame use
-            generated = True
-        req_clear = required_clearance(sc.design, sc.ramp, sc.tunnel_profile)
+        portal, generated = setup.portal, setup.portal_generated
+        req_clear = setup.required_clearance
         perf: dict[str, Any] = {}
         params = enumerate_candidates(self.cfg)
         perf["candidateCount"] = len(params)
