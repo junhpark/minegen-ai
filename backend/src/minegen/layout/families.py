@@ -47,6 +47,7 @@ from minegen.core.enums import FAMILY_ORDER as FAMILY_ORDER
 from minegen.core.enums import RampFamily as RampFamily
 from minegen.core.models import LayoutV2Config, RampConstraints
 from minegen.layout.levels import LevelSections, RequiredLevel, level_intervals
+from minegen.layout.reference import ZERO_PROFILE, DeltaProfile, ServiceReference
 from minegen.world.orebody import Orebody
 
 FloatArray = npt.NDArray[np.float64]
@@ -537,6 +538,10 @@ class LayoutContext:
     cfg: LayoutV2Config
     world_half_x: float
     world_half_y: float
+    #: Phase 20C.4 conservative construction reference (``layout.reference``);
+    #: ``None`` (or an inactive reference) leaves every corridor exactly where
+    #: the global track edge + stand-off puts it — bit-identical legacy path
+    reference: ServiceReference | None = None
 
     @property
     def standoff(self) -> float:
@@ -549,6 +554,36 @@ class LayoutContext:
     def inside_world(self, xy: FloatArray) -> bool:
         m = self.cfg.world_margin
         return bool(abs(xy[0]) <= self.world_half_x - m and abs(xy[1]) <= self.world_half_y - m)
+
+
+def corridor_profile(
+    ctx: LayoutContext,
+    n: FloatArray,
+    along: FloatArray,
+    centres: FloatArray,
+    half: float,
+) -> tuple[DeltaProfile, list[dict[str, Any]]]:
+    """Outward corridor correction ``delta(z)`` of ONE family corridor under
+    the search's construction ``ServiceReference`` (Phase 20C.4, rule 170):
+    lateral unit ``n`` (away from the ore), along unit ``along``, the
+    footprint along-centre per serviceable level and the footprint
+    half-extent — the ramp's OWN along-extent (SWITCHBACK ``leg/2 + R_min``,
+    SPIRAL ``R``). The corridor's current ore-facing lateral per level is
+    ``footwall_edge(z)·n + standoff``; the returned profile adds
+    ``max(0, support + margin − that)`` interpolated in z. Without a
+    reference, or with an inactive one (TABULAR, explicit stand-off), the
+    exact zero profile is returned and the geometry is bit-identical."""
+    ref = ctx.reference
+    if ref is None or not ref.active:
+        return ZERO_PROFILE, []
+    if ref.elevations.shape[0] != len(ctx.levels):
+        raise ValueError("corridor_profile: the reference and the context disagree on the levels")
+    n2 = np.asarray(n, dtype=np.float64)[:2]
+    base = np.asarray(
+        [float(ctx.track.footwall_edge(lv.elevation) @ n2) + ctx.standoff for lv in ctx.levels],
+        dtype=np.float64,
+    )
+    return ref.profile(n2, np.asarray(along, dtype=np.float64)[:2], np.asarray(centres), half, base)
 
 
 @dataclass

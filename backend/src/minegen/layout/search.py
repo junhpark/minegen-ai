@@ -54,6 +54,8 @@ from minegen.design.profile import build_profile, required_clearance
 from minegen.design.progress import ProgressCallback, ProgressEvent, ProgressStage, no_progress
 from minegen.design.targets import default_portal
 from minegen.layout.access import (
+    BACKBONE_END_MARGIN,
+    MIN_DEVELOPMENT_TRACE_LENGTH,
     SCREEN_HEURISTIC,
     SCREEN_NECESSARY_CONDITION,
     AnchorFailure,
@@ -65,6 +67,7 @@ from minegen.layout.access import (
 )
 from minegen.layout.families import (
     FAMILY_ORDER,
+    RAMP_CORRIDOR_MARGIN_WIDTHS,
     CandidateParams,
     FamilyGeometry,
     FamilyInfeasible,
@@ -85,6 +88,7 @@ from minegen.layout.geometry import (
     split_at,
 )
 from minegen.layout.levels import LevelSections, RequiredLevel, required_levels
+from minegen.layout.reference import ServiceReference, build_service_reference
 from minegen.layout.sections import SectionGeometryError, resolve_section_resolution
 from minegen.layout.validation import validate_delivered_centerline
 from minegen.world.orebody import TabularOrebody
@@ -701,6 +705,7 @@ class LayoutV2Search:
         )
         self._sections: LevelSections | None = None
         self._track: Any = None
+        self._reference: ServiceReference | None = None
         #: the stage-4 LayoutContext of the last run — retained so the
         #: candidate-specific clearance policy can be rebuilt after the fact
         self._ctx: LayoutContext | None = None
@@ -793,6 +798,30 @@ class LayoutV2Search:
             return self._result(
                 levels, sections, portal, generated, results, [], [], None, req_clear, perf, None
             )
+        # Phase 20C.4: the conservative construction ServiceReference — the
+        # WORLD-policy offset traces stage 4 builds for coarse anchors (same
+        # cache token), read once here so the ramp corridor and the level
+        # anchors share ONE spacing reference (rule 170 vs rules 158 / 178).
+        # Inactive (delta ≡ 0, bit-identical) on TABULAR and for an explicit
+        # footwallStandoff; per-level trace failures are reported, never hidden.
+        standoff_value, standoff_source = effective_footwall_standoff(self.cfg, sc.ramp)
+        reference = build_service_reference(
+            sections,
+            serviceable,
+            track.w_h,
+            orebody=world.orebody,
+            clearance=self.policy.signed_clearance,
+            basis=self.policy.basis,
+            standoff=standoff_value,
+            standoff_source=standoff_source,
+            margin=RAMP_CORRIDOR_MARGIN_WIDTHS * float(sc.ramp.tunnel_width),
+            anchor_standoff=self.anchor_standoff(req_clear, self.policy),
+            min_trace_length=MIN_DEVELOPMENT_TRACE_LENGTH,
+            end_margin=BACKBONE_END_MARGIN,
+            required_clearance=req_clear,
+        )
+        self._reference = reference
+        perf["serviceReference"] = reference.to_dict()
         ctx = LayoutContext(
             portal,
             serviceable,
@@ -802,6 +831,7 @@ class LayoutV2Search:
             self.cfg,
             sc.world.size_x / 2.0,
             sc.world.size_y / 2.0,
+            reference=reference,
         )
         self._ctx = ctx
 
