@@ -1,0 +1,6166 @@
+{
+ "artifact": "phase20c4_c0_f1",
+ "gate": "C0",
+ "auditType": "F1_INVESTIGATION_DIAGNOSTIC",
+ "auditGitSha": "2df98f25deb64397a4a3b476ca2fe9a580c035a0",
+ "productionChange": 0,
+ "question": "Gate B open finding F1: on the successful SWITCHBACK winners the WORLD construction backbone inside the footprint lies at or beyond the delivered near leg on 5 levels \u2014 footprint/window artefact (a) or genuine ramp \u2194 development-backbone crossing (b)?",
+ "method": {
+  "winners": "production LayoutV2Search on RANDOM_WARPED_VEIN 305 / 322 (F1) and 301 (SPIRAL reference)",
+  "backbones": "WORLD-policy offset trace (token WORLD, world anchor stand-off) and the CANDIDATE-policy offset trace (candidate_policy, candidate stand-off) \u2014 the backbone the level builder develops on (rule 180)",
+  "measures": [
+   "Gate B footprint support (|along \u2212 nearLegCentre| \u2264 leg/2 + 6\u00b7width) and its source (window / whole-trace fallback)",
+   "tightened footprint support: |along \u2212 constructionLegCentre| \u2264 leg/2 + R_min (SWITCHBACK; legs stacked on one along-centre, hairpin adds R_min) / |along \u2212 rimCentre| \u2264 R (SPIRAL), trace interior only, empty window \u21d2 \u03b4 = 0; 6-width margin applied laterally only",
+   "minimum plan distance ramp(z \u00b1 \u00bd interval) \u2194 backbone; minimum 3-D distance whole ramp \u2194 backbone (at the level elevation); plan intersections with the ramp z gap",
+   "backbone obliquity: mean backbone tangent inside the window vs the leg direction"
+  ],
+  "bands": "diagnostic only, from existing planning constants: CONFLICT < 3 \u00d7 width (15 m: two half-widths + the rule-171 2-width pillar); ENCROACH < 6 \u00d7 width (30 m, the rule-170 corridor intent); CLEAR otherwise. No gate, threshold or coefficient changes."
+ },
+ "f1Resolution": {
+  "322/L08": "WINDOW_ARTEFACT \u2014 no backbone point inside the footprint (Gate B shadow fell back to the whole trace); ramp 102.4 m (3D) from the level backbone; tightened footprint \u03b4 = 0",
+  "322/L09": "WINDOW_ARTEFACT \u2014 same; ramp 124.3 m (3D); tightened footprint \u03b4 = 0",
+  "305/L12": "WINDOW_ARTEFACT \u2014 footprint centred on the delivered z-window samples (a terminal hairpin) plus the along margin read an oblique backbone 125.6 m from the ramp; ramp 46.0 m (3D), CLEAR; tightened footprint \u03b4 = 0",
+  "305/L05": "GENUINE_ENCROACHMENT (not a crossing) \u2014 leg-end hairpin 14.9 m (plan) / 18.1 m (3D, \u0394z \u221210.3 m) from the WORLD backbone, 21.2 m from the CANDIDATE backbone; tightened \u03b4 25.7 m (perpendicular shortfall 15.1 m; surplus from 27.8\u00b0 obliquity)",
+  "305/L07": "GENUINE_ENCROACHMENT (not a crossing) \u2014 19.6 m (plan) / 22.1 m (3D, \u0394z \u221210.1 m) from the WORLD backbone, 26.3 m from the CANDIDATE backbone; tightened \u03b4 20.0 m (perpendicular shortfall 10.4 m; 31.4\u00b0 obliquity)"
+ },
+ "decision": {
+  "switchback": "SAFE_TO_PROCEED_WITH_REFINED_FOOTPRINT",
+  "refinements": [
+   "footprint = the ramp's OWN along-extent about the construction centre (SWITCHBACK leg/2 + R_min; SPIRAL R); the 6-width margin is lateral only, never along",
+   "empty footprint \u21d2 \u03b4 = 0 (never a whole-trace fallback)"
+  ],
+  "genuineCrossing": false,
+  "excavationConflict": false,
+  "observation": "ramp \u2194 level-drift proximity is not measured by any current gate (access planner: branch \u2194 ramp pillar only); ENCROACH band on 305 L05/L07 and 301 L03\u2013L10 of the CURRENT winners; the reference moves those corridors outward by \u03b4 \u2014 a ramp \u2194 drift separation DIAGNOSTIC (not a gate) is a follow-up candidate, not this phase",
+  "obliquity": "the local backbone is 24\u201344\u00b0 oblique to the global-strike leg direction on 305 / 322 (\u2264 5\u00b0 for the 301 spiral rim); the along-window maximum is what keeps the reference conservative on oblique backbones (lateral \u03b4 \u2265 perpendicular shortfall)",
+  "dominanceEvidence": "CANDIDATE-policy backbone support \u2264 WORLD support on every measured level (all three winners) \u2014 consistent with the stage-4 dominance invariant; C1 asserts it as a test"
+ },
+ "summary": {
+  "305": {
+   "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "family": "SWITCHBACK",
+   "rows": [
+    {
+     "levelId": "L02",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 79,
+     "backboneObliquityDeg": 23.8,
+     "minPlanDistanceInZWindow": 90.94,
+     "minDistance3D": 53.42,
+     "candidateMinDistance3D": 54.72,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": 126.28,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L03",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 102,
+     "backboneObliquityDeg": 24.8,
+     "minPlanDistanceInZWindow": 42.8,
+     "minDistance3D": 44.02,
+     "candidateMinDistance3D": 45.82,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": 101.28,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L04",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 139,
+     "backboneObliquityDeg": 32.9,
+     "minPlanDistanceInZWindow": 53.07,
+     "minDistance3D": 34.67,
+     "candidateMinDistance3D": 35.85,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": 75.37,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L05",
+     "gateBDelta": 29.47,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 25.71,
+     "tightenedPointsInWindow": 130,
+     "backboneObliquityDeg": 27.8,
+     "minPlanDistanceInZWindow": 14.87,
+     "minDistance3D": 18.08,
+     "candidateMinDistance3D": 21.21,
+     "requiredMovePlanLowerBound": 15.13,
+     "planCrossingMinAbsZGap": 53.01,
+     "band3D": "ENCROACH",
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L06",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 5.5,
+     "tightenedPointsInWindow": 134,
+     "backboneObliquityDeg": 27.4,
+     "minPlanDistanceInZWindow": 45.9,
+     "minDistance3D": 32.13,
+     "candidateMinDistance3D": 33.27,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": 33.78,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L07",
+     "gateBDelta": 23.71,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 19.97,
+     "tightenedPointsInWindow": 140,
+     "backboneObliquityDeg": 31.4,
+     "minPlanDistanceInZWindow": 19.58,
+     "minDistance3D": 22.1,
+     "candidateMinDistance3D": 26.31,
+     "requiredMovePlanLowerBound": 10.42,
+     "planCrossingMinAbsZGap": 53.45,
+     "band3D": "ENCROACH",
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L08",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 128,
+     "backboneObliquityDeg": 33.7,
+     "minPlanDistanceInZWindow": 61.57,
+     "minDistance3D": 36.37,
+     "candidateMinDistance3D": 39.68,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": 74.33,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L09",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 90,
+     "backboneObliquityDeg": 28.3,
+     "minPlanDistanceInZWindow": 48.19,
+     "minDistance3D": 49.27,
+     "candidateMinDistance3D": 55.31,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L10",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 85,
+     "backboneObliquityDeg": 30.0,
+     "minPlanDistanceInZWindow": 81.54,
+     "minDistance3D": 45.57,
+     "candidateMinDistance3D": 49.52,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L11",
+     "gateBDelta": 6.67,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 1.16,
+     "tightenedPointsInWindow": 85,
+     "backboneObliquityDeg": 32.3,
+     "minPlanDistanceInZWindow": 33.56,
+     "minDistance3D": 35.45,
+     "candidateMinDistance3D": 40.04,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L12",
+     "gateBDelta": 21.32,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 78,
+     "backboneObliquityDeg": 32.6,
+     "minPlanDistanceInZWindow": 47.13,
+     "minDistance3D": 45.96,
+     "candidateMinDistance3D": 49.37,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    }
+   ]
+  },
+  "322": {
+   "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "family": "SWITCHBACK",
+   "rows": [
+    {
+     "levelId": "L03",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 53,
+     "backboneObliquityDeg": 30.8,
+     "minPlanDistanceInZWindow": 53.53,
+     "minDistance3D": 54.18,
+     "candidateMinDistance3D": 56.3,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L04",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 65,
+     "backboneObliquityDeg": 30.4,
+     "minPlanDistanceInZWindow": 80.71,
+     "minDistance3D": 58.97,
+     "candidateMinDistance3D": 61.09,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L05",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 64,
+     "backboneObliquityDeg": 27.9,
+     "minPlanDistanceInZWindow": 64.13,
+     "minDistance3D": 64.67,
+     "candidateMinDistance3D": 66.76,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L06",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 56,
+     "backboneObliquityDeg": 27.6,
+     "minPlanDistanceInZWindow": 100.82,
+     "minDistance3D": 78.48,
+     "candidateMinDistance3D": 80.53,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L07",
+     "gateBDelta": 0.0,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 41,
+     "backboneObliquityDeg": 31.1,
+     "minPlanDistanceInZWindow": 86.59,
+     "minDistance3D": 86.99,
+     "candidateMinDistance3D": 89.09,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L08",
+     "gateBDelta": 112.24,
+     "gateBSupportSource": "WHOLE_TRACE_FALLBACK",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 20,
+     "backboneObliquityDeg": 43.7,
+     "minPlanDistanceInZWindow": 124.93,
+     "minDistance3D": 102.43,
+     "candidateMinDistance3D": 104.59,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_SUPPORT_IS_FALLBACK",
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L09",
+     "gateBDelta": 109.79,
+     "gateBSupportSource": "WHOLE_TRACE_FALLBACK",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 0,
+     "backboneObliquityDeg": null,
+     "minPlanDistanceInZWindow": 152.05,
+     "minDistance3D": 124.34,
+     "candidateMinDistance3D": 126.57,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_SUPPORT_IS_FALLBACK",
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    }
+   ]
+  },
+  "301": {
+   "winnerId": "SPIRAL-n1-CW-e+0-g0.120",
+   "family": "SPIRAL",
+   "rows": [
+    {
+     "levelId": "L03",
+     "gateBDelta": 9.72,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 7.6,
+     "tightenedPointsInWindow": 33,
+     "backboneObliquityDeg": 4.1,
+     "minPlanDistanceInZWindow": 24.67,
+     "minDistance3D": 24.67,
+     "candidateMinDistance3D": 26.42,
+     "requiredMovePlanLowerBound": 5.33,
+     "planCrossingMinAbsZGap": 123.54,
+     "band3D": "ENCROACH",
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L04",
+     "gateBDelta": 11.35,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 9.72,
+     "tightenedPointsInWindow": 34,
+     "backboneObliquityDeg": 2.6,
+     "minPlanDistanceInZWindow": 21.9,
+     "minDistance3D": 21.9,
+     "candidateMinDistance3D": 23.68,
+     "requiredMovePlanLowerBound": 8.1,
+     "planCrossingMinAbsZGap": 122.88,
+     "band3D": "ENCROACH",
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L05",
+     "gateBDelta": 10.78,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 9.3,
+     "tightenedPointsInWindow": 33,
+     "backboneObliquityDeg": 1.9,
+     "minPlanDistanceInZWindow": 21.95,
+     "minDistance3D": 21.95,
+     "candidateMinDistance3D": 23.75,
+     "requiredMovePlanLowerBound": 8.05,
+     "planCrossingMinAbsZGap": 122.94,
+     "band3D": "ENCROACH",
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L06",
+     "gateBDelta": 9.4,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 7.95,
+     "tightenedPointsInWindow": 33,
+     "backboneObliquityDeg": 0.8,
+     "minPlanDistanceInZWindow": 23.09,
+     "minDistance3D": 23.1,
+     "candidateMinDistance3D": 24.89,
+     "requiredMovePlanLowerBound": 6.91,
+     "planCrossingMinAbsZGap": 123.24,
+     "band3D": "ENCROACH",
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L07",
+     "gateBDelta": 8.16,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 6.61,
+     "tightenedPointsInWindow": 33,
+     "backboneObliquityDeg": 0.3,
+     "minPlanDistanceInZWindow": 24.0,
+     "minDistance3D": 24.0,
+     "candidateMinDistance3D": 25.83,
+     "requiredMovePlanLowerBound": 6.0,
+     "planCrossingMinAbsZGap": 123.57,
+     "band3D": "ENCROACH",
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L08",
+     "gateBDelta": 7.95,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 5.72,
+     "tightenedPointsInWindow": 34,
+     "backboneObliquityDeg": 1.3,
+     "minPlanDistanceInZWindow": 25.64,
+     "minDistance3D": 25.64,
+     "candidateMinDistance3D": 27.43,
+     "requiredMovePlanLowerBound": 4.36,
+     "planCrossingMinAbsZGap": 124.14,
+     "band3D": "ENCROACH",
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L09",
+     "gateBDelta": 7.64,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 4.79,
+     "tightenedPointsInWindow": 34,
+     "backboneObliquityDeg": 2.2,
+     "minPlanDistanceInZWindow": 27.22,
+     "minDistance3D": 27.22,
+     "candidateMinDistance3D": 29.03,
+     "requiredMovePlanLowerBound": 2.78,
+     "planCrossingMinAbsZGap": 124.96,
+     "band3D": "ENCROACH",
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L10",
+     "gateBDelta": 7.35,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 3.66,
+     "tightenedPointsInWindow": 33,
+     "backboneObliquityDeg": 3.2,
+     "minPlanDistanceInZWindow": 28.8,
+     "minDistance3D": 28.8,
+     "candidateMinDistance3D": 30.62,
+     "requiredMovePlanLowerBound": 1.2,
+     "planCrossingMinAbsZGap": 148.59,
+     "band3D": "ENCROACH",
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L11",
+     "gateBDelta": 6.56,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 2.65,
+     "tightenedPointsInWindow": 33,
+     "backboneObliquityDeg": 3.8,
+     "minPlanDistanceInZWindow": 30.18,
+     "minDistance3D": 30.19,
+     "candidateMinDistance3D": 32.01,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L12",
+     "gateBDelta": 5.95,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 1.83,
+     "tightenedPointsInWindow": 33,
+     "backboneObliquityDeg": 4.2,
+     "minPlanDistanceInZWindow": 31.32,
+     "minDistance3D": 31.33,
+     "candidateMinDistance3D": 33.14,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L13",
+     "gateBDelta": 5.24,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.87,
+     "tightenedPointsInWindow": 33,
+     "backboneObliquityDeg": 4.6,
+     "minPlanDistanceInZWindow": 32.33,
+     "minDistance3D": 32.34,
+     "candidateMinDistance3D": 34.14,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L14",
+     "gateBDelta": 4.63,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.27,
+     "tightenedPointsInWindow": 33,
+     "backboneObliquityDeg": 4.6,
+     "minPlanDistanceInZWindow": 32.8,
+     "minDistance3D": 32.81,
+     "candidateMinDistance3D": 34.59,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L15",
+     "gateBDelta": 3.39,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 33,
+     "backboneObliquityDeg": 4.2,
+     "minPlanDistanceInZWindow": 33.38,
+     "minDistance3D": 33.39,
+     "candidateMinDistance3D": 35.18,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L16",
+     "gateBDelta": 0.4,
+     "gateBSupportSource": "FOOTPRINT_WINDOW",
+     "tightenedDelta": 0.0,
+     "tightenedPointsInWindow": 33,
+     "backboneObliquityDeg": 2.8,
+     "minPlanDistanceInZWindow": 34.74,
+     "minDistance3D": 34.74,
+     "candidateMinDistance3D": 36.54,
+     "requiredMovePlanLowerBound": 0.0,
+     "planCrossingMinAbsZGap": null,
+     "band3D": "CLEAR",
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    }
+   ]
+  }
+ },
+ "jobs": [
+  {
+   "preset": "RANDOM_WARPED_VEIN",
+   "seed": 305,
+   "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.100",
+   "tunnelWidth": 5.0,
+   "corridorMargin": 30.0,
+   "corridorStandoff": 50.0,
+   "anchorStandoffWorld": 22.361224906008278,
+   "worldBasis": "COARSE_CONSERVATIVE",
+   "requiredClearance": 10.590169943749475,
+   "levelInterval": 25.0,
+   "bands": {
+    "CONFLICT": "3D centerline distance < 3 \u00d7 width = 15 m",
+    "ENCROACH": "< 6 \u00d7 width = 30 m"
+   },
+   "levels": [
+    {
+     "levelId": "L02",
+     "z": 29.473930806007104,
+     "deliveredNearLateral": 175.88,
+     "footprintCentre": -266.86,
+     "nearSamplesOnStraightLegFraction": 0.0,
+     "rlCrossing": [
+      -249.5,
+      96.46,
+      29.47
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 211,
+      "length": 420.9,
+      "tracePointsInFootprint": 24,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 61.62,
+      "separationFromNearLeg": 114.25,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 79,
+       "support": 104.07,
+       "separationFromNearLeg": 71.8,
+       "delta": 0.0,
+       "backboneObliquityDeg": 23.8
+      },
+      "supportPoint": [
+       -152.75,
+       -20.47,
+       29.47
+      ],
+      "supportPointToRampPlan": 5.06,
+      "supportPointToRamp3D": 79.2,
+      "supportPointAlongOffsetFromCentre": 125.61,
+      "minDistance3D": 53.42,
+      "closestRampPoint": [
+       -124.68,
+       84.01,
+       -5.61
+      ],
+      "closestTracePoint": [
+       -93.87,
+       58.07,
+       29.47
+      ],
+      "closestRampZGap": -35.09,
+      "minPlanDistanceInZWindow": 90.94,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 53.42,
+      "planCrossings": 3,
+      "planCrossingMinAbsZGap": 126.28,
+      "planCrossingList": [
+       {
+        "rampSegment": 1998,
+        "traceSegment": 192,
+        "x": -158.48,
+        "y": -29.85,
+        "rampZ": -96.81,
+        "zGap": -126.28
+       },
+       {
+        "rampSegment": 2069,
+        "traceSegment": 146,
+        "x": -104.96,
+        "y": 44.63,
+        "rampZ": -110.84,
+        "zGap": -140.31
+       },
+       {
+        "rampSegment": 2368,
+        "traceSegment": 196,
+        "x": -162.18,
+        "y": -36.45,
+        "rampZ": -169.93,
+        "zGap": -199.4
+       }
+      ],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 207,
+      "length": 412.3,
+      "tracePointsInFootprint": 22,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 59.3,
+      "separationFromNearLeg": 116.58,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 77,
+       "support": 101.96,
+       "separationFromNearLeg": 73.92,
+       "delta": 0.0,
+       "backboneObliquityDeg": 23.8
+      },
+      "supportPoint": [
+       -152.0,
+       -22.74,
+       29.47
+      ],
+      "supportPointToRampPlan": 2.73,
+      "supportPointToRamp3D": 81.37,
+      "supportPointAlongOffsetFromCentre": 125.07,
+      "minDistance3D": 54.72,
+      "closestRampPoint": [
+       -124.68,
+       84.01,
+       -5.61
+      ],
+      "closestTracePoint": [
+       -92.17,
+       57.42,
+       29.47
+      ],
+      "closestRampZGap": -35.09,
+      "minPlanDistanceInZWindow": 92.73,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 54.72,
+      "planCrossings": 3,
+      "planCrossingMinAbsZGap": 126.68,
+      "planCrossingList": [
+       {
+        "rampSegment": 2000,
+        "traceSegment": 187,
+        "x": -155.13,
+        "y": -27.82,
+        "rampZ": -97.21,
+        "zGap": -126.68
+       },
+       {
+        "rampSegment": 2067,
+        "traceSegment": 142,
+        "x": -101.46,
+        "y": 46.19,
+        "rampZ": -110.45,
+        "zGap": -139.92
+       },
+       {
+        "rampSegment": 2366,
+        "traceSegment": 191,
+        "x": -159.04,
+        "y": -34.55,
+        "rampZ": -169.56,
+        "zGap": -199.03
+       }
+      ],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 132.22,
+     "anchor": [
+      -130.38,
+      8.54,
+      29.47
+     ],
+     "anchorSeparation": 101.03,
+     "access": {
+      "status": "OK",
+      "junction": [
+       -147.43,
+       116.26,
+       44.66
+      ],
+      "length": 133.4
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L03",
+     "z": 4.473930806007104,
+     "deliveredNearLateral": 136.03,
+     "footprintCentre": -150.11,
+     "nearSamplesOnStraightLegFraction": 0.838,
+     "rlCrossing": [
+      -210.73,
+      31.4,
+      4.47
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 246,
+      "length": 489.7,
+      "tracePointsInFootprint": 110,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 105.11,
+      "separationFromNearLeg": 30.92,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 102,
+       "support": 101.69,
+       "separationFromNearLeg": 34.34,
+       "delta": 0.0,
+       "backboneObliquityDeg": 24.8
+      },
+      "supportPoint": [
+       -74.8,
+       77.58,
+       4.47
+      ],
+      "supportPointToRampPlan": 26.2,
+      "supportPointToRamp3D": 48.55,
+      "supportPointAlongOffsetFromCentre": 126.33,
+      "minDistance3D": 44.02,
+      "closestRampPoint": [
+       -123.34,
+       85.43,
+       -5.81
+      ],
+      "closestTracePoint": [
+       -89.79,
+       58.86,
+       4.47
+      ],
+      "closestRampZGap": -10.28,
+      "minPlanDistanceInZWindow": 42.8,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 44.02,
+      "planCrossings": 4,
+      "planCrossingMinAbsZGap": 101.28,
+      "planCrossingList": [
+       {
+        "rampSegment": 1998,
+        "traceSegment": 204,
+        "x": -158.49,
+        "y": -29.86,
+        "rampZ": -96.81,
+        "zGap": -101.28
+       },
+       {
+        "rampSegment": 2066,
+        "traceSegment": 155,
+        "x": -99.32,
+        "y": 46.73,
+        "rampZ": -110.23,
+        "zGap": -114.7
+       },
+       {
+        "rampSegment": 2218,
+        "traceSegment": 242,
+        "x": -193.51,
+        "y": -97.52,
+        "rampZ": -140.31,
+        "zGap": -144.78
+       },
+       {
+        "rampSegment": 2369,
+        "traceSegment": 208,
+        "x": -163.76,
+        "y": -37.41,
+        "rampZ": -170.11,
+        "zGap": -174.58
+       }
+      ],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 242,
+      "length": 481.5,
+      "tracePointsInFootprint": 108,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 103.17,
+      "separationFromNearLeg": 32.86,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 100,
+       "support": 99.74,
+       "separationFromNearLeg": 36.29,
+       "delta": 0.0,
+       "backboneObliquityDeg": 24.6
+      },
+      "supportPoint": [
+       -73.82,
+       75.9,
+       4.47
+      ],
+      "supportPointToRampPlan": 26.59,
+      "supportPointToRamp3D": 49.94,
+      "supportPointAlongOffsetFromCentre": 126.29,
+      "minDistance3D": 45.82,
+      "closestRampPoint": [
+       -123.34,
+       85.43,
+       -5.81
+      ],
+      "closestTracePoint": [
+       -88.78,
+       57.16,
+       4.47
+      ],
+      "closestRampZGap": -10.28,
+      "minPlanDistanceInZWindow": 44.65,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 45.82,
+      "planCrossings": 4,
+      "planCrossingMinAbsZGap": 102.82,
+      "planCrossingList": [
+       {
+        "rampSegment": 2006,
+        "traceSegment": 194,
+        "x": -145.33,
+        "y": -21.89,
+        "rampZ": -98.35,
+        "zGap": -102.82
+       },
+       {
+        "rampSegment": 2065,
+        "traceSegment": 152,
+        "x": -96.75,
+        "y": 47.03,
+        "rampZ": -109.97,
+        "zGap": -114.44
+       },
+       {
+        "rampSegment": 2220,
+        "traceSegment": 238,
+        "x": -191.14,
+        "y": -96.08,
+        "rampZ": -140.59,
+        "zGap": -145.06
+       },
+       {
+        "rampSegment": 2363,
+        "traceSegment": 200,
+        "x": -153.01,
+        "y": -30.9,
+        "rampZ": -168.85,
+        "zGap": -173.32
+       }
+      ],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 83.94,
+     "anchor": [
+      -145.72,
+      -22.37,
+      4.47
+     ],
+     "anchorSeparation": 79.67,
+     "access": {
+      "status": "OK",
+      "junction": [
+       -205.51,
+       34.57,
+       3.86
+      ],
+      "length": 90.0
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L04",
+     "z": -20.526069193992896,
+     "deliveredNearLateral": 136.15,
+     "footprintCentre": -266.86,
+     "nearSamplesOnStraightLegFraction": 0.0,
+     "rlCrossing": [
+      -228.95,
+      62.45,
+      -20.53
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 294,
+      "length": 585.5,
+      "tracePointsInFootprint": 85,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 64.23,
+      "separationFromNearLeg": 71.91,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 139,
+       "support": 103.83,
+       "separationFromNearLeg": 32.32,
+       "delta": 0.0,
+       "backboneObliquityDeg": 32.9
+      },
+      "supportPoint": [
+       -153.57,
+       -17.92,
+       -20.53
+      ],
+      "supportPointToRampPlan": 7.67,
+      "supportPointToRamp3D": 42.04,
+      "supportPointAlongOffsetFromCentre": 126.22,
+      "minDistance3D": 34.67,
+      "closestRampPoint": [
+       -119.04,
+       40.49,
+       -53.84
+      ],
+      "closestTracePoint": [
+       -111.05,
+       35.06,
+       -20.53
+      ],
+      "closestRampZGap": -33.31,
+      "minPlanDistanceInZWindow": 53.07,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 34.67,
+      "planCrossings": 5,
+      "planCrossingMinAbsZGap": 75.37,
+      "planCrossingList": [
+       {
+        "rampSegment": 1993,
+        "traceSegment": 219,
+        "x": -166.31,
+        "y": -34.6,
+        "rampZ": -95.9,
+        "zGap": -75.37
+       },
+       {
+        "rampSegment": 2068,
+        "traceSegment": 168,
+        "x": -102.37,
+        "y": 45.86,
+        "rampZ": -110.55,
+        "zGap": -90.02
+       },
+       {
+        "rampSegment": 2216,
+        "traceSegment": 255,
+        "x": -196.82,
+        "y": -99.52,
+        "rampZ": -139.92,
+        "zGap": -119.39
+       },
+       {
+        "rampSegment": 2374,
+        "traceSegment": 224,
+        "x": -171.67,
+        "y": -42.2,
+        "rampZ": -171.04,
+        "zGap": -150.51
+       },
+       {
+        "rampSegment": 2454,
+        "traceSegment": 278,
+        "x": -203.55,
+        "y": -143.81,
+        "rampZ": -186.95,
+        "zGap": -166.42
+       }
+      ],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 292,
+      "length": 582.7,
+      "tracePointsInFootprint": 83,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 59.74,
+      "separationFromNearLeg": 76.4,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 137,
+       "support": 99.36,
+       "separationFromNearLeg": 36.79,
+       "delta": 0.0,
+       "backboneObliquityDeg": 32.5
+      },
+      "supportPoint": [
+       -151.48,
+       -21.9,
+       -20.53
+      ],
+      "supportPointToRampPlan": 3.18,
+      "supportPointToRamp3D": 45.54,
+      "supportPointAlongOffsetFromCentre": 125.95,
+      "minDistance3D": 35.85,
+      "closestRampPoint": [
+       -108.88,
+       46.64,
+       -55.02
+      ],
+      "closestTracePoint": [
+       -101.28,
+       40.52,
+       -20.53
+      ],
+      "closestRampZGap": -34.5,
+      "minPlanDistanceInZWindow": 57.16,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 35.85,
+      "planCrossings": 5,
+      "planCrossingMinAbsZGap": 76.44,
+      "planCrossingList": [
+       {
+        "rampSegment": 1999,
+        "traceSegment": 213,
+        "x": -157.11,
+        "y": -29.02,
+        "rampZ": -96.97,
+        "zGap": -76.44
+       },
+       {
+        "rampSegment": 2065,
+        "traceSegment": 164,
+        "x": -96.02,
+        "y": 47.07,
+        "rampZ": -109.9,
+        "zGap": -89.37
+       },
+       {
+        "rampSegment": 2218,
+        "traceSegment": 252,
+        "x": -193.08,
+        "y": -97.26,
+        "rampZ": -140.36,
+        "zGap": -119.83
+       },
+       {
+        "rampSegment": 2369,
+        "traceSegment": 218,
+        "x": -163.29,
+        "y": -37.13,
+        "rampZ": -170.06,
+        "zGap": -149.53
+       },
+       {
+        "rampSegment": 2455,
+        "traceSegment": 276,
+        "x": -201.86,
+        "y": -143.75,
+        "rampZ": -187.12,
+        "zGap": -166.59
+       }
+      ],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 111.69,
+     "anchor": [
+      -140.19,
+      -7.85,
+      -20.53
+     ],
+     "anchorSeparation": 70.23,
+     "access": {
+      "status": "OK",
+      "junction": [
+       -182.05,
+       90.86,
+       -15.04
+      ],
+      "length": 116.5
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L05",
+     "z": -45.526069193992896,
+     "deliveredNearLateral": 96.3,
+     "footprintCentre": -150.11,
+     "nearSamplesOnStraightLegFraction": 0.838,
+     "rlCrossing": [
+      -190.11,
+      -2.56,
+      -45.53
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 297,
+      "length": 592.7,
+      "tracePointsInFootprint": 138,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 95.76,
+      "separationFromNearLeg": 0.53,
+      "delta": 29.47,
+      "tightened": {
+       "tracePointsInWindow": 130,
+       "support": 92.0,
+       "separationFromNearLeg": 4.29,
+       "delta": 25.71,
+       "backboneObliquityDeg": 27.8
+      },
+      "supportPoint": [
+       -70.64,
+       69.17,
+       -45.53
+      ],
+      "supportPointToRampPlan": 28.29,
+      "supportPointToRamp3D": 30.65,
+      "supportPointAlongOffsetFromCentre": 125.53,
+      "minDistance3D": 18.08,
+      "closestRampPoint": [
+       -102.76,
+       51.45,
+       -55.81
+      ],
+      "closestTracePoint": [
+       -91.22,
+       42.06,
+       -45.53
+      ],
+      "closestRampZGap": -10.28,
+      "minPlanDistanceInZWindow": 14.87,
+      "requiredMovePlanLowerBound": 15.13,
+      "minDistance3DInterior": 18.08,
+      "planCrossings": 5,
+      "planCrossingMinAbsZGap": 53.01,
+      "planCrossingList": [
+       {
+        "rampSegment": 2007,
+        "traceSegment": 216,
+        "x": -143.75,
+        "y": -20.93,
+        "rampZ": -98.54,
+        "zGap": -53.01
+       },
+       {
+        "rampSegment": 2061,
+        "traceSegment": 173,
+        "x": -88.56,
+        "y": 45.49,
+        "rampZ": -109.13,
+        "zGap": -63.6
+       },
+       {
+        "rampSegment": 2213,
+        "traceSegment": 267,
+        "x": -201.77,
+        "y": -102.52,
+        "rampZ": -139.34,
+        "zGap": -93.81
+       },
+       {
+        "rampSegment": 2362,
+        "traceSegment": 222,
+        "x": -151.54,
+        "y": -30.01,
+        "rampZ": -168.68,
+        "zGap": -123.15
+       },
+       {
+        "rampSegment": 2453,
+        "traceSegment": 288,
+        "x": -206.45,
+        "y": -143.72,
+        "rampZ": -186.66,
+        "zGap": -141.13
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 291,
+      "length": 579.2,
+      "tracePointsInFootprint": 134,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 91.86,
+      "separationFromNearLeg": 4.44,
+      "delta": 25.56,
+      "tightened": {
+       "tracePointsInWindow": 126,
+       "support": 88.06,
+       "separationFromNearLeg": 8.23,
+       "delta": 21.77,
+       "backboneObliquityDeg": 26.8
+      },
+      "supportPoint": [
+       -68.67,
+       65.81,
+       -45.53
+      ],
+      "supportPointToRampPlan": 27.75,
+      "supportPointToRamp3D": 32.11,
+      "supportPointAlongOffsetFromCentre": 125.47,
+      "minDistance3D": 21.21,
+      "closestRampPoint": [
+       -102.76,
+       51.45,
+       -55.81
+      ],
+      "closestTracePoint": [
+       -87.92,
+       40.31,
+       -45.53
+      ],
+      "closestRampZGap": -10.28,
+      "minPlanDistanceInZWindow": 18.55,
+      "requiredMovePlanLowerBound": 11.45,
+      "minDistance3DInterior": 21.21,
+      "planCrossings": 5,
+      "planCrossingMinAbsZGap": 54.1,
+      "planCrossingList": [
+       {
+        "rampSegment": 2012,
+        "traceSegment": 209,
+        "x": -134.35,
+        "y": -15.24,
+        "rampZ": -99.63,
+        "zGap": -54.1
+       },
+       {
+        "rampSegment": 2059,
+        "traceSegment": 170,
+        "x": -85.35,
+        "y": 43.62,
+        "rampZ": -108.76,
+        "zGap": -63.23
+       },
+       {
+        "rampSegment": 2216,
+        "traceSegment": 262,
+        "x": -197.19,
+        "y": -99.75,
+        "rampZ": -139.88,
+        "zGap": -94.35
+       },
+       {
+        "rampSegment": 2357,
+        "traceSegment": 215,
+        "x": -142.3,
+        "y": -24.42,
+        "rampZ": -167.6,
+        "zGap": -122.07
+       },
+       {
+        "rampSegment": 2454,
+        "traceSegment": 284,
+        "x": -203.8,
+        "y": -143.81,
+        "rampZ": -186.93,
+        "zGap": -141.4
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "rampToSectionContourPlanInZWindow": 83.0,
+     "anchor": [
+      -150.96,
+      -34.54,
+      -45.53
+     ],
+     "anchorSeparation": 47.63,
+     "access": {
+      "status": "OK",
+      "junction": [
+       -187.01,
+       -0.68,
+       -45.89
+      ],
+      "length": 58.3
+     },
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L06",
+     "z": -70.5260691939929,
+     "deliveredNearLateral": 96.41,
+     "footprintCentre": -266.86,
+     "nearSamplesOnStraightLegFraction": 0.0,
+     "rlCrossing": [
+      -208.41,
+      28.45,
+      -70.53
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 296,
+      "length": 590.0,
+      "tracePointsInFootprint": 80,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 35.94,
+      "separationFromNearLeg": 60.47,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 134,
+       "support": 71.91,
+       "separationFromNearLeg": 24.5,
+       "delta": 5.5,
+       "backboneObliquityDeg": 27.4
+      },
+      "supportPoint": [
+       -140.07,
+       -42.81,
+       -70.53
+      ],
+      "supportPointToRampPlan": 16.89,
+      "supportPointToRamp3D": 34.02,
+      "supportPointAlongOffsetFromCentre": 124.87,
+      "minDistance3D": 32.13,
+      "closestRampPoint": [
+       -122.15,
+       -7.85,
+       -101.06
+      ],
+      "closestTracePoint": [
+       -114.69,
+       -14.53,
+       -70.53
+      ],
+      "closestRampZGap": -30.54,
+      "minPlanDistanceInZWindow": 45.9,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 32.13,
+      "planCrossings": 5,
+      "planCrossingMinAbsZGap": 33.78,
+      "planCrossingList": [
+       {
+        "rampSegment": 2036,
+        "traceSegment": 181,
+        "x": -94.4,
+        "y": 8.96,
+        "rampZ": -104.31,
+        "zGap": -33.78
+       },
+       {
+        "rampSegment": 2050,
+        "traceSegment": 168,
+        "x": -77.96,
+        "y": 28.71,
+        "rampZ": -107.03,
+        "zGap": -36.5
+       },
+       {
+        "rampSegment": 2226,
+        "traceSegment": 246,
+        "x": -179.89,
+        "y": -89.27,
+        "rampZ": -141.9,
+        "zGap": -71.37
+       },
+       {
+        "rampSegment": 2333,
+        "traceSegment": 187,
+        "x": -102.25,
+        "y": -0.15,
+        "rampZ": -162.92,
+        "zGap": -92.39
+       },
+       {
+        "rampSegment": 2454,
+        "traceSegment": 277,
+        "x": -204.83,
+        "y": -143.8,
+        "rampZ": -186.82,
+        "zGap": -116.29
+       }
+      ],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 293,
+      "length": 584.3,
+      "tracePointsInFootprint": 78,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 33.03,
+      "separationFromNearLeg": 63.39,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 131,
+       "support": 67.82,
+       "separationFromNearLeg": 28.6,
+       "delta": 1.4,
+       "backboneObliquityDeg": 26.6
+      },
+      "supportPoint": [
+       -137.05,
+       -44.4,
+       -70.53
+      ],
+      "supportPointToRampPlan": 16.19,
+      "supportPointToRamp3D": 36.0,
+      "supportPointAlongOffsetFromCentre": 126.63,
+      "minDistance3D": 33.27,
+      "closestRampPoint": [
+       -113.68,
+       -2.72,
+       -102.05
+      ],
+      "closestTracePoint": [
+       -106.17,
+       -10.27,
+       -70.53
+      ],
+      "closestRampZGap": -31.52,
+      "minPlanDistanceInZWindow": 49.72,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 33.27,
+      "planCrossings": 3,
+      "planCrossingMinAbsZGap": 72.26,
+      "planCrossingList": [
+       {
+        "rampSegment": 2231,
+        "traceSegment": 241,
+        "x": -172.27,
+        "y": -84.66,
+        "rampZ": -142.79,
+        "zGap": -72.26
+       },
+       {
+        "rampSegment": 2327,
+        "traceSegment": 181,
+        "x": -91.7,
+        "y": 6.23,
+        "rampZ": -161.69,
+        "zGap": -91.16
+       },
+       {
+        "rampSegment": 2455,
+        "traceSegment": 275,
+        "x": -201.54,
+        "y": -143.74,
+        "rampZ": -187.15,
+        "zGap": -116.62
+       }
+      ],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 119.33,
+     "anchor": [
+      -133.0,
+      -39.96,
+      -70.53
+     ],
+     "anchorSeparation": 61.69,
+     "access": {
+      "status": "OK",
+      "junction": [
+       -167.89,
+       52.98,
+       -65.79
+      ],
+      "length": 107.9
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L07",
+     "z": -95.5260691939929,
+     "deliveredNearLateral": 56.57,
+     "footprintCentre": -150.11,
+     "nearSamplesOnStraightLegFraction": 0.838,
+     "rlCrossing": [
+      -169.5,
+      -36.52,
+      -95.53
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 335,
+      "length": 668.9,
+      "tracePointsInFootprint": 148,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 50.28,
+      "separationFromNearLeg": 6.29,
+      "delta": 23.71,
+      "tightened": {
+       "tracePointsInWindow": 140,
+       "support": 46.54,
+       "separationFromNearLeg": 10.03,
+       "delta": 19.97,
+       "backboneObliquityDeg": 31.4
+      },
+      "supportPoint": [
+       -47.2,
+       30.2,
+       -95.53
+      ],
+      "supportPointToRampPlan": 27.01,
+      "supportPointToRamp3D": 32.87,
+      "supportPointAlongOffsetFromCentre": 125.39,
+      "minDistance3D": 22.1,
+      "closestRampPoint": [
+       -83.51,
+       16.04,
+       -105.61
+      ],
+      "closestTracePoint": [
+       -68.34,
+       3.52,
+       -95.53
+      ],
+      "closestRampZGap": -10.08,
+      "minPlanDistanceInZWindow": 19.58,
+      "requiredMovePlanLowerBound": 10.42,
+      "minDistance3DInterior": 22.1,
+      "planCrossings": 3,
+      "planCrossingMinAbsZGap": 53.45,
+      "planCrossingList": [
+       {
+        "rampSegment": 2262,
+        "traceSegment": 241,
+        "x": -119.35,
+        "y": -52.6,
+        "rampZ": -148.98,
+        "zGap": -53.45
+       },
+       {
+        "rampSegment": 2311,
+        "traceSegment": 200,
+        "x": -63.82,
+        "y": 8.88,
+        "rampZ": -158.63,
+        "zGap": -63.1
+       },
+       {
+        "rampSegment": 2462,
+        "traceSegment": 297,
+        "x": -188.15,
+        "y": -140.41,
+        "rampZ": -188.54,
+        "zGap": -93.01
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 329,
+      "length": 655.9,
+      "tracePointsInFootprint": 144,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 45.16,
+      "separationFromNearLeg": 11.41,
+      "delta": 18.59,
+      "tightened": {
+       "tracePointsInWindow": 136,
+       "support": 41.48,
+       "separationFromNearLeg": 15.09,
+       "delta": 14.91,
+       "backboneObliquityDeg": 30.3
+      },
+      "supportPoint": [
+       -44.64,
+       25.76,
+       -95.53
+      ],
+      "supportPointToRampPlan": 25.42,
+      "supportPointToRamp3D": 35.31,
+      "supportPointAlongOffsetFromCentre": 125.28,
+      "minDistance3D": 26.31,
+      "closestRampPoint": [
+       -82.18,
+       17.46,
+       -105.8
+      ],
+      "closestTracePoint": [
+       -63.29,
+       2.28,
+       -95.53
+      ],
+      "closestRampZGap": -10.28,
+      "minPlanDistanceInZWindow": 24.22,
+      "requiredMovePlanLowerBound": 5.78,
+      "minDistance3DInterior": 26.31,
+      "planCrossings": 4,
+      "planCrossingMinAbsZGap": 54.94,
+      "planCrossingList": [
+       {
+        "rampSegment": 2270,
+        "traceSegment": 232,
+        "x": -106.57,
+        "y": -44.86,
+        "rampZ": -150.47,
+        "zGap": -54.94
+       },
+       {
+        "rampSegment": 2309,
+        "traceSegment": 197,
+        "x": -60.63,
+        "y": 5.44,
+        "rampZ": -158.16,
+        "zGap": -62.63
+       },
+       {
+        "rampSegment": 2465,
+        "traceSegment": 292,
+        "x": -183.27,
+        "y": -137.76,
+        "rampZ": -189.1,
+        "zGap": -93.57
+       },
+       {
+        "rampSegment": 2617,
+        "traceSegment": 239,
+        "x": -116.62,
+        "y": -55.31,
+        "rampZ": -219.31,
+        "zGap": -123.78
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "rampToSectionContourPlanInZWindow": 94.62,
+     "anchor": [
+      -132.81,
+      -72.32,
+      -95.53
+     ],
+     "anchorSeparation": 49.62,
+     "access": {
+      "status": "OK",
+      "junction": [
+       -177.03,
+       -41.08,
+       -94.65
+      ],
+      "length": 60.1
+     },
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L08",
+     "z": -120.5260691939929,
+     "deliveredNearLateral": 56.68,
+     "footprintCentre": -266.86,
+     "nearSamplesOnStraightLegFraction": 0.0,
+     "rlCrossing": [
+      -187.86,
+      -5.56,
+      -120.53
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 339,
+      "length": 676.8,
+      "tracePointsInFootprint": 75,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -14.63,
+      "separationFromNearLeg": 71.31,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 128,
+       "support": 15.56,
+       "separationFromNearLeg": 41.13,
+       "delta": 0.0,
+       "backboneObliquityDeg": 33.7
+      },
+      "supportPoint": [
+       -113.85,
+       -86.06,
+       -120.53
+      ],
+      "supportPointToRampPlan": 8.27,
+      "supportPointToRamp3D": 41.5,
+      "supportPointAlongOffsetFromCentre": 124.9,
+      "minDistance3D": 36.37,
+      "closestRampPoint": [
+       -71.1,
+       -23.38,
+       -154.62
+      ],
+      "closestTracePoint": [
+       -62.45,
+       -32.69,
+       -120.53
+      ],
+      "closestRampZGap": -34.09,
+      "minPlanDistanceInZWindow": 61.57,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 36.37,
+      "planCrossings": 2,
+      "planCrossingMinAbsZGap": 74.33,
+      "planCrossingList": [
+       {
+        "rampSegment": 2494,
+        "traceSegment": 278,
+        "x": -133.92,
+        "y": -107.87,
+        "rampZ": -194.86,
+        "zGap": -74.33
+       },
+       {
+        "rampSegment": 2576,
+        "traceSegment": 215,
+        "x": -46.28,
+        "y": -15.0,
+        "rampZ": -211.17,
+        "zGap": -90.64
+       }
+      ],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 332,
+      "length": 661.8,
+      "tracePointsInFootprint": 69,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -20.08,
+      "separationFromNearLeg": 76.76,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 122,
+       "support": 5.59,
+       "separationFromNearLeg": 51.09,
+       "delta": 0.0,
+       "backboneObliquityDeg": 31.0
+      },
+      "supportPoint": [
+       -110.81,
+       -90.59,
+       -120.53
+      ],
+      "supportPointToRampPlan": 2.82,
+      "supportPointToRamp3D": 45.78,
+      "supportPointAlongOffsetFromCentre": 125.15,
+      "minDistance3D": 39.68,
+      "closestRampPoint": [
+       -66.02,
+       -20.3,
+       -155.21
+      ],
+      "closestTracePoint": [
+       -51.97,
+       -33.5,
+       -120.53
+      ],
+      "closestRampZGap": -34.69,
+      "minPlanDistanceInZWindow": 71.59,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 39.68,
+      "planCrossings": 2,
+      "planCrossingMinAbsZGap": 76.13,
+      "planCrossingList": [
+       {
+        "rampSegment": 2503,
+        "traceSegment": 268,
+        "x": -118.58,
+        "y": -98.58,
+        "rampZ": -196.66,
+        "zGap": -76.13
+       },
+       {
+        "rampSegment": 2571,
+        "traceSegment": 210,
+        "x": -35.77,
+        "y": -17.43,
+        "rampZ": -210.07,
+        "zGap": -89.54
+       }
+      ],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 131.2,
+     "anchor": [
+      -106.59,
+      -86.33,
+      -120.53
+     ],
+     "anchorSeparation": 75.3,
+     "access": {
+      "status": "OK",
+      "junction": [
+       -145.22,
+       20.27,
+       -115.54
+      ],
+      "length": 121.6
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L09",
+     "z": -145.5260691939929,
+     "deliveredNearLateral": 16.84,
+     "footprintCentre": -150.11,
+     "nearSamplesOnStraightLegFraction": 0.838,
+     "rlCrossing": [
+      -148.88,
+      -70.49,
+      -145.53
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 310,
+      "length": 617.8,
+      "tracePointsInFootprint": 98,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -20.29,
+      "separationFromNearLeg": 37.13,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 90,
+       "support": -23.68,
+       "separationFromNearLeg": 40.51,
+       "delta": 0.0,
+       "backboneObliquityDeg": 28.3
+      },
+      "supportPoint": [
+       -10.66,
+       -30.18,
+       -145.53
+      ],
+      "supportPointToRampPlan": 16.38,
+      "supportPointToRamp3D": 52.59,
+      "supportPointAlongOffsetFromCentre": 125.36,
+      "minDistance3D": 49.27,
+      "closestRampPoint": [
+       -61.6,
+       -16.52,
+       -155.8
+      ],
+      "closestTracePoint": [
+       -24.49,
+       -47.28,
+       -145.53
+      ],
+      "closestRampZGap": -10.27,
+      "minPlanDistanceInZWindow": 48.19,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 49.27,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 309,
+      "length": 616.5,
+      "tracePointsInFootprint": 97,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -26.18,
+      "separationFromNearLeg": 43.01,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 89,
+       "support": -29.54,
+       "separationFromNearLeg": 46.37,
+       "delta": 0.0,
+       "backboneObliquityDeg": 27.7
+      },
+      "supportPoint": [
+       -6.54,
+       -34.56,
+       -145.53
+      ],
+      "supportPointToRampPlan": 20.41,
+      "supportPointToRamp3D": 57.97,
+      "supportPointAlongOffsetFromCentre": 126.62,
+      "minDistance3D": 55.31,
+      "closestRampPoint": [
+       -61.6,
+       -16.52,
+       -155.8
+      ],
+      "closestTracePoint": [
+       -17.77,
+       -48.65,
+       -145.53
+      ],
+      "closestRampZGap": -10.27,
+      "minPlanDistanceInZWindow": 54.32,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 55.31,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 100.77,
+     "anchor": [
+      -79.9,
+      -128.8,
+      -145.53
+     ],
+     "anchorSeparation": 85.61,
+     "access": {
+      "status": "OK",
+      "junction": [
+       -141.51,
+       -66.02,
+       -146.39
+      ],
+      "length": 95.9
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L10",
+     "z": -170.5260691939929,
+     "deliveredNearLateral": 16.95,
+     "footprintCentre": -266.86,
+     "nearSamplesOnStraightLegFraction": 0.0,
+     "rlCrossing": [
+      -167.31,
+      -39.56,
+      -170.53
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 301,
+      "length": 599.3,
+      "tracePointsInFootprint": 29,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -94.69,
+      "separationFromNearLeg": 111.64,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 85,
+       "support": -45.42,
+       "separationFromNearLeg": 62.37,
+       "delta": 0.0,
+       "backboneObliquityDeg": 30.0
+      },
+      "supportPoint": [
+       -71.28,
+       -153.88,
+       -170.53
+      ],
+      "supportPointToRampPlan": 71.8,
+      "supportPointToRamp3D": 76.77,
+      "supportPointAlongOffsetFromCentre": 126.17,
+      "minDistance3D": 45.57,
+      "closestRampPoint": [
+       -32.5,
+       -45.96,
+       -206.75
+      ],
+      "closestTracePoint": [
+       -10.37,
+       -62.57,
+       -170.53
+      ],
+      "closestRampZGap": -36.22,
+      "minPlanDistanceInZWindow": 81.54,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 45.57,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 296,
+      "length": 589.7,
+      "tracePointsInFootprint": 26,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -97.73,
+      "separationFromNearLeg": 114.69,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 82,
+       "support": -51.43,
+       "separationFromNearLeg": 68.39,
+       "delta": 0.0,
+       "backboneObliquityDeg": 28.3
+      },
+      "supportPoint": [
+       -70.19,
+       -156.77,
+       -170.53
+      ],
+      "supportPointToRampPlan": 74.84,
+      "supportPointToRamp3D": 79.6,
+      "supportPointAlongOffsetFromCentre": 125.61,
+      "minDistance3D": 49.52,
+      "closestRampPoint": [
+       -31.16,
+       -44.54,
+       -206.95
+      ],
+      "closestTracePoint": [
+       -4.11,
+       -64.41,
+       -170.53
+      ],
+      "closestRampZGap": -36.42,
+      "minPlanDistanceInZWindow": 87.22,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 49.52,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 129.71,
+     "anchor": [
+      -54.37,
+      -133.75,
+      -170.53
+     ],
+     "anchorSeparation": 103.19,
+     "access": {
+      "status": "OK",
+      "junction": [
+       -64.95,
+       -19.57,
+       -155.34
+      ],
+      "length": 140.7
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L11",
+     "z": -195.5260691939929,
+     "deliveredNearLateral": -22.89,
+     "footprintCentre": -144.37,
+     "nearSamplesOnStraightLegFraction": 0.846,
+     "rlCrossing": [
+      -128.26,
+      -104.45,
+      -195.53
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 290,
+      "length": 577.9,
+      "tracePointsInFootprint": 96,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -46.23,
+      "separationFromNearLeg": 23.33,
+      "delta": 6.67,
+      "tightened": {
+       "tracePointsInWindow": 85,
+       "support": -51.74,
+       "separationFromNearLeg": 28.84,
+       "delta": 1.16,
+       "backboneObliquityDeg": 32.3
+      },
+      "supportPoint": [
+       8.1,
+       -49.14,
+       -195.53
+      ],
+      "supportPointToRampPlan": 37.45,
+      "supportPointToRamp3D": 39.38,
+      "supportPointAlongOffsetFromCentre": 125.84,
+      "minDistance3D": 35.45,
+      "closestRampPoint": [
+       -31.16,
+       -44.54,
+       -206.95
+      ],
+      "closestTracePoint": [
+       -4.37,
+       -64.77,
+       -195.53
+      ],
+      "closestRampZGap": -11.42,
+      "minPlanDistanceInZWindow": 33.56,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 35.45,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 285,
+      "length": 567.4,
+      "tracePointsInFootprint": 93,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -51.33,
+      "separationFromNearLeg": 28.44,
+      "delta": 1.56,
+      "tightened": {
+       "tracePointsInWindow": 82,
+       "support": -56.92,
+       "separationFromNearLeg": 34.02,
+       "delta": 0.0,
+       "backboneObliquityDeg": 31.2
+      },
+      "supportPoint": [
+       10.54,
+       -53.63,
+       -195.53
+      ],
+      "supportPointToRampPlan": 41.19,
+      "supportPointToRamp3D": 42.91,
+      "supportPointAlongOffsetFromCentre": 125.6,
+      "minDistance3D": 40.04,
+      "closestRampPoint": [
+       -31.16,
+       -44.54,
+       -206.95
+      ],
+      "closestTracePoint": [
+       -0.59,
+       -67.75,
+       -195.53
+      ],
+      "closestRampZGap": -11.42,
+      "minPlanDistanceInZWindow": 38.38,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 40.04,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 90.45,
+     "anchor": [
+      -46.8,
+      -146.93,
+      -195.53
+     ],
+     "anchorSeparation": 78.54,
+     "access": {
+      "status": "OK",
+      "junction": [
+       -105.99,
+       -90.96,
+       -198.13
+      ],
+      "length": 88.9
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L12",
+     "z": -220.5260691939929,
+     "deliveredNearLateral": -15.0,
+     "footprintCentre": -39.63,
+     "nearSamplesOnStraightLegFraction": 0.0,
+     "rlCrossing": [
+      -127.06,
+      -61.63,
+      -220.53
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 266,
+      "length": 530.8,
+      "tracePointsInFootprint": 144,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -23.68,
+      "separationFromNearLeg": 8.68,
+      "delta": 21.32,
+      "tightened": {
+       "tracePointsInWindow": 78,
+       "support": -62.66,
+       "separationFromNearLeg": 47.66,
+       "delta": 0.0,
+       "backboneObliquityDeg": 32.6
+      },
+      "supportPoint": [
+       86.57,
+       24.75,
+       -220.53
+      ],
+      "supportPointToRampPlan": 125.58,
+      "supportPointToRamp3D": 126.12,
+      "supportPointAlongOffsetFromCentre": 126.5,
+      "minDistance3D": 45.96,
+      "closestRampPoint": [
+       -29.98,
+       -42.98,
+       -207.14
+      ],
+      "closestTracePoint": [
+       5.35,
+       -69.16,
+       -220.53
+      ],
+      "closestRampZGap": 13.39,
+      "minPlanDistanceInZWindow": 47.13,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 45.96,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 259,
+      "length": 516.7,
+      "tracePointsInFootprint": 141,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -28.2,
+      "separationFromNearLeg": 13.21,
+      "delta": 16.79,
+      "tightened": {
+       "tracePointsInWindow": 75,
+       "support": -66.75,
+       "separationFromNearLeg": 51.76,
+       "delta": 0.0,
+       "backboneObliquityDeg": 32.4
+      },
+      "supportPoint": [
+       88.35,
+       20.54,
+       -220.53
+      ],
+      "supportPointToRampPlan": 125.59,
+      "supportPointToRamp3D": 126.13,
+      "supportPointAlongOffsetFromCentre": 125.85,
+      "minDistance3D": 49.37,
+      "closestRampPoint": [
+       -29.98,
+       -42.98,
+       -207.14
+      ],
+      "closestTracePoint": [
+       8.06,
+       -71.47,
+       -220.53
+      ],
+      "closestRampZGap": 13.39,
+      "minPlanDistanceInZWindow": 50.73,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 49.37,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 111.86,
+     "anchor": [
+      -29.08,
+      -123.66,
+      -220.53
+     ],
+     "anchorSeparation": 75.71,
+     "access": {
+      "status": "OK",
+      "junction": [
+       -80.18,
+       -33.24,
+       -215.05
+      ],
+      "length": 115.5
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    }
+   ],
+   "family": "SWITCHBACK",
+   "candidateBasis": "REFINED_CONSERVATIVE",
+   "candidateRefinement": {
+    "applied": true,
+    "factor": 2,
+    "reason": "APPLIED",
+    "latticeSpacing": [
+     2.5,
+     2.5,
+     0.625
+    ],
+    "shape": [
+     47,
+     131,
+     66
+    ],
+    "cellCount": 406362,
+    "errorBound": 5.385527481129402
+   },
+   "anchorStandoffCandidate": 20.0,
+   "footprint": {
+    "legLength": 193.45133223538372,
+    "half": 126.72566611769186,
+    "station": 0.0,
+    "k": 1.0
+   },
+   "tightenedFootprint": {
+    "half": 114.72566611769186,
+    "centreGlobal": -147.3909065242162,
+    "rule": "SWITCHBACK |along \u2212 legCentre| \u2264 leg/2 + R_min; SPIRAL |along \u2212 rimCentre| \u2264 R"
+   },
+   "seconds": 86.4
+  },
+  {
+   "preset": "RANDOM_WARPED_VEIN",
+   "seed": 322,
+   "winnerId": "SWITCHBACK-k1-p+20-CCW-g0.120",
+   "tunnelWidth": 5.0,
+   "corridorMargin": 30.0,
+   "corridorStandoff": 50.0,
+   "anchorStandoffWorld": 22.361224906008278,
+   "worldBasis": "COARSE_CONSERVATIVE",
+   "requiredClearance": 10.590169943749475,
+   "levelInterval": 25.0,
+   "bands": {
+    "CONFLICT": "3D centerline distance < 3 \u00d7 width = 15 m",
+    "ENCROACH": "< 6 \u00d7 width = 30 m"
+   },
+   "levels": [
+    {
+     "levelId": "L03",
+     "z": 47.598436574178066,
+     "deliveredNearLateral": 107.09,
+     "footprintCentre": -435.79,
+     "nearSamplesOnStraightLegFraction": 0.833,
+     "rlCrossing": [
+      425.86,
+      104.33,
+      47.6
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 282,
+      "length": 562.4,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 60.04,
+      "separationFromNearLeg": 47.05,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 53,
+       "support": 55.24,
+       "separationFromNearLeg": 51.85,
+       "delta": 0.0,
+       "backboneObliquityDeg": 30.8
+      },
+      "supportPoint": [
+       320.61,
+       101.84,
+       47.6
+      ],
+      "supportPointToRampPlan": 47.07,
+      "supportPointToRamp3D": 54.48,
+      "supportPointAlongOffsetFromCentre": 104.8,
+      "minDistance3D": 54.18,
+      "closestRampPoint": [
+       364.84,
+       70.95,
+       39.24
+      ],
+      "closestTracePoint": [
+       324.63,
+       106.29,
+       47.6
+      ],
+      "closestRampZGap": -8.36,
+      "minPlanDistanceInZWindow": 53.53,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 54.18,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 280,
+      "length": 558.4,
+      "tracePointsInFootprint": 62,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 57.92,
+      "separationFromNearLeg": 49.17,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 52,
+       "support": 53.13,
+       "separationFromNearLeg": 53.96,
+       "delta": 0.0,
+       "backboneObliquityDeg": 30.8
+      },
+      "supportPoint": [
+       319.19,
+       103.48,
+       47.6
+      ],
+      "supportPointToRampPlan": 49.16,
+      "supportPointToRamp3D": 56.58,
+      "supportPointAlongOffsetFromCentre": 105.28,
+      "minDistance3D": 56.3,
+      "closestRampPoint": [
+       364.84,
+       70.95,
+       39.24
+      ],
+      "closestTracePoint": [
+       323.22,
+       107.94,
+       47.6
+      ],
+      "closestRampZGap": -8.36,
+      "minPlanDistanceInZWindow": 55.68,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 56.3,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 102.74,
+     "anchor": [
+      358.86,
+      151.11,
+      47.6
+     ],
+     "anchorSeparation": 72.7,
+     "access": {
+      "status": "OK",
+      "junction": [
+       405.6,
+       93.6,
+       44.85
+      ],
+      "length": 83.1
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L04",
+     "z": 22.598436574178066,
+     "deliveredNearLateral": 112.16,
+     "footprintCentre": -527.68,
+     "nearSamplesOnStraightLegFraction": 0.0,
+     "rlCrossing": [
+      464.11,
+      83.85,
+      22.6
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 310,
+      "length": 618.6,
+      "tracePointsInFootprint": 26,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 18.91,
+      "separationFromNearLeg": 93.25,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 65,
+       "support": 51.42,
+       "separationFromNearLeg": 60.74,
+       "delta": 0.0,
+       "backboneObliquityDeg": 30.4
+      },
+      "supportPoint": [
+       382.43,
+       181.11,
+       22.6
+      ],
+      "supportPointToRampPlan": 77.99,
+      "supportPointToRamp3D": 88.07,
+      "supportPointAlongOffsetFromCentre": 104.95,
+      "minDistance3D": 58.97,
+      "closestRampPoint": [
+       363.58,
+       69.47,
+       39.01
+      ],
+      "closestTracePoint": [
+       321.26,
+       107.12,
+       22.6
+      ],
+      "closestRampZGap": 16.41,
+      "minPlanDistanceInZWindow": 80.71,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 58.97,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 305,
+      "length": 607.1,
+      "tracePointsInFootprint": 23,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 16.58,
+      "separationFromNearLeg": 95.58,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 62,
+       "support": 49.12,
+       "separationFromNearLeg": 63.04,
+       "delta": 0.0,
+       "backboneObliquityDeg": 29.3
+      },
+      "supportPoint": [
+       381.04,
+       183.02,
+       22.6
+      ],
+      "supportPointToRampPlan": 80.33,
+      "supportPointToRamp3D": 90.31,
+      "supportPointAlongOffsetFromCentre": 105.29,
+      "minDistance3D": 61.09,
+      "closestRampPoint": [
+       363.58,
+       69.47,
+       39.01
+      ],
+      "closestTracePoint": [
+       320.11,
+       109.14,
+       22.6
+      ],
+      "closestRampZGap": 16.41,
+      "minPlanDistanceInZWindow": 82.92,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 61.09,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 134.99,
+     "anchor": [
+      365.81,
+      162.01,
+      22.6
+     ],
+     "anchorSeparation": 84.15,
+     "access": {
+      "status": "OK",
+      "junction": [
+       405.55,
+       52.84,
+       30.55
+      ],
+      "length": 125.6
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L05",
+     "z": -2.4015634258219336,
+     "deliveredNearLateral": 103.32,
+     "footprintCentre": -435.79,
+     "nearSamplesOnStraightLegFraction": 0.833,
+     "rlCrossing": [
+      424.05,
+      107.64,
+      -2.4
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 329,
+      "length": 655.4,
+      "tracePointsInFootprint": 74,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 45.21,
+      "separationFromNearLeg": 58.11,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 64,
+       "support": 40.31,
+       "separationFromNearLeg": 63.01,
+       "delta": 0.0,
+       "backboneObliquityDeg": 27.9
+      },
+      "supportPoint": [
+       313.18,
+       114.69,
+       -2.4
+      ],
+      "supportPointToRampPlan": 60.69,
+      "supportPointToRamp3D": 64.74,
+      "supportPointAlongOffsetFromCentre": 105.35,
+      "minDistance3D": 64.67,
+      "closestRampPoint": [
+       363.08,
+       74.28,
+       -10.75
+      ],
+      "closestTracePoint": [
+       314.51,
+       116.18,
+       -2.4
+      ],
+      "closestRampZGap": -8.35,
+      "minPlanDistanceInZWindow": 64.13,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 64.67,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 326,
+      "length": 650.6,
+      "tracePointsInFootprint": 73,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 42.91,
+      "separationFromNearLeg": 60.41,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 63,
+       "support": 37.99,
+       "separationFromNearLeg": 65.33,
+       "delta": 0.0,
+       "backboneObliquityDeg": 28.1
+      },
+      "supportPoint": [
+       312.23,
+       116.78,
+       -2.4
+      ],
+      "supportPointToRampPlan": 62.76,
+      "supportPointToRamp3D": 66.79,
+      "supportPointAlongOffsetFromCentre": 105.21,
+      "minDistance3D": 66.76,
+      "closestRampPoint": [
+       363.08,
+       74.28,
+       -10.75
+      ],
+      "closestTracePoint": [
+       313.56,
+       118.28,
+       -2.4
+      ],
+      "closestRampZGap": -8.35,
+      "minPlanDistanceInZWindow": 66.24,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 66.76,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 118.21,
+     "anchor": [
+      355.73,
+      166.51,
+      -2.4
+     ],
+     "anchorSeparation": 84.0,
+     "access": {
+      "status": "OK",
+      "junction": [
+       412.26,
+       101.4,
+       -4.0
+      ],
+      "length": 94.3
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L06",
+     "z": -27.401563425821934,
+     "deliveredNearLateral": 108.39,
+     "footprintCentre": -527.68,
+     "nearSamplesOnStraightLegFraction": 0.0,
+     "rlCrossing": [
+      462.39,
+      87.2,
+      -27.4
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 342,
+      "length": 681.2,
+      "tracePointsInFootprint": 17,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -5.53,
+      "separationFromNearLeg": 113.92,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 56,
+       "support": 26.46,
+       "separationFromNearLeg": 81.92,
+       "delta": 0.0,
+       "backboneObliquityDeg": 27.6
+      },
+      "supportPoint": [
+       370.42,
+       202.41,
+       -27.4
+      ],
+      "supportPointToRampPlan": 102.44,
+      "supportPointToRamp3D": 108.05,
+      "supportPointAlongOffsetFromCentre": 105.6,
+      "minDistance3D": 78.48,
+      "closestRampPoint": [
+       361.81,
+       72.8,
+       -10.99
+      ],
+      "closestTracePoint": [
+       304.99,
+       124.4,
+       -27.4
+      ],
+      "closestRampZGap": 16.41,
+      "minPlanDistanceInZWindow": 100.82,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 78.48,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 338,
+      "length": 674.4,
+      "tracePointsInFootprint": 14,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -8.37,
+      "separationFromNearLeg": 116.75,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 53,
+       "support": 24.19,
+       "separationFromNearLeg": 84.2,
+       "delta": 0.0,
+       "backboneObliquityDeg": 27.0
+      },
+      "supportPoint": [
+       369.06,
+       204.9,
+       -27.4
+      ],
+      "supportPointToRampPlan": 105.27,
+      "supportPointToRamp3D": 110.81,
+      "supportPointAlongOffsetFromCentre": 105.64,
+      "minDistance3D": 80.53,
+      "closestRampPoint": [
+       361.81,
+       72.8,
+       -10.99
+      ],
+      "closestTracePoint": [
+       302.65,
+       124.91,
+       -27.4
+      ],
+      "closestRampZGap": 16.41,
+      "minPlanDistanceInZWindow": 102.9,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 80.53,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 154.55,
+     "anchor": [
+      351.24,
+      180.78,
+      -27.4
+     ],
+     "anchorSeparation": 103.78,
+     "access": {
+      "status": "OK",
+      "junction": [
+       404.13,
+       56.35,
+       -19.49
+      ],
+      "length": 145.4
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L07",
+     "z": -52.401563425821934,
+     "deliveredNearLateral": 99.55,
+     "footprintCentre": -435.79,
+     "nearSamplesOnStraightLegFraction": 0.833,
+     "rlCrossing": [
+      422.24,
+      110.95,
+      -52.4
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 342,
+      "length": 681.7,
+      "tracePointsInFootprint": 51,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 16.94,
+      "separationFromNearLeg": 82.61,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 41,
+       "support": 11.93,
+       "separationFromNearLeg": 87.61,
+       "delta": 0.0,
+       "backboneObliquityDeg": 31.1
+      },
+      "supportPoint": [
+       301.09,
+       140.27,
+       -52.4
+      ],
+      "supportPointToRampPlan": 86.9,
+      "supportPointToRamp3D": 87.3,
+      "supportPointAlongOffsetFromCentre": 104.07,
+      "minDistance3D": 86.99,
+      "closestRampPoint": [
+       361.31,
+       77.62,
+       -60.75
+      ],
+      "closestTracePoint": [
+       295.81,
+       134.26,
+       -52.4
+      ],
+      "closestRampZGap": -8.34,
+      "minPlanDistanceInZWindow": 86.59,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 86.99,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 340,
+      "length": 678.9,
+      "tracePointsInFootprint": 50,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": 15.32,
+      "separationFromNearLeg": 84.22,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 39,
+       "support": 9.57,
+       "separationFromNearLeg": 89.97,
+       "delta": 0.0,
+       "backboneObliquityDeg": 31.3
+      },
+      "supportPoint": [
+       298.83,
+       140.9,
+       -52.4
+      ],
+      "supportPointToRampPlan": 88.93,
+      "supportPointToRamp3D": 89.32,
+      "supportPointAlongOffsetFromCentre": 105.77,
+      "minDistance3D": 89.09,
+      "closestRampPoint": [
+       361.31,
+       77.62,
+       -60.75
+      ],
+      "closestTracePoint": [
+       294.87,
+       136.38,
+       -52.4
+      ],
+      "closestRampZGap": -8.34,
+      "minPlanDistanceInZWindow": 88.7,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 89.09,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 142.86,
+     "anchor": [
+      331.22,
+      179.08,
+      -52.4
+     ],
+     "anchorSeparation": 102.8,
+     "access": {
+      "status": "OK",
+      "junction": [
+       392.6,
+       95.25,
+       -56.43
+      ],
+      "length": 113.2
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L08",
+     "z": -77.40156342582193,
+     "deliveredNearLateral": 105.98,
+     "footprintCentre": -528.36,
+     "nearSamplesOnStraightLegFraction": 0.0,
+     "rlCrossing": [
+      460.67,
+      90.56,
+      -77.4
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 331,
+      "length": 659.7,
+      "tracePointsInFootprint": 0,
+      "supportSource": "WHOLE_TRACE_FALLBACK",
+      "support": 188.22,
+      "separationFromNearLeg": -82.24,
+      "delta": 112.24,
+      "tightened": {
+       "tracePointsInWindow": 20,
+       "support": -4.83,
+       "separationFromNearLeg": 110.81,
+       "delta": 0.0,
+       "backboneObliquityDeg": 43.7
+      },
+      "supportPoint": [
+       -89.72,
+       -260.49,
+       -77.4
+      ],
+      "supportPointToRampPlan": 522.62,
+      "supportPointToRamp3D": 549.17,
+      "supportPointAlongOffsetFromCentre": 729.55,
+      "minDistance3D": 102.43,
+      "closestRampPoint": [
+       360.05,
+       76.13,
+       -60.98
+      ],
+      "closestTracePoint": [
+       283.65,
+       142.35,
+       -77.4
+      ],
+      "closestRampZGap": 16.42,
+      "minPlanDistanceInZWindow": 124.93,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 102.43,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 327,
+      "length": 651.2,
+      "tracePointsInFootprint": 0,
+      "supportSource": "WHOLE_TRACE_FALLBACK",
+      "support": 185.96,
+      "separationFromNearLeg": -79.98,
+      "delta": 109.98,
+      "tightened": {
+       "tracePointsInWindow": 17,
+       "support": -7.52,
+       "separationFromNearLeg": 113.49,
+       "delta": 0.0,
+       "backboneObliquityDeg": 43.6
+      },
+      "supportPoint": [
+       -90.32,
+       -258.25,
+       -77.4
+      ],
+      "supportPointToRampPlan": 523.71,
+      "supportPointToRamp3D": 548.38,
+      "supportPointAlongOffsetFromCentre": 729.03,
+      "minDistance3D": 104.59,
+      "closestRampPoint": [
+       360.05,
+       76.13,
+       -60.98
+      ],
+      "closestTracePoint": [
+       281.29,
+       142.96,
+       -77.4
+      ],
+      "closestRampZGap": 16.42,
+      "minPlanDistanceInZWindow": 127.1,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 104.59,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 183.9,
+     "anchor": [
+      305.41,
+      174.74,
+      -77.4
+     ],
+     "anchorSeparation": 117.48,
+     "access": {
+      "status": "OK",
+      "junction": [
+       402.71,
+       59.87,
+       -69.53
+      ],
+      "length": 167.1
+     },
+     "verdict": [
+      "WORLD_SUPPORT_IS_FALLBACK",
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L09",
+     "z": -102.40156342582193,
+     "deliveredNearLateral": 96.86,
+     "footprintCentre": -474.83,
+     "nearSamplesOnStraightLegFraction": 0.863,
+     "rlCrossing": [
+      420.93,
+      113.29,
+      -102.4
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 316,
+      "length": 630.4,
+      "tracePointsInFootprint": 0,
+      "supportSource": "WHOLE_TRACE_FALLBACK",
+      "support": 176.65,
+      "separationFromNearLeg": -79.79,
+      "delta": 109.79,
+      "tightened": {
+       "tracePointsInWindow": 0,
+       "delta": 0.0,
+       "support": null
+      },
+      "supportPoint": [
+       -102.72,
+       -254.28,
+       -102.4
+      ],
+      "supportPointToRampPlan": 536.68,
+      "supportPointToRamp3D": 557.57,
+      "supportPointAlongOffsetFromCentre": 684.6,
+      "minDistance3D": 124.34,
+      "closestRampPoint": [
+       360.05,
+       76.13,
+       -60.98
+      ],
+      "closestTracePoint": [
+       266.93,
+       147.36,
+       -102.4
+      ],
+      "closestRampZGap": 41.42,
+      "minPlanDistanceInZWindow": 152.05,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 124.34,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 312,
+      "length": 622.5,
+      "tracePointsInFootprint": 0,
+      "supportSource": "WHOLE_TRACE_FALLBACK",
+      "support": 174.24,
+      "separationFromNearLeg": -77.37,
+      "delta": 107.37,
+      "tightened": {
+       "tracePointsInWindow": 0,
+       "delta": 0.0,
+       "support": null
+      },
+      "supportPoint": [
+       -103.38,
+       -251.9,
+       -102.4
+      ],
+      "supportPointToRampPlan": 537.85,
+      "supportPointToRamp3D": 556.8,
+      "supportPointAlongOffsetFromCentre": 684.07,
+      "minDistance3D": 126.57,
+      "closestRampPoint": [
+       360.05,
+       76.13,
+       -60.98
+      ],
+      "closestTracePoint": [
+       264.85,
+       148.54,
+       -102.4
+      ],
+      "closestRampZGap": 41.42,
+      "minPlanDistanceInZWindow": 154.82,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 126.57,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 242.15,
+     "anchor": [
+      275.91,
+      167.48,
+      -102.4
+     ],
+     "anchorSeparation": 115.76,
+     "access": {
+      "status": "OK",
+      "junction": [
+       426.09,
+       116.02,
+       -101.7
+      ],
+      "length": 160.4
+     },
+     "verdict": [
+      "WORLD_SUPPORT_IS_FALLBACK",
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    }
+   ],
+   "family": "SWITCHBACK",
+   "candidateBasis": "REFINED_CONSERVATIVE",
+   "candidateRefinement": {
+    "applied": true,
+    "factor": 2,
+    "reason": "APPLIED",
+    "latticeSpacing": [
+     2.5,
+     2.5,
+     0.625
+    ],
+    "shape": [
+     44,
+     88,
+     5
+    ],
+    "cellCount": 19360,
+    "errorBound": 5.385527481129402
+   },
+   "anchorStandoffCandidate": 20.0,
+   "footprint": {
+    "legLength": 151.78466556871706,
+    "half": 105.89233278435853,
+    "station": 0.0,
+    "k": 1.0
+   },
+   "tightenedFootprint": {
+    "half": 93.89233278435853,
+    "centreGlobal": -437.32370395619654,
+    "rule": "SWITCHBACK |along \u2212 legCentre| \u2264 leg/2 + R_min; SPIRAL |along \u2212 rimCentre| \u2264 R"
+   },
+   "seconds": 76.8
+  },
+  {
+   "preset": "RANDOM_WARPED_VEIN",
+   "seed": 301,
+   "winnerId": "SPIRAL-n1-CW-e+0-g0.120",
+   "tunnelWidth": 5.0,
+   "corridorMargin": 30.0,
+   "corridorStandoff": 50.0,
+   "anchorStandoffWorld": 22.361224906008278,
+   "worldBasis": "COARSE_CONSERVATIVE",
+   "requiredClearance": 10.590169943749475,
+   "levelInterval": 25.0,
+   "bands": {
+    "CONFLICT": "3D centerline distance < 3 \u00d7 width = 15 m",
+    "ENCROACH": "< 6 \u00d7 width = 30 m"
+   },
+   "levels": [
+    {
+     "levelId": "L03",
+     "z": 133.05710872615703,
+     "deliveredNearLateral": -29.44,
+     "footprintCentre": 135.08,
+     "nearSamplesOnStraightLegFraction": 0.105,
+     "rlCrossing": [
+      94.13,
+      104.58,
+      133.06
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 167,
+      "length": 331.2,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -49.72,
+      "separationFromNearLeg": 20.28,
+      "delta": 9.72,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -51.84,
+       "separationFromNearLeg": 22.4,
+       "delta": 7.6,
+       "backboneObliquityDeg": 4.1
+      },
+      "supportPoint": [
+       141.27,
+       145.47,
+       133.06
+      ],
+      "supportPointToRampPlan": 34.78,
+      "supportPointToRamp3D": 48.41,
+      "supportPointAlongOffsetFromCentre": 61.5,
+      "minDistance3D": 24.67,
+      "closestRampPoint": [
+       93.9,
+       104.07,
+       132.99
+      ],
+      "closestTracePoint": [
+       116.13,
+       93.37,
+       133.06
+      ],
+      "closestRampZGap": -0.07,
+      "minPlanDistanceInZWindow": 24.67,
+      "requiredMovePlanLowerBound": 5.33,
+      "minDistance3DInterior": 24.67,
+      "planCrossings": 17,
+      "planCrossingMinAbsZGap": 123.54,
+      "planCrossingList": [
+       {
+        "rampSegment": 1372,
+        "traceSegment": 100,
+        "x": 119.11,
+        "y": 99.56,
+        "rampZ": 9.52,
+        "zGap": -123.54
+       },
+       {
+        "rampSegment": 1385,
+        "traceSegment": 113,
+        "x": 107.99,
+        "y": 76.67,
+        "rampZ": 6.39,
+        "zGap": -126.67
+       },
+       {
+        "rampSegment": 1471,
+        "traceSegment": 96,
+        "x": 122.53,
+        "y": 106.68,
+        "rampZ": -14.21,
+        "zGap": -147.27
+       },
+       {
+        "rampSegment": 1494,
+        "traceSegment": 118,
+        "x": 103.55,
+        "y": 67.64,
+        "rampZ": -19.88,
+        "zGap": -152.94
+       },
+       {
+        "rampSegment": 1571,
+        "traceSegment": 94,
+        "x": 124.28,
+        "y": 110.34,
+        "rampZ": -38.31,
+        "zGap": -171.37
+       },
+       {
+        "rampSegment": 1602,
+        "traceSegment": 121,
+        "x": 100.8,
+        "y": 62.09,
+        "rampZ": -45.78,
+        "zGap": -178.84
+       },
+       {
+        "rampSegment": 1672,
+        "traceSegment": 93,
+        "x": 125.25,
+        "y": 112.38,
+        "rampZ": -62.54,
+        "zGap": -195.6
+       },
+       {
+        "rampSegment": 1710,
+        "traceSegment": 123,
+        "x": 98.85,
+        "y": 58.19,
+        "rampZ": -71.55,
+        "zGap": -204.61
+       },
+       {
+        "rampSegment": 1774,
+        "traceSegment": 92,
+        "x": 125.7,
+        "y": 113.33,
+        "rampZ": -86.85,
+        "zGap": -219.91
+       },
+       {
+        "rampSegment": 1817,
+        "traceSegment": 125,
+        "x": 97.47,
+        "y": 55.45,
+        "rampZ": -97.26,
+        "zGap": -230.32
+       },
+       {
+        "rampSegment": 1875,
+        "traceSegment": 92,
+        "x": 125.72,
+        "y": 113.36,
+        "rampZ": -111.19,
+        "zGap": -244.25
+       },
+       {
+        "rampSegment": 1924,
+        "traceSegment": 126,
+        "x": 96.55,
+        "y": 53.64,
+        "rampZ": -122.93,
+        "zGap": -255.99
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 162,
+      "length": 322.7,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -51.49,
+      "separationFromNearLeg": 22.05,
+      "delta": 7.95,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -53.6,
+       "separationFromNearLeg": 24.17,
+       "delta": 5.83,
+       "backboneObliquityDeg": 4.1
+      },
+      "supportPoint": [
+       142.8,
+       144.58,
+       133.06
+      ],
+      "supportPointToRampPlan": 35.07,
+      "supportPointToRamp3D": 49.59,
+      "supportPointAlongOffsetFromCentre": 61.5,
+      "minDistance3D": 26.42,
+      "closestRampPoint": [
+       93.9,
+       104.07,
+       132.99
+      ],
+      "closestTracePoint": [
+       117.53,
+       92.25,
+       133.06
+      ],
+      "closestRampZGap": -0.07,
+      "minPlanDistanceInZWindow": 26.42,
+      "requiredMovePlanLowerBound": 3.58,
+      "minDistance3DInterior": 26.42,
+      "planCrossings": 17,
+      "planCrossingMinAbsZGap": 124.26,
+      "planCrossingList": [
+       {
+        "rampSegment": 1375,
+        "traceSegment": 101,
+        "x": 118.2,
+        "y": 93.63,
+        "rampZ": 8.8,
+        "zGap": -124.26
+       },
+       {
+        "rampSegment": 1382,
+        "traceSegment": 108,
+        "x": 112.07,
+        "y": 81.01,
+        "rampZ": 7.11,
+        "zGap": -125.95
+       },
+       {
+        "rampSegment": 1472,
+        "traceSegment": 95,
+        "x": 123.11,
+        "y": 103.86,
+        "rampZ": -14.56,
+        "zGap": -147.62
+       },
+       {
+        "rampSegment": 1493,
+        "traceSegment": 114,
+        "x": 106.11,
+        "y": 68.87,
+        "rampZ": -19.54,
+        "zGap": -152.6
+       },
+       {
+        "rampSegment": 1572,
+        "traceSegment": 93,
+        "x": 125.23,
+        "y": 108.28,
+        "rampZ": -38.58,
+        "zGap": -171.64
+       },
+       {
+        "rampSegment": 1601,
+        "traceSegment": 118,
+        "x": 102.99,
+        "y": 62.56,
+        "rampZ": -45.51,
+        "zGap": -178.57
+       },
+       {
+        "rampSegment": 1673,
+        "traceSegment": 91,
+        "x": 126.41,
+        "y": 110.75,
+        "rampZ": -62.78,
+        "zGap": -195.84
+       },
+       {
+        "rampSegment": 1709,
+        "traceSegment": 120,
+        "x": 100.82,
+        "y": 58.2,
+        "rampZ": -71.32,
+        "zGap": -204.38
+       },
+       {
+        "rampSegment": 1774,
+        "traceSegment": 91,
+        "x": 127.02,
+        "y": 112.02,
+        "rampZ": -87.07,
+        "zGap": -220.13
+       },
+       {
+        "rampSegment": 1816,
+        "traceSegment": 122,
+        "x": 99.27,
+        "y": 55.12,
+        "rampZ": -97.04,
+        "zGap": -230.1
+       },
+       {
+        "rampSegment": 1876,
+        "traceSegment": 90,
+        "x": 127.16,
+        "y": 112.33,
+        "rampZ": -111.4,
+        "zGap": -244.46
+       },
+       {
+        "rampSegment": 1923,
+        "traceSegment": 123,
+        "x": 98.21,
+        "y": 53.02,
+        "rampZ": -122.72,
+        "zGap": -255.78
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "rampToSectionContourPlanInZWindow": 62.76,
+     "anchor": [
+      117.53,
+      92.25,
+      133.06
+     ],
+     "anchorSeparation": 26.3,
+     "access": {
+      "status": "OK",
+      "junction": [
+       97.24,
+       121.18,
+       135.11
+      ],
+      "length": 36.1
+     },
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L04",
+     "z": 108.05710872615703,
+     "deliveredNearLateral": -34.94,
+     "footprintCentre": 133.65,
+     "nearSamplesOnStraightLegFraction": 0.056,
+     "rlCrossing": [
+      98.54,
+      101.22,
+      108.06
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 238,
+      "length": 474.6,
+      "tracePointsInFootprint": 64,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -53.59,
+      "separationFromNearLeg": 18.65,
+      "delta": 11.35,
+      "tightened": {
+       "tracePointsInWindow": 34,
+       "support": -55.22,
+       "separationFromNearLeg": 20.28,
+       "delta": 9.72,
+       "backboneObliquityDeg": 2.6
+      },
+      "supportPoint": [
+       144.68,
+       143.63,
+       108.06
+      ],
+      "supportPointToRampPlan": 35.43,
+      "supportPointToRamp3D": 48.04,
+      "supportPointAlongOffsetFromCentre": 63.04,
+      "minDistance3D": 21.9,
+      "closestRampPoint": [
+       98.42,
+       100.94,
+       108.02
+      ],
+      "closestTracePoint": [
+       117.46,
+       90.07,
+       108.06
+      ],
+      "closestRampZGap": -0.04,
+      "minPlanDistanceInZWindow": 21.9,
+      "requiredMovePlanLowerBound": 8.1,
+      "minDistance3DInterior": 21.9,
+      "planCrossings": 15,
+      "planCrossingMinAbsZGap": 122.88,
+      "planCrossingList": [
+       {
+        "rampSegment": 1473,
+        "traceSegment": 109,
+        "x": 123.4,
+        "y": 101.64,
+        "rampZ": -14.82,
+        "zGap": -122.88
+       },
+       {
+        "rampSegment": 1493,
+        "traceSegment": 127,
+        "x": 106.57,
+        "y": 69.11,
+        "rampZ": -19.47,
+        "zGap": -127.53
+       },
+       {
+        "rampSegment": 1573,
+        "traceSegment": 106,
+        "x": 125.9,
+        "y": 106.54,
+        "rampZ": -38.8,
+        "zGap": -146.86
+       },
+       {
+        "rampSegment": 1601,
+        "traceSegment": 131,
+        "x": 103.13,
+        "y": 62.59,
+        "rampZ": -45.5,
+        "zGap": -153.56
+       },
+       {
+        "rampSegment": 1674,
+        "traceSegment": 105,
+        "x": 127.32,
+        "y": 109.33,
+        "rampZ": -62.99,
+        "zGap": -171.05
+       },
+       {
+        "rampSegment": 1709,
+        "traceSegment": 133,
+        "x": 100.78,
+        "y": 58.2,
+        "rampZ": -71.32,
+        "zGap": -179.38
+       },
+       {
+        "rampSegment": 1775,
+        "traceSegment": 104,
+        "x": 128.08,
+        "y": 110.84,
+        "rampZ": -87.26,
+        "zGap": -195.32
+       },
+       {
+        "rampSegment": 1816,
+        "traceSegment": 135,
+        "x": 99.13,
+        "y": 55.15,
+        "rampZ": -97.06,
+        "zGap": -205.12
+       },
+       {
+        "rampSegment": 1877,
+        "traceSegment": 104,
+        "x": 128.36,
+        "y": 111.4,
+        "rampZ": -111.58,
+        "zGap": -219.64
+       },
+       {
+        "rampSegment": 1923,
+        "traceSegment": 136,
+        "x": 98.02,
+        "y": 53.09,
+        "rampZ": -122.75,
+        "zGap": -230.81
+       },
+       {
+        "rampSegment": 1978,
+        "traceSegment": 104,
+        "x": 128.22,
+        "y": 111.11,
+        "rampZ": -135.93,
+        "zGap": -243.99
+       },
+       {
+        "rampSegment": 2030,
+        "traceSegment": 137,
+        "x": 97.38,
+        "y": 51.92,
+        "rampZ": -148.42,
+        "zGap": -256.48
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 233,
+      "length": 464.0,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -55.46,
+      "separationFromNearLeg": 20.52,
+      "delta": 9.48,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -57.08,
+       "separationFromNearLeg": 22.15,
+       "delta": 7.85,
+       "backboneObliquityDeg": 2.6
+      },
+      "supportPoint": [
+       145.57,
+       141.43,
+       108.06
+      ],
+      "supportPointToRampPlan": 34.25,
+      "supportPointToRamp3D": 48.16,
+      "supportPointAlongOffsetFromCentre": 61.58,
+      "minDistance3D": 23.68,
+      "closestRampPoint": [
+       98.42,
+       100.94,
+       108.02
+      ],
+      "closestTracePoint": [
+       119.28,
+       89.73,
+       108.06
+      ],
+      "closestRampZGap": -0.04,
+      "minPlanDistanceInZWindow": 23.68,
+      "requiredMovePlanLowerBound": 6.32,
+      "minDistance3DInterior": 23.68,
+      "planCrossings": 15,
+      "planCrossingMinAbsZGap": 123.32,
+      "planCrossingList": [
+       {
+        "rampSegment": 1475,
+        "traceSegment": 108,
+        "x": 123.55,
+        "y": 98.05,
+        "rampZ": -15.26,
+        "zGap": -123.32
+       },
+       {
+        "rampSegment": 1491,
+        "traceSegment": 123,
+        "x": 109.56,
+        "y": 71.0,
+        "rampZ": -19.05,
+        "zGap": -127.11
+       },
+       {
+        "rampSegment": 1574,
+        "traceSegment": 104,
+        "x": 126.67,
+        "y": 104.14,
+        "rampZ": -39.11,
+        "zGap": -147.17
+       },
+       {
+        "rampSegment": 1600,
+        "traceSegment": 127,
+        "x": 105.48,
+        "y": 63.28,
+        "rampZ": -45.2,
+        "zGap": -153.26
+       },
+       {
+        "rampSegment": 1675,
+        "traceSegment": 103,
+        "x": 128.36,
+        "y": 107.46,
+        "rampZ": -63.24,
+        "zGap": -171.3
+       },
+       {
+        "rampSegment": 1708,
+        "traceSegment": 130,
+        "x": 102.85,
+        "y": 58.33,
+        "rampZ": -71.07,
+        "zGap": -179.13
+       },
+       {
+        "rampSegment": 1776,
+        "traceSegment": 101,
+        "x": 129.32,
+        "y": 109.35,
+        "rampZ": -87.49,
+        "zGap": -195.55
+       },
+       {
+        "rampSegment": 1815,
+        "traceSegment": 132,
+        "x": 101.01,
+        "y": 54.91,
+        "rampZ": -96.83,
+        "zGap": -204.89
+       },
+       {
+        "rampSegment": 1877,
+        "traceSegment": 101,
+        "x": 129.75,
+        "y": 110.2,
+        "rampZ": -111.8,
+        "zGap": -219.86
+       },
+       {
+        "rampSegment": 1922,
+        "traceSegment": 134,
+        "x": 99.73,
+        "y": 52.55,
+        "rampZ": -122.53,
+        "zGap": -230.59
+       },
+       {
+        "rampSegment": 1979,
+        "traceSegment": 101,
+        "x": 129.73,
+        "y": 110.16,
+        "rampZ": -136.15,
+        "zGap": -244.21
+       },
+       {
+        "rampSegment": 2029,
+        "traceSegment": 134,
+        "x": 98.95,
+        "y": 51.1,
+        "rampZ": -148.2,
+        "zGap": -256.26
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "rampToSectionContourPlanInZWindow": 60.87,
+     "anchor": [
+      119.28,
+      89.73,
+      108.06
+     ],
+     "anchorSeparation": 23.58,
+     "access": {
+      "status": "OK",
+      "junction": [
+       101.62,
+       117.65,
+       110.09
+      ],
+      "length": 33.6
+     },
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L05",
+     "z": 83.05710872615703,
+     "deliveredNearLateral": -40.44,
+     "footprintCentre": 133.18,
+     "nearSamplesOnStraightLegFraction": 0.056,
+     "rlCrossing": [
+      102.95,
+      97.85,
+      83.06
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 258,
+      "length": 514.6,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -59.66,
+      "separationFromNearLeg": 19.22,
+      "delta": 10.78,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -61.14,
+       "separationFromNearLeg": 20.7,
+       "delta": 9.3,
+       "backboneObliquityDeg": 1.9
+      },
+      "supportPoint": [
+       149.58,
+       139.98,
+       83.06
+      ],
+      "supportPointToRampPlan": 35.58,
+      "supportPointToRamp3D": 48.45,
+      "supportPointAlongOffsetFromCentre": 62.8,
+      "minDistance3D": 21.95,
+      "closestRampPoint": [
+       102.03,
+       96.01,
+       82.81
+      ],
+      "closestTracePoint": [
+       120.98,
+       84.88,
+       83.06
+      ],
+      "closestRampZGap": -0.25,
+      "minPlanDistanceInZWindow": 21.95,
+      "requiredMovePlanLowerBound": 8.05,
+      "minDistance3DInterior": 21.95,
+      "planCrossings": 13,
+      "planCrossingMinAbsZGap": 122.94,
+      "planCrossingList": [
+       {
+        "rampSegment": 1578,
+        "traceSegment": 117,
+        "x": 127.81,
+        "y": 97.8,
+        "rampZ": -39.88,
+        "zGap": -122.94
+       },
+       {
+        "rampSegment": 1597,
+        "traceSegment": 135,
+        "x": 110.58,
+        "y": 65.49,
+        "rampZ": -44.53,
+        "zGap": -127.59
+       },
+       {
+        "rampSegment": 1678,
+        "traceSegment": 114,
+        "x": 130.41,
+        "y": 102.75,
+        "rampZ": -63.86,
+        "zGap": -146.92
+       },
+       {
+        "rampSegment": 1705,
+        "traceSegment": 139,
+        "x": 107.0,
+        "y": 59.02,
+        "rampZ": -70.57,
+        "zGap": -153.63
+       },
+       {
+        "rampSegment": 1778,
+        "traceSegment": 113,
+        "x": 131.89,
+        "y": 105.58,
+        "rampZ": -88.04,
+        "zGap": -171.1
+       },
+       {
+        "rampSegment": 1813,
+        "traceSegment": 142,
+        "x": 104.61,
+        "y": 54.76,
+        "rampZ": -96.4,
+        "zGap": -179.46
+       },
+       {
+        "rampSegment": 1880,
+        "traceSegment": 112,
+        "x": 132.7,
+        "y": 107.14,
+        "rampZ": -112.31,
+        "zGap": -195.37
+       },
+       {
+        "rampSegment": 1920,
+        "traceSegment": 143,
+        "x": 102.94,
+        "y": 51.8,
+        "rampZ": -122.14,
+        "zGap": -205.2
+       },
+       {
+        "rampSegment": 1981,
+        "traceSegment": 112,
+        "x": 133.0,
+        "y": 107.73,
+        "rampZ": -136.63,
+        "zGap": -219.69
+       },
+       {
+        "rampSegment": 2027,
+        "traceSegment": 144,
+        "x": 101.82,
+        "y": 49.85,
+        "rampZ": -147.83,
+        "zGap": -230.89
+       },
+       {
+        "rampSegment": 2082,
+        "traceSegment": 112,
+        "x": 132.89,
+        "y": 107.51,
+        "rampZ": -160.98,
+        "zGap": -244.04
+       },
+       {
+        "rampSegment": 2134,
+        "traceSegment": 145,
+        "x": 101.21,
+        "y": 48.79,
+        "rampZ": -173.5,
+        "zGap": -256.56
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 252,
+      "length": 501.4,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -61.49,
+      "separationFromNearLeg": 21.06,
+      "delta": 8.94,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -62.96,
+       "separationFromNearLeg": 22.53,
+       "delta": 7.47,
+       "backboneObliquityDeg": 1.8
+      },
+      "supportPoint": [
+       150.89,
+       138.57,
+       83.06
+      ],
+      "supportPointToRampPlan": 35.29,
+      "supportPointToRamp3D": 49.23,
+      "supportPointAlongOffsetFromCentre": 62.23,
+      "minDistance3D": 23.75,
+      "closestRampPoint": [
+       102.03,
+       96.01,
+       82.81
+      ],
+      "closestTracePoint": [
+       123.27,
+       85.38,
+       83.06
+      ],
+      "closestRampZGap": -0.25,
+      "minPlanDistanceInZWindow": 23.74,
+      "requiredMovePlanLowerBound": 6.26,
+      "minDistance3DInterior": 23.75,
+      "planCrossings": 13,
+      "planCrossingMinAbsZGap": 123.38,
+      "planCrossingList": [
+       {
+        "rampSegment": 1579,
+        "traceSegment": 116,
+        "x": 127.93,
+        "y": 94.16,
+        "rampZ": -40.32,
+        "zGap": -123.38
+       },
+       {
+        "rampSegment": 1595,
+        "traceSegment": 131,
+        "x": 113.63,
+        "y": 67.36,
+        "rampZ": -44.1,
+        "zGap": -127.16
+       },
+       {
+        "rampSegment": 1679,
+        "traceSegment": 112,
+        "x": 131.15,
+        "y": 100.28,
+        "rampZ": -64.17,
+        "zGap": -147.23
+       },
+       {
+        "rampSegment": 1704,
+        "traceSegment": 135,
+        "x": 109.4,
+        "y": 59.7,
+        "rampZ": -70.27,
+        "zGap": -153.33
+       },
+       {
+        "rampSegment": 1779,
+        "traceSegment": 110,
+        "x": 132.93,
+        "y": 103.68,
+        "rampZ": -88.3,
+        "zGap": -171.36
+       },
+       {
+        "rampSegment": 1812,
+        "traceSegment": 138,
+        "x": 106.7,
+        "y": 54.86,
+        "rampZ": -96.15,
+        "zGap": -179.21
+       },
+       {
+        "rampSegment": 1881,
+        "traceSegment": 109,
+        "x": 133.94,
+        "y": 105.62,
+        "rampZ": -112.55,
+        "zGap": -195.61
+       },
+       {
+        "rampSegment": 1919,
+        "traceSegment": 140,
+        "x": 104.81,
+        "y": 51.52,
+        "rampZ": -121.91,
+        "zGap": -204.97
+       },
+       {
+        "rampSegment": 1982,
+        "traceSegment": 109,
+        "x": 134.39,
+        "y": 106.5,
+        "rampZ": -136.86,
+        "zGap": -219.92
+       },
+       {
+        "rampSegment": 2027,
+        "traceSegment": 141,
+        "x": 103.52,
+        "y": 49.27,
+        "rampZ": -147.61,
+        "zGap": -230.67
+       },
+       {
+        "rampSegment": 2083,
+        "traceSegment": 109,
+        "x": 134.41,
+        "y": 106.53,
+        "rampZ": -161.2,
+        "zGap": -244.26
+       },
+       {
+        "rampSegment": 2134,
+        "traceSegment": 142,
+        "x": 102.75,
+        "y": 47.94,
+        "rampZ": -173.29,
+        "zGap": -256.35
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "rampToSectionContourPlanInZWindow": 60.79,
+     "anchor": [
+      124.21,
+      87.15,
+      83.06
+     ],
+     "anchorSeparation": 23.64,
+     "access": {
+      "status": "OK",
+      "junction": [
+       106.0,
+       114.13,
+       85.06
+      ],
+      "length": 33.2
+     },
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L06",
+     "z": 58.057108726157026,
+     "deliveredNearLateral": -45.95,
+     "footprintCentre": 132.71,
+     "nearSamplesOnStraightLegFraction": 0.056,
+     "rlCrossing": [
+      107.36,
+      94.49,
+      58.06
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 273,
+      "length": 544.6,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -66.54,
+      "separationFromNearLeg": 20.6,
+      "delta": 9.4,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -68.0,
+       "separationFromNearLeg": 22.05,
+       "delta": 7.95,
+       "backboneObliquityDeg": 0.8
+      },
+      "supportPoint": [
+       154.62,
+       134.95,
+       58.06
+      ],
+      "supportPointToRampPlan": 34.75,
+      "supportPointToRamp3D": 48.58,
+      "supportPointAlongOffsetFromCentre": 61.44,
+      "minDistance3D": 23.1,
+      "closestRampPoint": [
+       106.57,
+       92.87,
+       57.84
+      ],
+      "closestTracePoint": [
+       126.79,
+       81.72,
+       58.06
+      ],
+      "closestRampZGap": -0.22,
+      "minPlanDistanceInZWindow": 23.09,
+      "requiredMovePlanLowerBound": 6.91,
+      "minDistance3DInterior": 23.1,
+      "planCrossings": 11,
+      "planCrossingMinAbsZGap": 123.24,
+      "planCrossingList": [
+       {
+        "rampSegment": 1683,
+        "traceSegment": 127,
+        "x": 132.3,
+        "y": 91.97,
+        "rampZ": -65.18,
+        "zGap": -123.24
+       },
+       {
+        "rampSegment": 1701,
+        "traceSegment": 143,
+        "x": 115.95,
+        "y": 62.6,
+        "rampZ": -69.41,
+        "zGap": -127.47
+       },
+       {
+        "rampSegment": 1783,
+        "traceSegment": 123,
+        "x": 135.31,
+        "y": 97.66,
+        "rampZ": -89.08,
+        "zGap": -147.14
+       },
+       {
+        "rampSegment": 1809,
+        "traceSegment": 148,
+        "x": 111.8,
+        "y": 55.69,
+        "rampZ": -95.52,
+        "zGap": -153.58
+       },
+       {
+        "rampSegment": 1883,
+        "traceSegment": 122,
+        "x": 136.99,
+        "y": 100.84,
+        "rampZ": -113.23,
+        "zGap": -171.29
+       },
+       {
+        "rampSegment": 1917,
+        "traceSegment": 150,
+        "x": 109.14,
+        "y": 51.33,
+        "rampZ": -121.39,
+        "zGap": -179.45
+       },
+       {
+        "rampSegment": 1984,
+        "traceSegment": 121,
+        "x": 137.95,
+        "y": 102.64,
+        "rampZ": -137.49,
+        "zGap": -195.55
+       },
+       {
+        "rampSegment": 2025,
+        "traceSegment": 152,
+        "x": 107.3,
+        "y": 48.36,
+        "rampZ": -147.15,
+        "zGap": -205.21
+       },
+       {
+        "rampSegment": 2086,
+        "traceSegment": 120,
+        "x": 138.37,
+        "y": 103.43,
+        "rampZ": -161.8,
+        "zGap": -219.86
+       },
+       {
+        "rampSegment": 2132,
+        "traceSegment": 153,
+        "x": 106.12,
+        "y": 46.45,
+        "rampZ": -172.85,
+        "zGap": -230.91
+       },
+       {
+        "rampSegment": 2187,
+        "traceSegment": 120,
+        "x": 138.34,
+        "y": 103.39,
+        "rampZ": -186.14,
+        "zGap": -244.2
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 266,
+      "length": 529.2,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -68.31,
+      "separationFromNearLeg": 22.36,
+      "delta": 7.64,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -69.78,
+       "separationFromNearLeg": 23.83,
+       "delta": 6.17,
+       "backboneObliquityDeg": 0.9
+      },
+      "supportPoint": [
+       156.56,
+       134.78,
+       58.06
+      ],
+      "supportPointToRampPlan": 35.85,
+      "supportPointToRamp3D": 50.36,
+      "supportPointAlongOffsetFromCentre": 62.26,
+      "minDistance3D": 24.89,
+      "closestRampPoint": [
+       106.57,
+       92.87,
+       57.84
+      ],
+      "closestTracePoint": [
+       128.82,
+       81.69,
+       58.06
+      ],
+      "closestRampZGap": -0.22,
+      "minPlanDistanceInZWindow": 24.89,
+      "requiredMovePlanLowerBound": 5.11,
+      "minDistance3DInterior": 24.89,
+      "planCrossings": 11,
+      "planCrossingMinAbsZGap": 123.75,
+      "planCrossingList": [
+       {
+        "rampSegment": 1685,
+        "traceSegment": 124,
+        "x": 132.1,
+        "y": 87.76,
+        "rampZ": -65.69,
+        "zGap": -123.75
+       },
+       {
+        "rampSegment": 1698,
+        "traceSegment": 137,
+        "x": 119.34,
+        "y": 64.88,
+        "rampZ": -68.92,
+        "zGap": -126.98
+       },
+       {
+        "rampSegment": 1784,
+        "traceSegment": 120,
+        "x": 135.96,
+        "y": 95.01,
+        "rampZ": -89.41,
+        "zGap": -147.47
+       },
+       {
+        "rampSegment": 1808,
+        "traceSegment": 142,
+        "x": 114.34,
+        "y": 56.45,
+        "rampZ": -95.21,
+        "zGap": -153.27
+       },
+       {
+        "rampSegment": 1884,
+        "traceSegment": 118,
+        "x": 137.98,
+        "y": 98.83,
+        "rampZ": -113.5,
+        "zGap": -171.56
+       },
+       {
+        "rampSegment": 1916,
+        "traceSegment": 145,
+        "x": 111.31,
+        "y": 51.45,
+        "rampZ": -121.13,
+        "zGap": -179.19
+       },
+       {
+        "rampSegment": 1985,
+        "traceSegment": 117,
+        "x": 139.15,
+        "y": 101.03,
+        "rampZ": -137.73,
+        "zGap": -195.79
+       },
+       {
+        "rampSegment": 2024,
+        "traceSegment": 147,
+        "x": 109.24,
+        "y": 48.08,
+        "rampZ": -146.91,
+        "zGap": -204.97
+       },
+       {
+        "rampSegment": 2087,
+        "traceSegment": 116,
+        "x": 139.73,
+        "y": 102.13,
+        "rampZ": -162.03,
+        "zGap": -220.09
+       },
+       {
+        "rampSegment": 2131,
+        "traceSegment": 148,
+        "x": 107.86,
+        "y": 45.86,
+        "rampZ": -172.63,
+        "zGap": -230.69
+       },
+       {
+        "rampSegment": 2188,
+        "traceSegment": 116,
+        "x": 139.85,
+        "y": 102.35,
+        "rampZ": -186.36,
+        "zGap": -244.42
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "rampToSectionContourPlanInZWindow": 62.25,
+     "anchor": [
+      128.82,
+      81.69,
+      58.06
+     ],
+     "anchorSeparation": 24.85,
+     "access": {
+      "status": "OK",
+      "junction": [
+       110.39,
+       110.6,
+       60.04
+      ],
+      "length": 34.8
+     },
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L07",
+     "z": 33.057108726157026,
+     "deliveredNearLateral": -51.46,
+     "footprintCentre": 131.29,
+     "nearSamplesOnStraightLegFraction": 0.105,
+     "rlCrossing": [
+      111.76,
+      91.13,
+      33.06
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 281,
+      "length": 559.8,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -73.29,
+      "separationFromNearLeg": 21.84,
+      "delta": 8.16,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -74.85,
+       "separationFromNearLeg": 23.39,
+       "delta": 6.61,
+       "backboneObliquityDeg": 0.3
+      },
+      "supportPoint": [
+       97.89,
+       23.04,
+       33.06
+      ],
+      "supportPointToRampPlan": 24.81,
+      "supportPointToRamp3D": 50.52,
+      "supportPointAlongOffsetFromCentre": -62.44,
+      "minDistance3D": 24.0,
+      "closestRampPoint": [
+       110.12,
+       87.98,
+       32.63
+      ],
+      "closestTracePoint": [
+       130.7,
+       75.61,
+       33.06
+      ],
+      "closestRampZGap": -0.43,
+      "minPlanDistanceInZWindow": 24.0,
+      "requiredMovePlanLowerBound": 6.0,
+      "minDistance3DInterior": 24.0,
+      "planCrossings": 9,
+      "planCrossingMinAbsZGap": 123.57,
+      "planCrossingList": [
+       {
+        "rampSegment": 1788,
+        "traceSegment": 133,
+        "x": 136.62,
+        "y": 85.88,
+        "rampZ": -90.51,
+        "zGap": -123.57
+       },
+       {
+        "rampSegment": 1804,
+        "traceSegment": 148,
+        "x": 121.33,
+        "y": 59.79,
+        "rampZ": -94.27,
+        "zGap": -127.33
+       },
+       {
+        "rampSegment": 1888,
+        "traceSegment": 129,
+        "x": 140.2,
+        "y": 92.19,
+        "rampZ": -114.34,
+        "zGap": -147.4
+       },
+       {
+        "rampSegment": 1913,
+        "traceSegment": 152,
+        "x": 116.83,
+        "y": 52.44,
+        "rampZ": -120.45,
+        "zGap": -153.51
+       },
+       {
+        "rampSegment": 1988,
+        "traceSegment": 127,
+        "x": 142.19,
+        "y": 95.74,
+        "rampZ": -138.46,
+        "zGap": -171.52
+       },
+       {
+        "rampSegment": 2021,
+        "traceSegment": 155,
+        "x": 114.01,
+        "y": 47.91,
+        "rampZ": -146.34,
+        "zGap": -179.4
+       },
+       {
+        "rampSegment": 2089,
+        "traceSegment": 126,
+        "x": 143.36,
+        "y": 97.83,
+        "rampZ": -162.7,
+        "zGap": -195.76
+       },
+       {
+        "rampSegment": 2128,
+        "traceSegment": 156,
+        "x": 112.08,
+        "y": 44.86,
+        "rampZ": -172.11,
+        "zGap": -205.17
+       },
+       {
+        "rampSegment": 2191,
+        "traceSegment": 125,
+        "x": 143.93,
+        "y": 98.87,
+        "rampZ": -187.01,
+        "zGap": -220.07
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 278,
+      "length": 553.1,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -75.14,
+      "separationFromNearLeg": 23.69,
+      "delta": 6.31,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -76.71,
+       "separationFromNearLeg": 25.25,
+       "delta": 4.75,
+       "backboneObliquityDeg": 0.3
+      },
+      "supportPoint": [
+       99.88,
+       22.8,
+       33.06
+      ],
+      "supportPointToRampPlan": 24.4,
+      "supportPointToRamp3D": 51.16,
+      "supportPointAlongOffsetFromCentre": -61.65,
+      "minDistance3D": 25.83,
+      "closestRampPoint": [
+       110.12,
+       87.98,
+       32.63
+      ],
+      "closestTracePoint": [
+       132.64,
+       75.32,
+       33.06
+      ],
+      "closestRampZGap": -0.43,
+      "minPlanDistanceInZWindow": 25.83,
+      "requiredMovePlanLowerBound": 4.17,
+      "minDistance3DInterior": 25.83,
+      "planCrossings": 9,
+      "planCrossingMinAbsZGap": 124.15,
+      "planCrossingList": [
+       {
+        "rampSegment": 1791,
+        "traceSegment": 133,
+        "x": 135.95,
+        "y": 81.04,
+        "rampZ": -91.09,
+        "zGap": -124.15
+       },
+       {
+        "rampSegment": 1802,
+        "traceSegment": 144,
+        "x": 125.18,
+        "y": 62.66,
+        "rampZ": -93.7,
+        "zGap": -126.76
+       },
+       {
+        "rampSegment": 1889,
+        "traceSegment": 128,
+        "x": 140.72,
+        "y": 89.36,
+        "rampZ": -114.69,
+        "zGap": -147.75
+       },
+       {
+        "rampSegment": 1912,
+        "traceSegment": 149,
+        "x": 119.51,
+        "y": 53.29,
+        "rampZ": -120.11,
+        "zGap": -153.17
+       },
+       {
+        "rampSegment": 1989,
+        "traceSegment": 126,
+        "x": 143.11,
+        "y": 93.6,
+        "rampZ": -138.74,
+        "zGap": -171.8
+       },
+       {
+        "rampSegment": 2020,
+        "traceSegment": 152,
+        "x": 116.27,
+        "y": 48.07,
+        "rampZ": -146.07,
+        "zGap": -179.13
+       },
+       {
+        "rampSegment": 2090,
+        "traceSegment": 125,
+        "x": 144.51,
+        "y": 96.1,
+        "rampZ": -162.95,
+        "zGap": -196.01
+       },
+       {
+        "rampSegment": 2127,
+        "traceSegment": 154,
+        "x": 114.07,
+        "y": 44.6,
+        "rampZ": -171.86,
+        "zGap": -204.92
+       },
+       {
+        "rampSegment": 2192,
+        "traceSegment": 124,
+        "x": 145.27,
+        "y": 97.46,
+        "rampZ": -187.24,
+        "zGap": -220.3
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "rampToSectionContourPlanInZWindow": 63.51,
+     "anchor": [
+      134.64,
+      78.77,
+      33.06
+     ],
+     "anchorSeparation": 25.84,
+     "access": {
+      "status": "OK",
+      "junction": [
+       114.76,
+       107.08,
+       35.02
+      ],
+      "length": 35.4
+     },
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L08",
+     "z": 8.057108726157026,
+     "deliveredNearLateral": -56.96,
+     "footprintCentre": 130.82,
+     "nearSamplesOnStraightLegFraction": 0.105,
+     "rlCrossing": [
+      116.16,
+      87.77,
+      8.06
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 293,
+      "length": 584.0,
+      "tracePointsInFootprint": 64,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -79.02,
+      "separationFromNearLeg": 22.05,
+      "delta": 7.95,
+      "tightened": {
+       "tracePointsInWindow": 34,
+       "support": -81.24,
+       "separationFromNearLeg": 24.28,
+       "delta": 5.72,
+       "backboneObliquityDeg": 1.3
+      },
+      "supportPoint": [
+       102.29,
+       19.22,
+       8.06
+      ],
+      "supportPointToRampPlan": 27.16,
+      "supportPointToRamp3D": 50.9,
+      "supportPointAlongOffsetFromCentre": -63.07,
+      "minDistance3D": 25.64,
+      "closestRampPoint": [
+       114.67,
+       84.83,
+       7.66
+      ],
+      "closestTracePoint": [
+       136.3,
+       71.05,
+       8.06
+      ],
+      "closestRampZGap": -0.4,
+      "minPlanDistanceInZWindow": 25.64,
+      "requiredMovePlanLowerBound": 4.36,
+      "minDistance3DInterior": 25.64,
+      "planCrossings": 7,
+      "planCrossingMinAbsZGap": 124.14,
+      "planCrossingList": [
+       {
+        "rampSegment": 1895,
+        "traceSegment": 142,
+        "x": 140.37,
+        "y": 77.82,
+        "rampZ": -116.08,
+        "zGap": -124.14
+       },
+       {
+        "rampSegment": 1907,
+        "traceSegment": 153,
+        "x": 128.33,
+        "y": 58.21,
+        "rampZ": -118.9,
+        "zGap": -126.96
+       },
+       {
+        "rampSegment": 1993,
+        "traceSegment": 137,
+        "x": 145.11,
+        "y": 85.87,
+        "rampZ": -139.7,
+        "zGap": -147.76
+       },
+       {
+        "rampSegment": 2017,
+        "traceSegment": 158,
+        "x": 122.7,
+        "y": 49.44,
+        "rampZ": -145.28,
+        "zGap": -153.34
+       },
+       {
+        "rampSegment": 2094,
+        "traceSegment": 134,
+        "x": 147.52,
+        "y": 90.06,
+        "rampZ": -163.77,
+        "zGap": -171.83
+       },
+       {
+        "rampSegment": 2125,
+        "traceSegment": 161,
+        "x": 119.49,
+        "y": 44.53,
+        "rampZ": -171.21,
+        "zGap": -179.27
+       },
+       {
+        "rampSegment": 2195,
+        "traceSegment": 133,
+        "x": 148.95,
+        "y": 92.56,
+        "rampZ": -187.98,
+        "zGap": -196.04
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 286,
+      "length": 569.7,
+      "tracePointsInFootprint": 64,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -80.81,
+      "separationFromNearLeg": 23.84,
+      "delta": 6.16,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -83.15,
+       "separationFromNearLeg": 26.19,
+       "delta": 3.81,
+       "backboneObliquityDeg": 1.2
+      },
+      "supportPoint": [
+       103.83,
+       18.31,
+       8.06
+      ],
+      "supportPointToRampPlan": 27.66,
+      "supportPointToRamp3D": 52.1,
+      "supportPointAlongOffsetFromCentre": -63.09,
+      "minDistance3D": 27.43,
+      "closestRampPoint": [
+       114.67,
+       84.83,
+       7.66
+      ],
+      "closestTracePoint": [
+       137.82,
+       70.11,
+       8.06
+      ],
+      "closestRampZGap": -0.4,
+      "minPlanDistanceInZWindow": 27.43,
+      "requiredMovePlanLowerBound": 2.57,
+      "minDistance3DInterior": 27.43,
+      "planCrossings": 7,
+      "planCrossingMinAbsZGap": 125.13,
+      "planCrossingList": [
+       {
+        "rampSegment": 1899,
+        "traceSegment": 143,
+        "x": 137.73,
+        "y": 69.97,
+        "rampZ": -117.07,
+        "zGap": -125.13
+       },
+       {
+        "rampSegment": 1903,
+        "traceSegment": 146,
+        "x": 134.09,
+        "y": 64.02,
+        "rampZ": -117.91,
+        "zGap": -125.97
+       },
+       {
+        "rampSegment": 1995,
+        "traceSegment": 135,
+        "x": 145.38,
+        "y": 82.79,
+        "rampZ": -140.07,
+        "zGap": -148.13
+       },
+       {
+        "rampSegment": 2015,
+        "traceSegment": 154,
+        "x": 125.53,
+        "y": 50.52,
+        "rampZ": -144.91,
+        "zGap": -152.97
+       },
+       {
+        "rampSegment": 2095,
+        "traceSegment": 132,
+        "x": 148.29,
+        "y": 87.79,
+        "rampZ": -164.05,
+        "zGap": -172.11
+       },
+       {
+        "rampSegment": 2123,
+        "traceSegment": 157,
+        "x": 121.79,
+        "y": 44.77,
+        "rampZ": -170.94,
+        "zGap": -179.0
+       },
+       {
+        "rampSegment": 2196,
+        "traceSegment": 131,
+        "x": 149.99,
+        "y": 90.76,
+        "rampZ": -188.23,
+        "zGap": -196.29
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "rampToSectionContourPlanInZWindow": 65.2,
+     "anchor": [
+      139.88,
+      73.53,
+      8.06
+     ],
+     "anchorSeparation": 27.49,
+     "access": {
+      "status": "OK",
+      "junction": [
+       119.13,
+       103.55,
+       10.0
+      ],
+      "length": 37.2
+     },
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L09",
+     "z": -16.942891273842974,
+     "deliveredNearLateral": -62.46,
+     "footprintCentre": 130.34,
+     "nearSamplesOnStraightLegFraction": 0.105,
+     "rlCrossing": [
+      120.57,
+      84.41,
+      -16.94
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 296,
+      "length": 589.9,
+      "tracePointsInFootprint": 64,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -84.83,
+      "separationFromNearLeg": 22.36,
+      "delta": 7.64,
+      "tightened": {
+       "tracePointsInWindow": 34,
+       "support": -87.67,
+       "separationFromNearLeg": 25.21,
+       "delta": 4.79,
+       "backboneObliquityDeg": 2.2
+      },
+      "supportPoint": [
+       107.23,
+       16.16,
+       -16.94
+      ],
+      "supportPointToRampPlan": 29.1,
+      "supportPointToRamp3D": 50.64,
+      "supportPointAlongOffsetFromCentre": -62.78,
+      "minDistance3D": 27.22,
+      "closestRampPoint": [
+       118.17,
+       79.97,
+       -17.55
+      ],
+      "closestTracePoint": [
+       141.26,
+       65.56,
+       -16.94
+      ],
+      "closestRampZGap": -0.61,
+      "minPlanDistanceInZWindow": 27.22,
+      "requiredMovePlanLowerBound": 2.78,
+      "minDistance3DInterior": 27.22,
+      "planCrossings": 5,
+      "planCrossingMinAbsZGap": 124.96,
+      "planCrossingList": [
+       {
+        "rampSegment": 2002,
+        "traceSegment": 148,
+        "x": 142.75,
+        "y": 67.92,
+        "rampZ": -141.9,
+        "zGap": -124.96
+       },
+       {
+        "rampSegment": 2008,
+        "traceSegment": 154,
+        "x": 136.67,
+        "y": 58.46,
+        "rampZ": -143.26,
+        "zGap": -126.32
+       },
+       {
+        "rampSegment": 2099,
+        "traceSegment": 141,
+        "x": 149.76,
+        "y": 79.35,
+        "rampZ": -165.08,
+        "zGap": -148.14
+       },
+       {
+        "rampSegment": 2120,
+        "traceSegment": 161,
+        "x": 128.75,
+        "y": 46.61,
+        "rampZ": -170.07,
+        "zGap": -153.13
+       },
+       {
+        "rampSegment": 2199,
+        "traceSegment": 139,
+        "x": 152.69,
+        "y": 84.27,
+        "rampZ": -189.07,
+        "zGap": -172.13
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 291,
+      "length": 579.9,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -86.73,
+      "separationFromNearLeg": 24.26,
+      "delta": 5.74,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -89.57,
+       "separationFromNearLeg": 27.1,
+       "delta": 2.9,
+       "backboneObliquityDeg": 2.2
+      },
+      "supportPoint": [
+       109.32,
+       15.96,
+       -16.94
+      ],
+      "supportPointToRampPlan": 29.01,
+      "supportPointToRamp3D": 51.27,
+      "supportPointAlongOffsetFromCentre": -61.91,
+      "minDistance3D": 29.03,
+      "closestRampPoint": [
+       118.17,
+       79.97,
+       -17.55
+      ],
+      "closestTracePoint": [
+       142.22,
+       63.7,
+       -16.94
+      ],
+      "closestRampZGap": -0.61,
+      "minPlanDistanceInZWindow": 29.03,
+      "requiredMovePlanLowerBound": 0.97,
+      "minDistance3DInterior": 29.03,
+      "planCrossings": 3,
+      "planCrossingMinAbsZGap": 148.57,
+      "planCrossingList": [
+       {
+        "rampSegment": 2101,
+        "traceSegment": 140,
+        "x": 149.74,
+        "y": 75.78,
+        "rampZ": -165.51,
+        "zGap": -148.57
+       },
+       {
+        "rampSegment": 2118,
+        "traceSegment": 157,
+        "x": 131.91,
+        "y": 48.03,
+        "rampZ": -169.65,
+        "zGap": -152.71
+       },
+       {
+        "rampSegment": 2200,
+        "traceSegment": 137,
+        "x": 153.35,
+        "y": 81.8,
+        "rampZ": -189.38,
+        "zGap": -172.44
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "rampToSectionContourPlanInZWindow": 66.7,
+     "anchor": [
+      145.42,
+      68.78,
+      -16.94
+     ],
+     "anchorSeparation": 29.16,
+     "access": {
+      "status": "OK",
+      "junction": [
+       123.51,
+       100.03,
+       -15.02
+      ],
+      "length": 38.9
+     },
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_ENCROACH"
+     ]
+    },
+    {
+     "levelId": "L10",
+     "z": -41.942891273842974,
+     "deliveredNearLateral": -67.96,
+     "footprintCentre": 128.91,
+     "nearSamplesOnStraightLegFraction": 0.056,
+     "rlCrossing": [
+      124.98,
+      81.05,
+      -41.94
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 300,
+      "length": 598.2,
+      "tracePointsInFootprint": 64,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -90.62,
+      "separationFromNearLeg": 22.65,
+      "delta": 7.35,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -94.31,
+       "separationFromNearLeg": 26.34,
+       "delta": 3.66,
+       "backboneObliquityDeg": 3.2
+      },
+      "supportPoint": [
+       111.4,
+       11.79,
+       -41.94
+      ],
+      "supportPointToRampPlan": 32.92,
+      "supportPointToRamp3D": 51.53,
+      "supportPointAlongOffsetFromCentre": -63.06,
+      "minDistance3D": 28.8,
+      "closestRampPoint": [
+       122.72,
+       76.82,
+       -42.52
+      ],
+      "closestTracePoint": [
+       146.45,
+       60.5,
+       -41.94
+      ],
+      "closestRampZGap": -0.58,
+      "minPlanDistanceInZWindow": 28.8,
+      "requiredMovePlanLowerBound": 1.2,
+      "minDistance3DInterior": 28.8,
+      "planCrossings": 1,
+      "planCrossingMinAbsZGap": 148.59,
+      "planCrossingList": [
+       {
+        "rampSegment": 2205,
+        "traceSegment": 146,
+        "x": 154.11,
+        "y": 72.28,
+        "rampZ": -190.53,
+        "zGap": -148.59
+       }
+      ],
+      "band3D": "ENCROACH"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 294,
+      "length": 585.1,
+      "tracePointsInFootprint": 64,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -92.44,
+      "separationFromNearLeg": 24.48,
+      "delta": 5.52,
+      "tightened": {
+       "tracePointsInWindow": 34,
+       "support": -95.93,
+       "separationFromNearLeg": 27.96,
+       "delta": 2.04,
+       "backboneObliquityDeg": 3.3
+      },
+      "supportPoint": [
+       113.06,
+       11.02,
+       -41.94
+      ],
+      "supportPointToRampPlan": 33.57,
+      "supportPointToRamp3D": 52.6,
+      "supportPointAlongOffsetFromCentre": -62.89,
+      "minDistance3D": 30.62,
+      "closestRampPoint": [
+       122.72,
+       76.82,
+       -42.52
+      ],
+      "closestTracePoint": [
+       148.06,
+       59.63,
+       -41.94
+      ],
+      "closestRampZGap": -0.58,
+      "minPlanDistanceInZWindow": 30.62,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 30.62,
+      "planCrossings": 1,
+      "planCrossingMinAbsZGap": 149.1,
+      "planCrossingList": [
+       {
+        "rampSegment": 2207,
+        "traceSegment": 145,
+        "x": 153.6,
+        "y": 68.08,
+        "rampZ": -191.04,
+        "zGap": -149.1
+       }
+      ],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 68.37,
+     "anchor": [
+      151.36,
+      64.63,
+      -41.94
+     ],
+     "anchorSeparation": 30.88,
+     "access": {
+      "status": "OK",
+      "junction": [
+       126.92,
+       86.66,
+       -41.23
+      ],
+      "length": 39.4
+     },
+     "verdict": [
+      "WORLD_ENCROACH",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L11",
+     "z": -66.94289127384297,
+     "deliveredNearLateral": -73.46,
+     "footprintCentre": 128.44,
+     "nearSamplesOnStraightLegFraction": 0.056,
+     "rlCrossing": [
+      129.38,
+      77.69,
+      -66.94
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 298,
+      "length": 594.7,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -96.9,
+      "separationFromNearLeg": 23.44,
+      "delta": 6.56,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -100.81,
+       "separationFromNearLeg": 27.35,
+       "delta": 2.65,
+       "backboneObliquityDeg": 3.8
+      },
+      "supportPoint": [
+       117.08,
+       9.05,
+       -66.94
+      ],
+      "supportPointToRampPlan": 35.4,
+      "supportPointToRamp3D": 51.1,
+      "supportPointAlongOffsetFromCentre": -62.12,
+      "minDistance3D": 30.19,
+      "closestRampPoint": [
+       126.17,
+       72.0,
+       -67.73
+      ],
+      "closestTracePoint": [
+       151.61,
+       55.73,
+       -66.94
+      ],
+      "closestRampZGap": -0.79,
+      "minPlanDistanceInZWindow": 30.18,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 30.19,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 293,
+      "length": 583.2,
+      "tracePointsInFootprint": 64,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -98.58,
+      "separationFromNearLeg": 25.12,
+      "delta": 4.88,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -102.74,
+       "separationFromNearLeg": 29.28,
+       "delta": 0.72,
+       "backboneObliquityDeg": 3.8
+      },
+      "supportPoint": [
+       118.02,
+       7.33,
+       -66.94
+      ],
+      "supportPointToRampPlan": 37.12,
+      "supportPointToRamp3D": 52.97,
+      "supportPointAlongOffsetFromCentre": -63.14,
+      "minDistance3D": 32.01,
+      "closestRampPoint": [
+       126.17,
+       72.0,
+       -67.73
+      ],
+      "closestTracePoint": [
+       152.52,
+       53.84,
+       -66.94
+      ],
+      "closestRampZGap": -0.79,
+      "minPlanDistanceInZWindow": 32.0,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 32.01,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 69.5,
+     "anchor": [
+      155.9,
+      58.79,
+      -66.94
+     ],
+     "anchorSeparation": 32.22,
+     "access": {
+      "status": "OK",
+      "junction": [
+       131.27,
+       83.14,
+       -66.25
+      ],
+      "length": 39.7
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L12",
+     "z": -91.94289127384297,
+     "deliveredNearLateral": -78.97,
+     "footprintCentre": 127.97,
+     "nearSamplesOnStraightLegFraction": 0.056,
+     "rlCrossing": [
+      133.79,
+      74.32,
+      -91.94
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 294,
+      "length": 585.9,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -103.02,
+      "separationFromNearLeg": 24.05,
+      "delta": 5.95,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -107.14,
+       "separationFromNearLeg": 28.17,
+       "delta": 1.83,
+       "backboneObliquityDeg": 4.2
+      },
+      "supportPoint": [
+       122.23,
+       5.75,
+       -91.94
+      ],
+      "supportPointToRampPlan": 38.87,
+      "supportPointToRamp3D": 51.14,
+      "supportPointAlongOffsetFromCentre": -61.93,
+      "minDistance3D": 31.33,
+      "closestRampPoint": [
+       130.73,
+       68.84,
+       -92.7
+      ],
+      "closestTracePoint": [
+       156.04,
+       50.37,
+       -91.94
+      ],
+      "closestRampZGap": -0.75,
+      "minPlanDistanceInZWindow": 31.32,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 31.33,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 290,
+      "length": 577.2,
+      "tracePointsInFootprint": 64,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -104.74,
+      "separationFromNearLeg": 25.76,
+      "delta": 4.24,
+      "tightened": {
+       "tracePointsInWindow": 34,
+       "support": -108.86,
+       "separationFromNearLeg": 29.89,
+       "delta": 0.11,
+       "backboneObliquityDeg": 4.2
+      },
+      "supportPoint": [
+       123.36,
+       4.26,
+       -91.94
+      ],
+      "supportPointToRampPlan": 40.44,
+      "supportPointToRamp3D": 52.83,
+      "supportPointAlongOffsetFromCentre": -62.66,
+      "minDistance3D": 33.14,
+      "closestRampPoint": [
+       130.73,
+       68.84,
+       -92.7
+      ],
+      "closestTracePoint": [
+       158.3,
+       50.44,
+       -91.94
+      ],
+      "closestRampZGap": -0.75,
+      "minPlanDistanceInZWindow": 33.13,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 33.14,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 70.71,
+     "anchor": [
+      161.7,
+      55.37,
+      -91.94
+     ],
+     "anchorSeparation": 33.45,
+     "access": {
+      "status": "OK",
+      "junction": [
+       135.63,
+       79.61,
+       -91.27
+      ],
+      "length": 42.1
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L13",
+     "z": -116.94289127384297,
+     "deliveredNearLateral": -84.48,
+     "footprintCentre": 126.55,
+     "nearSamplesOnStraightLegFraction": 0.105,
+     "rlCrossing": [
+      138.21,
+      70.96,
+      -116.94
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 291,
+      "length": 580.4,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -109.24,
+      "separationFromNearLeg": 24.76,
+      "delta": 5.24,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -113.61,
+       "separationFromNearLeg": 29.13,
+       "delta": 0.87,
+       "backboneObliquityDeg": 4.6
+      },
+      "supportPoint": [
+       127.25,
+       2.01,
+       -116.94
+      ],
+      "supportPointToRampPlan": 43.11,
+      "supportPointToRamp3D": 51.58,
+      "supportPointAlongOffsetFromCentre": -61.24,
+      "minDistance3D": 32.34,
+      "closestRampPoint": [
+       135.29,
+       65.68,
+       -117.67
+      ],
+      "closestTracePoint": [
+       161.33,
+       46.5,
+       -116.94
+      ],
+      "closestRampZGap": -0.72,
+      "minPlanDistanceInZWindow": 32.33,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 32.34,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 286,
+      "length": 570.7,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -111.01,
+      "separationFromNearLeg": 26.53,
+      "delta": 3.47,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -115.38,
+       "separationFromNearLeg": 30.9,
+       "delta": 0.0,
+       "backboneObliquityDeg": 4.6
+      },
+      "supportPoint": [
+       128.59,
+       0.78,
+       -116.94
+      ],
+      "supportPointToRampPlan": 44.51,
+      "supportPointToRamp3D": 53.07,
+      "supportPointAlongOffsetFromCentre": -61.64,
+      "minDistance3D": 34.14,
+      "closestRampPoint": [
+       135.29,
+       65.68,
+       -117.67
+      ],
+      "closestTracePoint": [
+       162.68,
+       45.29,
+       -116.94
+      ],
+      "closestRampZGap": -0.72,
+      "minPlanDistanceInZWindow": 34.13,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 34.14,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 71.64,
+     "anchor": [
+      167.27,
+      51.86,
+      -116.94
+     ],
+     "anchorSeparation": 34.52,
+     "access": {
+      "status": "OK",
+      "junction": [
+       139.97,
+       76.09,
+       -116.29
+      ],
+      "length": 43.1
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L14",
+     "z": -141.94289127384297,
+     "deliveredNearLateral": -89.99,
+     "footprintCentre": 126.08,
+     "nearSamplesOnStraightLegFraction": 0.105,
+     "rlCrossing": [
+      142.61,
+      67.6,
+      -141.94
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 278,
+      "length": 553.4,
+      "tracePointsInFootprint": 64,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -115.36,
+      "separationFromNearLeg": 25.37,
+      "delta": 4.63,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -119.72,
+       "separationFromNearLeg": 29.73,
+       "delta": 0.27,
+       "backboneObliquityDeg": 4.6
+      },
+      "supportPoint": [
+       131.5,
+       -2.88,
+       -141.94
+      ],
+      "supportPointToRampPlan": 48.62,
+      "supportPointToRamp3D": 52.98,
+      "supportPointAlongOffsetFromCentre": -62.89,
+      "minDistance3D": 32.81,
+      "closestRampPoint": [
+       139.85,
+       62.52,
+       -142.64
+      ],
+      "closestTracePoint": [
+       166.45,
+       43.32,
+       -141.94
+      ],
+      "closestRampZGap": -0.69,
+      "minPlanDistanceInZWindow": 32.8,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 32.81,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 271,
+      "length": 539.8,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -117.26,
+      "separationFromNearLeg": 27.28,
+      "delta": 2.72,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -121.34,
+       "separationFromNearLeg": 31.36,
+       "delta": 0.0,
+       "backboneObliquityDeg": 4.7
+      },
+      "supportPoint": [
+       133.46,
+       -3.29,
+       -141.94
+      ],
+      "supportPointToRampPlan": 49.37,
+      "supportPointToRamp3D": 53.81,
+      "supportPointAlongOffsetFromCentre": -62.26,
+      "minDistance3D": 34.59,
+      "closestRampPoint": [
+       139.85,
+       62.52,
+       -142.64
+      ],
+      "closestTracePoint": [
+       168.39,
+       42.98,
+       -141.94
+      ],
+      "closestRampZGap": -0.69,
+      "minPlanDistanceInZWindow": 34.58,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 34.59,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 72.01,
+     "anchor": [
+      171.82,
+      47.9,
+      -141.94
+     ],
+     "anchorSeparation": 34.94,
+     "access": {
+      "status": "OK",
+      "junction": [
+       144.32,
+       72.57,
+       -141.31
+      ],
+      "length": 43.1
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L15",
+     "z": -166.94289127384297,
+     "deliveredNearLateral": -95.49,
+     "footprintCentre": 125.6,
+     "nearSamplesOnStraightLegFraction": 0.105,
+     "rlCrossing": [
+      147.01,
+      64.24,
+      -166.94
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 262,
+      "length": 522.5,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -122.1,
+      "separationFromNearLeg": 26.61,
+      "delta": 3.39,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -126.04,
+       "separationFromNearLeg": 30.55,
+       "delta": 0.0,
+       "backboneObliquityDeg": 4.2
+      },
+      "supportPoint": [
+       137.59,
+       -5.81,
+       -166.94
+      ],
+      "supportPointToRampPlan": 52.75,
+      "supportPointToRamp3D": 52.87,
+      "supportPointAlongOffsetFromCentre": -61.91,
+      "minDistance3D": 33.39,
+      "closestRampPoint": [
+       144.41,
+       59.37,
+       -167.61
+      ],
+      "closestTracePoint": [
+       172.17,
+       40.82,
+       -166.94
+      ],
+      "closestRampZGap": -0.66,
+      "minPlanDistanceInZWindow": 33.38,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 33.39,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 254,
+      "length": 506.2,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -123.94,
+      "separationFromNearLeg": 28.45,
+      "delta": 1.55,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -127.85,
+       "separationFromNearLeg": 32.36,
+       "delta": 0.0,
+       "backboneObliquityDeg": 4.2
+      },
+      "supportPoint": [
+       139.24,
+       -6.64,
+       -166.94
+      ],
+      "supportPointToRampPlan": 53.95,
+      "supportPointToRamp3D": 54.07,
+      "supportPointAlongOffsetFromCentre": -61.8,
+      "minDistance3D": 35.18,
+      "closestRampPoint": [
+       144.41,
+       59.37,
+       -167.61
+      ],
+      "closestTracePoint": [
+       173.77,
+       39.98,
+       -166.94
+      ],
+      "closestRampZGap": -0.66,
+      "minPlanDistanceInZWindow": 35.17,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 35.18,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 72.86,
+     "anchor": [
+      176.04,
+      43.28,
+      -166.94
+     ],
+     "anchorSeparation": 35.39,
+     "access": {
+      "status": "OK",
+      "junction": [
+       148.67,
+       69.05,
+       -166.33
+      ],
+      "length": 43.1
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    },
+    {
+     "levelId": "L16",
+     "z": -191.94289127384297,
+     "deliveredNearLateral": -100.8,
+     "footprintCentre": 135.04,
+     "nearSamplesOnStraightLegFraction": 0.0,
+     "rlCrossing": [
+      151.45,
+      60.86,
+      -191.94
+     ],
+     "WORLD": {
+      "standoff": 22.361224906008278,
+      "points": 229,
+      "length": 456.1,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -130.41,
+      "separationFromNearLeg": 29.6,
+      "delta": 0.4,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -133.61,
+       "separationFromNearLeg": 32.81,
+       "delta": 0.0,
+       "backboneObliquityDeg": 2.8
+      },
+      "supportPoint": [
+       149.53,
+       -1.74,
+       -191.94
+      ],
+      "supportPointToRampPlan": 52.6,
+      "supportPointToRamp3D": 56.99,
+      "supportPointAlongOffsetFromCentre": -61.85,
+      "minDistance3D": 34.74,
+      "closestRampPoint": [
+       151.45,
+       60.86,
+       -191.94
+      ],
+      "closestTracePoint": [
+       180.82,
+       42.29,
+       -191.94
+      ],
+      "closestRampZGap": 0.0,
+      "minPlanDistanceInZWindow": 34.74,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 34.74,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "CANDIDATE": {
+      "standoff": 20.0,
+      "points": 223,
+      "length": 444.8,
+      "tracePointsInFootprint": 63,
+      "supportSource": "FOOTPRINT_WINDOW",
+      "support": -132.17,
+      "separationFromNearLeg": 31.37,
+      "delta": 0.0,
+      "tightened": {
+       "tracePointsInWindow": 33,
+       "support": -135.38,
+       "separationFromNearLeg": 34.58,
+       "delta": 0.0,
+       "backboneObliquityDeg": 2.8
+      },
+      "supportPoint": [
+       150.81,
+       -3.05,
+       -191.94
+      ],
+      "supportPointToRampPlan": 54.3,
+      "supportPointToRamp3D": 58.57,
+      "supportPointAlongOffsetFromCentre": -62.34,
+      "minDistance3D": 36.54,
+      "closestRampPoint": [
+       151.45,
+       60.86,
+       -191.94
+      ],
+      "closestTracePoint": [
+       182.15,
+       41.04,
+       -191.94
+      ],
+      "closestRampZGap": 0.0,
+      "minPlanDistanceInZWindow": 36.54,
+      "requiredMovePlanLowerBound": 0.0,
+      "minDistance3DInterior": 36.54,
+      "planCrossings": 0,
+      "planCrossingMinAbsZGap": null,
+      "planCrossingList": [],
+      "band3D": "CLEAR"
+     },
+     "rampToSectionContourPlanInZWindow": 74.49,
+     "anchor": [
+      182.15,
+      41.04,
+      -191.94
+     ],
+     "anchorSeparation": 36.5,
+     "access": {
+      "status": "OK",
+      "junction": [
+       153.03,
+       65.52,
+       -191.35
+      ],
+      "length": 44.3
+     },
+     "verdict": [
+      "WORLD_CLEAR",
+      "CANDIDATE_CLEAR"
+     ]
+    }
+   ],
+   "family": "SPIRAL",
+   "candidateBasis": "REFINED_CONSERVATIVE",
+   "candidateRefinement": {
+    "applied": true,
+    "factor": 2,
+    "reason": "APPLIED",
+    "latticeSpacing": [
+     2.5,
+     2.5,
+     0.625
+    ],
+    "shape": [
+     26,
+     155,
+     63
+    ],
+    "cellCount": 253890,
+    "errorBound": 5.385527481129402
+   },
+   "anchorStandoffCandidate": 20.0,
+   "footprint": {
+    "radius": 33.15727981081153,
+    "half": 63.15727981081153
+   },
+   "tightenedFootprint": {
+    "half": 33.15727981081153,
+    "centreGlobal": NaN,
+    "rule": "SWITCHBACK |along \u2212 legCentre| \u2264 leg/2 + R_min; SPIRAL |along \u2212 rimCentre| \u2264 R"
+   },
+   "seconds": 84.1
+  }
+ ]
+}
