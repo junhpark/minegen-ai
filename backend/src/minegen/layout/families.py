@@ -694,9 +694,20 @@ def build_spiral(params: CandidateParams, ctx: LayoutContext) -> FamilyGeometry 
     sense = 1.0 if params.turn_sense == "CW" else -1.0
     d_hat = rotate(ctx.track.w_h, params.entry_orientation_deg)
     offset = ctx.standoff + radius
+    # Phase 20C.4 (rule 170): the rim's ore-facing lateral is the construction
+    # ServiceReference lateral — track edge + stand-off + the outward
+    # correction delta(z) that keeps six widths from every level backbone the
+    # rim runs alongside (footprint = the rim, |along − axis·along| ≤ R).
+    # Inactive reference → delta ≡ 0.0 → bit-identical helix.
+    along = np.array([d_hat[1], -d_hat[0]])
+    rim_centres = np.asarray(
+        [float(ctx.track.footwall_edge(lv.elevation) @ along) for lv in ctx.levels],
+        dtype=np.float64,
+    )
+    profile, correction_levels = corridor_profile(ctx, d_hat, along, rim_centres, radius)
 
     def axis_at(z: float) -> FloatArray:
-        return np.asarray(ctx.track.footwall_edge(z) + d_hat * offset)
+        return np.asarray(ctx.track.footwall_edge(z) + d_hat * (offset + profile(z)))
 
     portal = ctx.portal
     # approach: straight from the portal to the tangent point of the circle at
@@ -796,6 +807,8 @@ def build_spiral(params: CandidateParams, ctx: LayoutContext) -> FamilyGeometry 
             "approachGradient": g_app,
             "joinElevation": z_join,
             "dropPerTurn": 2.0 * math.pi * radius * g,
+            "corridorCorrection": profile.to_dict(),
+            "corridorCorrectionLevels": correction_levels,
         },
     )
 

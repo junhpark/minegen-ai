@@ -288,8 +288,8 @@ def test_reference_delta_is_positive_on_the_failing_307_spiral() -> None:
     """Gate A / B causal fact: on WARPED-307 the corridor sits 19–20 m inside
     the intended separation on the SPIRAL-n1-CW-e+0-g0.100 rim (measured
     shadow); the reference reports a positive outward correction on every
-    level the rim runs alongside — and the search result itself is unchanged
-    by building the reference (C1 changes no corridor)."""
+    level the rim runs alongside, and (C2) the delivered helix is built on
+    the corrected corridor."""
     sc = Scenario(
         **realize_scenario(ScenarioPreset.RANDOM_WARPED_VEIN, 307, fault_count=1).model_dump()
     )
@@ -308,7 +308,10 @@ def test_reference_delta_is_positive_on_the_failing_307_spiral() -> None:
     assert prof.max_delta > 0.0
     cand = res.candidate("SPIRAL-n1-CW-e+0-g0.100")
     assert cand is not None and cand.points is not None
-    # C1 is observation only: the delivered polyline is the pre-reference one
+    # C2: the delivered helix differs from the reference-less build exactly
+    # because the profile is active, and the candidate reports the correction
+    assert cand.derived["corridorCorrection"]["active"] is True
+    assert cand.derived["corridorCorrection"]["maxDelta"] == pytest.approx(prof.max_delta)
     legacy = replace(ctx, reference=None)
     rebuilt = build_family(cand.params, legacy)
-    assert hasattr(rebuilt, "points") and np.array_equal(rebuilt.points, cand.points)
+    assert hasattr(rebuilt, "points") and not np.array_equal(rebuilt.points, cand.points)
