@@ -87,3 +87,27 @@ Reading. The Gate A population is gone as a population: no DETAILED candidate on
 1–5 unchanged from Gate B. 6 (relaxing grade / clearance / radius / pillar): no — delta ≥ 0 only, every gate untouched. 7 (TABULAR shadow changes materially): no — four EXACT golden cases byte-identical. 8 (candidate-specific clearance provenance lost): no — `candidate_policy` reconstruction asserted in the dominance test. 9 (screen authority must change): no — untouched. 10 (broad family redesign): no — one lateral substitution per family (two lines in the switchback), the pair-band rule is a consumption rule, not a redesign.
 
 MANUAL BROWSER ACCEPTANCE: NOT RUN (no UI change; the frontend reads no new field).
+
+## 8. Gate D — 32-seed controlled survey (`backend/golden/phase20c4_warped_seed_survey.json`, before/after `phase20c4_warped_seed_before_after.json`)
+
+`python -m minegen.regression warped-seeds --label phase20c4_warped_seed_survey --out golden` (1461.4 s wall-clock, concurrent with the golden suite and the census re-run on the same 4-core machine; observation only) against the 20C.2A survey (`phase20c2a_warped_seed_survey.json`, the tree the 20C.3A census was taken on), compared with `scripts/phase20c4_survey_before_after.py`.
+
+| quantity | before (20C.2A / 20C.3A tree) | after (Gate C tree) |
+|---|---|---|
+| layout SUCCESS | 19 / 32 | **28 / 32** |
+| status flips | — | NO_FEASIBLE_CANDIDATE → SUCCESS 9 (303, 307, 308, 312, 316, 319, 320, 324, 328); SUCCESS → NO_FEASIBLE 0 |
+| feasible DETAILED candidates (sum) | 104 | 283 |
+| winner family | SPIRAL 1, SWITCHBACK 18 | SPIRAL 21, SWITCHBACK 7 |
+| dominant failure histogram | ABOVE_TERRAIN 8, LEVEL_ACCESS_INFEASIBLE 21, OREBODY_CLEARANCE 3 | ABOVE_TERRAIN 15, TURN_RADIUS (cheap) 13, LEVEL_ACCESS_INFEASIBLE 3, LEG_TOO_SHORT 1 |
+| level-access failure reasons (all DETAILED candidates) | GRADE_LIMIT 350, INSUFFICIENT_RAMP_PILLAR 96, TURNOUT_NOT_STRAIGHT 77, CONNECTOR_UNAVAILABLE 66 | GRADE_LIMIT 3, TURNOUT_NOT_STRAIGHT 6 |
+| remaining NO_FEASIBLE | 13 | 302, 306, 309, 321 — dominant DETAILED:ABOVE_TERRAIN on every one (portal / first-leg approach population, out of scope, directive §22); 302 has only 2 DETAILED candidates (cheap WORLD_BOUNDS 36, TURN_RADIUS 21) |
+
+Every one of the 32 seeds changed (0 identical): the reference is active on every WARPED scenario. Winner changes, reported as required (§21): the winner family flips SWITCHBACK → SPIRAL on 11 seeds (311, 314, 315, 318, 322, 323, 326, 327, 329, 331, 332); six seeds keep a SWITCHBACK winner with a different orientation / station (304, 305, 310, 313, 325, 330); the nine newly successful seeds all choose a SPIRAL; 301 keeps its SPIRAL. Two mechanisms, both geometric and both recomputed by unchanged scoring: (1) spirals that previously failed level access because their rim sat ≈ 7 m from the level backbones are now feasible and, being shorter than a corrected switchback stack, rank first; (2) a switchback consumes the pair-band MAXIMUM of delta, so its whole stack moves outward by the largest correction in a ± two-cycle band, which lengthens every access on the stack (the development term), while a spiral's axis moves only where a level needs it. No coefficient, weight, bonus or threshold changed. One seed loses feasible candidates (330: 10 → 7, still SUCCESS with a different switchback); every other seed keeps or gains.
+
+The 20C.3A hypothesis population is closed: LEVEL_ACCESS_INFEASIBLE falls from the dominant failure on 21 seeds to 3 seeds' histograms, and the GRADE_LIMIT / INSUFFICIENT_RAMP_PILLAR / CONNECTOR_UNAVAILABLE / TURNOUT_NOT_STRAIGHT reasons fall from 589 to 9 level-access rejections in total. What remains is the portal / first-leg approach population (ABOVE_TERRAIN at the fixed start), which Phase 20C.4 never touched and which is the next diagnostic target — it grew as a share, and in absolute count on the census seeds (PORTAL_APPROACH 22 → 42), because a corridor that starts further from the ore changes the approach geometry.
+
+## 9. VA-01 tiers
+
+- FAST: PASS, 519 passed / 0 failed (head 4ed0a35 + C4 working tree).
+- FEATURE: PASS, 524 passed / 0 failed (head 7ef6cea).
+- FULL: recorded in §10 on the exact Gate D HEAD it ran on.
