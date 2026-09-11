@@ -29,7 +29,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from minegen.core.artifacts import (
     LAYOUT_V2_ARTIFACT,
@@ -37,9 +37,9 @@ from minegen.core.artifacts import (
     LEGACY_RAMP_ARTIFACT,
     RAMP_OWNING_ARTIFACTS,
     RAMP_SOURCE_FILE,
+    RampSource,
 )
 
-RampSource = Literal["LEGACY", "LAYOUT_V2"]
 RAMP_SOURCES: tuple[RampSource, ...] = ("LEGACY", "LAYOUT_V2")
 
 __all__ = [

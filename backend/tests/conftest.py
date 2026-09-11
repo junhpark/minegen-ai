@@ -90,6 +90,9 @@ TEST_MARKERS: dict[str, tuple[str, ...]] = {
     "test_decline_lifecycle": ("e2e",),
     # Phase 20C.2B shaft + capability graph API lifecycle (legacy pipeline E2E)
     "test_shaft_and_capability_api_lifecycle": ("e2e",),
+    # AC-01E artifact registry: every artifact built + regenerated through the
+    # API under both ramp sources (minutes per source)
+    "test_every_regeneration_deletes_exactly_the_registry_closure": ("e2e", "slow"),
     # high-cost algorithm tests (Hybrid-A* chains, exhaustive diagnostics, 307)
     "test_sealed_level_yields_structured_infeasible_and_skips_rest": ("slow",),
     "test_chain_backtracks_out_of_trapped_best_arrival": ("slow",),
