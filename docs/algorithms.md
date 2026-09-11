@@ -816,9 +816,12 @@ policy, config) and fails closed when the rebuilt refinement provenance
 (applied / reason / factor / spacing / shape / cells / bound) differs from
 the candidate's recorded report. `DesignService._selected_candidate_policy`
 resolves the selection (`candidateId + layoutRevision`, stale → 409
-`LAYOUT_V2_SELECTION_STALE`), re-runs the search on a cache miss
-(`_layout_object`) and cross-checks the selection's persisted `clearance`
-block (basis / bound → 409 `LAYOUT_V2_CLEARANCE_MISMATCH`). Selection
+`LAYOUT_V2_SELECTION_STALE`), restores the certification from its recipe
+(shared search setup + the catalogue centerline of the selected candidate,
+`layout.certification.restore_candidate_policy`) and verifies basis,
+refinement provenance and error bound against the persisted `clearance`
+block (→ 409 `LAYOUT_V2_CLEARANCE_MISMATCH`); it never re-runs the search
+and never restores a policy from the recorded numbers (AC-01D). Selection
 materialization, the Phase 06 tunnel sweep, the level builder and the
 development sweep all take `_active_clearance_policy` — the selected
 candidate's certification when LAYOUT_V2 is active, the world policy (EXACT

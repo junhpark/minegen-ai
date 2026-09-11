@@ -20,6 +20,7 @@ import pytest
 from minegen.core.enums import ScenarioPreset
 from minegen.core.models import Scenario, ScenarioCreate
 from minegen.design.cost_field import clearance_policy_for
+from minegen.layout.certification import ClearancePolicyReconstructionError
 from minegen.layout.search import LayoutV2Search
 from minegen.services.design_service import DesignService, LayoutSelectionStaleError
 from minegen.services.scenario_realizer import realize_scenario
@@ -50,7 +51,10 @@ def _points(block: dict) -> np.ndarray:  # type: ignore[type-arg]
 
 
 def test_downstream_reuses_the_selected_candidate_certification_across_restart(
-    store: ScenarioStore, world_service: WorldService, design_service: DesignService
+    store: ScenarioStore,
+    world_service: WorldService,
+    design_service: DesignService,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sc = store.create(_decisive_warped_create())
     sid = sc.id
@@ -102,6 +106,38 @@ def test_downstream_reuses_the_selected_candidate_certification_across_restart(
     assert rebuilt.basis == original.basis == basis
     assert float(rebuilt.error_bound) == pytest.approx(float(original.error_bound))
     assert float(rebuilt.error_bound) == pytest.approx(bound)
+    # AC-01D: the restore populated no search object — it was rebuilt from
+    # the recipe, and it equals the warm search's own stage-4 policy EXACTLY
+    assert not fresh._layouts
+    search, result = design_service._layouts[sid][1:]
+    _, p_ref, r_ref = search.candidate_policy(result, winner)
+    assert rebuilt.basis == p_ref.basis
+    assert float(rebuilt.error_bound) == float(p_ref.error_bound)
+    assert selected["clearance"]["refinement"] == r_ref
+    # a truly COLD service: fresh WorldService (npz reload → fresh orebody
+    # object, derived lattice recomputed) + fresh DesignService
+    cold = DesignService(store, WorldService(store))
+    _, cold_world = cold.worlds.load(sid)
+    assert cold_world is not world and cold_world.orebody is not world.orebody
+    pc = cold._active_clearance_policy(sid, cold_world)
+    assert not cold._layouts
+    assert pc.basis == p_ref.basis and float(pc.error_bound) == float(p_ref.error_bound)
+    winner_points = _points(
+        next(c for c in catalogue["candidates"] if c["candidateId"] == winner)["centerline"]
+    )
+    probes = [winner_points] + [
+        _points(a["centerline"]) for a in accesses["accesses"] if a["status"] == "OK"
+    ]
+    for probe in probes:
+        ref = p_ref.signed_clearance(probe)
+        assert np.array_equal(pc.signed_clearance(probe), ref)
+        assert np.array_equal(rebuilt.signed_clearance(probe), ref)
+    # downstream builders never re-run the search, cold or warm
+    monkeypatch.setattr(
+        LayoutV2Search,
+        "run",
+        lambda *a, **k: pytest.fail("LayoutV2Search.run() downstream of a selection"),
+    )
 
     tunnel = fresh.generate_tunnel(sid)
     assert tunnel["status"] == "SUCCESS", tunnel.get("failureReason")
@@ -111,8 +147,22 @@ def test_downstream_reuses_the_selected_candidate_certification_across_restart(
     swept = [d for d in dev["developments"] if d["kind"] == "LEVEL_ACCESS"]
     assert len(swept) == len(accesses["accesses"])
 
-    # ---- fail closed: a selection from another catalogue revision ---------
+    # ---- fail closed, identically warm and cold: a tampered error bound ---
     path = design_service.layout_selected_path(sid)
+    pristine = path.read_text(encoding="utf-8")
+    tampered = json.loads(pristine)
+    tampered["clearance"]["clearanceErrorBound"] = float(bound) + 1e-3
+    path.write_text(json.dumps(tampered), encoding="utf-8")
+    errors: list[str] = []
+    for svc in (design_service, DesignService(store, WorldService(store))):
+        with pytest.raises(ClearancePolicyReconstructionError) as info:
+            svc._active_clearance_policy(sid, svc.worlds.load(sid)[1])
+        assert info.value.code == "LAYOUT_V2_CLEARANCE_MISMATCH"
+        errors.append(str(info.value))
+    assert errors[0] == errors[1] and winner in errors[0]
+    path.write_text(pristine, encoding="utf-8")
+
+    # ---- fail closed: a selection from another catalogue revision ---------
     tampered = json.loads(path.read_text(encoding="utf-8"))
     tampered["layoutRevision"] = "0000000000000000"
     path.write_text(json.dumps(tampered), encoding="utf-8")

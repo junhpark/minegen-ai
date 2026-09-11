@@ -9,11 +9,19 @@ certification that made it FEASIBLE (rule 172). ``LayoutV2Search`` delegates
 here; the numerics, dict keys, reason strings and error messages are the
 ones the search carried before the extraction.
 
-This module must not import ``layout.search`` or ``layout.results``.
+``restore_candidate_policy`` (AC-01D) is the search-object-free restore of
+the selected certification: rebuilt from the shared search setup
+(``layout.setup.build_search_setup``) + the candidate's persisted catalogue
+centerline, then verified against the recorded certification — never
+restored from the recorded numbers, never a re-run of the search.
+
+This module must not import ``layout.search`` or ``layout.results``
+(``layout.setup`` is a permitted leaf import).
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,10 +35,12 @@ from minegen.design.cost_field import (
     ConservativeClearance,
     DesignCostEvaluator,
     RefinedConservativeClearance,
+    clearance_policy_for,
 )
 from minegen.layout.access import AnchorFailure, build_anchor
 from minegen.layout.families import FootwallTrack
 from minegen.layout.levels import LevelSections, RequiredLevel
+from minegen.layout.setup import build_search_setup
 from minegen.world.synthetic_world import SyntheticWorld
 
 FloatArray = npt.NDArray[np.float64]
@@ -110,6 +120,23 @@ def anchor_standoff(
     return base
 
 
+def world_search_policy(
+    scenario: Scenario, world: SyntheticWorld
+) -> tuple[ClearancePolicy, DesignCostEvaluator]:
+    """The whole-body search clearance policy and the search evaluator built
+    over it — the two statements of ``LayoutV2Search.__init__`` (AC-01D:
+    shared with the certification restore so the world side of the recipe
+    has ONE definition)."""
+    policy: ClearancePolicy = clearance_policy_for(world.orebody)
+    evaluator = DesignCostEvaluator(
+        world,
+        scenario.design,
+        DesignContext.decline(scenario.design),
+        clearance=policy,
+    )
+    return policy, evaluator
+
+
 def build_candidate_policy(
     world: SyntheticWorld,
     scenario: Scenario,
@@ -186,6 +213,66 @@ def build_candidate_policy(
     return evaluator, refined, refinement
 
 
+def _candidate_id_of(payload: Any, source: str) -> str:
+    """The ``candidateId`` of a persisted certification document, or the
+    typed error when the document has no usable one."""
+    cid = payload.get("candidateId") if isinstance(payload, dict) else None
+    if not isinstance(cid, str) or not cid:
+        raise ClearancePolicyReconstructionError(
+            str(cid), f"{source} carries no usable clearance certification (candidateId)"
+        )
+    return cid
+
+
+def _certification_fields(
+    candidate_id: str, block: Any, keys: tuple[str, str, str, str], source: str
+) -> tuple[str, float | None, float, dict[str, Any] | None]:
+    """Typed reader of the four certification fields of a persisted block
+    (basis, error bound, required clearance, refinement). A missing key, a
+    wrong type, a non-finite number or a refinement dict the provenance key
+    cannot digest is the typed ``ClearancePolicyReconstructionError`` naming
+    the offending key — the fail-closed half of the contract is always kept
+    by the callers; this keeps the TYPED half for tampered documents too."""
+
+    def bad(what: str) -> ClearancePolicyReconstructionError:
+        return ClearancePolicyReconstructionError(
+            candidate_id, f"{source} carries no usable clearance certification ({what})"
+        )
+
+    if not isinstance(block, dict):
+        raise bad("clearance")
+    basis_key, bound_key, required_key, refinement_key = keys
+    for key in keys:
+        if key not in block:
+            raise bad(key)
+    basis = block[basis_key]
+    if not isinstance(basis, str) or not basis:
+        raise bad(basis_key)
+    bound = block[bound_key]
+    if bound is not None and not _is_finite_number(bound):
+        raise bad(bound_key)
+    required = block[required_key]
+    if not _is_finite_number(required):
+        raise bad(required_key)
+    refinement = block[refinement_key]
+    if refinement is not None:
+        if not isinstance(refinement, dict):
+            raise bad(refinement_key)
+        try:
+            _refinement_key(refinement)
+        except (TypeError, ValueError) as err:
+            raise bad(refinement_key) from err
+    return basis, (None if bound is None else float(bound)), float(required), refinement
+
+
+def _is_finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
 @dataclass(frozen=True)
 class CandidateCertification:
     """The recorded stage-4 clearance certification of ONE candidate — what
@@ -215,28 +302,35 @@ class CandidateCertification:
         )
 
     @classmethod
-    def from_level_accesses(cls, payload: dict[str, Any]) -> CandidateCertification:
-        """From a ``level_accesses.json`` payload (top-level certification keys)."""
-        return cls(
-            candidate_id=payload["candidateId"],
-            basis=payload["clearanceBasis"],
-            error_bound=payload["clearanceErrorBound"],
-            required_clearance=payload["requiredClearance"],
-            refinement=payload["clearanceRefinement"],
+    def from_level_accesses(cls, payload: Any) -> CandidateCertification:
+        """From a ``level_accesses.json`` payload (top-level certification
+        keys). Every shape defect of the persisted document is the typed
+        ``ClearancePolicyReconstructionError`` — never a bare KeyError /
+        TypeError / ValueError (AC-01D fail-closed contract)."""
+        candidate_id = _candidate_id_of(payload, "level accesses")
+        basis, bound, required, refinement = _certification_fields(
+            candidate_id,
+            payload,
+            ("clearanceBasis", "clearanceErrorBound", "requiredClearance", "clearanceRefinement"),
+            "level accesses",
         )
+        return cls(candidate_id, basis, bound, required, refinement)
 
     @classmethod
-    def from_selection(cls, payload: dict[str, Any]) -> CandidateCertification:
+    def from_selection(cls, payload: Any) -> CandidateCertification:
         """From a ``layout_v2_selected.json`` payload (its ``clearance`` block
-        is the candidate's ``ClearanceReport.to_dict()``)."""
-        clearance = payload["clearance"]
-        return cls(
-            candidate_id=payload["candidateId"],
-            basis=clearance["clearanceBasis"],
-            error_bound=clearance["clearanceErrorBound"],
-            required_clearance=clearance["requiredClearance"],
-            refinement=clearance["refinement"],
+        is the candidate's ``ClearanceReport.to_dict()``). Every shape defect
+        of the persisted document is the typed
+        ``ClearancePolicyReconstructionError``."""
+        candidate_id = _candidate_id_of(payload, "selection")
+        clearance = payload.get("clearance") if isinstance(payload, dict) else None
+        basis, bound, required, refinement = _certification_fields(
+            candidate_id,
+            clearance,
+            ("clearanceBasis", "clearanceErrorBound", "requiredClearance", "refinement"),
+            "selection",
         )
+        return cls(candidate_id, basis, bound, required, refinement)
 
     def to_dict(self) -> dict[str, Any]:
         """Exactly the four ``level_accesses.json`` certification keys, in
@@ -253,14 +347,11 @@ class CandidateCertification:
         return (self.basis, _refinement_key(self.refinement))
 
     def verify(self, policy: ClearancePolicy, refinement: dict[str, Any] | None) -> None:
-        """Fail closed when a REBUILT policy's basis / refinement provenance
-        disagrees with this recorded certification.
-
-        This is the search-side check verbatim: basis plus the refinement
-        provenance key, and nothing else. It deliberately does NOT compare
-        ``error_bound`` — the separate service-side comparison in
-        ``DesignService._selected_candidate_policy`` still owns that, so
-        ``verify`` is not yet a drop-in replacement for it (AC-01D)."""
+        """Fail closed when a REBUILT policy disagrees with this recorded
+        certification — the single fail-closed provenance check (AC-01D):
+        basis, refinement provenance key, then the recorded error bound
+        (``None`` → 0.0, isclose 1e-9). A recorded number is never turned
+        into a policy; a mismatch is typed and never repaired."""
         if policy.basis != self.basis or _refinement_key(refinement) != _refinement_key(
             self.refinement
         ):
@@ -269,3 +360,123 @@ class CandidateCertification:
                 f"rebuilt policy {policy.basis} {_refinement_key(refinement)} != recorded "
                 f"{self.basis} {_refinement_key(self.refinement)}",
             )
+        if not math.isclose(
+            float(self.error_bound if self.error_bound is not None else 0.0),
+            float(policy.error_bound),
+            rel_tol=1e-9,
+            abs_tol=1e-9,
+        ):
+            raise ClearancePolicyReconstructionError(
+                self.candidate_id,
+                f"recorded {self.basis} (bound {self.error_bound}) but the rebuilt policy "
+                f"is {policy.basis} (bound {policy.error_bound})",
+            )
+
+
+def candidate_points_from_catalogue(catalogue: dict[str, Any], candidate_id: str) -> FloatArray:
+    """The persisted centerline of ONE FEASIBLE candidate, read from a
+    ``layout_v2.json`` document (a pure function of the persisted bytes):
+    every FEASIBLE candidate is shortlisted and therefore carries its
+    ``centerline.points`` as exact float repr, so the JSON round trip is
+    bit-exact. Returned as a C-contiguous float64 ``(N, 3)`` array — a
+    strided view changes bits in ``Frame.world_to_local`` (AC-01D
+    determinism probe), so the normalisation is part of the contract.
+    Every inconsistency is a typed ``ClearancePolicyReconstructionError``;
+    nothing is repaired or guessed."""
+    if not isinstance(catalogue, dict):
+        raise ClearancePolicyReconstructionError(candidate_id, "the catalogue is not a document")
+    candidates = catalogue.get("candidates")
+    if not isinstance(candidates, list):
+        raise ClearancePolicyReconstructionError(
+            candidate_id, "the catalogue carries no candidate list"
+        )
+    row: dict[str, Any] | None = None
+    for c in candidates:
+        if isinstance(c, dict) and c.get("candidateId") == candidate_id:
+            row = c
+            break
+    if row is None:
+        raise ClearancePolicyReconstructionError(
+            candidate_id, f"the catalogue has no candidate '{candidate_id}'"
+        )
+    if row.get("status") != "FEASIBLE":
+        raise ClearancePolicyReconstructionError(
+            candidate_id, f"catalogue row is {row.get('status')}, not FEASIBLE"
+        )
+    cl = row.get("centerline")
+    unusable = ClearancePolicyReconstructionError(
+        candidate_id, f"catalogue carries no usable centerline for '{candidate_id}'"
+    )
+    if not isinstance(cl, dict) or not isinstance(cl.get("points"), list):
+        raise unusable
+    raw = cl["points"]
+    count = cl.get("pointCount")
+    if not isinstance(count, int) or count < 2 or len(raw) != 3 * count:
+        raise unusable
+    try:
+        points = np.ascontiguousarray(np.asarray(raw, dtype=np.float64).reshape(-1, 3))
+    except (TypeError, ValueError) as err:
+        raise unusable from err
+    if not np.all(np.isfinite(points)):
+        raise unusable
+    return points
+
+
+def restore_candidate_policy(
+    scenario: Scenario,
+    world: SyntheticWorld,
+    *,
+    certification: CandidateCertification,
+    points: FloatArray,
+) -> tuple[DesignCostEvaluator, ClearancePolicy, dict[str, Any]]:
+    """Rebuild the stage-4 clearance policy of the SELECTED candidate without
+    the search object (AC-01D): the shared search setup
+    (``build_search_setup`` — the very block ``LayoutV2Search.run()``
+    executes), the world search policy / evaluator, and the persisted
+    catalogue centerline go through the SAME ``build_candidate_policy``
+    recipe stage 4 used, with the SERVICEABLE required levels (what the
+    stage context carries). The result is then CHECKED against the recorded
+    certification (basis, refinement provenance, error bound). Every branch
+    either returns the verified policy or raises a typed
+    ``ClearancePolicyReconstructionError``: never the whole-body policy on a
+    mismatch, never a search re-run, never a file write."""
+    candidate_id = certification.candidate_id
+    points = np.ascontiguousarray(np.asarray(points, dtype=np.float64).reshape(-1, 3))
+    setup = build_search_setup(scenario, world)
+    if setup.section_error is not None:
+        raise ClearancePolicyReconstructionError(
+            candidate_id, f"{setup.section_error.code}: {setup.section_error.detail}"
+        )
+    serviceable = setup.sections.serviceable()
+    if not serviceable or setup.track is None:
+        raise ClearancePolicyReconstructionError(
+            candidate_id,
+            "no serviceable required level / footwall track — the catalogue cannot hold a "
+            "FEASIBLE candidate",
+        )
+    if not math.isclose(
+        setup.required_clearance,
+        float(certification.required_clearance),
+        rel_tol=1e-9,
+        abs_tol=1e-9,
+    ):
+        raise ClearancePolicyReconstructionError(
+            candidate_id,
+            f"rebuilt required clearance {setup.required_clearance} != recorded "
+            f"{certification.required_clearance}",
+        )
+    world_policy, world_evaluator = world_search_policy(scenario, world)
+    evaluator, policy, refinement = build_candidate_policy(
+        world,
+        scenario,
+        scenario.layout,
+        world_policy=world_policy,
+        world_evaluator=world_evaluator,
+        points=points,
+        levels=serviceable,
+        sections=setup.sections,
+        track=setup.track,
+        required_clearance=setup.required_clearance,
+    )
+    certification.verify(policy, refinement)
+    return evaluator, policy, refinement

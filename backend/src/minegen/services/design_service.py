@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,7 +45,12 @@ from minegen.design.progress import (
 from minegen.design.smoothing import DeclineSmoother
 from minegen.design.targets import AccessTargetSet, generate_access_targets, resolve_portal
 from minegen.design.tunnel_mesh import TunnelMeshBuilder
-from minegen.layout.certification import ClearancePolicyReconstructionError
+from minegen.layout.certification import (
+    CandidateCertification,
+    ClearancePolicyReconstructionError,
+    candidate_points_from_catalogue,
+    restore_candidate_policy,
+)
 from minegen.layout.materialize import materialize_effective_ramp, materialize_level_accesses
 from minegen.layout.results import CandidateStatus, LayoutSearchResult
 from minegen.layout.search import LayoutV2Search
@@ -227,6 +231,24 @@ class LayoutSelectionStaleError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class _RestoredPolicy:
+    """One restored selected-candidate certification (AC-01D), valid for
+    exactly one world object, catalogue revision and selection revision —
+    any scenario mutation / world regeneration (new world object),
+    catalogue regeneration (``layout_revision``) or re-selection of another
+    candidate (``selected_revision``) misses. Policies are frozen value
+    objects, so sharing one across the builders of a chain changes no
+    number."""
+
+    world: SyntheticWorld
+    candidate_id: str
+    layout_revision: str
+    selected_revision: str
+    evaluator: DesignCostEvaluator
+    policy: ClearancePolicy
+
+
+@dataclass(frozen=True)
 class InputFingerprint:
     """Revision fingerprint of a decline job's inputs: (exists, size, mtime_ns)
     of scenario.json, arrays.npz and targets.json. Every invalidating mutation
@@ -257,6 +279,7 @@ class DesignService:
         self._evaluators: dict[str, tuple[SyntheticWorld, DesignCostEvaluator]] = {}
         self._targets: dict[str, AccessTargetSet] = {}
         self._layouts: dict[str, tuple[SyntheticWorld, LayoutV2Search, LayoutSearchResult]] = {}
+        self._selected_policies: dict[str, _RestoredPolicy] = {}
 
     # -- evaluator --------------------------------------------------------- #
 
@@ -552,7 +575,13 @@ class DesignService:
     def _layout_object(self, scenario_id: str) -> tuple[LayoutV2Search, LayoutSearchResult]:
         """In-memory search result behind ``layout_v2.json``; rebuilt
         deterministically (same inputs → same result) when this process did
-        not run the search itself."""
+        not run the search itself. Used ONLY by ``select_layout_candidate``
+        (materialization needs the full ``CandidateResult``); no downstream
+        builder reads it — they restore the selected certification from its
+        recipe (``_selected_candidate_policy``, AC-01D). The re-run on a cold
+        cache for a DIFFERENT candidate than the persisted selection is the
+        explicitly deferred residual recorded in
+        ``docs/consolidation-baseline.md`` §7."""
         if not self.layout_path(scenario_id).is_file():
             raise LayoutV2NotGeneratedError(scenario_id)
         scenario, world = self.worlds.load(scenario_id)
@@ -573,16 +602,10 @@ class DesignService:
         fingerprint = InputFingerprint.capture(
             [*self._layout_input_paths(scenario_id), self.layout_path(scenario_id)]
         )
-        search, result = self._layout_object(scenario_id)
-        cand = result.candidate(candidate_id)
-        if cand is None:
-            raise LayoutCandidateNotFoundError(candidate_id)
-        if cand.status != CandidateStatus.FEASIBLE:
-            raise LayoutCandidateInfeasibleError(candidate_id, cand.status, cand.failure_reasons)
+        # AC-01D: the idempotent re-select / re-activate of the already
+        # selected candidate at the same catalogue revision never touches
+        # the in-memory search (and so never re-runs it on a cold cache)
         layout_rev = file_revision(self.layout_path(scenario_id)) or ""
-        revision = hashlib.sha256(
-            json.dumps([fingerprint.entries, layout_rev, candidate_id], sort_keys=True).encode()
-        ).hexdigest()[:16]
         existing = self._layout_selected_if_present(scenario_id)
         if (
             existing is not None
@@ -590,6 +613,15 @@ class DesignService:
             and existing.get("layoutRevision") == layout_rev
         ):
             return existing
+        search, result = self._layout_object(scenario_id)
+        cand = result.candidate(candidate_id)
+        if cand is None:
+            raise LayoutCandidateNotFoundError(candidate_id)
+        if cand.status != CandidateStatus.FEASIBLE:
+            raise LayoutCandidateInfeasibleError(candidate_id, cand.status, cand.failure_reasons)
+        revision = hashlib.sha256(
+            json.dumps([fingerprint.entries, layout_rev, candidate_id], sort_keys=True).encode()
+        ).hexdigest()[:16]
         # materialize under the candidate's OWN stage-4 evaluator, never the
         # whole-body search evaluator (Phase 20B.1-v2 1.1)
         cand_evaluator, _, _ = search.candidate_policy(result, candidate_id)
@@ -627,42 +659,95 @@ class DesignService:
         self, scenario_id: str
     ) -> tuple[DesignCostEvaluator, ClearancePolicy]:
         """The clearance policy the SELECTED layout-v2 candidate was validated
-        under in stage 4, rebuilt deterministically from the persisted
-        selection identity (``candidateId`` + ``layoutRevision``) and the
-        layout search (``_layout_object`` re-runs it on a cache miss, so a
-        fresh process reconstructs the very same policy). Fails closed on a
-        stale selection or when the rebuilt refinement provenance disagrees
-        with what the selection recorded (Phase 20B.1-v2 1.1)."""
-        selected = self._layout_selected_if_present(scenario_id)
-        if selected is None:
-            raise LayoutV2NotSelectedError(scenario_id)
-        layout_rev = file_revision(self.layout_path(scenario_id)) or ""
-        if selected.get("layoutRevision") != layout_rev:
-            raise LayoutSelectionStaleError(scenario_id)
-        search, result = self._layout_object(scenario_id)
-        candidate_id = str(selected["candidateId"])
-        evaluator, policy, _ = search.candidate_policy(result, candidate_id)
-        recorded = selected.get("clearance") or {}
-        recorded_bound = recorded.get("clearanceErrorBound")
-        if recorded.get("clearanceBasis") != policy.basis or not math.isclose(
-            float(recorded_bound if recorded_bound is not None else 0.0),
-            float(policy.error_bound),
-            rel_tol=1e-9,
-            abs_tol=1e-9,
+        under in stage 4, rebuilt from the persisted selection identity
+        (``candidateId`` + ``layoutRevision``), the catalogue centerline of
+        that candidate and the shared search setup
+        (``layout.certification.restore_candidate_policy``) — never from the
+        in-memory search and never by re-running it (AC-01D); checked
+        against the recorded certification (basis, refinement provenance,
+        error bound); fails closed on a stale selection or any recipe
+        mismatch (Phase 20B.1-v2 1.1). One restore per (world object,
+        catalogue revision, selection revision) is cached so a builder chain
+        pays it once."""
+        selected, catalogue_text, layout_rev, selected_rev = self._selection_snapshot(scenario_id)
+        scenario, world = self.worlds.load(scenario_id)
+        hit = self._selected_policies.get(scenario_id)
+        if (
+            hit is not None
+            and hit.world is world
+            and hit.layout_revision == layout_rev
+            and hit.selected_revision == selected_rev
         ):
+            return hit.evaluator, hit.policy
+        # every shape defect of the persisted documents is the typed 409
+        # (never a bare KeyError / TypeError / ValueError → 500)
+        certification = CandidateCertification.from_selection(selected)
+        try:
+            catalogue = json.loads(catalogue_text)
+        except ValueError as err:
             raise ClearancePolicyReconstructionError(
-                candidate_id,
-                f"selection recorded {recorded.get('clearanceBasis')} "
-                f"(bound {recorded_bound}) but the rebuilt policy is {policy.basis} "
-                f"(bound {policy.error_bound})",
-            )
+                certification.candidate_id,
+                f"the catalogue is unreadable ({type(err).__name__})",
+            ) from err
+        points = candidate_points_from_catalogue(catalogue, certification.candidate_id)
+        evaluator, policy, _ = restore_candidate_policy(
+            scenario, world, certification=certification, points=points
+        )
+        # the entry is keyed by the revisions of the SNAPSHOT the policy was
+        # rebuilt from, never by a revision read later: a selection written
+        # by another request while this restore ran carries a different
+        # selected_revision and therefore misses
+        self._selected_policies[scenario_id] = _RestoredPolicy(
+            world=world,
+            candidate_id=certification.candidate_id,
+            layout_revision=layout_rev,
+            selected_revision=selected_rev,
+            evaluator=evaluator,
+            policy=policy,
+        )
         return evaluator, policy
+
+    def _selection_snapshot(self, scenario_id: str) -> tuple[dict[str, Any], str, str, str]:
+        """ONE consistent snapshot of the persisted selection identity — the
+        selection document, the catalogue TEXT it is bound to, and the two
+        file revisions (catalogue, selection) — read together under the
+        per-scenario store lock, the same lock every writer of these files
+        holds (``select_layout_candidate``, ``generate_layout_v2``, the
+        ``_delete_*`` paths, ``WorldService.invalidate``). Reading them
+        separately let a concurrent re-selection interleave between the
+        content read and the revision stat, so a policy rebuilt for one
+        candidate could be cached under another candidate's revision and
+        served on the next request (PR #31 review, TOCTOU). Only the
+        snapshot is taken under the lock; the expensive rebuild runs
+        outside it. Nothing is retried or repaired: a missing selection is
+        ``LayoutV2NotSelectedError``, a selection bound to another catalogue
+        revision is ``LayoutSelectionStaleError``, an unreadable catalogue is
+        the typed reconstruction error."""
+        with self.store.lock(scenario_id):
+            selected = self._layout_selected_if_present(scenario_id)
+            if selected is None:
+                raise LayoutV2NotSelectedError(scenario_id)
+            if not isinstance(selected, dict):
+                raise ClearancePolicyReconstructionError("?", "the selection is not a document")
+            layout_rev = file_revision(self.layout_path(scenario_id)) or ""
+            if selected.get("layoutRevision") != layout_rev:
+                raise LayoutSelectionStaleError(scenario_id)
+            selected_rev = file_revision(self.layout_selected_path(scenario_id)) or ""
+            try:
+                catalogue_text = self.layout_path(scenario_id).read_text(encoding="utf-8")
+            except OSError as err:
+                raise ClearancePolicyReconstructionError(
+                    str(selected.get("candidateId")),
+                    f"the catalogue is unreadable ({type(err).__name__})",
+                ) from err
+        return selected, catalogue_text, layout_rev, selected_rev
 
     def _active_clearance_policy(self, scenario_id: str, world: SyntheticWorld) -> ClearancePolicy:
         """Clearance policy for every builder downstream of the ACTIVE ramp:
         LEGACY keeps the world's own policy (EXACT for analytic bodies —
         unchanged numerics); LAYOUT_V2 uses the selected candidate's own
-        stage-4 certification (Phase 20B.1-v2 1.1 invariant)."""
+        stage-4 certification (Phase 20B.1-v2 1.1 invariant), restored from
+        its recipe without the search (AC-01D)."""
         if read_ramp_source(self.store.derived_dir(scenario_id)) != "LAYOUT_V2":
             return clearance_policy_for(world.orebody)
         return self._selected_candidate_policy(scenario_id)[1]
