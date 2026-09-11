@@ -17,8 +17,10 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +39,9 @@ from minegen.layout.certification import (
 from minegen.layout.materialize import materialize_effective_ramp, materialize_level_accesses
 from minegen.layout.search import LayoutSearchResult, LayoutV2Search
 from minegen.layout.setup import build_search_setup
+from minegen.services import design_service as design_service_module
 from minegen.services.design_service import DesignService
+from minegen.services.effective_ramp import file_revision
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
 from minegen.world.orebody import build_orebody
@@ -215,6 +219,15 @@ def test_catalogue_points_fail_closed() -> None:
             cat(centerline={"points": [0.0, 0.0, 0.0, "a", 1.0, 2.0], "pointCount": 2}),
             "no usable centerline",
         ),
+        # the candidates CONTAINER itself (PR #31 review): never a bare TypeError
+        "candidates=int": ({"candidates": 7}, "no candidate list"),
+        "candidates=bool": ({"candidates": True}, "no candidate list"),
+        "candidates=str": ({"candidates": "abc"}, "no candidate list"),
+        "candidates=dict": ({"candidates": {}}, "no candidate list"),
+        "candidates=null": ({"candidates": None}, "no candidate list"),
+        "no-candidates-key": ({}, "no candidate list"),
+        "catalogue=list": ([], "not a document"),
+        "catalogue=int": (7, "not a document"),
     }
     for name, (doc, expected) in cases.items():
         with pytest.raises(ClearancePolicyReconstructionError) as info:
@@ -602,3 +615,111 @@ def test_sync_tunnel_and_development_mesh_fail_closed_with_typed_409(
     path.write_text(pristine, encoding="utf-8")
     r = client.post(f"{base}/tunnel", params={"sync": "true"})
     assert r.status_code == 200, r.text
+
+
+def _second_feasible(catalogue: dict[str, Any], winner: str) -> str:
+    for row in catalogue["candidates"]:
+        if row["status"] == "FEASIBLE" and row["candidateId"] != winner:
+            return str(row["candidateId"])
+    raise AssertionError("the small TABULAR catalogue carries only one FEASIBLE candidate")
+
+
+def test_selection_snapshot_is_read_under_the_store_lock(
+    store: ScenarioStore, world_service: WorldService, design_service: DesignService
+) -> None:
+    """The selection document, the catalogue text and both file revisions are
+    read as ONE snapshot under the per-scenario store lock — the lock every
+    writer of these files holds — so a concurrent re-selection can never
+    interleave between the content read and the revision stat (PR #31
+    review, TOCTOU)."""
+    sid = store.create(_create_of(small_scenario())).id
+    world_service.generate(sid)
+    winner = design_service.generate_layout_v2(sid)["winnerId"]
+    assert winner is not None
+    design_service.activate_layout_candidate(sid, winner)
+
+    lock = store.lock(sid)
+    lock.acquire()  # a writer holds the scenario lock in THIS thread (RLock)
+    done = threading.Event()
+    result: dict[str, Any] = {}
+
+    def reader() -> None:  # the snapshot must wait for the writer
+        result["snapshot"] = design_service._selection_snapshot(sid)
+        done.set()
+
+    try:
+        thread = threading.Thread(target=reader, daemon=True)
+        thread.start()
+        assert not done.wait(0.75), "the snapshot was read while a writer held the lock"
+    finally:
+        lock.release()
+    assert done.wait(30), "the snapshot never completed after the writer released the lock"
+    selected, catalogue_text, layout_rev, selected_rev = result["snapshot"]
+    assert selected["candidateId"] == winner
+    assert selected["layoutRevision"] == layout_rev
+    assert layout_rev == file_revision(design_service.layout_path(sid))
+    assert selected_rev == file_revision(design_service.layout_selected_path(sid))
+    assert json.loads(catalogue_text)["winnerId"] == winner
+
+
+def test_cache_never_serves_a_policy_under_a_foreign_selection_revision(
+    store: ScenarioStore,
+    world_service: WorldService,
+    design_service: DesignService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for the PR #31 TOCTOU: request A snapshots selection A,
+    another request writes selection B while A's policy is being rebuilt,
+    and A's policy must be cached under A's SNAPSHOT revision — so the next
+    request, which sees selection B at revision B, misses and rebuilds B
+    instead of being served candidate A's certification."""
+    sid = store.create(_create_of(small_scenario())).id
+    world_service.generate(sid)
+    catalogue = design_service.generate_layout_v2(sid)
+    cand_a = catalogue["winnerId"]
+    assert cand_a is not None
+    cand_b = _second_feasible(catalogue, cand_a)
+    path = design_service.layout_selected_path(sid)
+    # materialize B once (warm search, no re-run) to capture its bytes, then
+    # put A back as the persisted selection
+    design_service.select_layout_candidate(sid, cand_b)
+    b_bytes = path.read_bytes()
+    design_service.select_layout_candidate(sid, cand_a)
+    assert design_service.layout_selected(sid)["candidateId"] == cand_a
+    # the restore is only consulted for the ACTIVE LAYOUT_V2 source
+    design_service.set_ramp_source(sid, "LAYOUT_V2")
+    monkeypatch.setattr(LayoutV2Search, "run", _forbidden_run)
+
+    real_restore = design_service_module.restore_candidate_policy
+    restored: list[str] = []
+
+    def racing_restore(*args: Any, **kwargs: Any) -> Any:
+        certification = kwargs["certification"]
+        restored.append(certification.candidate_id)
+        if len(restored) == 1:
+            # the concurrent request lands AFTER A's snapshot was taken and
+            # BEFORE A's policy is cached: selection B, at a new revision
+            path.write_bytes(b_bytes)
+            bumped = os.stat(path).st_mtime_ns + 2_000_000_000
+            os.utime(path, ns=(bumped, bumped))
+        return real_restore(*args, **kwargs)
+
+    monkeypatch.setattr(design_service_module, "restore_candidate_policy", racing_restore)
+    _, world = design_service.worlds.load(sid)
+    design_service._selected_policies.clear()
+
+    design_service._active_clearance_policy(sid, world)  # request A
+    entry = design_service._selected_policies[sid]
+    assert restored == [cand_a]
+    assert entry.candidate_id == cand_a
+    # keyed by the snapshot's revision, NOT the revision the file has now
+    assert entry.selected_revision != file_revision(path)
+
+    design_service._active_clearance_policy(sid, world)  # next request: sees B
+    assert restored == [cand_a, cand_b], restored
+    entry = design_service._selected_policies[sid]
+    assert entry.candidate_id == cand_b
+    assert entry.selected_revision == file_revision(path)
+    # and B is now served from its own entry, with no further rebuild
+    design_service._active_clearance_policy(sid, world)
+    assert restored == [cand_a, cand_b]

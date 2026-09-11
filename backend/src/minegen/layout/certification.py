@@ -383,8 +383,15 @@ def candidate_points_from_catalogue(catalogue: dict[str, Any], candidate_id: str
     determinism probe), so the normalisation is part of the contract.
     Every inconsistency is a typed ``ClearancePolicyReconstructionError``;
     nothing is repaired or guessed."""
+    if not isinstance(catalogue, dict):
+        raise ClearancePolicyReconstructionError(candidate_id, "the catalogue is not a document")
+    candidates = catalogue.get("candidates")
+    if not isinstance(candidates, list):
+        raise ClearancePolicyReconstructionError(
+            candidate_id, "the catalogue carries no candidate list"
+        )
     row: dict[str, Any] | None = None
-    for c in catalogue.get("candidates") or []:
+    for c in candidates:
         if isinstance(c, dict) and c.get("candidateId") == candidate_id:
             row = c
             break

@@ -241,6 +241,7 @@ class _RestoredPolicy:
     number."""
 
     world: SyntheticWorld
+    candidate_id: str
     layout_revision: str
     selected_revision: str
     evaluator: DesignCostEvaluator
@@ -668,15 +669,7 @@ class DesignService:
         mismatch (Phase 20B.1-v2 1.1). One restore per (world object,
         catalogue revision, selection revision) is cached so a builder chain
         pays it once."""
-        selected = self._layout_selected_if_present(scenario_id)
-        if selected is None:
-            raise LayoutV2NotSelectedError(scenario_id)
-        if not isinstance(selected, dict):
-            raise ClearancePolicyReconstructionError("?", "the selection is not a document")
-        layout_rev = file_revision(self.layout_path(scenario_id)) or ""
-        if selected.get("layoutRevision") != layout_rev:
-            raise LayoutSelectionStaleError(scenario_id)
-        selected_rev = file_revision(self.layout_selected_path(scenario_id)) or ""
+        selected, catalogue_text, layout_rev, selected_rev = self._selection_snapshot(scenario_id)
         scenario, world = self.worlds.load(scenario_id)
         hit = self._selected_policies.get(scenario_id)
         if (
@@ -690,28 +683,64 @@ class DesignService:
         # (never a bare KeyError / TypeError / ValueError → 500)
         certification = CandidateCertification.from_selection(selected)
         try:
-            catalogue = json.loads(self.layout_path(scenario_id).read_text(encoding="utf-8"))
-        except (OSError, ValueError) as err:
+            catalogue = json.loads(catalogue_text)
+        except ValueError as err:
             raise ClearancePolicyReconstructionError(
                 certification.candidate_id,
                 f"the catalogue is unreadable ({type(err).__name__})",
             ) from err
-        if not isinstance(catalogue, dict):
-            raise ClearancePolicyReconstructionError(
-                certification.candidate_id, "the catalogue is not a document"
-            )
         points = candidate_points_from_catalogue(catalogue, certification.candidate_id)
         evaluator, policy, _ = restore_candidate_policy(
             scenario, world, certification=certification, points=points
         )
+        # the entry is keyed by the revisions of the SNAPSHOT the policy was
+        # rebuilt from, never by a revision read later: a selection written
+        # by another request while this restore ran carries a different
+        # selected_revision and therefore misses
         self._selected_policies[scenario_id] = _RestoredPolicy(
             world=world,
+            candidate_id=certification.candidate_id,
             layout_revision=layout_rev,
             selected_revision=selected_rev,
             evaluator=evaluator,
             policy=policy,
         )
         return evaluator, policy
+
+    def _selection_snapshot(self, scenario_id: str) -> tuple[dict[str, Any], str, str, str]:
+        """ONE consistent snapshot of the persisted selection identity — the
+        selection document, the catalogue TEXT it is bound to, and the two
+        file revisions (catalogue, selection) — read together under the
+        per-scenario store lock, the same lock every writer of these files
+        holds (``select_layout_candidate``, ``generate_layout_v2``, the
+        ``_delete_*`` paths, ``WorldService.invalidate``). Reading them
+        separately let a concurrent re-selection interleave between the
+        content read and the revision stat, so a policy rebuilt for one
+        candidate could be cached under another candidate's revision and
+        served on the next request (PR #31 review, TOCTOU). Only the
+        snapshot is taken under the lock; the expensive rebuild runs
+        outside it. Nothing is retried or repaired: a missing selection is
+        ``LayoutV2NotSelectedError``, a selection bound to another catalogue
+        revision is ``LayoutSelectionStaleError``, an unreadable catalogue is
+        the typed reconstruction error."""
+        with self.store.lock(scenario_id):
+            selected = self._layout_selected_if_present(scenario_id)
+            if selected is None:
+                raise LayoutV2NotSelectedError(scenario_id)
+            if not isinstance(selected, dict):
+                raise ClearancePolicyReconstructionError("?", "the selection is not a document")
+            layout_rev = file_revision(self.layout_path(scenario_id)) or ""
+            if selected.get("layoutRevision") != layout_rev:
+                raise LayoutSelectionStaleError(scenario_id)
+            selected_rev = file_revision(self.layout_selected_path(scenario_id)) or ""
+            try:
+                catalogue_text = self.layout_path(scenario_id).read_text(encoding="utf-8")
+            except OSError as err:
+                raise ClearancePolicyReconstructionError(
+                    str(selected.get("candidateId")),
+                    f"the catalogue is unreadable ({type(err).__name__})",
+                ) from err
+        return selected, catalogue_text, layout_rev, selected_rev
 
     def _active_clearance_policy(self, scenario_id: str, world: SyntheticWorld) -> ClearancePolicy:
         """Clearance policy for every builder downstream of the ACTIVE ramp:

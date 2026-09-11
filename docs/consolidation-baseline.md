@@ -237,10 +237,16 @@ into a policy; any mismatch is `ClearancePolicyReconstructionError` (409
 `LAYOUT_V2_CLEARANCE_MISMATCH`) — never a re-run, never a fallback to the
 whole-body policy, never a file write. The restore is cached per (world
 object, catalogue revision, selection revision) so one builder chain pays it
-once; the entry keeps a strong reference to its world object until the next
-restore for that scenario replaces it (the pattern `_layouts` already had),
-and a stale entry can never be served because the key requires the CURRENT
-world object. Present-but-malformed selection documents (a null or list
+once. The selection document, the catalogue text and both file revisions
+are read as ONE snapshot under the per-scenario store lock (the lock every
+writer of those files holds), and the entry is keyed by the SNAPSHOT's
+revisions — a re-selection that lands while a rebuild runs carries a new
+selection revision and misses (PR #31 review: reading content and revision
+separately let one candidate's policy be cached under another's revision).
+The entry keeps a strong reference to its world object until the next
+restore for that scenario replaces it (the pattern `_layouts` already had);
+a stale entry can never be served because the key requires the CURRENT world
+object and the current revisions. Present-but-malformed selection documents (a null or list
 `clearance` block, a non-numeric bound, a refinement the provenance key
 cannot digest) are the same typed 409, never a bare exception. `generate_levels`, `generate_shafts`, `generate_tunnel`,
 `generate_development_mesh` and everything below them make ZERO
