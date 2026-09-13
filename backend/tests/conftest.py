@@ -51,6 +51,10 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     "test_layout_v2_golden_smoke": ("golden",),
     "test_warped_vein_golden_smoke": ("golden",),
     "test_layout_v2_api": ("e2e",),
+    # AC-01F commit 1 only: builds BOTH oracle stacks through the real API
+    # (LEGACY ≈ 9 s + LAYOUT_V2 ≈ 5 s) to run the OLD readers beside the NEW
+    # resolver; deleted in commit 2 with the consumers it characterizes
+    "test_artifact_reader_transition": ("slow", "e2e"),
 }
 #: test function name (any module) → markers
 TEST_MARKERS: dict[str, tuple[str, ...]] = {

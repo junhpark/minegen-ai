@@ -25,6 +25,7 @@ from minegen.export.scene_manifest import (
     build_scene,
     slice_payload,
 )
+from minegen.services.artifact_errors import WorldNotGeneratedError
 from minegen.services.effective_ramp import resolve_effective_ramp
 from minegen.services.scenario_service import ScenarioStore
 from minegen.world.geology import FaultPlane
@@ -33,9 +34,12 @@ from minegen.world.spatial_fields import IncompatibleFieldArtifactError, Spatial
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 from minegen.world.terrain import Terrain
 
-
-class WorldNotGeneratedError(LookupError):
-    pass
+#: AC-01F: ``WorldNotGeneratedError`` moved to
+#: ``services/artifact_errors.py`` so the validated read authority can raise
+#: the world guard without importing a service (no cycle); re-exported here,
+#: so every existing import and every ``isinstance`` check — including
+#: ``WorldArtifactIncompatibleError``'s subclassing — names this class object.
+__all__ = ["WorldArtifactIncompatibleError", "WorldNotGeneratedError", "WorldService"]
 
 
 def _layout_summary(catalogue: dict[str, Any]) -> dict[str, Any]:

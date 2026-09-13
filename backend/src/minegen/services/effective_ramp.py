@@ -25,7 +25,6 @@ written in the contract. Every effective ramp carries::
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +38,7 @@ from minegen.core.artifacts import (
     RAMP_SOURCE_FILE,
     RampSource,
 )
+from minegen.core.revision import file_revision
 
 RAMP_SOURCES: tuple[RampSource, ...] = ("LEGACY", "LAYOUT_V2")
 
@@ -60,16 +60,6 @@ __all__ = [
 SOURCE_KIND_LEGACY_SMOOTHED = "LEGACY_SMOOTHED"
 SOURCE_KIND_LEGACY_RAW_FALLBACK = "LEGACY_RAW_FALLBACK"
 SOURCE_KIND_PARAMETRIC_V2 = "PARAMETRIC_V2"
-
-
-def file_revision(path: Path) -> str | None:
-    """Stable short revision of an artifact file: (size, mtime_ns) hash —
-    the same identity the InputFingerprint protocol uses."""
-    try:
-        st = path.stat()
-    except FileNotFoundError:
-        return None
-    return hashlib.sha256(f"{path.name}:{st.st_size}:{st.st_mtime_ns}".encode()).hexdigest()[:16]
 
 
 def read_ramp_source(derived_dir: Path) -> RampSource:

@@ -73,6 +73,26 @@ from minegen.network.builder import MineNetworkBuilder
 from minegen.network.models import NetworkPayload
 from minegen.scheduling.builder import MineTimelineBuilder
 from minegen.scheduling.models import TimelinePayload
+from minegen.services.artifact_errors import (
+    CapabilityGraphNotGeneratedError,
+    CapabilityGraphStaleError,
+    DeclineNotGeneratedError,
+    DevelopmentMeshNotGeneratedError,
+    LayoutSelectionStaleError,
+    LayoutV2NotGeneratedError,
+    LayoutV2NotSelectedError,
+    LevelAccessesNotGeneratedError,
+    LevelsNotGeneratedError,
+    NetworkNotFoundError,
+    ShaftsNotGeneratedError,
+    ShaftsStaleError,
+    SmoothedNotGeneratedError,
+    StaleInputsError,
+    StopesNotGeneratedError,
+    TargetsNotGeneratedError,
+    TimelineNotGeneratedError,
+    TunnelNotGeneratedError,
+)
 from minegen.services.effective_ramp import (
     RampSource,
     file_revision,
@@ -86,6 +106,34 @@ from minegen.shafts.models import ShaftsPayload
 from minegen.shafts.planner import ShaftPlanner
 from minegen.world.synthetic_world import SyntheticWorld
 
+#: AC-01F relocated every read-state exception to
+#: ``services/artifact_errors.py`` so ONE class object exists for the reader,
+#: the services and the routers. They are re-exported here (this ``__all__``
+#: lists the re-exports only — the module's own definitions, ``DesignService``
+#: and friends, are exported as always) so every existing
+#: ``from minegen.services.design_service import <Error>`` and every
+#: ``isinstance`` check in the routers and tests keeps working unchanged.
+__all__ = [
+    "CapabilityGraphNotGeneratedError",
+    "CapabilityGraphStaleError",
+    "DeclineNotGeneratedError",
+    "DevelopmentMeshNotGeneratedError",
+    "LayoutSelectionStaleError",
+    "LayoutV2NotGeneratedError",
+    "LayoutV2NotSelectedError",
+    "LevelAccessesNotGeneratedError",
+    "LevelsNotGeneratedError",
+    "NetworkNotFoundError",
+    "ShaftsNotGeneratedError",
+    "ShaftsStaleError",
+    "SmoothedNotGeneratedError",
+    "StaleInputsError",
+    "StopesNotGeneratedError",
+    "TargetsNotGeneratedError",
+    "TimelineNotGeneratedError",
+    "TunnelNotGeneratedError",
+]
+
 
 class UnsupportedOrebodyError(RuntimeError):
     """The legacy Phase 03+ layout supports TABULAR only. Non-tabular
@@ -94,104 +142,12 @@ class UnsupportedOrebodyError(RuntimeError):
     (rule 123, docs/roadmap.md)."""
 
 
-class TargetsNotGeneratedError(LookupError):
-    pass
-
-
-class TimelineNotGeneratedError(LookupError):
-    """timeline.json does not exist for the scenario."""
-
-
-class StopesNotGeneratedError(LookupError):
-    """stopes.json does not exist for the scenario."""
-
-
-class LevelsNotGeneratedError(LookupError):
-    """levels.json does not exist for the scenario."""
-
-
-class NetworkNotFoundError(LookupError):
-    """network.json does not exist for the scenario."""
-
-
-class ShaftsNotGeneratedError(LookupError):
-    """shafts.json does not exist for the scenario (Phase 20C.2B)."""
-
-
-class CapabilityGraphNotGeneratedError(LookupError):
-    """capability_graph.json does not exist for the scenario (Phase 20C.2B)."""
-
-
-class CapabilityGraphStaleError(RuntimeError):
-    """capability_graph.json was built over a different ``network.json``
-    revision than the one on disk (rule 185): never silently reused."""
-
-    code = "CAPABILITY_GRAPH_STALE"
-
-    def __init__(self, scenario_id: str) -> None:
-        super().__init__(
-            f"the capability graph of scenario '{scenario_id}' belongs to a previous "
-            "network revision; POST …/design/capability-graph again"
-        )
-
-
 class UnknownNetworkNodeError(LookupError):
     """A capability path query names a node id the network does not have."""
 
     def __init__(self, node_id: str) -> None:
         super().__init__(f"network node '{node_id}' does not exist")
         self.node_id = node_id
-
-
-class ShaftsStaleError(RuntimeError):
-    """shafts.json was planned against a different ``levels.json`` revision
-    than the one on disk (Phase 20C.2B, rule 184): the network builder
-    fails closed instead of welding stations onto moved level nodes."""
-
-    code = "SHAFTS_STALE"
-
-    def __init__(self, scenario_id: str) -> None:
-        super().__init__(
-            f"the shaft artifact of scenario '{scenario_id}' belongs to a previous "
-            "level-development revision; POST …/design/shafts again"
-        )
-
-
-class DevelopmentMeshNotGeneratedError(LookupError):
-    """development_mesh.json does not exist for the scenario."""
-
-
-class TunnelNotGeneratedError(LookupError):
-    """tunnel_mesh.json does not exist for the scenario."""
-
-    def __init__(self, scenario_id: str) -> None:
-        super().__init__(f"tunnel mesh not generated for scenario {scenario_id}")
-        self.scenario_id = scenario_id
-
-
-class SmoothedNotGeneratedError(LookupError):
-    """decline_smoothed.json does not exist for the scenario."""
-
-    def __init__(self, scenario_id: str) -> None:
-        super().__init__(f"smoothed decline not generated for scenario {scenario_id}")
-        self.scenario_id = scenario_id
-
-
-class DeclineNotGeneratedError(LookupError):
-    pass
-
-
-class LayoutV2NotGeneratedError(LookupError):
-    """layout_v2.json does not exist for the scenario."""
-
-
-class LayoutV2NotSelectedError(LookupError):
-    """layout_v2_selected.json does not exist (no candidate selected), or
-    LAYOUT_V2 is the active ramp source without a selection."""
-
-
-class LevelAccessesNotGeneratedError(LookupError):
-    """level_accesses.json does not exist for the scenario (Phase 20B)."""
 
 
 class LayoutCandidateNotFoundError(LookupError):
@@ -211,34 +167,6 @@ class LayoutCandidateInfeasibleError(ValueError):
         self.candidate_id = candidate_id
         self.status = status
         self.reasons = reasons
-
-
-class StaleInputsError(RuntimeError):
-    """The scenario/world/targets revision changed while a design job was
-    running (rule 60). The stale result is discarded, never persisted."""
-
-    code = "JOB_INPUTS_CHANGED"
-
-    def __init__(self, scenario_id: str) -> None:
-        super().__init__(
-            f"inputs of scenario '{scenario_id}' changed while the job was running; "
-            "the stale result was discarded (regenerate to get a current one)"
-        )
-
-
-class LayoutSelectionStaleError(RuntimeError):
-    """``layout_v2_selected.json`` was written for a different layout-v2
-    catalogue revision than the one on disk (Phase 20B.1-v2 1.1). The
-    downstream builders fail closed rather than rebuild the selected
-    candidate's clearance policy from a catalogue it does not belong to."""
-
-    code = "LAYOUT_V2_SELECTION_STALE"
-
-    def __init__(self, scenario_id: str) -> None:
-        super().__init__(
-            f"the selected layout-v2 candidate of scenario '{scenario_id}' belongs to a "
-            "previous catalogue revision; re-select or re-activate a candidate"
-        )
 
 
 @dataclass(frozen=True)

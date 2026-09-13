@@ -15,6 +15,10 @@ from minegen.core.artifacts import COMMUNICATION_ARTIFACT, SENSORS_ARTIFACT
 from minegen.infrastructure.builder import CommunicationBuilder
 from minegen.infrastructure.models import CommunicationPayload, SensorPayload
 from minegen.infrastructure.sensors import SensorBuilder
+from minegen.services.artifact_errors import (
+    CommunicationNotGeneratedError,
+    SensorsNotGeneratedError,
+)
 from minegen.services.design_service import (
     DesignService,
     InputFingerprint,
@@ -23,13 +27,11 @@ from minegen.services.design_service import (
 )
 from minegen.services.scenario_service import ScenarioStore
 
-
-class CommunicationNotGeneratedError(LookupError):
-    """communication.json does not exist for the scenario."""
-
-
-class SensorsNotGeneratedError(LookupError):
-    """sensors.json does not exist for the scenario."""
+#: AC-01F: the two NOT_GENERATED classes now live in
+#: ``services/artifact_errors.py`` (ONE definition); re-exported so
+#: ``api/infrastructure.py`` and the tests keep their imports and every
+#: ``isinstance`` check names the same class object.
+__all__ = ["CommunicationNotGeneratedError", "InfrastructureService", "SensorsNotGeneratedError"]
 
 
 class InfrastructureService:
