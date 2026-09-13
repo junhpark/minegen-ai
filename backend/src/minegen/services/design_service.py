@@ -21,14 +21,25 @@ from minegen.capability.builder import (
     query_graph_from,
 )
 from minegen.capability.models import CapabilityGraphPayload, CapabilityPathQuery
+from minegen.core.artifact_registry import LOCATION_DERIVED, fingerprint_paths, invalidated_by
 from minegen.core.artifacts import (
     CAPABILITY_GRAPH_ARTIFACT,
+    DECLINE_ARTIFACT,
+    DEVELOPMENT_MESH_ARTIFACT,
+    DEVELOPMENT_MESH_GLB,
     LAYOUT_V2_ARTIFACT,
     LAYOUT_V2_SELECTED_ARTIFACT,
     LEGACY_RAMP_ARTIFACT,
     LEVEL_ACCESSES_ARTIFACT,
+    LEVELS_ARTIFACT,
+    NETWORK_ARTIFACT,
     RAMP_SOURCE_FILE,
     SHAFTS_ARTIFACT,
+    STOPES_ARTIFACT,
+    TARGETS_ARTIFACT,
+    TIMELINE_ARTIFACT,
+    TUNNEL_MESH_ARTIFACT,
+    TUNNEL_MESH_GLB,
 )
 from minegen.core.enums import Capability, DistanceContract, OrebodyType
 from minegen.core.models import Scenario
@@ -272,6 +283,24 @@ class InputFingerprint:
         return cls(entries=tuple(cls._stat(p) for p in paths))
 
 
+def artifact_fingerprint(store: ScenarioStore, scenario_id: str, name: str) -> InputFingerprint:
+    """The input revision of the registered artifact ``name`` (rule 60):
+    ``InputFingerprint.capture`` over the registry's ORDERED, rooted input
+    paths (``core/artifact_registry.py`` — ``scenario.json`` / ``arrays.npz``
+    under the scenario directory, everything else under ``derived/``). The
+    ONE consumer path of the fingerprint projection for every public
+    ``*_fingerprint()`` of the design AND infrastructure services (AC-01E):
+    the entry ORDER reaches persisted ``sourceRevision`` / selection
+    ``revision`` bytes, so no service declares an input list of its own."""
+    return InputFingerprint.capture(
+        fingerprint_paths(
+            name,
+            scenario_dir=store.scenario_dir(scenario_id),
+            derived_dir=store.derived_dir(scenario_id),
+        )
+    )
+
+
 class DesignService:
     def __init__(self, store: ScenarioStore, worlds: WorldService) -> None:
         self.store = store
@@ -280,6 +309,45 @@ class DesignService:
         self._targets: dict[str, AccessTargetSet] = {}
         self._layouts: dict[str, tuple[SyntheticWorld, LayoutV2Search, LayoutSearchResult]] = {}
         self._selected_policies: dict[str, _RestoredPolicy] = {}
+
+    # -- artifact lifecycle (AC-01E: the registry's ONE consumer path) ------- #
+
+    def _fingerprint_of(self, scenario_id: str, name: str) -> InputFingerprint:
+        return artifact_fingerprint(self.store, scenario_id, name)
+
+    def _invalidate_downstream(
+        self, scenario_id: str, *written: str, source: RampSource | None = None
+    ) -> None:
+        """Delete every derived artifact the registry derives from the
+        artifacts a writer has JUST persisted (``invalidated_by`` — the
+        transitive closure over ``core/artifact_registry.py``; rules 46 / 64
+        / 67 / 74 / 79 / 86 / 92 / 98 / 151 / 162 / 184 / 185). This one
+        method replaces the hand-sequenced per-writer cascades.
+
+        PRECONDITION: called INSIDE the writer's ``with self.store.lock(sid)``
+        block, immediately AFTER the write — the same lock that guards
+        ``WorldService.invalidate`` (rule 60). The active ramp source that
+        gates a ramp OWNER's downstream edges (``decline_smoothed.json`` →
+        LEGACY, ``layout_v2_selected.json`` / ``level_accesses.json`` →
+        LAYOUT_V2) is read from ``ramp_source.json`` AT THIS POINT, never
+        earlier and never from memory (missing / malformed → LEGACY, the
+        ``read_ramp_source`` contract); only a writer that has itself just
+        written ``ramp_source.json`` passes the value explicitly. Every
+        delete keeps the ``exists()`` guard; no in-memory cache is cleared.
+        Scenario mutation / world regeneration are NOT this path — they stay
+        ``WorldService.invalidate`` → ``ScenarioStore.clear_derived``
+        (rules 40 / 46)."""
+        derived = self.store.derived_dir(scenario_id)
+        if source is None:
+            source = read_ramp_source(derived)
+        for artifact in invalidated_by(written, source):
+            for file in artifact.files:
+                # every invalidatable artifact lives under derived/ (the two
+                # scenario-directory roots are reachable from no derived one)
+                assert file.location == LOCATION_DERIVED, file
+                path = derived / file.name
+                if path.exists():
+                    path.unlink()
 
     # -- evaluator --------------------------------------------------------- #
 
@@ -304,7 +372,7 @@ class DesignService:
     # -- targets ----------------------------------------------------------- #
 
     def targets_path(self, scenario_id: str) -> Any:
-        return self.store.derived_dir(scenario_id) / "targets.json"
+        return self.store.derived_dir(scenario_id) / TARGETS_ARTIFACT
 
     def generate_targets(self, scenario_id: str) -> dict[str, Any]:
         scenario, world, ev = self.evaluator(scenario_id)
@@ -326,21 +394,17 @@ class DesignService:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             self._targets[scenario_id] = targets
-            decline = self.decline_path(scenario_id)
-            if decline.exists():
-                decline.unlink()  # rule 46: a decline built on old targets is stale
-            smoothed = self.smoothed_path(scenario_id)
-            if smoothed.exists():
-                smoothed.unlink()  # rule 64: derived from the deleted decline
-            # rules 67/74/79/86/92/98/68: everything derived from the LEGACY
-            # effective ramp is stale (a LAYOUT_V2-derived chain is not)
-            self._delete_ramp_downstream_if_active(scenario_id, "LEGACY")
+            # rule 46: the decline built on the old targets and (rule 64) its
+            # smoothed derivative are stale; everything derived from the
+            # LEGACY effective ramp follows (rules 67/74/79/86/92/98/68 — a
+            # LAYOUT_V2-derived chain does not)
+            self._invalidate_downstream(scenario_id, TARGETS_ARTIFACT)
         return payload
 
     # -- decline (Phase 04) ------------------------------------------------ #
 
     def decline_path(self, scenario_id: str) -> Any:
-        return self.store.derived_dir(scenario_id) / "decline.json"
+        return self.store.derived_dir(scenario_id) / DECLINE_ARTIFACT
 
     def _targets_object(self, scenario_id: str) -> AccessTargetSet:
         cached = self._targets.get(scenario_id)
@@ -363,15 +427,8 @@ class DesignService:
         self._targets[scenario_id] = targets
         return targets
 
-    def _input_paths(self, scenario_id: str) -> list[Path]:
-        return [
-            self.store.scenario_path(scenario_id),
-            self.store.arrays_path(scenario_id),
-            Path(self.targets_path(scenario_id)),
-        ]
-
     def input_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._input_paths(scenario_id))
+        return self._fingerprint_of(scenario_id, DECLINE_ARTIFACT)
 
     def generate_decline(
         self,
@@ -399,22 +456,18 @@ class DesignService:
             path = self.decline_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload), encoding="utf-8")
-            smoothed = self.smoothed_path(scenario_id)
-            if smoothed.exists():
-                smoothed.unlink()  # rule 64: the old smoothed artifact is stale
-            self._delete_ramp_downstream_if_active(scenario_id, "LEGACY")  # rules 67–98
+            # rule 64: the old smoothed artifact is stale, and with it (rules
+            # 67–98) the chain derived from the LEGACY effective ramp
+            self._invalidate_downstream(scenario_id, DECLINE_ARTIFACT)
         return payload
 
     # -- smoothing (Phase 05, rules 61–64) ---------------------------------- #
 
     def smoothed_path(self, scenario_id: str) -> Path:
-        return self.store.derived_dir(scenario_id) / "decline_smoothed.json"
-
-    def _smoothing_input_paths(self, scenario_id: str) -> list[Path]:
-        return [*self._input_paths(scenario_id), Path(self.decline_path(scenario_id))]
+        return self.store.derived_dir(scenario_id) / LEGACY_RAMP_ARTIFACT
 
     def smoothing_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._smoothing_input_paths(scenario_id))
+        return self._fingerprint_of(scenario_id, LEGACY_RAMP_ARTIFACT)
 
     def generate_smoothed(
         self, scenario_id: str, on_progress: ProgressCallback = no_progress
@@ -465,7 +518,7 @@ class DesignService:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload), encoding="utf-8")
             # rules 67/74/79/86/92/98/68: the LEGACY effective ramp changed
-            self._delete_ramp_downstream_if_active(scenario_id, "LEGACY")
+            self._invalidate_downstream(scenario_id, LEGACY_RAMP_ARTIFACT)
         return payload
 
     def smoothed(self, scenario_id: str) -> dict[str, Any]:
@@ -494,45 +547,8 @@ class DesignService:
     def ramp_source_path(self, scenario_id: str) -> Path:
         return self.store.derived_dir(scenario_id) / RAMP_SOURCE_FILE
 
-    def _ramp_input_paths(self, scenario_id: str) -> list[Path]:
-        """Every file that decides the Effective Ramp (rule 150): the legacy
-        artifact, the layout-v2 selection and the active-source switch.
-        Downstream fingerprints include all three, so switching the source
-        or re-selecting a candidate is a new input revision."""
-        return [
-            Path(self.smoothed_path(scenario_id)),
-            self.layout_selected_path(scenario_id),
-            self.level_accesses_path(scenario_id),
-            self.ramp_source_path(scenario_id),
-        ]
-
-    def _layout_input_paths(self, scenario_id: str) -> list[Path]:
-        return [self.store.scenario_path(scenario_id), self.store.arrays_path(scenario_id)]
-
     def layout_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._layout_input_paths(scenario_id))
-
-    def _delete_layout_selection(self, scenario_id: str) -> None:
-        # rule 157: the level-access artifact is owned by the selection
-        for path in (self.layout_selected_path(scenario_id), self.level_accesses_path(scenario_id)):
-            if path.exists():
-                path.unlink()
-
-    def _delete_ramp_downstream(self, scenario_id: str) -> None:
-        """Everything derived from the Effective Ramp (rule 151): tunnel,
-        levels, stopes, timeline, communication, sensors, network. Never
-        geology, never the ramp artifacts themselves."""
-        self._delete_tunnel_artifacts(scenario_id)  # rule 67
-        self._delete_levels_artifact(scenario_id)  # rule 74
-        self._delete_stopes_artifact(scenario_id)  # rule 79
-        self._delete_timeline_artifact(scenario_id)  # rule 86
-        self._delete_communication_artifact(scenario_id)  # rule 92
-        self._delete_sensors_artifact(scenario_id)  # rule 98
-        self._delete_network_artifact(scenario_id)  # rule 68
-
-    def _delete_ramp_downstream_if_active(self, scenario_id: str, source: RampSource) -> None:
-        if read_ramp_source(self.store.derived_dir(scenario_id)) == source:
-            self._delete_ramp_downstream(scenario_id)
+        return self._fingerprint_of(scenario_id, LAYOUT_V2_ARTIFACT)
 
     def generate_layout_v2(
         self, scenario_id: str, on_progress: ProgressCallback = no_progress
@@ -556,8 +572,10 @@ class DesignService:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(serialized, encoding="utf-8")
             self._layouts[scenario_id] = (world, search, result)
-            self._delete_layout_selection(scenario_id)
-            self._delete_ramp_downstream_if_active(scenario_id, "LAYOUT_V2")
+            # rule 157: the selection (and the level accesses it owns) is
+            # stale; the LAYOUT_V2-derived chain follows while that source
+            # is active (rule 151)
+            self._invalidate_downstream(scenario_id, LAYOUT_V2_ARTIFACT)
         return payload
 
     def layout_v2(self, scenario_id: str) -> dict[str, Any]:
@@ -599,9 +617,7 @@ class DesignService:
         candidate that is already selected for the same layout revision is a
         no-op; a different selection invalidates the LAYOUT_V2 downstream
         chain when that source is active."""
-        fingerprint = InputFingerprint.capture(
-            [*self._layout_input_paths(scenario_id), self.layout_path(scenario_id)]
-        )
+        fingerprint = self._fingerprint_of(scenario_id, LAYOUT_V2_SELECTED_ARTIFACT)
         # AC-01D: the idempotent re-select / re-activate of the already
         # selected candidate at the same catalogue revision never touches
         # the in-memory search (and so never re-runs it on a cold cache)
@@ -637,15 +653,17 @@ class DesignService:
         serialized = json.dumps(payload)
         serialized_accesses = json.dumps(accesses)
         with self.store.lock(scenario_id):
-            current = InputFingerprint.capture(
-                [*self._layout_input_paths(scenario_id), self.layout_path(scenario_id)]
-            )
+            current = self._fingerprint_of(scenario_id, LAYOUT_V2_SELECTED_ARTIFACT)
             if current != fingerprint:
                 raise StaleInputsError(scenario_id)
             path = self.layout_selected_path(scenario_id)
             path.write_text(serialized, encoding="utf-8")
             self.level_accesses_path(scenario_id).write_text(serialized_accesses, encoding="utf-8")
-            self._delete_ramp_downstream_if_active(scenario_id, "LAYOUT_V2")
+            # rule 151 / 169: a NEW selection invalidates the LAYOUT_V2-derived
+            # chain while that source is active (inert under LEGACY)
+            self._invalidate_downstream(
+                scenario_id, LAYOUT_V2_SELECTED_ARTIFACT, LEVEL_ACCESSES_ARTIFACT
+            )
         return payload
 
     def _layout_selected_if_present(self, scenario_id: str) -> dict[str, Any] | None:
@@ -712,8 +730,8 @@ class DesignService:
         selection document, the catalogue TEXT it is bound to, and the two
         file revisions (catalogue, selection) — read together under the
         per-scenario store lock, the same lock every writer of these files
-        holds (``select_layout_candidate``, ``generate_layout_v2``, the
-        ``_delete_*`` paths, ``WorldService.invalidate``). Reading them
+        holds (``select_layout_candidate``, ``generate_layout_v2``,
+        ``_invalidate_downstream``, ``WorldService.invalidate``). Reading them
         separately let a concurrent re-selection interleave between the
         content read and the revision stat, so a policy rebuilt for one
         candidate could be cached under another candidate's revision and
@@ -790,7 +808,9 @@ class DesignService:
                 raise LayoutV2NotSelectedError(scenario_id)
             if read_ramp_source(derived) != source:
                 write_ramp_source(derived, source)
-                self._delete_ramp_downstream(scenario_id)
+                # the file just written IS the source: passed explicitly, not
+                # re-read (the closure is source-independent either way)
+                self._invalidate_downstream(scenario_id, RAMP_SOURCE_FILE, source=source)
         return self.ramp_source(scenario_id)
 
     def activate_layout_candidate(self, scenario_id: str, candidate_id: str) -> dict[str, Any]:
@@ -816,27 +836,10 @@ class DesignService:
     # -- level developments (Phase 08, rules 71–74) -------------------------- #
 
     def levels_path(self, scenario_id: str) -> Path:
-        return self.store.derived_dir(scenario_id) / "levels.json"
-
-    def _delete_levels_artifact(self, scenario_id: str) -> None:
-        path = self.levels_path(scenario_id)
-        if path.exists():
-            path.unlink()
-        # the development mesh is a derivative of levels + level accesses
-        self._delete_development_mesh_artifacts(scenario_id)
-        self._delete_shafts_artifact(scenario_id)  # rule 184: stations weld onto levels
-
-    def _levels_input_paths(self, scenario_id: str) -> list[Path]:
-        # cross-section + mining lattice config from scenario.json, orebody
-        # geometry via arrays.npz, entries from the smoothed artifact
-        return [
-            Path(self.store.scenario_path(scenario_id)),
-            Path(self.store.arrays_path(scenario_id)),
-            *self._ramp_input_paths(scenario_id),
-        ]
+        return self.store.derived_dir(scenario_id) / LEVELS_ARTIFACT
 
     def levels_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._levels_input_paths(scenario_id))
+        return self._fingerprint_of(scenario_id, LEVELS_ARTIFACT)
 
     def generate_levels(self, scenario_id: str) -> LevelsPayload:
         """Synchronous deterministic analytic geometry (rule 71; rule 60
@@ -876,13 +879,10 @@ class DesignService:
             path = self.levels_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(serialized, encoding="utf-8")
-            self._delete_shafts_artifact(scenario_id)  # rule 184: levels → shafts
-            self._delete_network_artifact(scenario_id)  # rule 74: rebuild, never patch
-            self._delete_stopes_artifact(scenario_id)  # rule 79 chain
-            self._delete_timeline_artifact(scenario_id)  # rule 86 chain
-            self._delete_communication_artifact(scenario_id)  # rule 92 chain
-            self._delete_sensors_artifact(scenario_id)  # rule 98
-            self._delete_development_mesh_artifacts(scenario_id)  # closeout v3 §4
+            # rules 184 / 74 / 79 / 86 / 92 / 98 / closeout v3 §4: shafts,
+            # network (+ capability), stopes, timeline, communication,
+            # sensors, development mesh — never the tunnel (rule 74)
+            self._invalidate_downstream(scenario_id, LEVELS_ARTIFACT)
         return payload
 
     def levels(self, scenario_id: str) -> LevelsPayload:
@@ -895,22 +895,10 @@ class DesignService:
     # -- stopes (Phase 09, rules 75–80) --------------------------------------- #
 
     def stopes_path(self, scenario_id: str) -> Path:
-        return self.store.derived_dir(scenario_id) / "stopes.json"
-
-    def _delete_stopes_artifact(self, scenario_id: str) -> None:
-        path = self.stopes_path(scenario_id)
-        if path.exists():
-            path.unlink()
-
-    def _stopes_input_paths(self, scenario_id: str) -> list[Path]:
-        return [
-            Path(self.store.scenario_path(scenario_id)),
-            Path(self.store.arrays_path(scenario_id)),
-            Path(self.levels_path(scenario_id)),
-        ]
+        return self.store.derived_dir(scenario_id) / STOPES_ARTIFACT
 
     def stopes_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._stopes_input_paths(scenario_id))
+        return self._fingerprint_of(scenario_id, STOPES_ARTIFACT)
 
     def generate_stopes(self, scenario_id: str) -> StopesPayload:
         """Synchronous Phase 09 stope generation (rules 75–80): consumes the
@@ -945,7 +933,7 @@ class DesignService:
             path = self.stopes_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(serialized, encoding="utf-8")
-            self._delete_timeline_artifact(scenario_id)  # rule 86: rebuild, never patch
+            self._invalidate_downstream(scenario_id, STOPES_ARTIFACT)  # rule 86: timeline
         return payload
 
     def stopes(self, scenario_id: str) -> StopesPayload:
@@ -958,40 +946,10 @@ class DesignService:
     # -- timeline (Phase 10, rules 81–86) ------------------------------------- #
 
     def timeline_path(self, scenario_id: str) -> Path:
-        return self.store.derived_dir(scenario_id) / "timeline.json"
-
-    def _delete_timeline_artifact(self, scenario_id: str) -> None:
-        path = self.timeline_path(scenario_id)
-        if path.exists():
-            path.unlink()
-
-    def _delete_sensors_artifact(self, scenario_id: str) -> None:
-        # rule 98: sensors.json shares communication's dependency shape;
-        # the path contract is shared with InfrastructureService
-        path = self.store.derived_dir(scenario_id) / "sensors.json"
-        if path.exists():
-            path.unlink()
-
-    def _delete_communication_artifact(self, scenario_id: str) -> None:
-        # rule 92: communication.json lives beside the other derived artifacts;
-        # the path contract is shared with InfrastructureService
-        path = self.store.derived_dir(scenario_id) / "communication.json"
-        if path.exists():
-            path.unlink()
-
-    def _timeline_input_paths(self, scenario_id: str) -> list[Path]:
-        # rule 86: network + stopes + the owning centerline artifacts
-        return [
-            Path(self.store.scenario_path(scenario_id)),
-            Path(self.network_path(scenario_id)),
-            Path(self.stopes_path(scenario_id)),
-            *self._ramp_input_paths(scenario_id),
-            Path(self.levels_path(scenario_id)),
-            Path(self.shafts_path(scenario_id)),  # Phase 20C.2B optional owner
-        ]
+        return self.store.derived_dir(scenario_id) / TIMELINE_ARTIFACT
 
     def timeline_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._timeline_input_paths(scenario_id))
+        return self._fingerprint_of(scenario_id, TIMELINE_ARTIFACT)
 
     def generate_timeline(self, scenario_id: str) -> TimelinePayload:
         """Synchronous deterministic precedence-only baseline (rules 81–86):
@@ -1041,13 +999,7 @@ class DesignService:
     # -- mine network (Phase 07, rules 13, 68–70) ---------------------------- #
 
     def network_path(self, scenario_id: str) -> Path:
-        return self.store.derived_dir(scenario_id) / "network.json"
-
-    def _delete_network_artifact(self, scenario_id: str) -> None:
-        path = self.network_path(scenario_id)
-        if path.exists():
-            path.unlink()
-        self._delete_capability_graph_artifact(scenario_id)  # rule 185: network → capability
+        return self.store.derived_dir(scenario_id) / NETWORK_ARTIFACT
 
     # -- shafts (Phase 20C.2B, rules 182–184) --------------------------------- #
 
@@ -1057,23 +1009,8 @@ class DesignService:
     def capability_graph_path(self, scenario_id: str) -> Path:
         return self.store.derived_dir(scenario_id) / CAPABILITY_GRAPH_ARTIFACT
 
-    def _delete_shafts_artifact(self, scenario_id: str) -> None:
-        path = self.shafts_path(scenario_id)
-        if path.exists():
-            path.unlink()
-
-    def _delete_capability_graph_artifact(self, scenario_id: str) -> None:
-        path = self.capability_graph_path(scenario_id)
-        if path.exists():
-            path.unlink()
-
-    def _shafts_input_paths(self, scenario_id: str) -> list[Path]:
-        # shaft specs + gates from scenario.json, geology via arrays.npz, the
-        # active ramp (clearance policy identity), station targets from levels.json
-        return [*self._levels_input_paths(scenario_id), Path(self.levels_path(scenario_id))]
-
     def shafts_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._shafts_input_paths(scenario_id))
+        return self._fingerprint_of(scenario_id, SHAFTS_ARTIFACT)
 
     def generate_shafts(self, scenario_id: str) -> ShaftsPayload:
         """Phase 20C.2B: deterministic vertical shaft planning against the
@@ -1105,10 +1042,9 @@ class DesignService:
             path = self.shafts_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(serialized, encoding="utf-8")
-            self._delete_network_artifact(scenario_id)  # rule 184: shafts → network
-            self._delete_timeline_artifact(scenario_id)
-            self._delete_communication_artifact(scenario_id)
-            self._delete_sensors_artifact(scenario_id)
+            # rule 184: shafts → network (+ capability), timeline,
+            # communication, sensors — never stopes / development mesh
+            self._invalidate_downstream(scenario_id, SHAFTS_ARTIFACT)
         return payload
 
     def shafts(self, scenario_id: str) -> ShaftsPayload:
@@ -1132,17 +1068,8 @@ class DesignService:
 
     # -- capability graph (Phase 20C.2B, rule 185) --------------------------- #
 
-    def _capability_input_paths(self, scenario_id: str) -> list[Path]:
-        # declared capability config from scenario.json, topology from
-        # network.json, shaft-declared sets from shafts.json (optional owner)
-        return [
-            Path(self.store.scenario_path(scenario_id)),
-            Path(self.network_path(scenario_id)),
-            Path(self.shafts_path(scenario_id)),
-        ]
-
     def capability_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._capability_input_paths(scenario_id))
+        return self._fingerprint_of(scenario_id, CAPABILITY_GRAPH_ARTIFACT)
 
     def generate_capability_graph(self, scenario_id: str) -> CapabilityGraphPayload:
         """Semantic layer over the persisted MineNetwork (rule 185): explicit
@@ -1202,19 +1129,8 @@ class DesignService:
                 raise UnknownNetworkNodeError(nid)
         return can_reach(graph, source, target, capability)
 
-    def _network_input_paths(self, scenario_id: str) -> list[Path]:
-        # the network consumes cross-section config from scenario.json, the
-        # RAMP centerlines from the smoothed artifact (rule 68) and the level
-        # developments from levels.json (rule 74)
-        return [
-            Path(self.store.scenario_path(scenario_id)),
-            *self._ramp_input_paths(scenario_id),
-            Path(self.levels_path(scenario_id)),
-            Path(self.shafts_path(scenario_id)),  # Phase 20C.2B (optional owner)
-        ]
-
     def network_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._network_input_paths(scenario_id))
+        return self._fingerprint_of(scenario_id, NETWORK_ARTIFACT)
 
     def generate_network(self, scenario_id: str) -> NetworkPayload:
         """Synchronous full rebuild from smoothed + levels (rule 74: never
@@ -1252,10 +1168,9 @@ class DesignService:
             path = self.network_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(serialized, encoding="utf-8")
-            self._delete_timeline_artifact(scenario_id)  # rule 86: rebuild, never patch
-            self._delete_communication_artifact(scenario_id)  # rule 92
-            self._delete_sensors_artifact(scenario_id)  # rule 98
-            self._delete_capability_graph_artifact(scenario_id)  # rule 185: network → capability
+            # rules 86 / 92 / 98 / 185: timeline, communication, sensors,
+            # capability graph — rebuilt, never patched; shafts kept (rule 184)
+            self._invalidate_downstream(scenario_id, NETWORK_ARTIFACT)
         return result.payload
 
     def network(self, scenario_id: str) -> NetworkPayload:
@@ -1268,21 +1183,13 @@ class DesignService:
     # -- tunnel mesh (Phase 06, rules 65–67) -------------------------------- #
 
     def tunnel_report_path(self, scenario_id: str) -> Path:
-        return self.store.derived_dir(scenario_id) / "tunnel_mesh.json"
+        return self.store.derived_dir(scenario_id) / TUNNEL_MESH_ARTIFACT
 
     def tunnel_glb_path(self, scenario_id: str) -> Path:
-        return self.store.derived_dir(scenario_id) / "tunnel_mesh.glb"
-
-    def _delete_tunnel_artifacts(self, scenario_id: str) -> None:
-        for path in (self.tunnel_report_path(scenario_id), self.tunnel_glb_path(scenario_id)):
-            if path.exists():
-                path.unlink()
-
-    def _tunnel_input_paths(self, scenario_id: str) -> list[Path]:
-        return [*self._smoothing_input_paths(scenario_id), *self._ramp_input_paths(scenario_id)]
+        return self.store.derived_dir(scenario_id) / TUNNEL_MESH_GLB
 
     def tunnel_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._tunnel_input_paths(scenario_id))
+        return self._fingerprint_of(scenario_id, TUNNEL_MESH_ARTIFACT)
 
     def generate_tunnel(
         self, scenario_id: str, on_progress: ProgressCallback = no_progress
@@ -1353,24 +1260,13 @@ class DesignService:
     # -- development mesh (Phase 20B closeout v3 §4) ------------------------- #
 
     def development_mesh_report_path(self, scenario_id: str) -> Path:
-        return self.store.derived_dir(scenario_id) / "development_mesh.json"
+        return self.store.derived_dir(scenario_id) / DEVELOPMENT_MESH_ARTIFACT
 
     def development_mesh_glb_path(self, scenario_id: str) -> Path:
-        return self.store.derived_dir(scenario_id) / "development_mesh.glb"
-
-    def _delete_development_mesh_artifacts(self, scenario_id: str) -> None:
-        for path in (
-            self.development_mesh_report_path(scenario_id),
-            self.development_mesh_glb_path(scenario_id),
-        ):
-            if path.exists():
-                path.unlink()
-
-    def _development_mesh_input_paths(self, scenario_id: str) -> list[Path]:
-        return [*self._levels_input_paths(scenario_id), self.levels_path(scenario_id)]
+        return self.store.derived_dir(scenario_id) / DEVELOPMENT_MESH_GLB
 
     def development_mesh_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._development_mesh_input_paths(scenario_id))
+        return self._fingerprint_of(scenario_id, DEVELOPMENT_MESH_ARTIFACT)
 
     def generate_development_mesh(
         self, scenario_id: str, on_progress: ProgressCallback = no_progress
