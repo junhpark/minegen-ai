@@ -11,6 +11,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from minegen.core.artifacts import COMMUNICATION_ARTIFACT, SENSORS_ARTIFACT
 from minegen.infrastructure.builder import CommunicationBuilder
 from minegen.infrastructure.models import CommunicationPayload, SensorPayload
 from minegen.infrastructure.sensors import SensorBuilder
@@ -18,6 +19,7 @@ from minegen.services.design_service import (
     DesignService,
     InputFingerprint,
     StaleInputsError,
+    artifact_fingerprint,
 )
 from minegen.services.scenario_service import ScenarioStore
 
@@ -36,21 +38,14 @@ class InfrastructureService:
         self.design = design
 
     def communication_path(self, scenario_id: str) -> Path:
-        return self.store.derived_dir(scenario_id) / "communication.json"
-
-    def _communication_input_paths(self, scenario_id: str) -> list[Path]:
-        # rule 92 direct inputs: scenario + network + owning centerlines.
-        # stopes/timeline/tunnel are deliberately NOT inputs (§6).
-        return [
-            Path(self.store.scenario_path(scenario_id)),
-            Path(self.design.network_path(scenario_id)),
-            *self.design._ramp_input_paths(scenario_id),
-            Path(self.design.levels_path(scenario_id)),
-            Path(self.design.shafts_path(scenario_id)),  # Phase 20C.2B optional owner
-        ]
+        return self.store.derived_dir(scenario_id) / COMMUNICATION_ARTIFACT
 
     def communication_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._communication_input_paths(scenario_id))
+        # rule 92 direct inputs (declared in core/artifact_registry.py):
+        # scenario + network + the Effective Ramp bundle + levels + the
+        # optional shafts owner; stopes/timeline/tunnel are deliberately NOT
+        # inputs (§6)
+        return artifact_fingerprint(self.store, scenario_id, COMMUNICATION_ARTIFACT)
 
     def generate_communication(self, scenario_id: str) -> CommunicationPayload:
         """Synchronous deterministic communication baseline. Regenerating
@@ -99,10 +94,11 @@ class InfrastructureService:
     # stale-input lock/fingerprint pattern as communication. Communication,
     # sensors and timeline are SIBLINGS — none is an input to another.
     def sensors_path(self, scenario_id: str) -> Path:
-        return self.store.derived_dir(scenario_id) / "sensors.json"
+        return self.store.derived_dir(scenario_id) / SENSORS_ARTIFACT
 
     def sensors_fingerprint(self, scenario_id: str) -> InputFingerprint:
-        return InputFingerprint.capture(self._communication_input_paths(scenario_id))
+        # the registry declares the SAME list as communication (rule 98)
+        return artifact_fingerprint(self.store, scenario_id, SENSORS_ARTIFACT)
 
     def generate_sensors(self, scenario_id: str) -> SensorPayload:
         """Synchronous deterministic monitoring-placement baseline.
