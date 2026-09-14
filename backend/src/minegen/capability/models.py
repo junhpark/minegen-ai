@@ -99,6 +99,14 @@ class CapabilityValidation(ApiModel):
     referenced_edges_exist: bool
     no_duplicate_node_ids: bool
     no_duplicate_edge_ids: bool
+    #: BUILD-TIME fact only: the builder had just read that ``network.json``,
+    #: so at the instant this payload was written the revision matched by
+    #: construction. It says NOTHING about later divergence — whether the
+    #: persisted ``networkRevision`` still matches the file on disk is a READ
+    #: question, answered by the validated read authority
+    #: (``services/artifact_reader.py``), which refuses a stale graph with
+    #: ``CAPABILITY_GRAPH_STALE`` on every surface (AC-01F Q-NRM; renaming the
+    #: field would be an API schema change and belongs to AC-01I).
     network_revision_matches: bool
     required_paths_satisfied: bool
     valid: bool

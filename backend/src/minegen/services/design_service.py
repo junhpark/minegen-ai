@@ -11,7 +11,7 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 
@@ -42,7 +42,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_GLB,
 )
 from minegen.core.enums import Capability, DistanceContract, OrebodyType
-from minegen.core.models import Scenario
+from minegen.core.models import ApiModel, Scenario
 from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import ClearancePolicy, DesignCostEvaluator, clearance_policy_for
 from minegen.design.development_mesh import DevelopmentMeshBuilder
@@ -74,6 +74,7 @@ from minegen.network.models import NetworkPayload
 from minegen.scheduling.builder import MineTimelineBuilder
 from minegen.scheduling.models import TimelinePayload
 from minegen.services.artifact_errors import (
+    ArtifactMalformedError,
     CapabilityGraphNotGeneratedError,
     CapabilityGraphStaleError,
     DeclineNotGeneratedError,
@@ -92,8 +93,12 @@ from minegen.services.artifact_errors import (
     TargetsNotGeneratedError,
     TimelineNotGeneratedError,
     TunnelNotGeneratedError,
+    WorldNotGeneratedError,
 )
+from minegen.services.artifact_reader import ArtifactReader, ArtifactSnapshot
 from minegen.services.effective_ramp import (
+    RAMP_FILES,
+    RAMP_SOURCES,
     RampSource,
     file_revision,
     read_ramp_source,
@@ -229,6 +234,9 @@ def artifact_fingerprint(store: ScenarioStore, scenario_id: str, name: str) -> I
     )
 
 
+_Model = TypeVar("_Model", bound=ApiModel)
+
+
 class DesignService:
     def __init__(self, store: ScenarioStore, worlds: WorldService) -> None:
         self.store = store
@@ -237,6 +245,37 @@ class DesignService:
         self._targets: dict[str, AccessTargetSet] = {}
         self._layouts: dict[str, tuple[SyntheticWorld, LayoutV2Search, LayoutSearchResult]] = {}
         self._selected_policies: dict[str, _RestoredPolicy] = {}
+        #: AC-01F: the ONE validated read authority over ``derived/``. Every
+        #: reader below — the direct GET methods AND the builders' upstream
+        #: reads, which used to differ — goes through it, so a present-but
+        #: -invalid artifact is refused with the same typed code everywhere.
+        #: Internal: routers obtain the SERVICE through a FastAPI dependency
+        #: (rule 40), never the reader.
+        self._reader = ArtifactReader(store)
+
+    # -- validated reads (AC-01F: READ ≠ TRUST) ----------------------------- #
+
+    def _require_raw(self, scenario_id: str, name: str) -> dict[str, Any]:
+        """The VALID document of a dict-only artifact, or its typed refusal.
+
+        ``self.store.get`` stays the first call of every read path: it is the
+        404 for an unknown scenario, the 422 for an unsupported schema, and —
+        the ONE documented exception to "a read must not write" (A10) — the
+        Phase 18 migration-on-read."""
+        self.store.get(scenario_id)
+        raw = self._reader.require(scenario_id, name).raw
+        assert raw is not None, name  # a VALID read always carries its document
+        return raw
+
+    def _require_model(self, scenario_id: str, name: str, model: type[_Model]) -> _Model:
+        """The VALID typed payload of one of the eight ``ApiModel``
+        artifacts, validated by the reader against the SAME model the service
+        used to validate with."""
+        self.store.get(scenario_id)
+        payload = self._reader.require(scenario_id, name).model
+        if not isinstance(payload, model):  # pragma: no cover - READ_SPECS declares it
+            raise ArtifactMalformedError(name, f"does not satisfy {model.__name__}")
+        return payload
 
     # -- artifact lifecycle (AC-01E: the registry's ONE consumer path) ------- #
 
@@ -258,17 +297,40 @@ class DesignService:
         gates a ramp OWNER's downstream edges (``decline_smoothed.json`` →
         LEGACY, ``layout_v2_selected.json`` / ``level_accesses.json`` →
         LAYOUT_V2) is read from ``ramp_source.json`` AT THIS POINT, never
-        earlier and never from memory (missing / malformed → LEGACY, the
-        ``read_ramp_source`` contract); only a writer that has itself just
-        written ``ramp_source.json`` passes the value explicitly. Every
-        delete keeps the ``exists()`` guard; no in-memory cache is cleared.
-        Scenario mutation / world regeneration are NOT this path — they stay
-        ``WorldService.invalidate`` → ``ScenarioStore.clear_derived``
-        (rules 40 / 46)."""
+        earlier and never from memory (absent → LEGACY, rule 150); only a
+        writer that has itself just written ``ramp_source.json`` passes the
+        value explicitly. Every delete keeps the ``exists()`` guard; no
+        in-memory cache is cleared. Scenario mutation / world regeneration are
+        NOT this path — they stay ``WorldService.invalidate`` →
+        ``ScenarioStore.clear_derived`` (rules 40 / 46).
+
+        AC-01F A7: this is the ONE caller that must not RAISE on an unusable
+        ``ramp_source.json``. It runs AFTER the writer's file write, so a
+        typed refusal here would leave a published artifact with no cascade —
+        a worse residue than the corruption. Unknown source at write cleanup
+        therefore deletes the UNION of both closures: strictly more, never
+        less, never a guessed LEGACY. Reads stay strict (ARTIFACT_MALFORMED)
+        until an explicit ``PUT …/ramp-source`` repairs the file.
+
+        C3: the rescue catches ``OSError`` beside ``ArtifactMalformedError``.
+        "Unusable" is not only "corrupt bytes": a permission or I/O failure on
+        the stat/read of the source file raises out of the snapshot itself,
+        and the A7 principle is about the CASCADE never raising after a write
+        — not about one exception class."""
         derived = self.store.derived_dir(scenario_id)
-        if source is None:
-            source = read_ramp_source(derived)
-        for artifact in invalidated_by(written, source):
+        artifacts: tuple[Any, ...]
+        if source is not None:
+            artifacts = invalidated_by(written, source)
+        else:
+            try:
+                artifacts = invalidated_by(written, read_ramp_source(self._reader, scenario_id))
+            except (ArtifactMalformedError, OSError):
+                union: dict[str, Any] = {}
+                for candidate in RAMP_SOURCES:
+                    for artifact in invalidated_by(written, candidate):
+                        union.setdefault(artifact.name, artifact)
+                artifacts = tuple(union.values())
+        for artifact in artifacts:
             for file in artifact.files:
                 # every invalidatable artifact lives under derived/ (the two
                 # scenario-directory roots are reachable from no derived one)
@@ -303,6 +365,16 @@ class DesignService:
         return self.store.derived_dir(scenario_id) / TARGETS_ARTIFACT
 
     def generate_targets(self, scenario_id: str) -> dict[str, Any]:
+        """Phase 03 access targets. AC-01F A3: the last unfingerprinted derived
+        writer gets the rule-60 protocol — capture the registry input revision
+        (``scenario.json`` + ``arrays.npz``) BEFORE the evaluator, generate
+        outside the lock, re-check under the lock. A world regeneration or a
+        scenario PUT that lands while the targets are being generated now
+        fails the write closed (``JOB_INPUTS_CHANGED``) instead of persisting
+        targets for a world that no longer exists (Stage A §5.4: 4 levels
+        persisted where 3 were correct). The payload and its schema are
+        unchanged — no provenance field is added."""
+        fingerprint = self._fingerprint_of(scenario_id, TARGETS_ARTIFACT)
         scenario, world, ev = self.evaluator(scenario_id)
         if scenario.orebody.orebody_type is not OrebodyType.TABULAR:
             raise UnsupportedOrebodyError(scenario.orebody.orebody_type.value)
@@ -318,6 +390,8 @@ class DesignService:
         )
         payload = targets.to_dict()
         with self.store.lock(scenario_id):
+            if self._fingerprint_of(scenario_id, TARGETS_ARTIFACT) != fingerprint:
+                raise StaleInputsError(scenario_id)
             path = self.targets_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -335,11 +409,15 @@ class DesignService:
         return self.store.derived_dir(scenario_id) / DECLINE_ARTIFACT
 
     def _targets_object(self, scenario_id: str) -> AccessTargetSet:
+        """The Phase 04 precondition: ``targets.json`` must be a VALID
+        artifact (AC-01F — a marker that is merely PRESENT no longer lets a
+        corrupt file answer ``POST …/decline`` 200 SUCCESS, Stage A §2.2),
+        and the in-memory set is then rebuilt deterministically exactly as
+        before (``AccessTargetSet`` has no ``from_dict``)."""
+        self._reader.require(scenario_id, TARGETS_ARTIFACT)
         cached = self._targets.get(scenario_id)
-        if cached is not None and self.targets_path(scenario_id).is_file():
+        if cached is not None:
             return cached
-        if not self.targets_path(scenario_id).is_file():
-            raise TargetsNotGeneratedError(scenario_id)
         # targets.json exists from an earlier process: rebuild deterministically
         scenario, world, ev = self.evaluator(scenario_id)
         portal, generated = resolve_portal(scenario, world)
@@ -450,16 +528,7 @@ class DesignService:
         return payload
 
     def smoothed(self, scenario_id: str) -> dict[str, Any]:
-        self.store.get(scenario_id)
-        if not self.worlds.is_generated(scenario_id):
-            from minegen.services.world_service import WorldNotGeneratedError
-
-            raise WorldNotGeneratedError(scenario_id)
-        path = self.smoothed_path(scenario_id)
-        if not path.is_file():
-            raise SmoothedNotGeneratedError(scenario_id)
-        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        return data
+        return self._require_raw(scenario_id, LEGACY_RAMP_ARTIFACT)
 
     # -- layout-v2 + Effective Ramp (Phase 20A, rules 141–152) --------------- #
 
@@ -507,16 +576,7 @@ class DesignService:
         return payload
 
     def layout_v2(self, scenario_id: str) -> dict[str, Any]:
-        self.store.get(scenario_id)
-        if not self.worlds.is_generated(scenario_id):
-            from minegen.services.world_service import WorldNotGeneratedError
-
-            raise WorldNotGeneratedError(scenario_id)
-        path = self.layout_path(scenario_id)
-        if not path.is_file():
-            raise LayoutV2NotGeneratedError(scenario_id)
-        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        return data
+        return self._require_raw(scenario_id, LAYOUT_V2_ARTIFACT)
 
     def _layout_object(self, scenario_id: str) -> tuple[LayoutV2Search, LayoutSearchResult]:
         """In-memory search result behind ``layout_v2.json``; rebuilt
@@ -527,9 +587,21 @@ class DesignService:
         recipe (``_selected_candidate_policy``, AC-01D). The re-run on a cold
         cache for a DIFFERENT candidate than the persisted selection is the
         explicitly deferred residual recorded in
-        ``docs/consolidation-baseline.md`` §7."""
-        if not self.layout_path(scenario_id).is_file():
-            raise LayoutV2NotGeneratedError(scenario_id)
+        ``docs/consolidation-baseline.md`` §7.
+
+        AC-01F C3: the precondition is the VALIDATED read of the catalogue,
+        not an ``is_file`` presence probe. The probe let a MALFORMED
+        ``layout_v2.json`` through to the deterministic re-run — which rebuilds
+        the result from scenario + world and never parses the catalogue — so
+        the corrupt file was never noticed. MEASURED at HEAD ``12d7725``
+        (``scratchpad/ac01f_C/select_malformed_probe.py``): with
+        ``layout_v2.json`` = ``"{"``, ``POST …/design/layout-v2/select``
+        answered **200** and WROTE ``layout_v2_selected.json`` +
+        ``level_accesses.json`` carrying the corrupt catalogue's own
+        ``layoutRevision``, and ``…/activate`` answered **200** — a fully
+        activated LAYOUT_V2 ramp bound to a document nobody can parse. It is
+        409 ``ARTIFACT_MALFORMED`` now, with nothing written."""
+        self._reader.require(scenario_id, LAYOUT_V2_ARTIFACT)
         scenario, world = self.worlds.load(scenario_id)
         cached = self._layouts.get(scenario_id)
         if cached is not None and cached[0] is world:
@@ -548,15 +620,24 @@ class DesignService:
         fingerprint = self._fingerprint_of(scenario_id, LAYOUT_V2_SELECTED_ARTIFACT)
         # AC-01D: the idempotent re-select / re-activate of the already
         # selected candidate at the same catalogue revision never touches
-        # the in-memory search (and so never re-runs it on a cold cache)
-        layout_rev = file_revision(self.layout_path(scenario_id)) or ""
-        existing = self._layout_selected_if_present(scenario_id)
+        # the in-memory search (and so never re-runs it on a cold cache).
+        # AC-01F: the idempotency read is STATE-AWARE — only a VALID selection
+        # is a usable one; a stale / malformed / certification-defective
+        # document is "no usable selection", so this explicit re-selection
+        # proceeds and WRITES. The repair is always the user's explicit write,
+        # never a read-side fixup.
+        snapshot = self._reader.snapshot(
+            scenario_id, [LAYOUT_V2_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT]
+        )
+        layout_rev = snapshot.revision_of(LAYOUT_V2_ARTIFACT)
+        existing = self._reader.read(snapshot, LAYOUT_V2_SELECTED_ARTIFACT)
         if (
-            existing is not None
-            and existing.get("candidateId") == candidate_id
-            and existing.get("layoutRevision") == layout_rev
+            existing.state == "VALID"
+            and existing.raw is not None
+            and existing.raw.get("candidateId") == candidate_id
+            and existing.raw.get("layoutRevision") == layout_rev
         ):
-            return existing
+            return existing.raw
         search, result = self._layout_object(scenario_id)
         cand = result.candidate(candidate_id)
         if cand is None:
@@ -593,13 +674,6 @@ class DesignService:
                 scenario_id, LAYOUT_V2_SELECTED_ARTIFACT, LEVEL_ACCESSES_ARTIFACT
             )
         return payload
-
-    def _layout_selected_if_present(self, scenario_id: str) -> dict[str, Any] | None:
-        path = self.layout_selected_path(scenario_id)
-        if not path.is_file():
-            return None
-        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        return data
 
     def _selected_candidate_policy(
         self, scenario_id: str
@@ -668,24 +742,30 @@ class DesignService:
         outside it. Nothing is retried or repaired: a missing selection is
         ``LayoutV2NotSelectedError``, a selection bound to another catalogue
         revision is ``LayoutSelectionStaleError``, an unreadable catalogue is
-        the typed reconstruction error."""
-        with self.store.lock(scenario_id):
-            selected = self._layout_selected_if_present(scenario_id)
-            if selected is None:
-                raise LayoutV2NotSelectedError(scenario_id)
-            if not isinstance(selected, dict):
-                raise ClearancePolicyReconstructionError("?", "the selection is not a document")
-            layout_rev = file_revision(self.layout_path(scenario_id)) or ""
-            if selected.get("layoutRevision") != layout_rev:
-                raise LayoutSelectionStaleError(scenario_id)
-            selected_rev = file_revision(self.layout_selected_path(scenario_id)) or ""
-            try:
-                catalogue_text = self.layout_path(scenario_id).read_text(encoding="utf-8")
-            except OSError as err:
-                raise ClearancePolicyReconstructionError(
-                    str(selected.get("candidateId")),
-                    f"the catalogue is unreadable ({type(err).__name__})",
-                ) from err
+        the typed reconstruction error.
+
+        AC-01F: the lock-held snapshot IS ``ArtifactReader.snapshot`` — the
+        same observation boundary every other read uses — and the selection's
+        validation order (revision → certification → shape) is the resolver's
+        table entry, so the AC-01D tamper codes are decided in ONE place."""
+        snapshot = self._reader.snapshot(
+            scenario_id, [LAYOUT_V2_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT]
+        )
+        read = self._reader.read(snapshot, LAYOUT_V2_SELECTED_ARTIFACT)
+        if read.state == "ABSENT":
+            raise LayoutV2NotSelectedError(scenario_id)
+        if read.error is not None:
+            raise read.error
+        assert read.raw is not None
+        selected = read.raw
+        layout_rev = snapshot.revision_of(LAYOUT_V2_ARTIFACT)
+        selected_rev = read.revision or ""
+        catalogue = snapshot.observation(LAYOUT_V2_ARTIFACT)
+        if catalogue is None or not catalogue.present or catalogue.data is None:
+            raise ClearancePolicyReconstructionError(
+                str(selected.get("candidateId")), "the catalogue is unreadable (OSError)"
+            )
+        catalogue_text = catalogue.data.decode("utf-8")
         return selected, catalogue_text, layout_rev, selected_rev
 
     def _active_clearance_policy(self, scenario_id: str, world: SyntheticWorld) -> ClearancePolicy:
@@ -694,47 +774,109 @@ class DesignService:
         unchanged numerics); LAYOUT_V2 uses the selected candidate's own
         stage-4 certification (Phase 20B.1-v2 1.1 invariant), restored from
         its recipe without the search (AC-01D)."""
-        if read_ramp_source(self.store.derived_dir(scenario_id)) != "LAYOUT_V2":
+        if read_ramp_source(self._reader, scenario_id) != "LAYOUT_V2":
             return clearance_policy_for(world.orebody)
         return self._selected_candidate_policy(scenario_id)[1]
 
     def layout_selected(self, scenario_id: str) -> dict[str, Any]:
-        self.store.get(scenario_id)
-        data = self._layout_selected_if_present(scenario_id)
-        if data is None:
-            raise LayoutV2NotSelectedError(scenario_id)
-        return data
+        return self._require_raw(scenario_id, LAYOUT_V2_SELECTED_ARTIFACT)
 
     def level_accesses(self, scenario_id: str) -> dict[str, Any]:
-        self.store.get(scenario_id)
-        path = self.level_accesses_path(scenario_id)
-        if not path.is_file():
-            raise LevelAccessesNotGeneratedError(scenario_id)
-        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        return data
+        return self._require_raw(scenario_id, LEVEL_ACCESSES_ARTIFACT)
 
     def active_level_accesses(self, scenario_id: str) -> dict[str, Any] | None:
         """The level-access artifact of the ACTIVE ramp: required (and
         present by construction of the selection) for LAYOUT_V2, ``None``
-        for LEGACY (Phase 05 segment ends are the level entries)."""
-        if read_ramp_source(self.store.derived_dir(scenario_id)) != "LAYOUT_V2":
+        for LEGACY (Phase 05 segment ends are the level entries).
+
+        This is a READ, and nothing more: the active-source gate, then the
+        validated read of the artifact. The co-published selection half is
+        observed and compared by the READ SPEC of ``level_accesses.json``
+        itself (rule 157 pair check), which classifies a candidate-identity
+        or clearance-recipe disagreement as ``LAYOUT_V2_CLEARANCE_MISMATCH``
+        and a capture-revision disagreement as ``LAYOUT_V2_SELECTION_STALE``
+        (Stage-B checkpoint decision C1). No clearance policy is restored
+        here: the four POST builders that NEED one
+        (``generate_levels`` / ``generate_shafts`` / ``generate_tunnel`` /
+        ``generate_development_mesh``) restore it themselves through
+        ``_active_clearance_policy``, and ``generate_network`` /
+        ``generate_timeline`` / the two infrastructure builders never needed
+        one — a read outcome must not depend on a search-level check."""
+        if read_ramp_source(self._reader, scenario_id) != "LAYOUT_V2":
             return None
         return self.level_accesses(scenario_id)
 
+    def _ramp_snapshot(self, scenario_id: str) -> ArtifactSnapshot:
+        """ONE observation of the four ramp files (source switch, both owners,
+        catalogue), so a resolution and its availability flags can never
+        disagree (Stage A R4). The world guard is that same observation's
+        ``arrays.npz`` stat — a derived artifact is never trusted without a
+        world (A1 / Q-WORLD-GUARD) — and never a second probe."""
+        self.store.get(scenario_id)  # 404 / schema 422 / migration-on-read (A10)
+        snapshot = self._reader.snapshot(scenario_id, RAMP_FILES)
+        if snapshot.arrays_revision is None:
+            raise WorldNotGeneratedError(scenario_id)
+        return snapshot
+
     def ramp_source(self, scenario_id: str) -> dict[str, Any]:
-        self.store.get(scenario_id)
-        return resolve_effective_ramp(self.store.derived_dir(scenario_id)).summary()
+        """The Effective Ramp status summary (AC-01F A8, amended by the
+        Stage-B checkpoint decision C2).
+
+        An EXPECTED ABSENCE stays ``available: false``. That covers BOTH
+        owners, not only the legacy one: LEGACY with no
+        ``decline_smoothed.json`` is the normal pre-generation state, and
+        LAYOUT_V2 with no ``layout_v2_selected.json`` is reachable through the
+        normal API (Stage A §1.3 / §4.3 — ``ramp_source.json`` lies outside
+        every cascade, so regenerating the catalogue under an active LAYOUT_V2
+        deletes the selection and the level accesses while ``activeSource``
+        stays LAYOUT_V2 until the user re-selects). A8's third case assumed
+        that state could not be produced; it can, so A8's own principle
+        ("expected absence may be unavailable") applies and the answer is
+        byte-equal to the pre-AC-01F summary. ``GET …/design/ramp`` still
+        answers 409 ``LAYOUT_V2_NOT_SELECTED`` there, and the scene's
+        ``rampSource`` slot says exactly what this endpoint says.
+
+        A present-but-INVALID active owner is a different thing and still
+        raises its typed error out of the resolution itself: this status
+        endpoint must never report ``available: true`` for a ramp every
+        builder refuses (Stage A I-11)."""
+        return resolve_effective_ramp(self._ramp_snapshot(scenario_id), self._reader).summary()
 
     def set_ramp_source(self, scenario_id: str, source: RampSource) -> dict[str, Any]:
         """Explicit active-source switch (rule 150). Changing the source
         invalidates every ramp-derived artifact (rule 151) and nothing else;
-        LAYOUT_V2 requires a persisted selection."""
+        LAYOUT_V2 requires a VALID persisted selection.
+
+        AC-01F C3: every guard runs BEFORE the lock is entered and before
+        anything is written — a refused switch must leave ``ramp_source.json``
+        byte-identical. The guard is therefore no longer atomic with the
+        write: a catalogue regeneration landing between the VALID-selection
+        check and the lock can leave the switch written with no selection on
+        disk — exactly the C2 expected-absence state (``available:false``,
+        ``GET …/design/ramp`` 409 LAYOUT_V2_NOT_SELECTED), never a served
+        stale ramp. ``require`` takes its own lock-held snapshot, so
+        evaluating it inside the write lock also made the reader re-enter the
+        RLock for no reason. The world guard is part of ``require`` (a derived
+        artifact is never trusted without a world, A1); for the LEGACY
+        direction it is applied explicitly, so BOTH directions answer
+        ``WORLD_NOT_GENERATED`` on a scenario with no world instead of
+        silently writing a switch into an empty ``derived/``."""
         self.store.get(scenario_id)
+        if source == "LAYOUT_V2":
+            # rule 172 / A8: never ACTIVATE what every downstream builder
+            # refuses — the selection must be VALID, not merely present
+            self._reader.require(scenario_id, LAYOUT_V2_SELECTED_ARTIFACT)
+        elif self._reader.snapshot(scenario_id, ()).arrays_revision is None:
+            raise WorldNotGeneratedError(scenario_id)
         derived = self.store.derived_dir(scenario_id)
         with self.store.lock(scenario_id):
-            if source == "LAYOUT_V2" and not self.layout_selected_path(scenario_id).is_file():
-                raise LayoutV2NotSelectedError(scenario_id)
-            if read_ramp_source(derived) != source:
+            try:
+                current: RampSource | None = read_ramp_source(self._reader, scenario_id)
+            except ArtifactMalformedError:
+                # A7: an unusable source DIFFERS from every valid one — this
+                # explicit write is the repair path, so it proceeds
+                current = None
+            if current != source:
                 write_ramp_source(derived, source)
                 # the file just written IS the source: passed explicitly, not
                 # re-read (the closure is source-independent either way)
@@ -749,12 +891,7 @@ class DesignService:
     def effective_ramp(self, scenario_id: str) -> dict[str, Any]:
         """The ACTIVE Effective Ramp (rule 149): the only ramp geometry the
         downstream builders consume."""
-        self.store.get(scenario_id)
-        if not self.worlds.is_generated(scenario_id):
-            from minegen.services.world_service import WorldNotGeneratedError
-
-            raise WorldNotGeneratedError(scenario_id)
-        res = resolve_effective_ramp(self.store.derived_dir(scenario_id))
+        res = resolve_effective_ramp(self._ramp_snapshot(scenario_id), self._reader)
         if res.payload is None:
             if res.active_source == "LEGACY":
                 raise SmoothedNotGeneratedError(scenario_id)
@@ -814,11 +951,7 @@ class DesignService:
         return payload
 
     def levels(self, scenario_id: str) -> LevelsPayload:
-        self.store.get(scenario_id)
-        path = self.levels_path(scenario_id)
-        if not path.is_file():
-            raise LevelsNotGeneratedError(scenario_id)
-        return LevelsPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        return self._require_model(scenario_id, LEVELS_ARTIFACT, LevelsPayload)
 
     # -- stopes (Phase 09, rules 75–80) --------------------------------------- #
 
@@ -865,11 +998,7 @@ class DesignService:
         return payload
 
     def stopes(self, scenario_id: str) -> StopesPayload:
-        self.store.get(scenario_id)
-        path = self.stopes_path(scenario_id)
-        if not path.is_file():
-            raise StopesNotGeneratedError(scenario_id)
-        return StopesPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        return self._require_model(scenario_id, STOPES_ARTIFACT, StopesPayload)
 
     # -- timeline (Phase 10, rules 81–86) ------------------------------------- #
 
@@ -918,11 +1047,7 @@ class DesignService:
         return payload
 
     def timeline(self, scenario_id: str) -> TimelinePayload:
-        self.store.get(scenario_id)
-        path = self.timeline_path(scenario_id)
-        if not path.is_file():
-            raise TimelineNotGeneratedError(scenario_id)
-        return TimelinePayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        return self._require_model(scenario_id, TIMELINE_ARTIFACT, TimelinePayload)
 
     # -- mine network (Phase 07, rules 13, 68–70) ---------------------------- #
 
@@ -976,23 +1101,23 @@ class DesignService:
         return payload
 
     def shafts(self, scenario_id: str) -> ShaftsPayload:
-        self.store.get(scenario_id)
-        path = self.shafts_path(scenario_id)
-        if not path.is_file():
-            raise ShaftsNotGeneratedError(scenario_id)
-        return ShaftsPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        """The persisted shaft artifact. AC-01F closes the Stage A canary
+        (I-1): the ``levelsRevision`` the builders compare is now compared
+        HERE too, so this route no longer serves 200 what every builder
+        refuses with 409 ``SHAFTS_STALE``."""
+        return self._require_model(scenario_id, SHAFTS_ARTIFACT, ShaftsPayload)
 
     def shafts_if_present(self, scenario_id: str) -> ShaftsPayload | None:
         """The shaft artifact for the downstream builders: ``None`` when no
         shaft was generated (shafts are OPTIONAL, rule 184); a persisted
-        artifact must belong to the current levels revision (fail closed)."""
-        path = self.shafts_path(scenario_id)
-        if not path.is_file():
+        artifact must belong to the current levels revision (fail closed) —
+        the SAME check ``shafts()`` now applies (one authority)."""
+        read = self._reader.optional(scenario_id, SHAFTS_ARTIFACT)
+        if read is None:
             return None
-        payload = ShaftsPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
-        if payload.levels_revision != (file_revision(self.levels_path(scenario_id)) or ""):
-            raise ShaftsStaleError(scenario_id)
-        return payload
+        if not isinstance(read.model, ShaftsPayload):  # pragma: no cover - declared
+            raise ArtifactMalformedError(SHAFTS_ARTIFACT, "does not satisfy ShaftsPayload")
+        return read.model
 
     # -- capability graph (Phase 20C.2B, rule 185) --------------------------- #
 
@@ -1029,17 +1154,12 @@ class DesignService:
 
     def capability_graph(self, scenario_id: str) -> CapabilityGraphPayload:
         """The persisted graph, refused (409) when ``network.json`` moved on
-        without it — silent reuse of a stale semantic layer is forbidden."""
-        self.store.get(scenario_id)
-        path = self.capability_graph_path(scenario_id)
-        if not path.is_file():
-            raise CapabilityGraphNotGeneratedError(scenario_id)
-        payload = CapabilityGraphPayload.model_validate(
-            json.loads(path.read_text(encoding="utf-8"))
-        )
-        if payload.network_revision != (file_revision(self.network_path(scenario_id)) or ""):
-            raise CapabilityGraphStaleError(scenario_id)
-        return payload
+        without it — silent reuse of a stale semantic layer is forbidden. The
+        recorded ``networkSourceRevision`` is cross-checked against the
+        network document of the SAME snapshot as well (AC-01F: the field
+        ``capability/models.py`` calls "recorded, cross-checked" was compared
+        by nobody)."""
+        return self._require_model(scenario_id, CAPABILITY_GRAPH_ARTIFACT, CapabilityGraphPayload)
 
     def capability_path(
         self, scenario_id: str, source: str, target: str, capability: Capability
@@ -1102,11 +1222,7 @@ class DesignService:
         return result.payload
 
     def network(self, scenario_id: str) -> NetworkPayload:
-        self.store.get(scenario_id)  # 404 for unknown scenarios first
-        path = self.network_path(scenario_id)
-        if not path.is_file():
-            raise NetworkNotFoundError(scenario_id)
-        return NetworkPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        return self._require_model(scenario_id, NETWORK_ARTIFACT, NetworkPayload)
 
     # -- tunnel mesh (Phase 06, rules 65–67) -------------------------------- #
 
@@ -1263,7 +1379,7 @@ class DesignService:
         payload["sources"] = {
             "levelAccesses": accesses_payload is not None,
             "levels": levels_payload is not None and levels_payload.get("status") == "SUCCESS",
-            "rampSource": read_ramp_source(self.store.derived_dir(scenario_id)),
+            "rampSource": read_ramp_source(self._reader, scenario_id),
         }
         if result.glb is not None:
             revision = hashlib.sha256(result.glb).hexdigest()
@@ -1291,70 +1407,52 @@ class DesignService:
         return payload
 
     def development_mesh(self, scenario_id: str) -> dict[str, Any]:
-        self.store.get(scenario_id)
-        if not self.worlds.is_generated(scenario_id):
-            from minegen.services.world_service import WorldNotGeneratedError
-
-            raise WorldNotGeneratedError(scenario_id)
-        path = self.development_mesh_report_path(scenario_id)
-        if not path.is_file():
-            raise DevelopmentMeshNotGeneratedError(scenario_id)
-        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        return data
+        return self._require_raw(scenario_id, DEVELOPMENT_MESH_ARTIFACT)
 
     def development_mesh_glb(self, scenario_id: str) -> bytes:
-        report = self.development_mesh(scenario_id)
-        glb_path = self.development_mesh_glb_path(scenario_id)
-        if report.get("status") != "SUCCESS" or not glb_path.is_file():
-            raise DevelopmentMeshNotGeneratedError(scenario_id)
-        return glb_path.read_bytes()
+        return self._glb(
+            scenario_id,
+            DEVELOPMENT_MESH_ARTIFACT,
+            DEVELOPMENT_MESH_GLB,
+            DevelopmentMeshNotGeneratedError,
+        )
 
     def tunnel(self, scenario_id: str) -> dict[str, Any]:
-        self.store.get(scenario_id)
-        if not self.worlds.is_generated(scenario_id):
-            from minegen.services.world_service import WorldNotGeneratedError
-
-            raise WorldNotGeneratedError(scenario_id)
-        path = self.tunnel_report_path(scenario_id)
-        if not path.is_file():
-            raise TunnelNotGeneratedError(scenario_id)
-        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        return data
+        return self._require_raw(scenario_id, TUNNEL_MESH_ARTIFACT)
 
     def tunnel_glb(self, scenario_id: str) -> bytes:
-        report = self.tunnel(scenario_id)
-        glb_path = self.tunnel_glb_path(scenario_id)
-        if report.get("status") != "SUCCESS" or not glb_path.is_file():
-            raise TunnelNotGeneratedError(scenario_id)
-        return glb_path.read_bytes()
+        return self._glb(
+            scenario_id, TUNNEL_MESH_ARTIFACT, TUNNEL_MESH_GLB, TunnelNotGeneratedError
+        )
+
+    def _glb(
+        self,
+        scenario_id: str,
+        report_name: str,
+        glb_name: str,
+        absent_error: type[Exception],
+    ) -> bytes:
+        """The binary half of a two-file artifact (rule 67).
+
+        The report and the GLB BYTES are observed in ONE snapshot, and the
+        report is required VALID — which for a SUCCESS report means its GLB is
+        present AND its bytes hash to the report's own ``artifactRevision``
+        (the existing content hash, not a new revision semantic). A torn or
+        truncated GLB is therefore ``ARTIFACT_MALFORMED``, never a 200
+        ``model/gltf-binary`` response the browser caches as ``immutable``
+        (Stage A §7.2). The bytes served are the bytes that were hashed."""
+        self.store.get(scenario_id)
+        read, snapshot = self._reader.require_files(scenario_id, report_name, glb_bytes=True)
+        assert read.raw is not None
+        if read.raw.get("status") != "SUCCESS":
+            raise absent_error(scenario_id)
+        obs = snapshot.observation(glb_name)
+        if obs is None or not obs.present or obs.data is None:
+            raise ArtifactMalformedError(report_name, f"the bytes of '{glb_name}' are unreadable")
+        return obs.data
 
     def decline(self, scenario_id: str) -> dict[str, Any]:
-        self.store.get(scenario_id)
-        if not self.worlds.is_generated(scenario_id):
-            from minegen.services.world_service import WorldNotGeneratedError
-
-            raise WorldNotGeneratedError(scenario_id)
-        path = self.decline_path(scenario_id)
-        if not path.is_file():
-            raise DeclineNotGeneratedError(scenario_id)
-        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        return data
+        return self._require_raw(scenario_id, DECLINE_ARTIFACT)
 
     def targets(self, scenario_id: str) -> dict[str, Any]:
-        self.store.get(scenario_id)  # raises ScenarioNotFoundError
-        if not self.worlds.is_generated(scenario_id):
-            from minegen.services.world_service import WorldNotGeneratedError
-
-            raise WorldNotGeneratedError(scenario_id)
-        path = self.targets_path(scenario_id)
-        if not path.is_file():
-            raise TargetsNotGeneratedError(scenario_id)
-        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        return data
-
-    def targets_if_present(self, scenario_id: str) -> dict[str, Any] | None:
-        path = self.targets_path(scenario_id)
-        if not path.is_file():
-            return None
-        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        return data
+        return self._require_raw(scenario_id, TARGETS_ARTIFACT)

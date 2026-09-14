@@ -46,6 +46,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_ARTIFACT,
     TUNNEL_MESH_GLB,
 )
+from minegen.layout.certification import ClearancePolicyReconstructionError
 from minegen.services.artifact_errors import (
     ArtifactMalformedError,
     ArtifactStaleError,
@@ -80,10 +81,11 @@ def bump_mtime(path: Path, seconds: float = 5.0) -> None:
 
 @contextmanager
 def mutated(path: Path) -> Iterator[None]:
-    """``test_artifact_reader_transition.mutated``'s discipline, adopted here:
-    restore the ORIGINAL bytes AND ``st_mtime_ns``. Stage A C-12 — rewriting
-    the bytes alone silently changes ``file_revision`` (``name:size:mtime_ns``)
-    and contaminates every later case in the same loop."""
+    """Restore the ORIGINAL bytes AND ``st_mtime_ns`` — the discipline the
+    commit-1 characterization module established before it was deleted with
+    the consumers it characterized. Stage A C-12: rewriting the bytes alone
+    silently changes ``file_revision`` (``name:size:mtime_ns``) and
+    contaminates every later case in the same loop."""
     data = path.read_bytes()
     st = os.stat(path)
     try:
@@ -448,7 +450,16 @@ def test_stale_states_are_the_persisted_upstream_revision_relations(
     stack: tuple[ScenarioStore, ArtifactReader, Path],
 ) -> None:
     """The three revision relations that exist on disk + the two AC-01F ones.
-    Every expected revision is recomputed here from ``os.stat``."""
+    Every expected revision is recomputed here from ``os.stat``.
+
+    Cases 4 / 4b carry the Stage-B checkpoint decision C1: in the rule-157
+    co-published pair, a ``candidateId`` or certification (provenance key /
+    error bound) disagreement is A1's third row — a "candidate identity /
+    clearance recipe defect", i.e. ``ClearancePolicyReconstructionError``
+    (``LAYOUT_V2_CLEARANCE_MISMATCH``) with the state still STALE — while
+    ``sourceRevision`` / ``layoutRevision`` and an orphaned half stay
+    ``LAYOUT_V2_SELECTION_STALE``. Case 4 is the same-PR correction of the
+    commit-1 row that pinned STALE's code for the candidate identity."""
     _, reader, derived = stack
 
     # 1. shafts.levelsRevision ↔ levels.json (design_service.py:1065)
@@ -485,7 +496,15 @@ def test_stale_states_are_the_persisted_upstream_revision_relations(
     )
     assert read.state == "STALE" and isinstance(read.error, LayoutSelectionStaleError)
 
-    # 4. the co-published pair: level accesses of ANOTHER candidate (§7.4)
+    # 4. the co-published pair: level accesses of ANOTHER candidate (§7.4).
+    #    C1 (Stage-B checkpoint, a same-PR correction of the commit-1 row that
+    #    pinned LAYOUT_V2_SELECTION_STALE here): a candidate-IDENTITY
+    #    disagreement is A1's third row — "candidate identity / clearance
+    #    recipe defect" → LAYOUT_V2_CLEARANCE_MISMATCH — while the STATE stays
+    #    STALE (the document is well-shaped; its pair is not). Only
+    #    sourceRevision / layoutRevision and an orphaned half stay
+    #    LAYOUT_V2_SELECTION_STALE (cases below and in
+    #    ``test_the_co_published_pair_compares_its_own_identity_not_a_recomputation``).
     layout_revision = expected_revision(derived / LAYOUT_V2_ARTIFACT)
     write_json(derived / LAYOUT_V2_SELECTED_ARTIFACT, _selection(layout_revision))
     accesses = _accesses(layout_revision)
@@ -497,8 +516,25 @@ def test_stale_states_are_the_persisted_upstream_revision_relations(
         ),
         LEVEL_ACCESSES_ARTIFACT,
     )
-    assert read.state == "STALE" and isinstance(read.error, LayoutSelectionStaleError)
+    assert read.state == "STALE" and isinstance(read.error, ClearancePolicyReconstructionError)
+    assert type(read.error).code == "LAYOUT_V2_CLEARANCE_MISMATCH"
     assert "candidateId" in str(read.error)
+
+    # 4b. C1's other half: the certification (provenance key / error bound)
+    #     disagreement of the same co-published pair is the SAME defect class
+    accesses = _accesses(layout_revision)
+    accesses["clearanceErrorBound"] = CLEARANCE_BOUND + 1e-3
+    write_json(derived / LEVEL_ACCESSES_ARTIFACT, accesses)
+    read = reader.read(
+        reader.snapshot(
+            SID, [LEVEL_ACCESSES_ARTIFACT, LAYOUT_V2_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT]
+        ),
+        LEVEL_ACCESSES_ARTIFACT,
+    )
+    assert read.state == "STALE" and isinstance(read.error, ClearancePolicyReconstructionError)
+    assert type(read.error).code == "LAYOUT_V2_CLEARANCE_MISMATCH"
+    assert "clearance certification" in str(read.error)
+    write_json(derived / LEVEL_ACCESSES_ARTIFACT, _accesses(layout_revision))
 
     # 5. development_mesh.sources.rampSource ↔ the resolved active source
     write_json(derived / RAMP_SOURCE_FILE, {"activeSource": "LAYOUT_V2"})
@@ -538,7 +574,7 @@ def test_two_file_units_fail_closed(
 # A1: the fixed selection validation order (AC-01D tamper matrix)
 # --------------------------------------------------------------------------- #
 
-#: transcribed from tests/test_layout_policy_restore.py:560-599 — the mutation,
+#: transcribed from tests/test_layout_policy_restore.py:557-618 — the mutation,
 #: the code the pinned matrix expects from the four POLICY endpoints, and what
 #: the READ authority decides. Two rows are NOT read decisions: they need the
 #: catalogue centerline and a REBUILT policy, which stay in
@@ -708,6 +744,87 @@ def test_a_selection_missing_its_layout_revision_is_stale_not_malformed(
     assert read.state == "STALE" and isinstance(read.error, LayoutSelectionStaleError)
 
 
+#: A12, the artifacts whose persisted ``sourceRevision`` this reader must NOT
+#: treat as a freshness token. Stage A §4.5 proved why: that field is
+#: ``sha256(fingerprint.entries)`` over the registry's ORDERED input list, and
+#: the EFFECTIVE_RAMP group expands to the INACTIVE owner's files — so a
+#: legitimate legacy re-run under LAYOUT_V2 changes the recomputed hash while
+#: every artifact stays correct (measured: ``network e5fb… → e1c3…``). A hash
+#: cannot be source-filtered, so "persisted ≠ recomputed" is a NORMAL state.
+SOURCE_REVISION_BEARING: tuple[str, ...] = (
+    LEVELS_ARTIFACT,
+    SHAFTS_ARTIFACT,
+    STOPES_ARTIFACT,
+    TIMELINE_ARTIFACT,
+    NETWORK_ARTIFACT,
+    CAPABILITY_GRAPH_ARTIFACT,
+    COMMUNICATION_ARTIFACT,
+    SENSORS_ARTIFACT,
+)
+
+
+def test_source_revision_is_never_a_freshness_authority(
+    stack: tuple[ScenarioStore, ArtifactReader, Path],
+) -> None:
+    """T12 / A12 — CONTRACT: ``sourceRevision`` is not a generic freshness
+    token and is never compared to a recomputed fingerprint. Freshness rests
+    ONLY on the provenance relations that exist on disk: a persisted UPSTREAM
+    FILE revision (``shafts.levelsRevision`` ↔ ``levels.json``,
+    ``capabilityGraph.networkRevision`` ↔ ``network.json``,
+    ``layout_v2_selected.layoutRevision`` ↔ ``layout_v2.json``), the
+    co-published selection ↔ level-access agreement, the development mesh's
+    recorded ramp source, and the GLB content hash. Where persisted evidence
+    cannot prove freshness, this reader claims nothing — no evidence is not
+    the same as fresh, and it is not permission to invent a rule.
+
+    Proof: replacing the field with garbage changes NO read state."""
+    _, reader, derived = stack
+    for name in SOURCE_REVISION_BEARING:
+        with mutated(derived / name):
+            document = json.loads((derived / name).read_text(encoding="utf-8"))
+            assert document["sourceRevision"] == "src", name
+            document["sourceRevision"] = "GARBAGE-NOT-A-REVISION"
+            write_json(derived / name, document)
+            read_spec = READ_SPECS[name]
+            snapshot = reader.snapshot(SID, [name, *read_spec.provenance_inputs], glb_bytes=True)
+            read = reader.read(snapshot, name)
+            assert read.state == "VALID", (name, read.state, read.error)
+            assert read.raw is not None
+            assert read.raw["sourceRevision"] == "GARBAGE-NOT-A-REVISION"
+        assert_reads_valid(reader, name)
+
+
+def test_the_co_published_pair_compares_its_own_identity_not_a_recomputation(
+    stack: tuple[ScenarioStore, ArtifactReader, Path],
+) -> None:
+    """The ONE place a ``sourceRevision`` IS read is the rule-157 pair: the
+    selection and the level accesses are written under ONE capture, so the
+    two halves must carry the SAME value. That is an AGREEMENT between two
+    persisted documents, never a comparison against a recomputed hash —
+    replacing the value in BOTH halves keeps both VALID."""
+    _, reader, derived = stack
+    selection = json.loads((derived / LAYOUT_V2_SELECTED_ARTIFACT).read_text(encoding="utf-8"))
+    accesses = json.loads((derived / LEVEL_ACCESSES_ARTIFACT).read_text(encoding="utf-8"))
+    with mutated(derived / LAYOUT_V2_SELECTED_ARTIFACT), mutated(derived / LEVEL_ACCESSES_ARTIFACT):
+        selection["sourceRevision"] = "GARBAGE-NOT-A-REVISION"
+        accesses["sourceRevision"] = "GARBAGE-NOT-A-REVISION"
+        write_json(derived / LAYOUT_V2_SELECTED_ARTIFACT, selection)
+        write_json(derived / LEVEL_ACCESSES_ARTIFACT, accesses)
+        names = [LAYOUT_V2_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT, LEVEL_ACCESSES_ARTIFACT]
+        snapshot = reader.snapshot(SID, names)
+        for name in (LAYOUT_V2_SELECTED_ARTIFACT, LEVEL_ACCESSES_ARTIFACT):
+            read = reader.read(snapshot, name)
+            assert read.state == "VALID", (name, read.state, read.error)
+        # and ONE half alone is the crash residue the pair check exists for
+        accesses["sourceRevision"] = "ONLY-ONE-HALF"
+        write_json(derived / LEVEL_ACCESSES_ARTIFACT, accesses)
+        snapshot = reader.snapshot(SID, names)
+        read = reader.read(snapshot, LEVEL_ACCESSES_ARTIFACT)
+        assert read.state == "STALE" and isinstance(read.error, LayoutSelectionStaleError)
+    assert_reads_valid(reader, LAYOUT_V2_SELECTED_ARTIFACT)
+    assert_reads_valid(reader, LEVEL_ACCESSES_ARTIFACT)
+
+
 # --------------------------------------------------------------------------- #
 # require / optional / ramp source
 # --------------------------------------------------------------------------- #
@@ -769,7 +886,7 @@ def test_ramp_source_absent_is_legacy_and_malformed_raises(
 def test_snapshot_is_taken_under_the_store_lock(
     stack: tuple[ScenarioStore, ArtifactReader, Path],
 ) -> None:
-    """The pattern of tests/test_layout_policy_restore.py:627-662, retargeted:
+    """The pattern of tests/test_layout_policy_restore.py:629-682, retargeted:
     a writer holding the per-scenario lock blocks the snapshot."""
     store, reader, _ = stack
     lock = store.lock(SID)

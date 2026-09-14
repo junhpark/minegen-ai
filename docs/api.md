@@ -176,8 +176,13 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      409 LEVEL_ACCESSES_NOT_GENERATED if missing
     GET  …/design/ramp-source                        {activeSource, owningArtifact, available, …}
     PUT  …/design/ramp-source {activeSource}         LEGACY | LAYOUT_V2 (409 LAYOUT_V2_NOT_SELECTED
-                                                     without a selection); a change deletes every
-                                                     ramp-derived artifact, never geology
+                                                     without a selection, LAYOUT_V2_SELECTION_STALE /
+                                                     LAYOUT_V2_CLEARANCE_MISMATCH / ARTIFACT_MALFORMED
+                                                     when the selection is present but not VALID —
+                                                     AC-01F: the guards run BEFORE the write, so a
+                                                     refused switch changes no byte);
+                                                     a change deletes every ramp-derived artifact,
+                                                     never geology
     GET  …/design/ramp                               the ACTIVE Effective Ramp (rule 149):
                                                      sourceKind LEGACY_SMOOTHED |
                                                      LEGACY_RAW_FALLBACK | PARAMETRIC_V2,
@@ -353,6 +358,228 @@ Scene / world payload additions (`orebody`):
 The mesh is a backend-authored DERIVATIVE of the implicit solid for
 rendering; membership is `contains` (φ ≤ 0) only. The grade slice mask
 keeps `OREBODY_INTERSECTION_BELOW_TERRAIN` semantics for every type.
+
+## Reading a persisted artifact (AC-01F)
+
+Every persisted derived artifact is read through ONE validated read authority
+(`backend/src/minegen/services/artifact_reader.py`). A read observes the files
+of one scenario under the per-scenario store lock — the same lock every writer
+holds across its write AND its cascade — and then classifies each artifact:
+
+| state | meaning | direct route | `GET …/scene` |
+|---|---|---|---|
+| ABSENT | the artifact file does not exist | its own `*_NOT_GENERATED` code (see the drift note below) | `null` |
+| VALID | exists, parses to a JSON object, satisfies its payload model / first-level shape, and passes every provenance check of the same observation | 200, unchanged bytes | the payload |
+| STALE | well-shaped, but a persisted provenance field disagrees with the live revision of the upstream file it names, or a co-published pair disagrees | 409 | the whole scene is refused |
+| MALFORMED | present but not a usable document: unreadable bytes, not a JSON object, a failed model / shape precondition, or an incomplete two-file unit (see the GLB note below) | 409 | the whole scene is refused |
+
+**The missing-vs-stale contract.** ABSENT is expected and quiet. STALE and
+MALFORMED are always loud, on every surface (route, builder POST, async job,
+GLB route, scene): a present artifact is either projected as-is or refused
+with a code that names it. There is no third outcome — no partial projection,
+no fallback to raw, no repair. Repair is always an explicit user write
+(regenerate the artifact, `PUT …/design/ramp-source`, regenerate the world),
+never a read.
+
+New error codes (all HTTP 409):
+
+| code | detail | raised when |
+|---|---|---|
+| `ARTIFACT_MALFORMED` | `code`, `message` (names the FILE, never a path) | a present artifact is not a usable document |
+| `ARTIFACT_STALE` | `code`, `message` | a provenance check failed and no rule-named stale code exists (today: `development_mesh.sources.rampSource` vs the active source) |
+| `SCENE_ARTIFACT_INVALID` | `code`, `message`, `artifacts: [{artifact, state, code, message}]` | `GET …/scene` found at least one present-but-invalid artifact; EVERY failure of that snapshot is listed, each with its own specific code (`SHAFTS_STALE`, `LAYOUT_V2_CLEARANCE_MISMATCH`, `ARTIFACT_MALFORMED`, …). No filesystem path, traceback or exception repr is exposed |
+| `READ_SNAPSHOT_CHANGED` | `code`, `message` | **reserved — emitted from AC-01F commit 3** (the scene's bounded snapshot retry). The class, the code, the wire mapping and the reader's binding parameters (`expect_scenario_revision` / `expect_arrays_revision`) exist from commit 2 and are tested, but no API surface passes those parameters yet, so the code cannot reach a client before commit 3. It means "a coherent read snapshot could not be acquired because the scenario / artifact set kept changing; retry the read", and it is deliberately distinct from `JOB_INPUTS_CHANGED`, which is a GENERATION whose inputs moved |
+
+An existing domain-specific code always wins over a generic one: a stale shaft
+artifact stays `SHAFTS_STALE`, a stale capability graph
+`CAPABILITY_GRAPH_STALE`, a selection bound to another catalogue revision
+`LAYOUT_V2_SELECTION_STALE`, and any defect of the selection's persisted
+clearance certification `LAYOUT_V2_CLEARANCE_MISMATCH` (rule 172). Async jobs
+report the same codes as the synchronous routes: `JobService` transports the
+exception's `code` unchanged.
+
+**`sourceRevision` is not a freshness token.** Every derived payload carries
+`sourceRevision = sha256(fingerprint.entries)` over the registry's ordered
+input list. It is provenance for humans, not an authority: the Effective Ramp
+fingerprint group expands to the INACTIVE owner's files, so a
+persisted-vs-recomputed mismatch is a normal state of a correct artifact. The
+read authority therefore never compares it to a recomputed fingerprint.
+Freshness uses only the relations that exist on disk:
+`layout_v2_selected.layoutRevision` ↔ `layout_v2.json`,
+`shafts.levelsRevision` ↔ `levels.json`,
+`capabilityGraph.networkRevision` (plus its recorded `networkSourceRevision`)
+↔ `network.json`, the selection ↔ level-access agreement (rule 157),
+`development_mesh.sources.rampSource` ↔ the active source, and the two-file
+GLB content hash. Where persisted evidence cannot prove freshness, the reader
+claims nothing; the cascade and the rule-60 writer protocol remain the
+guarantee.
+
+**Two-file (GLB) units: what is checked where.** `tunnel_mesh.json` +
+`tunnel_mesh.glb` and `development_mesh.json` + `development_mesh.glb` are one
+artifact each (rule 67). The report route and `GET …/scene` check the unit's
+PRESENCE: a `status: "SUCCESS"` report whose `.glb` is missing is 409
+`ARTIFACT_MALFORMED` on both, instead of the old split where the report
+answered 200 and its own GLB route answered 409. The GLB BYTES are hashed
+against the report's own `artifactRevision` only on the binary routes
+(`GET …/design/tunnel/mesh.glb`, `GET …/design/development-mesh/mesh.glb`),
+where the bytes are being served anyway and a torn file used to be answered
+`200 model/gltf-binary` with `Cache-Control: …immutable`. The scene and the
+report GET never read tens of megabytes to answer; the bytes served on the
+binary route are the bytes that were hashed (one observation, not two reads).
+
+**`GET …/design/ramp-source`.** Expected absence stays `available: false`, for
+BOTH owners:
+
+* `activeSource = LEGACY` with no `decline_smoothed.json` — the normal
+  pre-generation state;
+* `activeSource = LAYOUT_V2` with no `layout_v2_selected.json` — reachable
+  through the normal API, because `ramp_source.json` is in no cascade:
+  regenerating the catalogue under an active LAYOUT_V2 deletes the selection
+  and the level accesses while `activeSource` stays LAYOUT_V2 until the user
+  re-selects and re-activates. `GET …/design/ramp` answers 409
+  `LAYOUT_V2_NOT_SELECTED` there, and the scene's `rampSource` slot reports
+  exactly what this endpoint reports.
+
+A present-but-INVALID active owner is a different thing and answers its own
+typed 409 — this status endpoint must never report `available: true` for a
+ramp every builder refuses. A corrupt `ramp_source.json` is 409
+`ARTIFACT_MALFORMED`, never a silent `LEGACY`; `PUT …/design/ramp-source` is
+the explicit repair, and it evaluates its guards (world, VALID selection)
+BEFORE it writes, so a refused switch leaves the file byte-identical. A writer
+that has already persisted its artifact and meets an unusable
+`ramp_source.json` at its cascade deletes the UNION of both sources' closures
+— strictly more, never less, and never a guessed source.
+
+**The selection ↔ level-access pair, and its documented asymmetry.**
+`layout_v2_selected.json` and `level_accesses.json` are co-published under one
+capture (rule 157), so a disagreeing half is crash residue. The disagreement is
+typed by DEFECT CLASS:
+
+| disagreeing field | code | why |
+|---|---|---|
+| `candidateId`, or the recorded certification (`clearanceBasis` / refinement provenance / `clearanceErrorBound`) | `LAYOUT_V2_CLEARANCE_MISMATCH` | a candidate-identity / clearance-recipe defect — the same class, and the same pinned AC-01D code, that a defective `clearance` block on the selection itself answers (rule 172) |
+| `sourceRevision`, `layoutRevision`, or an orphaned / unparseable selection half | `LAYOUT_V2_SELECTION_STALE` | the two halves belong to different captures: a freshness fact, not a certification defect |
+
+Both are read state STALE. The asymmetry this leaves is deliberate and
+documented: a selection that is shape-valid and revision-valid but
+VALUE-tampered (its recorded error bound moved, or it names a candidate the
+catalogue does not contain) still answers **200 on its own
+`GET …/design/layout-v2/selected`** — the selection's read is shape +
+revision, and judging its VALUES needs the world and the rebuilt policy, which
+is a search-level check, not a read. The same tampering answers **409
+`LAYOUT_V2_CLEARANCE_MISMATCH`** on `GET …/design/level-accesses`, in the
+scene, and on every builder that reads the level accesses. The co-published
+pair is what makes the residue visible on a read.
+
+That also moves where four builders get their answer.
+`POST …/network/generate`, `POST …/design/timeline`,
+`POST …/infrastructure/communication` and `POST …/infrastructure/sensors` read
+`level_accesses.json` but restore no clearance policy; their
+`LAYOUT_V2_CLEARANCE_MISMATCH` for a value-tampered selection now comes from
+the pair read, not from a policy restore. The four builders that DO need the
+selected candidate's certification (`POST …/design/levels`,
+`…/design/shafts`, `…/design/tunnel`, `…/design/development-mesh`) keep their
+own restore unchanged. `POST …/design/stopes` stays **200** on a stale or
+tampered selection, and that is not an oversight: the registry declares its
+inputs as `scenario + arrays + levels` (rule 79), so it reads no ramp at all —
+giving it a ramp dependency would be an engineering change, not a read-trust
+change.
+
+**A MALFORMED catalogue can no longer be selected.**
+`POST …/design/layout-v2/select` and `…/activate` require a VALID
+`layout_v2.json`. Their precondition used to be a presence probe, and the
+deterministic re-run behind it rebuilds the search result from scenario +
+world without ever parsing the catalogue — so a corrupt catalogue was never
+noticed. Measured at HEAD `12d7725`: with `layout_v2.json` = `{`, `select`
+answered **200** and wrote `layout_v2_selected.json` + `level_accesses.json`
+carrying the corrupt file's own `layoutRevision`, and `activate` answered
+**200** — a fully activated LAYOUT_V2 ramp bound to a document nobody can
+parse. Both answer 409 `ARTIFACT_MALFORMED` now, and write nothing.
+
+**`targets.json` has no first-level shape precondition.** No consumer
+subscripts it: `_targets_object` requires a VALID document and then rebuilds
+the `AccessTargetSet` deterministically. So a valid-JSON document of the wrong
+shape is VALID by spec — `GET …/design/targets` answers 200 and
+`POST …/design/decline` still answers 200 — while UNPARSEABLE bytes, or a document that is not a JSON object, are 409
+`ARTIFACT_MALFORMED` on both. The read authority claims nothing about a shape
+no consumer reads; that is the honesty limit, stated rather than papered over.
+
+**One artifact never reports another's defect.** The capability graph records
+`networkSourceRevision` and AC-01F cross-checks it against the network
+payload's own `sourceRevision`. That cross-check DEFERS when `network.json`
+cannot be parsed — the network's own read is the `ARTIFACT_MALFORMED` report.
+In practice the graph is refused anyway, one check earlier: rewriting the file
+changed its `file_revision`, so the `networkRevision` relation fires first with
+`CAPABILITY_GRAPH_STALE` (measured).
+
+**Q-WORLD-GUARD: the world guard is DISK-authoritative on every derived read.**
+A derived artifact is never trusted without a world (the snapshot's own
+`arrays.npz` stat, not the in-memory world cache and not a per-reader probe).
+Two observable consequences:
+
+* with the world cached in memory and `arrays.npz` deleted, `GET …/scene` used
+  to answer **200** with a full manifest (Stage A probe 2 §4.9) and now answers
+  409 `WORLD_NOT_GENERATED`;
+* on a scenario CREATED but not yet world-generated, every derived read route
+  answers 409 `WORLD_NOT_GENERATED` instead of its own absence code. Measured
+  over the 21 derived read routes (HEAD `12d7725` → AC-01F commit 2): 11
+  answers change, of which 4 change STATUS.
+
+| route | HEAD `12d7725` | AC-01F commit 2 |
+|---|---|---|
+| `GET …/design/targets` | 409 `WORLD_NOT_GENERATED` | unchanged |
+| `GET …/design/decline` | 409 `WORLD_NOT_GENERATED` | unchanged |
+| `GET …/design/decline/smooth` | 409 `WORLD_NOT_GENERATED` | unchanged |
+| `GET …/design/layout-v2` | 409 `WORLD_NOT_GENERATED` | unchanged |
+| `GET …/design/ramp` | 409 `WORLD_NOT_GENERATED` | unchanged |
+| `GET …/design/tunnel` | 409 `WORLD_NOT_GENERATED` | unchanged |
+| `GET …/design/tunnel/mesh.glb` | 409 `WORLD_NOT_GENERATED` | unchanged |
+| `GET …/design/development-mesh` | 409 `WORLD_NOT_GENERATED` | unchanged |
+| `GET …/design/development-mesh/mesh.glb` | 409 `WORLD_NOT_GENERATED` | unchanged |
+| `GET …/scene` | 409 `WORLD_NOT_GENERATED` | unchanged |
+| `GET …/design/layout-v2/selected` | 409 `LAYOUT_V2_NOT_SELECTED` | 409 `WORLD_NOT_GENERATED` |
+| `GET …/design/level-accesses` | 409 `LEVEL_ACCESSES_NOT_GENERATED` | 409 `WORLD_NOT_GENERATED` |
+| `GET …/design/levels` | 409 `LEVELS_NOT_GENERATED` | 409 `WORLD_NOT_GENERATED` |
+| `GET …/design/stopes` | 409 `STOPES_NOT_GENERATED` | 409 `WORLD_NOT_GENERATED` |
+| `GET …/design/timeline` | 409 `TIMELINE_NOT_GENERATED` | 409 `WORLD_NOT_GENERATED` |
+| `GET …/infrastructure/communication` | 409 `COMMUNICATION_NOT_GENERATED` | 409 `WORLD_NOT_GENERATED` |
+| `GET …/infrastructure/sensors` | 409 `SENSORS_NOT_GENERATED` | 409 `WORLD_NOT_GENERATED` |
+| `GET …/design/ramp-source` | **200** (summary) | **409** `WORLD_NOT_GENERATED` |
+| `GET …/design/shafts` | **404** `SHAFTS_NOT_GENERATED` | **409** `WORLD_NOT_GENERATED` |
+| `GET …/network` | **404** `NETWORK_NOT_GENERATED` | **409** `WORLD_NOT_GENERATED` |
+| `GET …/design/capability-graph` | **404** `CAPABILITY_GRAPH_NOT_GENERATED` | **409** `WORLD_NOT_GENERATED` |
+
+The recorded 404/409 absence drift below is unchanged for a scenario that HAS
+a world; these four rows are the no-world state only, where the world guard
+answers first. The frontend already generates the world before it reads any
+derived route.
+
+**`scene.levelAccesses` is not gated by the active source**: it is the
+level-access artifact OF THE SELECTION, rendered as a preview before
+activation. It is validated like every other slot.
+
+**Migration-on-read** (`ScenarioStore.get`, Phase 18) stays the ONE documented
+exception to "a read must not write": reading a scenario document of an older
+schema version migrates it, persists it and clears every derived artifact
+(rules 40/46). The read authority adds no migration and no repair of its own.
+
+**`JOB_INPUTS_CHANGED` on the three generation guards.** `StaleInputsError`
+now answers its own canonical code — the one the `?sync=true` branches and the
+async job path already answered — on `api/design.py`, `api/network.py` and
+`api/infrastructure.py`. It replaces three untested literals that reported
+`code: "STALE_INPUTS"` with the messages `"inputs changed during generation;
+retry"` (design), `"network inputs changed during generation; retry"`
+(network) and `"inputs changed while generating; retry"` (infrastructure); the
+status (409) is unchanged and the message is now the exception's own.
+`POST …/design/targets` gained this path: it is the last derived writer to
+adopt the rule-60 capture/re-check protocol.
+
+**Recorded 404/409 drift (AC-01I owns it).** Absence answers 409 for fourteen
+routes and 404 for three: `GET …/design/shafts` (`SHAFTS_NOT_GENERATED`),
+`GET …/design/capability-graph` (`CAPABILITY_GRAPH_NOT_GENERATED`) and
+`GET …/network` (`NETWORK_NOT_GENERATED` — the same exception answers 409 from
+the design and infrastructure routers). AC-01F preserves this drift
+deliberately; normalizing it is AC-01I's, together with the frontend.
 
 ## Planned
     GET  /api/v1/scenarios/{id}/design                  Phase 04+

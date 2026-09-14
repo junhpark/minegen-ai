@@ -192,31 +192,39 @@ closure.
 
 | artifact | fingerprint inputs (ORDERED) | regenerating it deletes | read path |
 |---|---|---|---|
-| `targets.json` | NONE — `generate_targets` captures no fingerprint and has no stale-input check (the TABULAR guard is a precondition); the registry declares the dependency scenario + arrays for its edges only | decline, smoothed, and the ramp-downstream chain iff active source is LEGACY | raw `json.loads` |
-| `decline.json` | + targets | smoothed (+ ramp downstream iff LEGACY) | raw |
-| `decline_smoothed.json` | + decline | ramp downstream iff LEGACY | raw |
-| `layout_v2.json` | scenario + arrays | selection AND level accesses (+ ramp downstream iff LAYOUT_V2) | raw; the scene strips centerlines |
-| `layout_v2_selected.json` | scenario + arrays + catalogue — the ONE list feeding the persisted `revision` = sha256([entries, layoutRevision, candidateId])[:16] written as `sourceRevision` into BOTH files (`layout/materialize.py`); captured before the search object and re-checked under the lock (pre-AC-01E an inline list, not a helper) | ramp downstream iff LAYOUT_V2; rewrites `level_accesses.json` in the same lock; the idempotent re-select (same `candidateId` + `layoutRevision`) writes and deletes NOTHING | raw to serve; revision + clearance provenance checked when a builder needs the policy (`_selection_snapshot` / `_selected_candidate_policy`) |
-| `level_accesses.json` | written with the selection under the selection's capture (no capture of its own; the registry gives it the selection's list for its EDGES only) | — (deleted with the selection by catalogue regeneration, and by `clear_derived`; a SOURCE switch deliberately keeps it, rule 162) | raw |
-| `ramp_source.json` | explicit user choice (a root: no fingerprint, outside the world closure, removed only by `clear_derived`) | on an actual change: the whole ramp-downstream chain, unconditionally; the same source is a no-op | raw, silent LEGACY fallback if missing / malformed (`effective_ramp.py:75-84`) |
-| `tunnel_mesh.{json,glb}` | smoothing set (scenario + arrays + targets + decline) + ramp set — 8 paths | nothing (own stale GLB only) | raw |
-| `levels.json` | scenario + arrays + ramp set | shafts, network (+capability), stopes, timeline, communication, sensors, development mesh — **not** the tunnel mesh (rule 74) | **validated** |
-| `development_mesh.{json,glb}` | levels set + levels.json (the SAME 7-path list as shafts) | nothing (own stale GLB only) | raw |
-| `shafts.json` | levels set + levels.json (the SAME 7-path list as the development mesh) | network (+capability), timeline, communication, sensors — not stopes, not the development mesh | **validated + `levelsRevision` 409** in `shafts_if_present` (the builders' read); `GET …/design/shafts` uses `shafts()` and serves a stale artifact without the 409 (as-is, AC-01F) |
-| `network.json` | scenario + ramp set + levels + shafts | timeline, communication, sensors, capability graph | **validated** |
-| `capability_graph.json` | scenario + network + shafts | nothing | **validated + `networkRevision` 409** |
-| `stopes.json` | scenario + arrays + levels (no ramp) | timeline | **validated** |
-| `timeline.json` | scenario + network + stopes + ramp set + levels + shafts | nothing | **validated** |
-| `communication.json` / `sensors.json` | scenario + network + ramp set + levels + shafts — sensors declares the same list as communication (asserted by the registry test) | nothing | **validated** |
+| `targets.json` | scenario + arrays — **AC-01F**: the last derived writer to adopt the rule-60 capture/re-check protocol (captured before the evaluator, re-checked under the publish lock → `JOB_INPUTS_CHANGED`). The payload and its schema are unchanged; no provenance field was added | decline, smoothed, and the ramp-downstream chain iff active source is LEGACY | resolver, `services/artifact_reader.py` (no first-level shape precondition: no consumer subscripts it, so a wrong-shaped document is VALID and only unparseable bytes are refused) |
+| `decline.json` | + targets | smoothed (+ ramp downstream iff LEGACY) | resolver, `services/artifact_reader.py` |
+| `decline_smoothed.json` | + decline | ramp downstream iff LEGACY | resolver, `services/artifact_reader.py` |
+| `layout_v2.json` | scenario + arrays | selection AND level accesses (+ ramp downstream iff LAYOUT_V2) | resolver, `services/artifact_reader.py` (shape: `candidates` is a list); the scene strips centerlines |
+| `layout_v2_selected.json` | scenario + arrays + catalogue — the ONE list feeding the persisted `revision` = sha256([entries, layoutRevision, candidateId])[:16] written as `sourceRevision` into BOTH files (`layout/materialize.py`); captured before the search object and re-checked under the lock (pre-AC-01E an inline list, not a helper) | ramp downstream iff LAYOUT_V2; rewrites `level_accesses.json` in the same lock; the idempotent re-select (same `candidateId` + `layoutRevision`) writes and deletes NOTHING | resolver, `services/artifact_reader.py` (shape = `CandidateCertification.from_selection` + `segments`; `layoutRevision` ↔ `layout_v2.json` → `LAYOUT_V2_SELECTION_STALE`; a clearance-block defect → `LAYOUT_V2_CLEARANCE_MISMATCH`). A VALUE defect the world alone can prove is still the builders' `_selected_candidate_policy` check |
+| `level_accesses.json` | written with the selection under the selection's capture (no capture of its own; the registry gives it the selection's list for its EDGES only) | — (deleted with the selection by catalogue regeneration, and by `clear_derived`; a SOURCE switch deliberately keeps it, rule 162) | resolver, `services/artifact_reader.py` (shape = `CandidateCertification.from_level_accesses` + `accesses`; `layoutRevision` ↔ catalogue and the rule-157 pair agreement with the VALID selection: `candidateId` / certification → `LAYOUT_V2_CLEARANCE_MISMATCH`, `sourceRevision` / `layoutRevision` / orphaned half → `LAYOUT_V2_SELECTION_STALE`) |
+| `ramp_source.json` | explicit user choice (a root: no fingerprint, outside the world closure, removed only by `clear_derived`) | on an actual change: the whole ramp-downstream chain, unconditionally; the same source is a no-op | resolver, `services/artifact_reader.py`: ABSENT → `LEGACY` (the ONE documented absent default, rule 150); present-but-unusable → `ARTIFACT_MALFORMED`, never a silent LEGACY. The post-write cascade is the ONE caller that may not raise: it deletes the union of both closures |
+| `tunnel_mesh.{json,glb}` | smoothing set (scenario + arrays + targets + decline) + ramp set — 8 paths | nothing (own stale GLB only) | resolver, `services/artifact_reader.py` (two-file unit: a SUCCESS report requires its GLB; the bytes are hashed against `artifactRevision` on the `.glb` route) |
+| `levels.json` | scenario + arrays + ramp set | shafts, network (+capability), stopes, timeline, communication, sensors, development mesh — **not** the tunnel mesh (rule 74) | resolver, `services/artifact_reader.py` (`LevelsPayload`) |
+| `development_mesh.{json,glb}` | levels set + levels.json (the SAME 7-path list as shafts) | nothing (own stale GLB only) | resolver, `services/artifact_reader.py` (two-file unit as the tunnel, plus `sources.rampSource` ↔ the active source → `ARTIFACT_STALE`) |
+| `shafts.json` | levels set + levels.json (the SAME 7-path list as the development mesh) | network (+capability), timeline, communication, sensors — not stopes, not the development mesh | resolver, `services/artifact_reader.py` (`ShaftsPayload` + `levelsRevision` ↔ `levels.json` → `SHAFTS_STALE`). **AC-01F closed the split**: the GET, the scene, `shafts()` and `shafts_if_present()` are the SAME read, so the route no longer serves 200 what the builders refuse (Stage A I-1, the canary) |
+| `network.json` | scenario + ramp set + levels + shafts | timeline, communication, sensors, capability graph | resolver, `services/artifact_reader.py` (`NetworkPayload`) |
+| `capability_graph.json` | scenario + network + shafts | nothing | resolver, `services/artifact_reader.py` (`CapabilityGraphPayload` + `networkRevision` ↔ `network.json`, and AC-01F also cross-checks the recorded `networkSourceRevision` against the network payload's own — deferring when the network itself cannot be parsed) |
+| `stopes.json` | scenario + arrays + levels (no ramp) | timeline | resolver, `services/artifact_reader.py` (`StopesPayload`) |
+| `timeline.json` | scenario + network + stopes + ramp set + levels + shafts | nothing | resolver, `services/artifact_reader.py` (`TimelinePayload`) |
+| `communication.json` / `sensors.json` | scenario + network + ramp set + levels + shafts — sensors declares the same list as communication (asserted by the registry test) | nothing | resolver, `services/artifact_reader.py` (`CommunicationPayload` / `SensorPayload`) |
 | `derived/world.json` | UNREGISTERED — the world statistics snapshot `WorldService._save` writes; no fingerprint lists it and no cascade deletes it | — | only `clear_derived` removes it |
 
 Two structural facts this table makes explicit, both inputs to later AC steps:
 
-* `WorldService.scene` (`world_service.py:128-175`) reads thirteen derived
-  documents in one loop and four more below it (`layout_v2`,
-  `layout_v2_selected`, `level_accesses`, `ramp_source`) — seventeen raw
-  `json.loads`, with no schema validation and no revision check — so a stale file that a per-artifact API would refuse with 409 is
-  still projected into the scene (AC-F05, owner AC-01F).
+* `WorldService.scene` **since AC-01F commit 2** takes ONE
+  `ArtifactReader.snapshot` of every registered derived file under the
+  per-scenario store lock — the same lock every writer holds across its write
+  AND its cascade — and then classifies each artifact OUTSIDE the lock. The
+  seventeen unsynchronised raw `json.loads` with no schema validation and no
+  revision check are gone: `null` now means ABSENT and nothing else, and any
+  STALE / MALFORMED artifact refuses the WHOLE scene with 409
+  `SCENE_ARTIFACT_INVALID`, every failure listed in `detail.artifacts[]` with
+  its own specific code. The scene also applies the same DISK-authoritative
+  world guard as `require` (`arrays.npz` absent → 409 `WORLD_NOT_GENERATED`,
+  even with a warm world cache). The scenario / world REVISION BINDING of that
+  snapshot (`load_bound`, the bounded retry and `READ_SNAPSHOT_CHANGED`) is
+  AC-01F commit 3 (F06-A).
 * `InfrastructureService` no longer reaches into a `DesignService` private:
   its two fingerprints call the module-level `artifact_fingerprint` (AC-01E;
   the pre-AC-01E `design._ramp_input_paths` access was the only cross-service
@@ -234,7 +242,10 @@ by line against the code before the registry was written; six statements did
 not hold and are corrected above: (1) `targets.json` had NO fingerprint — the
 row claimed "scenario + arrays (TABULAR only)", but `generate_targets` never
 captured one and the registry adds none (a capture would add a 409 path to
-`POST …/design/targets`); (2) `derived/world.json` and `ramp_source.json`
+`POST …/design/targets`). **AC-01F added exactly that capture** (A3, the last
+unfingerprinted derived writer): the registry declaration is unchanged, the
+payload and its schema are unchanged, and the new 409 path is
+`JOB_INPUTS_CHANGED` on a race only — the row above is the AC-01F state; (2) `derived/world.json` and `ramp_source.json`
 lie outside every cascade — only the `clear_derived` directory walk removes
 them (the registry test pins `closure(arrays.npz) ∪ {ramp_source.json}` ==
 every registered derived artifact as a consistency fact, not as the
@@ -418,8 +429,9 @@ Numbering follows the Architecture Reality Report (2026-09-10, audit baseline
 | F02 | consuming a saved design re-runs the whole search | **resolved by AC-01D (downstream)**: zero `LayoutV2Search.run` calls below a selection, cold or warm; the cold re-run of `select_layout_candidate` for a DIFFERENT candidate is deferred and recorded in §7 |
 | F03 | search context and candidate state mutate across stages | open — AC-01C / AC-01G |
 | F04 | artifact lifecycle is several hand-maintained lists | **resolved by AC-01E**: one declarative registry (`core/artifact_registry.py`) derives every ordered fingerprint list and every source-conditional delete cascade; the 13 `_delete_*` helpers, 12 `_*_input_paths` lists, the inline selection capture and the `InfrastructureService` reach-in are gone; census + e2e proofs in §6. The frontend mirror (`scene/invalidation.ts`) stays AC-01I |
-| F05 | the same artifact is stale-checked differently per read path | open — AC-01F; `WorldService.scene` raw reads listed in §6 |
-| F06 | revision is a stat fingerprint, publication is not atomic | open — AC-01F (AC-01E deliberately kept the stat semantics); the stat semantics are rule 60 and are NOT to be replaced by a content hash without a decision |
+| F05 | the same artifact is stale-checked differently per read path | **resolved by AC-01F (commit 2)**: ONE validated read authority (`services/artifact_reader.py`) over a per-artifact spec table; every direct GET, every builder's upstream read, both GLB routes, the async job path and the scene classify an artifact identically (ABSENT / VALID / STALE / MALFORMED) and answer the same typed code. `tests/test_no_raw_artifact_reads.py` is the static proof that no module outside the authority reads — or presence-probes — a derived artifact; `tests/test_artifact_read_api.py` pins the contract through the real API. The frontend mirror stays AC-01I |
+| F06-A | reads are not taken against a coherent, revision-bound snapshot | **in progress — AC-01F**: the DERIVED half is resolved in commit 2 (one lock-held observation per scene / per `require`, one observation per file, the disk-authoritative world guard). The scenario / world binding — `load_bound`, the revision-bound world cache, the scenario-PUT mutation boundary, the world-generate optimistic publish guard and the bounded retry that emits `READ_SNAPSHOT_CHANGED` — is resolved in-process from commit 3 |
+| F06-B | publication is not atomic (a writer's `write_text` is not temp + fsync + replace) | open — **AC-01F.2** (separate PR). The stat semantics of `file_revision` / `InputFingerprint._stat` are rule 60 and are NOT to be replaced by a content hash without a decision; AC-01F deliberately changed no write-site bytes |
 | F07 | level development rebuilds search-side section / track state | open — AC-01G |
 | F08 | `ci.yml` and `verify-full.yml` both run the whole gate set | open — AC-01H |
 | F09 | typed-API principle vs `dict[str, Any]` layout payloads | open — AC-01C / AC-01I |

@@ -18,6 +18,24 @@ from typing import Any
 
 import numpy as np
 
+from minegen.core.artifacts import (
+    CAPABILITY_GRAPH_ARTIFACT,
+    COMMUNICATION_ARTIFACT,
+    DECLINE_ARTIFACT,
+    DEVELOPMENT_MESH_ARTIFACT,
+    LAYOUT_V2_ARTIFACT,
+    LAYOUT_V2_SELECTED_ARTIFACT,
+    LEGACY_RAMP_ARTIFACT,
+    LEVEL_ACCESSES_ARTIFACT,
+    LEVELS_ARTIFACT,
+    NETWORK_ARTIFACT,
+    SENSORS_ARTIFACT,
+    SHAFTS_ARTIFACT,
+    STOPES_ARTIFACT,
+    TARGETS_ARTIFACT,
+    TIMELINE_ARTIFACT,
+    TUNNEL_MESH_ARTIFACT,
+)
 from minegen.core.models import Scenario
 from minegen.export.scene_manifest import (
     SliceAxis,
@@ -25,7 +43,12 @@ from minegen.export.scene_manifest import (
     build_scene,
     slice_payload,
 )
-from minegen.services.artifact_errors import WorldNotGeneratedError
+from minegen.services.artifact_errors import (
+    SceneArtifactInvalidError,
+    WorldNotGeneratedError,
+    read_state_code,
+)
+from minegen.services.artifact_reader import READ_SPECS, ArtifactReader
 from minegen.services.effective_ramp import resolve_effective_ramp
 from minegen.services.scenario_service import ScenarioStore
 from minegen.world.geology import FaultPlane
@@ -68,10 +91,33 @@ class WorldArtifactIncompatibleError(WorldNotGeneratedError):
     routers report the more specific code."""
 
 
+#: the 13 scene slots the manifest projects straight from their artifact, in
+#: the ORDER ``WorldService.scene`` has always written them
+SCENE_SLOTS: tuple[tuple[str, str], ...] = (
+    ("accessTargets", TARGETS_ARTIFACT),
+    ("decline", DECLINE_ARTIFACT),
+    ("smoothedDecline", LEGACY_RAMP_ARTIFACT),
+    ("tunnelMesh", TUNNEL_MESH_ARTIFACT),
+    ("developmentMesh", DEVELOPMENT_MESH_ARTIFACT),
+    ("levels", LEVELS_ARTIFACT),
+    ("shafts", SHAFTS_ARTIFACT),
+    ("network", NETWORK_ARTIFACT),
+    ("capabilityGraph", CAPABILITY_GRAPH_ARTIFACT),
+    ("stopes", STOPES_ARTIFACT),
+    ("timeline", TIMELINE_ARTIFACT),
+    ("communication", COMMUNICATION_ARTIFACT),
+    ("sensors", SENSORS_ARTIFACT),
+)
+
+
 class WorldService:
     def __init__(self, store: ScenarioStore) -> None:
         self.store = store
         self._cache: dict[str, SyntheticWorld] = {}
+        #: AC-01F: the ONE validated read authority over ``derived/``; the
+        #: scene never parses an artifact file itself (rule 40 — routers
+        #: obtain the SERVICE through a dependency, the reader is internal)
+        self._reader = ArtifactReader(store)
 
     # -- generation -------------------------------------------------------- #
 
@@ -130,53 +176,62 @@ class WorldService:
         return world.stats(scenario)
 
     def scene(self, scenario_id: str) -> dict[str, Any]:
+        """The scene manifest: a projection of the VALID derived artifacts of
+        ONE lock-held read snapshot (AC-01F).
+
+        ``null`` means ABSENT and nothing else. A present artifact that is
+        STALE or MALFORMED is never projected, never nulled and never
+        silently repaired: EVERY invalid artifact of the snapshot is collected
+        and the whole scene is refused with ``SCENE_ARTIFACT_INVALID`` (A14),
+        because a scene that mixes what a builder refuses with what it accepts
+        is a claim the next POST contradicts.
+
+        One observation per file per snapshot: ``legacySmoothedDecline`` and
+        ``smoothedDecline`` come from the SAME parsed document, and the ramp
+        summary's ``layoutV2Selected`` flag is that snapshot's presence
+        observation — never a third probe (Stage A R4)."""
         scenario, world = self.load(scenario_id)
         scene = build_scene(scenario, world)
-        derived = self.store.derived_dir(scenario_id)
-        for key, name in (
-            ("accessTargets", "targets.json"),
-            ("decline", "decline.json"),
-            ("smoothedDecline", "decline_smoothed.json"),
-            ("tunnelMesh", "tunnel_mesh.json"),
-            ("developmentMesh", "development_mesh.json"),
-            ("levels", "levels.json"),
-            ("shafts", "shafts.json"),
-            ("network", "network.json"),
-            ("capabilityGraph", "capability_graph.json"),
-            ("stopes", "stopes.json"),
-            ("timeline", "timeline.json"),
-            ("communication", "communication.json"),
-            ("sensors", "sensors.json"),
-        ):
-            path = derived / name
-            scene[key] = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+        # ONE lock hold for every registered derived file (stats + bytes);
+        # parsing, validation and assembly run outside the lock
+        snapshot = self._reader.snapshot(scenario_id)
+        if snapshot.arrays_revision is None:
+            # AC-01F C3: the same DISK-authoritative world guard every
+            # ``ArtifactReader.require`` applies — a derived artifact is never
+            # trusted without a world (A1). ``load`` above can still answer
+            # from the in-memory cache after ``arrays.npz`` was deleted (Stage
+            # A probe 2 §4.9 measured that as a literal 200); the snapshot's
+            # own stat is what decides here. Commit 3 adds the revision
+            # BINDING (scenario / arrays stats re-checked against the load).
+            raise WorldNotGeneratedError(scenario_id)
+        reads = {name: self._reader.read(snapshot, name) for name in READ_SPECS}
+        failures = [
+            {
+                "artifact": name,
+                "state": read.state,
+                "code": read_state_code(read.error),
+                "message": str(read.error),
+            }
+            for name, read in reads.items()
+            if read.error is not None
+        ]
+        if failures:
+            raise SceneArtifactInvalidError(scenario_id, failures)
+        for key, name in SCENE_SLOTS:
+            scene[key] = reads[name].raw
         # Phase 20A (rules 149–150): ``smoothedDecline`` is the ACTIVE Effective
         # Ramp — for the LEGACY source the Phase 05 artifact itself (adapter
         # view, geometry untouched); the raw legacy artifact stays available
         # as ``legacySmoothedDecline`` for the legacy pipeline status.
-        ramp = resolve_effective_ramp(derived)
+        ramp = resolve_effective_ramp(snapshot, self._reader)
         scene["legacySmoothedDecline"] = scene["smoothedDecline"]
         scene["smoothedDecline"] = ramp.payload
         scene["rampSource"] = ramp.summary()
-        layout_path = derived / "layout_v2.json"
-        scene["layoutV2"] = (
-            _layout_summary(json.loads(layout_path.read_text(encoding="utf-8")))
-            if layout_path.is_file()
-            else None
-        )
-        selected_path = derived / "layout_v2_selected.json"
-        scene["layoutV2Selected"] = (
-            json.loads(selected_path.read_text(encoding="utf-8"))
-            if selected_path.is_file()
-            else None
-        )
+        catalogue = reads[LAYOUT_V2_ARTIFACT].raw
+        scene["layoutV2"] = _layout_summary(catalogue) if catalogue is not None else None
+        scene["layoutV2Selected"] = reads[LAYOUT_V2_SELECTED_ARTIFACT].raw
         # Phase 20B: ramp junctions + level accesses of the selection (rule 157)
-        accesses_path = derived / "level_accesses.json"
-        scene["levelAccesses"] = (
-            json.loads(accesses_path.read_text(encoding="utf-8"))
-            if accesses_path.is_file()
-            else None
-        )
+        scene["levelAccesses"] = reads[LEVEL_ACCESSES_ARTIFACT].raw
         return scene
 
     def slice(

@@ -51,10 +51,14 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     "test_layout_v2_golden_smoke": ("golden",),
     "test_warped_vein_golden_smoke": ("golden",),
     "test_layout_v2_api": ("e2e",),
-    # AC-01F commit 1 only: builds BOTH oracle stacks through the real API
-    # (LEGACY ≈ 9 s + LAYOUT_V2 ≈ 5 s) to run the OLD readers beside the NEW
-    # resolver; deleted in commit 2 with the consumers it characterizes
-    "test_artifact_reader_transition": ("slow", "e2e"),
+    # AC-01F commit 2: the read contract through the real API. Both stacks are
+    # built end to end (LEGACY ≈ 9 s + LAYOUT_V2 ≈ 5 s) because ABSENT / STALE
+    # / MALFORMED are states of a REAL derived set, not of a hand-written one
+    # (the hand-written unit contract is tests/test_artifact_reader.py, FAST).
+    "test_artifact_read_api": ("slow", "e2e"),
+    # AC-01F commit 2: the scene snapshot boundary — concurrent writers against
+    # a paused reader, plus a timed torn-read loop
+    "test_scene_snapshot": ("slow", "e2e"),
 }
 #: test function name (any module) → markers
 TEST_MARKERS: dict[str, tuple[str, ...]] = {

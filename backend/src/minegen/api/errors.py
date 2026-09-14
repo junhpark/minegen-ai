@@ -1,12 +1,12 @@
 """ONE wire mapping for every typed service error (AC-01F).
 
-Today each router carries its own ``_guard`` isinstance ladder
+At HEAD ``12d7725`` each router carried its own ``_guard`` isinstance ladder
 (``api/design.py:76-209``, ``api/world.py:31-51``, ``api/network.py:41-76``,
 ``api/infrastructure.py:34-74``) with its own status, its own message text and
-its own fall-through — which is why the same ``ShaftsStaleError`` is a typed
+its own fall-through — which is why the same ``ShaftsStaleError`` was a typed
 409 on ``/network/generate`` and a 500 ``INTERNAL_ERROR`` on
 ``/infrastructure/communication`` (Stage A I-6), and why a read-state failure
-has no code at all.
+had no code at all.
 
 This module is that ladder ONCE:
 
@@ -32,8 +32,12 @@ each router. The two deliberate exceptions are named at their rows:
   literal it replaces is recorded — with every other router answer at HEAD —
   in the literal oracle table of ``tests/test_api_errors.py``.
 
-NOT WIRED in AC-01F commit 1: the four routers keep their own ``_guard``
-functions unchanged, so this table can be compared against them.
+WIRED from AC-01F commit 2: the four routers call ``guard`` through their own
+``_fail`` and carry no ladder of their own any more. The oracle that proved
+the move did not change a wire answer is the LITERAL table in
+``tests/test_api_errors.py``, transcribed row by row from the four ladders as
+they stood at HEAD ``12d7725`` (with ``file:line`` provenance per row) — the
+AC-01E frozen-census pattern, never live dead code kept in the router.
 """
 
 from __future__ import annotations
@@ -121,8 +125,9 @@ class ErrorSpec:
         return self.message.format(scenario_id=scenario_id, exc=exc)
 
 
-#: the isinstance ladder of ``api/design.py:_guard`` (its ORDER decides which
-#: row wins for a subclass — ``WorldArtifactIncompatibleError`` before its base
+#: the isinstance ladder of ``api/design.py::_guard`` at HEAD ``12d7725`` (its
+#: ORDER decides which row wins for a subclass —
+#: ``WorldArtifactIncompatibleError`` before its base
 #: ``WorldNotGeneratedError``), extended with the infrastructure-only classes
 #: and the AC-01F read-state errors.
 CODE_LADDER: Final[tuple[tuple[type[Exception], str], ...]] = (

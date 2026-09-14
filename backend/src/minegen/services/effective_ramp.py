@@ -39,13 +39,24 @@ from minegen.core.artifacts import (
     RampSource,
 )
 from minegen.core.revision import file_revision
+from minegen.services.artifact_reader import ArtifactReader, ArtifactSnapshot
 
 RAMP_SOURCES: tuple[RampSource, ...] = ("LEGACY", "LAYOUT_V2")
+
+#: the artifacts one ramp resolution observes: the source switch, both owners
+#: and the catalogue whose presence the summary reports
+RAMP_FILES: tuple[str, ...] = (
+    RAMP_SOURCE_FILE,
+    LEGACY_RAMP_ARTIFACT,
+    LAYOUT_V2_ARTIFACT,
+    LAYOUT_V2_SELECTED_ARTIFACT,
+)
 
 __all__ = [
     "LAYOUT_V2_ARTIFACT",
     "LAYOUT_V2_SELECTED_ARTIFACT",
     "LEGACY_RAMP_ARTIFACT",
+    "RAMP_FILES",
     "RAMP_OWNING_ARTIFACTS",
     "RAMP_SOURCE_FILE",
     "EffectiveRampResolution",
@@ -62,16 +73,19 @@ SOURCE_KIND_LEGACY_RAW_FALLBACK = "LEGACY_RAW_FALLBACK"
 SOURCE_KIND_PARAMETRIC_V2 = "PARAMETRIC_V2"
 
 
-def read_ramp_source(derived_dir: Path) -> RampSource:
-    path = derived_dir / RAMP_SOURCE_FILE
-    if not path.is_file():
-        return "LEGACY"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return "LEGACY"
-    source = data.get("activeSource") if isinstance(data, dict) else None
-    return source if source in RAMP_SOURCES else "LEGACY"
+def read_ramp_source(reader: ArtifactReader, scenario_id: str) -> RampSource:
+    """The ACTIVE ramp source, through the ONE read authority (AC-01F).
+
+    ABSENT → ``LEGACY`` (rule 150: LEGACY IS the absence of the file);
+    present but not a usable document → ``ArtifactMalformedError`` (A7: never
+    a silent LEGACY, which used to re-point the whole mine, Stage A I-12).
+
+    The parameters are the reader and the scenario id rather than the derived
+    directory: the file must be observed under the per-scenario store lock the
+    writers hold, and the bytes must be read by ``artifact_reader`` alone —
+    a ``Path``-only signature would need a second raw reader of a derived
+    artifact, which is exactly what this step removes."""
+    return reader.resolve_ramp_source(reader.snapshot(scenario_id, [RAMP_SOURCE_FILE]))
 
 
 def write_ramp_source(derived_dir: Path, source: RampSource) -> None:
@@ -129,42 +143,55 @@ class EffectiveRampResolution:
         }
 
 
-def _load(path: Path) -> dict[str, Any] | None:
-    if not path.is_file():
-        return None
-    data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-    return data
+def resolve_effective_ramp(
+    snapshot: ArtifactSnapshot, reader: ArtifactReader
+) -> EffectiveRampResolution:
+    """Deterministic resolution of the active Effective Ramp from ONE read
+    snapshot of the persisted derived state (AC-01F).
 
+    The ACTIVE owner must be VALID: its typed read-state error propagates
+    (``LAYOUT_V2_SELECTION_STALE`` / ``LAYOUT_V2_CLEARANCE_MISMATCH`` /
+    ``ARTIFACT_MALFORMED``) instead of an arbitrary document being served AS
+    the ramp (Stage A I-11). ABSENT stays ``payload=None`` — the caller turns
+    that into ``SMOOTHED_NOT_GENERATED`` / ``LAYOUT_V2_NOT_SELECTED`` or, for
+    the status endpoint, ``available: false`` (A8).
 
-def resolve_effective_ramp(derived_dir: Path) -> EffectiveRampResolution:
-    """Deterministic resolution of the active Effective Ramp from the
-    persisted derived state alone (no in-memory inputs)."""
-    source = read_ramp_source(derived_dir)
-    legacy_path = derived_dir / LEGACY_RAMP_ARTIFACT
-    selected_path = derived_dir / LAYOUT_V2_SELECTED_ARTIFACT
-    legacy_ok = legacy_path.is_file()
-    layout_ok = (derived_dir / LAYOUT_V2_ARTIFACT).is_file()
-    selected_ok = selected_path.is_file()
+    The INACTIVE owner and the catalogue are PRESENCE flags only, taken from
+    the SAME observations (never a third ``is_file`` probe), so the R4
+    interleaving — one response whose ramp and whose ``layoutV2Selected`` flag
+    disagree — is structurally impossible."""
+    source = reader.resolve_ramp_source(snapshot)
+    legacy_read = reader.read(snapshot, LEGACY_RAMP_ARTIFACT)
+    selected_read = reader.read(snapshot, LAYOUT_V2_SELECTED_ARTIFACT)
     payload: dict[str, Any] | None = None
     if source == "LEGACY":
-        raw = _load(legacy_path)
-        if raw is not None:
-            payload = legacy_adapter(raw, file_revision(legacy_path))
         owning = LEGACY_RAMP_ARTIFACT
+        if legacy_read.error is not None:
+            raise legacy_read.error
+        if legacy_read.raw is not None:
+            payload = legacy_adapter(legacy_read.raw, legacy_read.revision)
     else:
-        sel = _load(selected_path)
-        if sel is not None:
+        owning = LAYOUT_V2_SELECTED_ARTIFACT
+        if selected_read.error is not None:
+            raise selected_read.error
+        if selected_read.raw is not None:
             payload = {
-                **sel,
+                **selected_read.raw,
                 "owningArtifact": LAYOUT_V2_SELECTED_ARTIFACT,
                 "activeSource": "LAYOUT_V2",
             }
-        owning = LAYOUT_V2_SELECTED_ARTIFACT
     return EffectiveRampResolution(
         active_source=source,
         owning_artifact=owning,
         payload=payload,
-        legacy_available=legacy_ok,
-        layout_v2_available=layout_ok,
-        layout_v2_selected=selected_ok,
+        legacy_available=_present(snapshot, LEGACY_RAMP_ARTIFACT),
+        layout_v2_available=_present(snapshot, LAYOUT_V2_ARTIFACT),
+        layout_v2_selected=_present(snapshot, LAYOUT_V2_SELECTED_ARTIFACT),
     )
+
+
+def _present(snapshot: ArtifactSnapshot, name: str) -> bool:
+    """Presence of one artifact in the SAME observation set — the flag the
+    summary has always reported (``Path.is_file``), now read once."""
+    obs = snapshot.observation(name)
+    return obs is not None and obs.present

@@ -65,7 +65,18 @@ __all__ = [
     "TimelineNotGeneratedError",
     "TunnelNotGeneratedError",
     "WorldNotGeneratedError",
+    "read_state_code",
 ]
+
+
+def read_state_code(exc: Exception) -> str:
+    """The wire code of a read-state error. Every class in this module carries
+    one as a class attribute; a class that does not is a programming error and
+    must fail loudly rather than reach a client as a guessed code."""
+    code = getattr(exc, "code", None)
+    if not isinstance(code, str) or not code:  # pragma: no cover - defensive
+        raise AssertionError(f"{type(exc).__name__} carries no wire code")
+    return code
 
 
 # --------------------------------------------------------------------------- #

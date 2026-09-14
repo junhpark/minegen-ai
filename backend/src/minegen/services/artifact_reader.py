@@ -458,7 +458,30 @@ def _accesses_pair_check(
     is the persisted identity both halves carry — candidate, selection
     revision, catalogue revision and the certification provenance key + error
     bound — never a recomputed fingerprint (A12). The catalogue-revision half
-    runs BEFORE this one (:func:`_accesses_revision_check`)."""
+    runs BEFORE this one (:func:`_accesses_revision_check`).
+
+    The disagreement is classified by A1's third row, applied literally
+    (Stage-B checkpoint decision C1), because the two kinds of disagreement
+    are different defects:
+
+    * ``candidateId``, or the certification ``provenance_key`` / error bound
+      → a "candidate identity / clearance recipe defect":
+      ``ClearancePolicyReconstructionError`` (``LAYOUT_V2_CLEARANCE_MISMATCH``,
+      the AC-01D pinned code), state STALE. The AC-01D tamper matrix mutates
+      exactly these fields of the SELECTION (``bump_bound``,
+      ``unknown_candidate`` are shape-valid and revision-valid) and pins that
+      code on the policy POSTs; the read of the co-published half must not
+      reclassify them (A13).
+    * ``sourceRevision`` / ``layoutRevision``, or an orphaned / unparseable
+      selection half → ``LayoutSelectionStaleError``
+      (``LAYOUT_V2_SELECTION_STALE``): the pair belongs to different
+      captures, which is a freshness fact, not a certification defect.
+
+    Accepted, documented asymmetry (C1): a shape-valid but value-tampered
+    selection is 200 on its OWN GET — the selection's read is shape +
+    revision only, and value truth needs the world — and 409 on the accesses
+    GET, in the scene and on every accesses-reading builder. The co-published
+    pair is what makes the residue visible on read."""
     obs = snapshot.observation(LAYOUT_V2_SELECTED_ARTIFACT)
     if obs is None:
         return None  # the caller did not ask for the selection half
@@ -482,7 +505,7 @@ def _accesses_pair_check(
                 f"{LAYOUT_V2_SELECTED_ARTIFACT} is not a usable document",
             ),
         )
-    for field in ("candidateId", "sourceRevision", "layoutRevision"):
+    for field in ("sourceRevision", "layoutRevision"):
         if data.get(field) != selection.get(field):
             return (
                 STATE_STALE,
@@ -497,11 +520,20 @@ def _accesses_pair_check(
         theirs = CandidateCertification.from_selection(selection)
     except ClearancePolicyReconstructionError as err:
         return (STATE_MALFORMED, err)
+    if mine.candidate_id != theirs.candidate_id:
+        return (
+            STATE_STALE,
+            ClearancePolicyReconstructionError(
+                mine.candidate_id,
+                f"{LEVEL_ACCESSES_ARTIFACT} and {LAYOUT_V2_SELECTED_ARTIFACT} "
+                f"disagree on 'candidateId' ('{theirs.candidate_id}' is selected)",
+            ),
+        )
     if mine.provenance_key != theirs.provenance_key or mine.error_bound != theirs.error_bound:
         return (
             STATE_STALE,
-            LayoutSelectionStaleError(
-                snapshot.scenario_id,
+            ClearancePolicyReconstructionError(
+                mine.candidate_id,
                 f"{LEVEL_ACCESSES_ARTIFACT} and {LAYOUT_V2_SELECTED_ARTIFACT} "
                 "disagree on the recorded clearance certification",
             ),
@@ -857,33 +889,45 @@ class ArtifactReader:
         """The VALID artifact, or the typed refusal. Guard order (A1 / Q-WORLD-
         GUARD): ``ScenarioNotFoundError`` → ``WorldNotGeneratedError`` → the
         artifact's own ABSENT error → MALFORMED → STALE."""
-        read = self._read_bound(scenario_id, name)
+        return self.require_files(scenario_id, name)[0]
+
+    def require_files(
+        self, scenario_id: str, name: str, *, glb_bytes: bool = False
+    ) -> tuple[ArtifactRead, ArtifactSnapshot]:
+        """:meth:`require` plus the snapshot the read was taken from, so a
+        caller that serves FILE BYTES (the two GLB routes) serves the very
+        bytes the two-file check hashed against the report's own
+        ``artifactRevision`` — never a second read that could have been
+        rewritten in between (Stage A §7.2)."""
+        read, snapshot = self._read_bound(scenario_id, name, glb_bytes=glb_bytes)
         if read.state == STATE_ABSENT:
             raise self._absent_error(scenario_id, name)
         if read.error is not None:
             raise read.error
-        return read
+        return read, snapshot
 
     def optional(self, scenario_id: str, name: str) -> ArtifactRead | None:
         """``None`` when the artifact is ABSENT (a legitimately optional
         artifact, rule 184), otherwise :meth:`require`'s contract."""
-        read = self._read_bound(scenario_id, name)
+        read, _ = self._read_bound(scenario_id, name)
         if read.state == STATE_ABSENT:
             return None
         if read.error is not None:
             raise read.error
         return read
 
-    def _read_bound(self, scenario_id: str, name: str) -> ArtifactRead:
+    def _read_bound(
+        self, scenario_id: str, name: str, *, glb_bytes: bool = False
+    ) -> tuple[ArtifactRead, ArtifactSnapshot]:
         read_spec = READ_SPECS[name]
         names = (name, *read_spec.provenance_inputs, *read_spec.agreement_inputs)
-        snapshot = self.snapshot(scenario_id, names)
+        snapshot = self.snapshot(scenario_id, names, glb_bytes=glb_bytes)
         if snapshot.scenario_revision is None:
             raise ScenarioNotFoundError(scenario_id)
         if snapshot.arrays_revision is None:
             # derived artifacts are never trusted without a world (A1)
             raise WorldNotGeneratedError(scenario_id)
-        return self.read(snapshot, name)
+        return self.read(snapshot, name), snapshot
 
     @staticmethod
     def _absent_error(scenario_id: str, name: str) -> Exception:
