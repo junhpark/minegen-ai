@@ -28,6 +28,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from minegen.core.artifacts import LAYOUT_V2_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT
 from minegen.core.models import Scenario, ScenarioCreate
 from minegen.layout import certification
 from minegen.layout.certification import (
@@ -40,6 +41,7 @@ from minegen.layout.materialize import materialize_effective_ramp, materialize_l
 from minegen.layout.search import LayoutSearchResult, LayoutV2Search
 from minegen.layout.setup import build_search_setup
 from minegen.services import design_service as design_service_module
+from minegen.services.artifact_reader import ArtifactReader
 from minegen.services.design_service import DesignService
 from minegen.services.effective_ramp import file_revision
 from minegen.services.scenario_service import ScenarioStore
@@ -631,20 +633,28 @@ def test_selection_snapshot_is_read_under_the_store_lock(
     read as ONE snapshot under the per-scenario store lock — the lock every
     writer of these files holds — so a concurrent re-selection can never
     interleave between the content read and the revision stat (PR #31
-    review, TOCTOU)."""
+    review, TOCTOU).
+
+    AC-01F retargeted this test from ``DesignService._selection_snapshot`` to
+    ``ArtifactReader.snapshot``, which is now the ONE lock-held observation
+    the selection snapshot is built from: same contract, same lock, one
+    authority (the private method is a projection of this snapshot)."""
     sid = store.create(_create_of(small_scenario())).id
     world_service.generate(sid)
     winner = design_service.generate_layout_v2(sid)["winnerId"]
     assert winner is not None
     design_service.activate_layout_candidate(sid, winner)
 
+    reader_authority = ArtifactReader(store)
     lock = store.lock(sid)
     lock.acquire()  # a writer holds the scenario lock in THIS thread (RLock)
     done = threading.Event()
     result: dict[str, Any] = {}
 
     def reader() -> None:  # the snapshot must wait for the writer
-        result["snapshot"] = design_service._selection_snapshot(sid)
+        result["snapshot"] = reader_authority.snapshot(
+            sid, [LAYOUT_V2_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT]
+        )
         done.set()
 
     try:
@@ -654,11 +664,21 @@ def test_selection_snapshot_is_read_under_the_store_lock(
     finally:
         lock.release()
     assert done.wait(30), "the snapshot never completed after the writer released the lock"
-    selected, catalogue_text, layout_rev, selected_rev = result["snapshot"]
-    assert selected["candidateId"] == winner
-    assert selected["layoutRevision"] == layout_rev
+    snapshot = result["snapshot"]
+    read = reader_authority.read(snapshot, LAYOUT_V2_SELECTED_ARTIFACT)
+    assert read.state == "VALID" and read.raw is not None
+    layout_rev = snapshot.revision_of(LAYOUT_V2_ARTIFACT)
+    assert read.raw["candidateId"] == winner
+    assert read.raw["layoutRevision"] == layout_rev
     assert layout_rev == file_revision(design_service.layout_path(sid))
-    assert selected_rev == file_revision(design_service.layout_selected_path(sid))
+    assert read.revision == file_revision(design_service.layout_selected_path(sid))
+    catalogue = snapshot.observation(LAYOUT_V2_ARTIFACT)
+    assert catalogue is not None and catalogue.data is not None
+    assert json.loads(catalogue.data)["winnerId"] == winner
+    # and the projection the policy restore consumes is the same snapshot
+    selected, catalogue_text, projected_rev, selected_rev = design_service._selection_snapshot(sid)
+    assert selected["candidateId"] == winner
+    assert (projected_rev, selected_rev) == (layout_rev, read.revision)
     assert json.loads(catalogue_text)["winnerId"] == winner
 
 

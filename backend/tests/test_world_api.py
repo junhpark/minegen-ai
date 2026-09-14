@@ -157,7 +157,10 @@ def test_scenario_replace_invalidates_all_derived_state(
 
     # a brand-new service instance must not find anything stale on disk either
     fresh = WorldService(store)
-    assert not fresh.is_generated(sid)
+    # the world guard is ``arrays.npz`` on disk, asserted directly (S11 deleted
+    # ``WorldService.is_generated``: no production caller, and its
+    # ``Path.is_file`` probe was not the live ``file_revision`` guard)
+    assert not store.arrays_path(sid).exists()
     with pytest.raises(WorldNotGeneratedError):
         fresh.stats(sid)
 

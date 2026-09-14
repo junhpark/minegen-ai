@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import Field
 
 from minegen.api.deps import get_design_service, get_job_service
+from minegen.api.errors import ROUTER_DESIGN, guard
 from minegen.capability.models import CapabilityGraphPayload, CapabilityPathQuery
 from minegen.core.enums import Capability
 from minegen.core.models import ApiModel, ErrorDetail
@@ -16,36 +17,12 @@ from minegen.levels.models import LevelsPayload
 from minegen.mining.models import StopesPayload
 from minegen.scheduling.models import TimelinePayload
 from minegen.services.design_service import (
-    CapabilityGraphNotGeneratedError,
-    CapabilityGraphStaleError,
-    DeclineNotGeneratedError,
     DesignService,
-    DevelopmentMeshNotGeneratedError,
-    LayoutCandidateInfeasibleError,
-    LayoutCandidateNotFoundError,
     LayoutSelectionStaleError,
-    LayoutV2NotGeneratedError,
-    LayoutV2NotSelectedError,
-    LevelAccessesNotGeneratedError,
     LevelsNotGeneratedError,
-    NetworkNotFoundError,
-    ShaftsNotGeneratedError,
-    ShaftsStaleError,
-    SmoothedNotGeneratedError,
     StaleInputsError,
-    StopesNotGeneratedError,
-    TargetsNotGeneratedError,
-    TimelineNotGeneratedError,
-    TunnelNotGeneratedError,
-    UnknownNetworkNodeError,
-    UnsupportedOrebodyError,
 )
 from minegen.services.job_service import JobAlreadyRunningError, JobService
-from minegen.services.scenario_service import ScenarioNotFoundError
-from minegen.services.world_service import (
-    WorldArtifactIncompatibleError,
-    WorldNotGeneratedError,
-)
 from minegen.shafts.models import ShaftsPayload
 
 router = APIRouter(prefix="/scenarios/{scenario_id}/design", tags=["design"])
@@ -73,140 +50,22 @@ def _error(status_code: int, code: str, message: str) -> HTTPException:
     )
 
 
-def _guard(scenario_id: str, exc: Exception) -> HTTPException:
-    if isinstance(exc, UnsupportedOrebodyError):
-        return _error(
-            422,
-            "UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT",
-            f"orebody type '{exc}' is valid for Phase 17 world generation, but the "
-            "current legacy decline/access layout supports TABULAR orebodies only; "
-            "generalized mine layout is deferred to Phase 20 (Parametric Layout "
-            "Family Search)",
-        )
-    if isinstance(exc, ScenarioNotFoundError):
-        return _error(404, "SCENARIO_NOT_FOUND", f"scenario '{scenario_id}' does not exist")
-    if isinstance(exc, WorldArtifactIncompatibleError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "WORLD_ARTIFACT_INCOMPATIBLE",
-            f"scenario '{scenario_id}' has a world artifact from an older schema "
-            f"({exc}); POST …/world/generate to regenerate it",
-        )
-    if isinstance(exc, WorldNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "WORLD_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no generated world; POST …/world/generate first",
-        )
-    if isinstance(exc, TargetsNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "TARGETS_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no access targets; POST …/design/targets first",
-        )
-    if isinstance(exc, DeclineNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "DECLINE_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no decline; POST …/design/decline first",
-        )
-    if isinstance(exc, SmoothedNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "SMOOTHED_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no smoothed decline; POST …/design/decline/smooth first",
-        )
-    if isinstance(exc, TunnelNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "TUNNEL_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no tunnel mesh; POST …/design/tunnel first",
-        )
-    if isinstance(exc, DevelopmentMeshNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "DEVELOPMENT_MESH_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no development mesh; "
-            "POST …/design/development-mesh first",
-        )
-    if isinstance(exc, LevelsNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "LEVELS_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no level developments; POST …/design/levels first",
-        )
-    if isinstance(exc, ShaftsNotGeneratedError):
-        return _error(
-            404,
-            "SHAFTS_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no shaft artifact; POST …/design/shafts first",
-        )
-    if isinstance(exc, ShaftsStaleError):
-        return _error(status.HTTP_409_CONFLICT, ShaftsStaleError.code, str(exc))
-    if isinstance(exc, CapabilityGraphNotGeneratedError):
-        return _error(
-            404,
-            "CAPABILITY_GRAPH_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no capability graph; "
-            "POST …/design/capability-graph first",
-        )
-    if isinstance(exc, CapabilityGraphStaleError):
-        return _error(status.HTTP_409_CONFLICT, CapabilityGraphStaleError.code, str(exc))
-    if isinstance(exc, UnknownNetworkNodeError):
-        return _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "UNKNOWN_NETWORK_NODE", str(exc))
-    if isinstance(exc, StopesNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "STOPES_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no planned stopes; POST …/design/stopes first",
-        )
-    if isinstance(exc, NetworkNotFoundError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "NETWORK_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no MineNetwork; POST …/network/generate first",
-        )
-    if isinstance(exc, TimelineNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "TIMELINE_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no timeline; POST …/design/timeline first",
-        )
-    if isinstance(exc, LayoutV2NotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "LAYOUT_V2_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no layout-v2 catalogue; POST …/design/layout-v2 first",
-        )
-    if isinstance(exc, LayoutV2NotSelectedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "LAYOUT_V2_NOT_SELECTED",
-            f"scenario '{scenario_id}' has no selected layout-v2 candidate; "
-            "POST …/design/layout-v2/select first",
-        )
-    if isinstance(exc, LevelAccessesNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "LEVEL_ACCESSES_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no level-access artifact; select a layout-v2 "
-            "candidate first (POST …/design/layout-v2/select)",
-        )
-    if isinstance(exc, LayoutSelectionStaleError):
-        return _error(status.HTTP_409_CONFLICT, exc.code, str(exc))
-    if isinstance(exc, ClearancePolicyReconstructionError):
-        return _error(status.HTTP_409_CONFLICT, exc.code, str(exc))
-    if isinstance(exc, LayoutCandidateNotFoundError):
-        return _error(404, "LAYOUT_V2_CANDIDATE_NOT_FOUND", str(exc))
-    if isinstance(exc, LayoutCandidateInfeasibleError):
-        return _error(422, "LAYOUT_V2_CANDIDATE_INFEASIBLE", str(exc))
-    if isinstance(exc, StaleInputsError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "STALE_INPUTS",
-            "inputs changed during generation; retry",
-        )
-    raise exc
+def _fail(scenario_id: str, exc: Exception) -> HTTPException:
+    """The wire answer of ``api/errors.guard`` for this router, or the
+    unchanged fall-through (``raise exc`` → a bare 500 with no ``detail.code``
+    for an exception no router maps).
+
+    AC-01F: every route below hands EVERY exception to this one table, so a
+    read-state failure (``ARTIFACT_MALFORMED`` / ``ARTIFACT_STALE`` / a
+    rule-named stale code) can no longer bypass the mapping through a narrow
+    ``except (...)`` tuple and reach the client as an unhandled 500. The
+    per-router ``_guard`` isinstance ladder this replaces is gone from every
+    router; its rows survive as the literal oracle table of
+    ``tests/test_api_errors.py``, transcribed from HEAD ``12d7725``."""
+    mapped = guard(scenario_id, exc, router=ROUTER_DESIGN)
+    if mapped is None:
+        raise exc
+    return mapped
 
 
 def _job_conflict(scenario_id: str, e: JobAlreadyRunningError) -> HTTPException:
@@ -239,14 +98,24 @@ def generate_layout_v2(
     Works for every orebody type (EXACT or CONSERVATIVE clearance)."""
     try:
         svc.worlds.load(scenario_id)
-    except (ScenarioNotFoundError, WorldNotGeneratedError) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
     if sync:
         response.status_code = status.HTTP_200_OK
         try:
             return svc.generate_layout_v2(scenario_id)
         except StaleInputsError as e:
             raise _error(status.HTTP_409_CONFLICT, e.code, str(e)) from e
+        except HTTPException:
+            raise
+        except Exception as e:
+            # AC-01F C3 (uniform): a read-state error raised INSIDE the sync
+            # build (a MALFORMED / STALE upstream artifact) is the typed 409 of
+            # api/errors.guard, never a bare 500; unmapped engineering failures
+            # still surface through guard's raise-exc fall-through.
+            raise _fail(scenario_id, e) from e
     try:
         job = jobs.submit(
             scenario_id,
@@ -263,7 +132,7 @@ def get_layout_v2(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.layout_v2(scenario_id)
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.post("/layout-v2/select")
@@ -275,7 +144,7 @@ def select_layout_candidate(
     try:
         return svc.select_layout_candidate(scenario_id, body.candidate_id)
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.get("/layout-v2/selected")
@@ -283,7 +152,7 @@ def get_layout_selected(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.layout_selected(scenario_id)
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.get("/level-accesses")
@@ -293,7 +162,7 @@ def get_level_accesses(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.level_accesses(scenario_id)
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.post("/layout-v2/activate")
@@ -305,7 +174,7 @@ def activate_layout_candidate(
     try:
         return svc.activate_layout_candidate(scenario_id, body.candidate_id)
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.get("/ramp-source")
@@ -313,7 +182,7 @@ def get_ramp_source(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.ramp_source(scenario_id)
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.put("/ramp-source")
@@ -323,7 +192,7 @@ def set_ramp_source(scenario_id: str, body: RampSourceRequest, svc: Service) -> 
     try:
         return svc.set_ramp_source(scenario_id, body.active_source)
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.get("/ramp")
@@ -332,7 +201,7 @@ def get_effective_ramp(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.effective_ramp(scenario_id)
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.post("/levels")
@@ -343,7 +212,7 @@ def generate_levels(scenario_id: str, svc: Service) -> LevelsPayload:
     except HTTPException:
         raise
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.get("/levels")
@@ -353,7 +222,7 @@ def get_levels(scenario_id: str, svc: Service) -> LevelsPayload:
     except HTTPException:
         raise
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.post("/shafts")
@@ -365,7 +234,7 @@ def generate_shafts(scenario_id: str, svc: Service) -> ShaftsPayload:
     except HTTPException:
         raise
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.get("/shafts")
@@ -375,7 +244,7 @@ def get_shafts(scenario_id: str, svc: Service) -> ShaftsPayload:
     except HTTPException:
         raise
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.post("/capability-graph")
@@ -387,7 +256,7 @@ def generate_capability_graph(scenario_id: str, svc: Service) -> CapabilityGraph
     except HTTPException:
         raise
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.get("/capability-graph")
@@ -397,7 +266,7 @@ def get_capability_graph(scenario_id: str, svc: Service) -> CapabilityGraphPaylo
     except HTTPException:
         raise
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.get("/capability-graph/path")
@@ -415,7 +284,7 @@ def capability_path(
     except HTTPException:
         raise
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.post("/stopes")
@@ -426,7 +295,7 @@ def generate_stopes(scenario_id: str, svc: Service) -> StopesPayload:
     except HTTPException:
         raise
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.get("/stopes")
@@ -436,7 +305,7 @@ def get_stopes(scenario_id: str, svc: Service) -> StopesPayload:
     except HTTPException:
         raise
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.post("/timeline")
@@ -447,7 +316,7 @@ def generate_timeline(scenario_id: str, svc: Service) -> TimelinePayload:
     except HTTPException:
         raise
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.get("/timeline")
@@ -457,7 +326,7 @@ def get_timeline(scenario_id: str, svc: Service) -> TimelinePayload:
     except HTTPException:
         raise
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.post("/cost/evaluate")
@@ -466,24 +335,30 @@ def evaluate_cost(scenario_id: str, body: EvaluateRequest, svc: Service) -> dict
         raise _error(422, "VALIDATION_ERROR", "every point must have exactly 3 coordinates")
     try:
         return svc.evaluate(scenario_id, body.points)
-    except (ScenarioNotFoundError, WorldNotGeneratedError, UnsupportedOrebodyError) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
 
 
 @router.post("/targets")
 def generate_targets(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.generate_targets(scenario_id)
-    except (ScenarioNotFoundError, WorldNotGeneratedError, UnsupportedOrebodyError) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
 
 
 @router.get("/targets")
 def get_targets(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.targets(scenario_id)
-    except (ScenarioNotFoundError, WorldNotGeneratedError, TargetsNotGeneratedError) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
 
 
 @router.post("/decline", status_code=status.HTTP_202_ACCEPTED)
@@ -509,19 +384,24 @@ def generate_decline(
     try:
         svc.evaluator(scenario_id)
         svc._targets_object(scenario_id)
-    except (
-        ScenarioNotFoundError,
-        WorldNotGeneratedError,
-        TargetsNotGeneratedError,
-        UnsupportedOrebodyError,
-    ) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
     if sync:
         response.status_code = status.HTTP_200_OK
         try:
             return svc.generate_decline(scenario_id, max_levels)
         except StaleInputsError as e:
             raise _error(status.HTTP_409_CONFLICT, e.code, str(e)) from e
+        except HTTPException:
+            raise
+        except Exception as e:
+            # AC-01F C3 (uniform): a read-state error raised INSIDE the sync
+            # build (a MALFORMED / STALE upstream artifact) is the typed 409 of
+            # api/errors.guard, never a bare 500; unmapped engineering failures
+            # still surface through guard's raise-exc fall-through.
+            raise _fail(scenario_id, e) from e
     try:
         job = jobs.submit(
             scenario_id,
@@ -549,8 +429,10 @@ def generate_decline(
 def get_decline(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.decline(scenario_id)
-    except (ScenarioNotFoundError, WorldNotGeneratedError, DeclineNotGeneratedError) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
 
 
 @router.post("/decline/smooth", status_code=status.HTTP_202_ACCEPTED)
@@ -572,20 +454,24 @@ def smooth_decline(
     try:
         svc.evaluator(scenario_id)
         svc.decline(scenario_id)  # precondition: raw decline must exist
-    except (
-        ScenarioNotFoundError,
-        WorldNotGeneratedError,
-        TargetsNotGeneratedError,
-        DeclineNotGeneratedError,
-        UnsupportedOrebodyError,  # typed 422, never 500 (rules 123/135)
-    ) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
     if sync:
         response.status_code = status.HTTP_200_OK
         try:
             return svc.generate_smoothed(scenario_id)
         except StaleInputsError as e:
             raise _error(status.HTTP_409_CONFLICT, e.code, str(e)) from e
+        except HTTPException:
+            raise
+        except Exception as e:
+            # AC-01F C3 (uniform): a read-state error raised INSIDE the sync
+            # build (a MALFORMED / STALE upstream artifact) is the typed 409 of
+            # api/errors.guard, never a bare 500; unmapped engineering failures
+            # still surface through guard's raise-exc fall-through.
+            raise _fail(scenario_id, e) from e
     try:
         job = jobs.submit(
             scenario_id,
@@ -613,12 +499,10 @@ def smooth_decline(
 def get_smoothed_decline(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.smoothed(scenario_id)
-    except (
-        ScenarioNotFoundError,
-        WorldNotGeneratedError,
-        SmoothedNotGeneratedError,
-    ) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
 
 
 @router.post("/tunnel", status_code=status.HTTP_202_ACCEPTED)
@@ -643,15 +527,10 @@ def generate_tunnel(
     Hybrid-A* routes above, which keep the exact-only precondition."""
     try:
         svc.effective_ramp(scenario_id)  # precondition: the ACTIVE ramp exists
-    except (
-        ScenarioNotFoundError,
-        WorldNotGeneratedError,
-        TargetsNotGeneratedError,
-        DeclineNotGeneratedError,
-        SmoothedNotGeneratedError,
-        LayoutV2NotSelectedError,
-    ) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
     if sync:
         response.status_code = status.HTTP_200_OK
         try:
@@ -661,7 +540,17 @@ def generate_tunnel(
         except (LayoutSelectionStaleError, ClearancePolicyReconstructionError) as e:
             # AC-01D: the selected-certification restore fails closed with a
             # typed 409 through the guard, never a 500
-            raise _guard(scenario_id, e) from e
+            raise _fail(scenario_id, e) from e
+        except HTTPException:
+            raise
+        except Exception as e:
+            # AC-01F C3: the precondition this route checks before ``sync``
+            # does not open every upstream artifact the build reads, so a
+            # MALFORMED file first met INSIDE the build used to leave this
+            # branch unmapped and reach the client as a bare 500. Every
+            # exception now goes through the ONE table (409 ARTIFACT_MALFORMED
+            # for a read state, unchanged codes for everything else).
+            raise _fail(scenario_id, e) from e
     try:
         job = jobs.submit(
             scenario_id,
@@ -689,12 +578,10 @@ def generate_tunnel(
 def get_tunnel(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.tunnel(scenario_id)
-    except (
-        ScenarioNotFoundError,
-        WorldNotGeneratedError,
-        TunnelNotGeneratedError,
-    ) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
 
 
 @router.post("/development-mesh", status_code=status.HTTP_202_ACCEPTED)
@@ -719,8 +606,10 @@ def generate_development_mesh(
             # implicit bodies: the access branches alone can be swept
             if svc.active_level_accesses(scenario_id) is None:
                 raise
-    except (ScenarioNotFoundError, WorldNotGeneratedError, LevelsNotGeneratedError) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
     if sync:
         response.status_code = status.HTTP_200_OK
         try:
@@ -730,7 +619,17 @@ def generate_development_mesh(
         except (LayoutSelectionStaleError, ClearancePolicyReconstructionError) as e:
             # AC-01D: the selected-certification restore fails closed with a
             # typed 409 through the guard, never a 500
-            raise _guard(scenario_id, e) from e
+            raise _fail(scenario_id, e) from e
+        except HTTPException:
+            raise
+        except Exception as e:
+            # AC-01F C3: the precondition this route checks before ``sync``
+            # does not open every upstream artifact the build reads, so a
+            # MALFORMED file first met INSIDE the build used to leave this
+            # branch unmapped and reach the client as a bare 500. Every
+            # exception now goes through the ONE table (409 ARTIFACT_MALFORMED
+            # for a read state, unchanged codes for everything else).
+            raise _fail(scenario_id, e) from e
     try:
         job = jobs.submit(
             scenario_id,
@@ -758,24 +657,20 @@ def generate_development_mesh(
 def get_development_mesh(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.development_mesh(scenario_id)
-    except (
-        ScenarioNotFoundError,
-        WorldNotGeneratedError,
-        DevelopmentMeshNotGeneratedError,
-    ) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
 
 
 @router.get("/development-mesh/mesh.glb")
 def get_development_mesh_glb(scenario_id: str, svc: Service) -> Response:
     try:
         data = svc.development_mesh_glb(scenario_id)
-    except (
-        ScenarioNotFoundError,
-        WorldNotGeneratedError,
-        DevelopmentMeshNotGeneratedError,
-    ) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
     return Response(
         content=data,
         media_type="model/gltf-binary",
@@ -789,12 +684,10 @@ def get_tunnel_glb(scenario_id: str, svc: Service) -> Response:
     revision-busting ``?v=`` query (rule 67)."""
     try:
         data = svc.tunnel_glb(scenario_id)
-    except (
-        ScenarioNotFoundError,
-        WorldNotGeneratedError,
-        TunnelNotGeneratedError,
-    ) as e:
-        raise _guard(scenario_id, e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _fail(scenario_id, e) from e
     return Response(
         content=data,
         media_type="model/gltf-binary",

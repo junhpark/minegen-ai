@@ -232,6 +232,148 @@ go under `geology`, not at the scenario root.
   `JOB_INPUTS_CHANGED`, nothing written (rule 60). Job state is lost on
   restart (v0.1). No queue, no database.
 
+## Validated artifact read authority (AC-01F)
+
+READ ≠ TRUST. Every persisted derived artifact is read through ONE authority,
+`backend/src/minegen/services/artifact_reader.py`: one generic read ALGORITHM
+(exists → lock-held bytes + stats → parse → payload model / first-level shape
+→ provenance agreement with the OTHER observations of the same snapshot →
+typed state) over a per-artifact SPEC TABLE (`READ_SPECS`). Every direct GET,
+every builder's upstream read, both GLB routes, the async job path and the
+scene classify an artifact identically:
+
+| state | meaning | direct route | `GET …/scene` |
+|---|---|---|---|
+| ABSENT | the fingerprint file does not exist | its own `*_NOT_GENERATED` code | `null` |
+| VALID | parses, satisfies its model / shape, passes every provenance check of the SAME snapshot (a `status: "FAILED"` payload is VALID) | 200 | the payload |
+| STALE | well-shaped, but a persisted provenance field disagrees with the live revision of the upstream file it names, or a co-published pair disagrees | 409 (rule-named code where one exists, else `ARTIFACT_STALE`) | the whole scene is refused |
+| MALFORMED | present but not a usable document (unreadable bytes, not a JSON object, failed model / shape, incomplete two-file unit, GLB bytes ≠ the report's content hash) | 409 `ARTIFACT_MALFORMED` | the whole scene is refused |
+
+ABSENT is expected and quiet; STALE and MALFORMED are loud on every surface.
+There is no third outcome — no partial projection, no fallback to raw, no
+repair. Repair is always an explicit user write (regenerate, `PUT
+…/design/ramp-source`, regenerate the world), never a read.
+
+**Ownership split (the registry is NOT the resolver).**
+
+| concern | owner |
+|---|---|
+| artifact names, which files one artifact owns, ORDERED fingerprint inputs, ramp-source gating, the invalidation closure | `core/artifact_registry.py` (leaf, unchanged) |
+| read, parse, model / shape validation, freshness (stat) comparison, provenance agreement, read-state typing, the lock-held snapshot | `services/artifact_reader.py` |
+| the writer protocol (capture → build → lock → re-check → write → cascade) | `world_service` / `design_service` / `infrastructure_service` |
+| wire mapping (status + code) | `api/errors.py`, one `guard` table for all four routers |
+
+The reader CALLS the registry (`derived_artifacts()` = what a snapshot
+captures, `spec(name).files` = the two-file units, `invalidated_by()` = the
+consistency test) and the registry never calls the reader or holds a read
+semantic. A test asserts that every provenance link the read specs declare is
+an edge the registry owns.
+
+**The snapshot boundary.** A builder's reads are coherent-or-rejected (it
+captures a rule-60 fingerprint before its reads and re-checks it under the
+publish lock), but the scene publishes nothing, so it gets ONE explicit
+boundary:
+
+    GET /scene
+      scenario, world, srev, arev = worlds.load_bound(sid)   # OUTSIDE the lock
+      with store.lock(sid):                                  # ONE hold: stats + bytes
+          re-stat scenario.json / arrays.npz; observe every registered file
+          mismatch → release, repeat load_bound (at most 3 attempts)
+      # OUTSIDE the lock: parse, validate, provenance-check, assemble
+
+`generate_world`, `np.load`, `build_orebody` and `world.stats` NEVER run
+inside the store lock; the protocol is optimistic (stat → expensive work
+outside → `with lock:` re-stat and publish). Measured on WARPED-301
+(`RANDOM_WARPED_VEIN` seed 301, one fault): the lock now holds `_save`
+alone — 0.62 s wall for a 10,245,989-byte `arrays.npz`; before the hoist it
+held 0.72–0.75 s because `world.stats` (0.099 s) ran inside it (three
+independent runs on the same 10,245,989 bytes). `world.stats` is computed by
+`generate` before it enters the lock and handed to `_save`, so the lock now
+holds the two writes and the cache publish and nothing else — the compressed
+NPZ write is what remains, and it is the reason nothing expensive may join it.
+
+The cost of that hold is CONTENTION, and it is new: `POST /world/generate` now
+holds the per-scenario lock across the NPZ write, and every read of the same
+scenario now enters the same lock (the reader snapshot, the world cache probe,
+the publish re-check). A reader that arrives inside the window WAITS for it,
+and a reader whose `arrays.npz` or `scenario.json` revision moved across it
+fails CLOSED with 409 `READ_SNAPSHOT_CHANGED` rather than serving a mixed
+body — that is the intended trade (a bounded wait or a retryable refusal
+instead of a silently inconsistent 200), stated here because the hold itself
+was documented and its consequence for concurrent readers was not. Measured
+hold: 0.62 s on WARPED-301's 10,245,989-byte `arrays.npz`, 32.6 ms on the
+small scenario.
+
+The scenario / world half of the same guarantee:
+
+* `WorldService._bound_scenario(sid) -> (scenario, scenario_revision)` is the
+  ONE bound document read: stat → `ScenarioStore.get` → re-stat, repeated
+  while the revision moves (at most `SNAPSHOT_ATTEMPTS` = 3; exhaustion is
+  `READ_SNAPSHOT_CHANGED`). Both halves are needed — capturing only before the
+  read reports the migration-on-read as a race that never happened, capturing
+  only after leaves the read outside the guarded window (a PUT between `get`
+  and the stat would bind an OLD document to the NEW revision).
+* `WorldService.load_bound(sid) -> (scenario, world, scenario_revision,
+  arrays_revision)` adds `file_revision(arrays.npz)`, captured before
+  `np.load`; the in-memory world cache entry carries both revisions and is
+  served only while both still match, so a warm world can never answer for a
+  replaced document or a deleted `arrays.npz`. In the cold-load window the
+  file may go away under the reader, and both outcomes are typed rather than
+  an escaping exception: deleted → `WorldNotGeneratedError`, replaced →
+  `ReadSnapshotChangedError` (the world in hand cannot be attested to the
+  captured revision). The SCENARIO half of the same window is SYMMETRIC
+  (Stage D B1): a `scenario.json` that moved between the bound document read
+  and the publish re-check is `ReadSnapshotChangedError` for the RESULT, not
+  only for the cache entry. Commit 3 re-stat'ed the document but gated only
+  the cache publish while the `return` was unconditional, so `GET …/world`
+  and `GET …/world/slice` still served the R3d mixed body — measured,
+  ONE 200 carrying the OLD document's `orebody.center [40.0, 20.0, -50.0]`
+  beside the NEW world's `terrain.zMax 116.367159085105`. `load(sid)` is the
+  unchanged two-value wrapper every engineering consumer still calls. The world guard is
+  `file_revision(arrays.npz)` — `load_bound`'s own stat and the reader
+  snapshot's, and nothing else (Stage D S11 deleted the caller-less
+  `is_generated` helper, whose `Path.is_file` probe was never that guard).
+* `WorldService.generate` re-checks the scenario revision under the lock
+  before `_save` + cache: a scenario PUT landing during generation fails the
+  generation closed (`JOB_INPUTS_CHANGED`) instead of publishing a world for
+  the replaced document. Because the document read was bound, that check is
+  now only ever true of a real third-party mutation.
+* `PUT /scenarios/{id}` is ONE locked section (`WorldService.replace_scenario`
+  = document write + `invalidate`), so external readers see one mutation
+  boundary instead of a window in which the document is new and the world old
+  — for reads that SUCCEED. `ScenarioStore._write` is still a non-atomic
+  truncate+write and `ScenarioStore.get` parses the document unlocked, so a
+  reader landing INSIDE the document write sees neither side and throws before
+  any revision re-check can fire: a torn `scenario.json` is an unmapped 500,
+  exactly as a torn `arrays.npz` is, and both are the open F06-B residual.
+* Retry exhaustion is its own code: 409 `READ_SNAPSHOT_CHANGED` (a READ whose
+  snapshot kept moving — nothing was built and nothing discarded), never
+  `JOB_INPUTS_CHANGED` (a GENERATION whose inputs moved).
+
+**Scope, honestly stated.** The store lock is a `threading.RLock`: the
+guarantee is IN-PROCESS. Multiple processes over one `data/scenarios` tree are
+unsupported (no OS-level lock exists or is added). `ScenarioStore.get`'s
+Phase 18 migration-on-read is the ONE documented exception to "a read must not
+write" (it rewrites the document and clears derived state); the protocol
+TOLERATES it rather than reporting it, and the read authority adds no
+migration and no repair of its own. Concretely: the rewritten document misses
+the revision the caller captured, so `_bound_scenario` reads it again and
+binds the migrated revision. The migration also calls `clear_derived`, so
+what the repeated read then FINDS decides the answer — where that deletion
+removed a world, the repeat finds no `arrays.npz` and the read answers 409
+`WORLD_NOT_GENERATED` (regenerating is the explicit user repair); where there
+was nothing to delete, the read is simply repeated and succeeds, which is why
+`POST …/world/generate` on a schemaVersion-1 document is a 200.
+Crash residue (a torn or half-published file left by a killed
+process) becomes a typed refusal rather than a silent projection for every
+registered derived artifact; a torn or half-written `arrays.npz` is the
+explicit, still-open F06-B residual (`np.load` raises `zipfile.BadZipFile`,
+an unmapped 500, exactly as at HEAD 12d7725), and `load_bound`'s
+"replaced → `READ_SNAPSHOT_CHANGED`" outcome presumes a COMPLETE replacement.
+Preventing the residue —
+publication atomicity (temp + `fsync` + `os.replace`), finding F06-B — is
+**AC-01F.2**, a separate PR that changes write sites only.
+
 ## Non-goals (v0.1)
 
 Production reserve estimation, regulatory certification, full geostatistics,

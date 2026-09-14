@@ -10,70 +10,27 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 
 from minegen.api.deps import get_design_service
-from minegen.core.models import ErrorDetail
+from minegen.api.errors import ROUTER_NETWORK, guard
 from minegen.network.models import NetworkPayload
-from minegen.services.design_service import (
-    DesignService,
-    LevelsNotGeneratedError,
-    NetworkNotFoundError,
-    ShaftsStaleError,
-    SmoothedNotGeneratedError,
-    StaleInputsError,
-)
-from minegen.services.scenario_service import ScenarioNotFoundError
-from minegen.services.world_service import WorldNotGeneratedError
+from minegen.services.design_service import DesignService
 
 router = APIRouter(prefix="/scenarios/{scenario_id}/network", tags=["network"])
 
 Service = Annotated[DesignService, Depends(get_design_service)]
 
 
-def _error(status_code: int, code: str, message: str) -> HTTPException:
-    return HTTPException(
-        status_code=status_code,
-        detail=ErrorDetail(code=code, message=message).model_dump(by_alias=True),
-    )
-
-
-def _guard(scenario_id: str, exc: Exception) -> HTTPException:
-    if isinstance(exc, ScenarioNotFoundError):
-        return _error(404, "SCENARIO_NOT_FOUND", f"scenario '{scenario_id}' does not exist")
-    if isinstance(exc, WorldNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "WORLD_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no generated world; POST …/world/generate first",
-        )
-    if isinstance(exc, SmoothedNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "SMOOTHED_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no smoothed decline; POST …/design/decline/smooth first",
-        )
-    if isinstance(exc, LevelsNotGeneratedError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "LEVELS_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no level developments; POST …/design/levels first",
-        )
-    if isinstance(exc, NetworkNotFoundError):
-        return _error(
-            404,
-            "NETWORK_NOT_GENERATED",
-            f"scenario '{scenario_id}' has no network; POST …/network/generate first",
-        )
-    if isinstance(exc, StaleInputsError):
-        return _error(
-            status.HTTP_409_CONFLICT,
-            "STALE_INPUTS",
-            "network inputs changed during generation; retry",
-        )
-    if isinstance(exc, ShaftsStaleError):
-        return _error(status.HTTP_409_CONFLICT, ShaftsStaleError.code, str(exc))
-    raise exc
+def _fail(scenario_id: str, exc: Exception) -> HTTPException:
+    """The wire answer of ``api/errors.guard`` for this router, or the
+    unchanged ``raise exc`` fall-through. AC-01F: the recorded 404
+    ``NETWORK_NOT_GENERATED`` drift (I-8) is preserved by the router override,
+    not normalized (A6 defers that to AC-01I)."""
+    mapped = guard(scenario_id, exc, router=ROUTER_NETWORK)
+    if mapped is None:
+        raise exc
+    return mapped
 
 
 @router.post("/generate")
@@ -81,7 +38,7 @@ def generate_network(scenario_id: str, svc: Service) -> NetworkPayload:
     try:
         return svc.generate_network(scenario_id)
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc
 
 
 @router.get("")
@@ -89,4 +46,4 @@ def get_network(scenario_id: str, svc: Service) -> NetworkPayload:
     try:
         return svc.network(scenario_id)
     except Exception as exc:
-        raise _guard(scenario_id, exc) from exc
+        raise _fail(scenario_id, exc) from exc

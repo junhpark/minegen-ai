@@ -77,3 +77,46 @@ def test_decline_lifecycle(client: TestClient) -> None:
     # regenerating targets discards the decline (rule 46)
     client.post(f"/api/v1/scenarios/{sid}/design/targets")
     assert client.get(f"/api/v1/scenarios/{sid}/design/decline").status_code == 409
+
+
+def test_the_targets_cache_is_bound_to_the_world_object(client: TestClient) -> None:
+    """Stage D S16. ``DesignService._targets`` was the ONE process cache with
+    no world binding: ``_evaluators`` and ``_layouts`` both re-validate with
+    ``cached[0] is world``, while the targets were served on PRESENCE alone.
+    Its consumer is ``generate_decline``, which PERSISTS what it returns, so a
+    divergence would have been written out (measured out of band: a warm
+    decline of 599 centerline points against a cold one of 737 over
+    bit-identical ``scenario.json`` / ``arrays.npz`` / ``targets.json``).
+
+    Nothing on disk moves here: the second read is over the SAME bytes and the
+    SAME ``file_revision`` of both inputs, and only the in-memory world object
+    is different — which is exactly the binding under test."""
+    from minegen.api.deps import get_design_service, get_scenario_store, get_world_service
+    from minegen.core.revision import file_revision
+
+    app = client.app
+    store = app.dependency_overrides[get_scenario_store]()
+    worlds = app.dependency_overrides[get_world_service]()
+    design = app.dependency_overrides[get_design_service]()
+
+    sid = _create(client)
+    assert client.post(f"/api/v1/scenarios/{sid}/world/generate").status_code == 200
+    assert client.post(f"/api/v1/scenarios/{sid}/design/targets").status_code == 200
+
+    revisions = (
+        file_revision(store.scenario_path(sid)),
+        file_revision(store.arrays_path(sid)),
+    )
+    first = design._targets_object(sid)
+    assert design._targets[sid][0] is worlds._cache[sid].world
+    assert design._targets_object(sid) is first  # the warm hit is still a hit
+
+    # a RESTARTED world (same bytes, new object) must miss
+    worlds._cache.pop(sid, None)
+    second = design._targets_object(sid)
+    assert second is not first
+    assert design._targets[sid][1] is second
+    assert (
+        file_revision(store.scenario_path(sid)),
+        file_revision(store.arrays_path(sid)),
+    ) == revisions

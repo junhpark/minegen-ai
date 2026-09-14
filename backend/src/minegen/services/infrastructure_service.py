@@ -10,11 +10,19 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import TypeVar
 
 from minegen.core.artifacts import COMMUNICATION_ARTIFACT, SENSORS_ARTIFACT
+from minegen.core.models import ApiModel
 from minegen.infrastructure.builder import CommunicationBuilder
 from minegen.infrastructure.models import CommunicationPayload, SensorPayload
 from minegen.infrastructure.sensors import SensorBuilder
+from minegen.services.artifact_errors import (
+    ArtifactMalformedError,
+    CommunicationNotGeneratedError,
+    SensorsNotGeneratedError,
+)
+from minegen.services.artifact_reader import ArtifactReader
 from minegen.services.design_service import (
     DesignService,
     InputFingerprint,
@@ -23,19 +31,33 @@ from minegen.services.design_service import (
 )
 from minegen.services.scenario_service import ScenarioStore
 
+#: AC-01F: the two NOT_GENERATED classes now live in
+#: ``services/artifact_errors.py`` (ONE definition); re-exported so
+#: ``api/infrastructure.py`` and the tests keep their imports and every
+#: ``isinstance`` check names the same class object.
+__all__ = ["CommunicationNotGeneratedError", "InfrastructureService", "SensorsNotGeneratedError"]
 
-class CommunicationNotGeneratedError(LookupError):
-    """communication.json does not exist for the scenario."""
 
-
-class SensorsNotGeneratedError(LookupError):
-    """sensors.json does not exist for the scenario."""
+_Model = TypeVar("_Model", bound=ApiModel)
 
 
 class InfrastructureService:
     def __init__(self, store: ScenarioStore, design: DesignService) -> None:
         self.store = store
         self.design = design
+        #: AC-01F: the ONE validated read authority over ``derived/`` — the
+        #: same class object the design service and the scene read through,
+        #: so ``communication.json`` / ``sensors.json`` answer the typed
+        #: read-state codes instead of the router's 500 ``INTERNAL_ERROR``
+        #: catch-all (Stage A I-6 / §2.5)
+        self._reader = ArtifactReader(store)
+
+    def _require(self, name: str, scenario_id: str, model: type[_Model]) -> _Model:
+        self.store.get(scenario_id)  # 404 / schema 422 / migration-on-read (A10)
+        payload = self._reader.require(scenario_id, name).model
+        if not isinstance(payload, model):  # pragma: no cover - READ_SPECS declares it
+            raise ArtifactMalformedError(name, f"does not satisfy {model.__name__}")
+        return payload
 
     def communication_path(self, scenario_id: str) -> Path:
         return self.store.derived_dir(scenario_id) / COMMUNICATION_ARTIFACT
@@ -83,11 +105,7 @@ class InfrastructureService:
         return payload
 
     def communication(self, scenario_id: str) -> CommunicationPayload:
-        self.store.get(scenario_id)
-        path = self.communication_path(scenario_id)
-        if not path.is_file():
-            raise CommunicationNotGeneratedError(scenario_id)
-        return CommunicationPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        return self._require(COMMUNICATION_ARTIFACT, scenario_id, CommunicationPayload)
 
     # ------------------------------------------------------------------ #
     # Phase 12 sensors (rules 93–98): same 4 direct inputs and the same
@@ -136,8 +154,4 @@ class InfrastructureService:
         return payload
 
     def sensors(self, scenario_id: str) -> SensorPayload:
-        self.store.get(scenario_id)
-        path = self.sensors_path(scenario_id)
-        if not path.is_file():
-            raise SensorsNotGeneratedError(scenario_id)
-        return SensorPayload.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        return self._require(SENSORS_ARTIFACT, scenario_id, SensorPayload)

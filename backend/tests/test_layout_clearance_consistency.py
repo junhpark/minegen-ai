@@ -209,14 +209,25 @@ def test_clearance_failure_detail_names_the_candidate_basis() -> None:
 
 def test_fail_closed_errors_map_to_typed_409() -> None:
     """The two fail-closed conditions of 1.1 answer 409 with their own codes
-    (never a 500) through the design router's guard."""
-    from minegen.api.design import _guard
+    (never a 500) through the design router's guard.
+
+    AC-01F (C3) removed the per-router ``_guard`` isinstance ladders: the
+    design router now hands every exception to the ONE wire mapping,
+    ``api/errors.guard(..., router=ROUTER_DESIGN)``, which is what this test
+    calls. Same router, same two assertions, unchanged statuses, codes and
+    message; ``tests/test_api_errors.py`` holds the literal HEAD-``12d7725``
+    table proving the mapping answers what the ladder answered."""
+    from minegen.api.errors import ROUTER_DESIGN, guard
     from minegen.layout.search import ClearancePolicyReconstructionError
 
-    stale = _guard("sid", LayoutSelectionStaleError("sid"))
+    stale = guard("sid", LayoutSelectionStaleError("sid"), router=ROUTER_DESIGN)
+    assert stale is not None
     assert stale.status_code == 409
     assert stale.detail["code"] == "LAYOUT_V2_SELECTION_STALE"
-    mismatch = _guard("sid", ClearancePolicyReconstructionError("SPIRAL-x", "why"))
+    mismatch = guard(
+        "sid", ClearancePolicyReconstructionError("SPIRAL-x", "why"), router=ROUTER_DESIGN
+    )
+    assert mismatch is not None
     assert mismatch.status_code == 409
     assert mismatch.detail["code"] == "LAYOUT_V2_CLEARANCE_MISMATCH"
     assert "SPIRAL-x" in mismatch.detail["message"]

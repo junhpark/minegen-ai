@@ -151,6 +151,17 @@ def test_shaft_and_capability_api_lifecycle(
     shafts_path.write_text(json.dumps(shafts), encoding="utf-8")  # … put an old one back
     r = client.post(f"{base}/network/generate")
     assert r.status_code == 409 and r.json()["detail"]["code"] == "SHAFTS_STALE"
+    # AC-01F (Stage A I-1, the canary): the artifact ROUTE and the SCENE refuse
+    # the same stale artifact the builder refuses — the GET used to answer 200
+    # SUCCESS and the scene used to project it
+    r = client.get(f"{base}/design/shafts")
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "SHAFTS_STALE"
+    r = client.get(f"{base}/scene")
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert detail["code"] == "SCENE_ARTIFACT_INVALID"
+    assert detail["artifacts"][0]["code"] == "SHAFTS_STALE"
+    assert detail["artifacts"][0]["artifact"] == "shafts.json"
     # a capability graph whose network moved on is refused, never reused
     _shafts(client, sid)
     _network(client, sid)
