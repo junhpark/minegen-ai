@@ -11,6 +11,7 @@ from itertools import pairwise
 from fastapi.testclient import TestClient
 
 from minegen.services.design_service import DesignService
+from minegen.services.scenario_service import ScenarioStore
 from tests.test_smoothing_api import _decline, _prepare
 from tests.test_tunnel_api import _smooth
 
@@ -567,3 +568,31 @@ def test_warped_vein_legacy_search_chain_answers_typed_422_never_500(
         r = client.post(f"{base}/{path}", params={"sync": "true"})
         assert r.status_code == 422, f"{path}: {r.status_code} {r.text}"
         assert r.json()["detail"]["code"] == "UNSUPPORTED_OREBODY_FOR_LEGACY_LAYOUT", path
+
+
+def test_an_unknown_scenario_on_select_and_activate_never_grows_the_lock_dict(
+    client: TestClient, store: ScenarioStore
+) -> None:
+    """Stage D S3. Both routes used to enter ``ArtifactReader.snapshot`` →
+    ``ScenarioStore.lock`` BEFORE any existence check, and
+    ``ScenarioStore._locks`` is never pruned, so a client-supplied unknown id
+    left a permanent entry behind.
+
+    Pre-change literals, measured at commit 3 against base ``12d7725``:
+    HEAD ``POST …/design/layout-v2/select`` → (404, SCENARIO_NOT_FOUND) with
+    ``_locks`` 0→1 and ``…/activate`` 1→2; 500 distinct unknown ids on
+    ``select`` → ``len(_locks) == 502`` (+500). Base: both (409,
+    LAYOUT_V2_NOT_GENERATED) and ``len(_locks) == 0`` (+0). The 404 is the
+    correct A1 answer and stays; what changes is that it is no longer paid for
+    with an entry in a dict an attacker keys. ``WorldService.replace_scenario``
+    writes the same invariant down for ``PUT /scenarios/{id}``."""
+    before = len(store._locks)
+    for i in range(50):
+        for route in ("select", "activate"):
+            response = client.post(
+                f"/api/v1/scenarios/no-such-scenario-{i}/design/layout-v2/{route}",
+                json={"candidateId": "SPIRAL-n1-g0.100"},
+            )
+            assert response.status_code == 404, (route, response.status_code, response.text)
+            assert response.json()["detail"]["code"] == "SCENARIO_NOT_FOUND", response.text
+    assert len(store._locks) == before, sorted(store._locks)

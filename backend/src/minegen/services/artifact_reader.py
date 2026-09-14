@@ -251,9 +251,12 @@ def _shape_any_document(_: dict[str, Any]) -> str | None:
 
 
 def _shape_decline(data: dict[str, Any]) -> str | None:
-    # design/smoothing.py:806 subscripts payload["levels"]
-    if not isinstance(data.get("levels"), list):
-        return "'levels' is not a list"
+    # design/smoothing.py:806 subscripts payload["levels"] ELEMENTS
+    # (``lv.get("selectedCandidateId")``), so the precondition is the
+    # subscript the consumer performs (Stage D B2): a list of non-objects used
+    # to be VALID and made ``POST …/design/decline/smooth`` a bare 500
+    if not _is_dict_list(data.get("levels")):
+        return "'levels' is not a list of objects"
     return None
 
 
@@ -266,9 +269,11 @@ def _shape_smoothed(data: dict[str, Any]) -> str | None:
 
 
 def _shape_catalogue(data: dict[str, Any]) -> str | None:
-    # world_service._layout_summary and certification.candidate_points_from_catalogue
-    if not isinstance(data.get("candidates"), list):
-        return "'candidates' is not a list"
+    # world_service._layout_summary (``for k, v in c.items()``) and
+    # certification.candidate_points_from_catalogue subscript the ELEMENTS
+    # (Stage D B2: a list of non-objects made ``GET …/scene`` a bare 500)
+    if not _is_dict_list(data.get("candidates")):
+        return "'candidates' is not a list of objects"
     return None
 
 
@@ -399,6 +404,132 @@ def _selection_segments_check(
     return None
 
 
+def _certification_disagreement(
+    mine: CandidateCertification,
+    theirs: CandidateCertification,
+    this_file: str,
+    other_file: str,
+) -> tuple[ReadState, Exception] | None:
+    """The VALUE agreement of the rule-157 co-published pair, in whichever
+    direction it is read: candidate identity, then the clearance RECIPE —
+    ``provenance_key`` (basis + refinement provenance), the recorded error
+    bound AND the recorded required clearance (the fourth key
+    ``CandidateCertification`` parses; Stage-B checkpoint decision C6).
+
+    Both are A1's third row, "candidate identity / clearance recipe defect" →
+    ``ClearancePolicyReconstructionError`` (``LAYOUT_V2_CLEARANCE_MISMATCH``),
+    read state STALE: two parseable halves that disagree are a residue of one
+    interrupted publish, not a defect of either document's own block (C6 —
+    an OWN block defect is MALFORMED, and it is reported one check earlier)."""
+    if mine.candidate_id != theirs.candidate_id:
+        return (
+            STATE_STALE,
+            ClearancePolicyReconstructionError(
+                mine.candidate_id,
+                f"{this_file} and {other_file} disagree on 'candidateId' "
+                f"('{theirs.candidate_id}' is the co-published one)",
+            ),
+        )
+    if (
+        mine.provenance_key != theirs.provenance_key
+        or mine.error_bound != theirs.error_bound
+        or mine.required_clearance != theirs.required_clearance
+    ):
+        return (
+            STATE_STALE,
+            ClearancePolicyReconstructionError(
+                mine.candidate_id,
+                f"{this_file} and {other_file} disagree on the recorded clearance certification",
+            ),
+        )
+    return None
+
+
+def _selection_pair_check(
+    data: dict[str, Any], snapshot: ArtifactSnapshot
+) -> tuple[ReadState, Exception] | None:
+    """The SELECTION half of the co-published pair (Stage-B checkpoint
+    decision C5, raised by the Stage D A-1 architecture question).
+
+    ``select_layout_candidate`` writes ``layout_v2_selected.json`` FIRST and
+    ``level_accesses.json`` second under ONE lock hold, and catalogue
+    regeneration deletes both, so "selection present, accesses absent or
+    unusable" is never a legitimate state — only residue of that two-write
+    window. Until C5 only the accesses → selection direction was checked, and
+    the unchecked direction was exactly the one the crash window produces:
+    Stage D measured ``GET …/design/ramp-source`` **200 available:true**,
+    ``GET …/design/ramp`` **200** and ``GET …/scene`` **200** over a deleted
+    ``level_accesses.json`` that every builder refused with 409.
+
+    Order (after revision → certification → segments, so the AC-01D pinned
+    codes are decided before this runs):
+
+    * accesses ABSENT, unreadable or not a JSON object →
+      ``LayoutSelectionStaleError`` (``LAYOUT_V2_SELECTION_STALE``), STALE:
+      the pair is incomplete, which is a freshness fact;
+    * accesses parseable → the SAME agreement rules as C1 in the other
+      direction (``sourceRevision`` / ``layoutRevision`` →
+      ``LAYOUT_V2_SELECTION_STALE``; candidate identity / clearance recipe →
+      ``LAYOUT_V2_CLEARANCE_MISMATCH``), so the C1 asymmetry disappears: a
+      value-tampered selection is now 409 on its OWN ``GET`` too.
+
+    C6: this row never carries the OTHER half's message. A defect of the
+    accesses' own certification block is that artifact's MALFORMED report;
+    here it only says that the co-published half is not usable.
+
+    A caller that does not ASK for the accesses half does not run this check:
+    ``DesignService._selection_snapshot`` observes only the catalogue and the
+    selection, because its job is the certification restore, and the AC-01D
+    pinned tamper codes are decided there by ``_selection_revision_check`` /
+    ``_selection_certification_check`` and the rebuilt-policy ``verify`` —
+    unchanged."""
+    obs = snapshot.observation(LEVEL_ACCESSES_ARTIFACT)
+    if obs is None:
+        return None  # the caller did not ask for the accesses half
+    accesses: Any = None
+    if obs.present and obs.data is not None:
+        try:
+            accesses = json.loads(obs.data)
+        except ValueError:
+            accesses = None
+    if not isinstance(accesses, dict):
+        return (
+            STATE_STALE,
+            LayoutSelectionStaleError(
+                snapshot.scenario_id,
+                f"its co-published {LEVEL_ACCESSES_ARTIFACT} is missing / not usable",
+            ),
+        )
+    for field in ("sourceRevision", "layoutRevision"):
+        if data.get(field) != accesses.get(field):
+            return (
+                STATE_STALE,
+                LayoutSelectionStaleError(
+                    snapshot.scenario_id,
+                    f"{LAYOUT_V2_SELECTED_ARTIFACT} and {LEVEL_ACCESSES_ARTIFACT} "
+                    f"disagree on '{field}'",
+                ),
+            )
+    try:
+        mine = CandidateCertification.from_selection(data)
+    except ClearancePolicyReconstructionError as err:  # pragma: no cover - ordered before
+        return (STATE_MALFORMED, err)
+    try:
+        theirs = CandidateCertification.from_level_accesses(accesses)
+    except ClearancePolicyReconstructionError:
+        return (
+            STATE_STALE,
+            ClearancePolicyReconstructionError(
+                mine.candidate_id,
+                f"its co-published {LEVEL_ACCESSES_ARTIFACT} carries a defective "
+                "clearance certification",
+            ),
+        )
+    return _certification_disagreement(
+        mine, theirs, LAYOUT_V2_SELECTED_ARTIFACT, LEVEL_ACCESSES_ARTIFACT
+    )
+
+
 def _accesses_revision_check(
     data: dict[str, Any], snapshot: ArtifactSnapshot
 ) -> tuple[ReadState, Exception] | None:
@@ -434,10 +565,13 @@ def _accesses_certification_check(
 def _accesses_shape_check(
     data: dict[str, Any], _: ArtifactSnapshot
 ) -> tuple[ReadState, Exception] | None:
-    if not isinstance(data.get("accesses"), list):
+    # levels/builder.py:115 subscripts the ELEMENTS (``acc.get("status")``),
+    # so the precondition is that subscript (Stage D B2: a list of non-objects
+    # used to be VALID and made ``POST …/design/levels`` a bare 500)
+    if not _is_dict_list(data.get("accesses")):
         return (
             STATE_MALFORMED,
-            ArtifactMalformedError(LEVEL_ACCESSES_ARTIFACT, "'accesses' is not a list"),
+            ArtifactMalformedError(LEVEL_ACCESSES_ARTIFACT, "'accesses' is not a list of objects"),
         )
     for field in ("layoutRevision", "sourceRevision"):
         if not isinstance(data.get(field), str):
@@ -477,11 +611,11 @@ def _accesses_pair_check(
       (``LAYOUT_V2_SELECTION_STALE``): the pair belongs to different
       captures, which is a freshness fact, not a certification defect.
 
-    Accepted, documented asymmetry (C1): a shape-valid but value-tampered
-    selection is 200 on its OWN GET — the selection's read is shape +
-    revision only, and value truth needs the world — and 409 on the accesses
-    GET, in the scene and on every accesses-reading builder. The co-published
-    pair is what makes the residue visible on read."""
+    C1's accepted asymmetry — a shape-valid but value-tampered selection
+    answering 200 on its OWN GET while the accesses GET, the scene and every
+    accesses-reading builder answered 409 — is GONE: C5 gives the selection
+    the symmetric :func:`_selection_pair_check`, so the pair is one read unit
+    in both directions."""
     obs = snapshot.observation(LAYOUT_V2_SELECTED_ARTIFACT)
     if obs is None:
         return None  # the caller did not ask for the selection half
@@ -517,28 +651,27 @@ def _accesses_pair_check(
             )
     try:
         mine = CandidateCertification.from_level_accesses(data)
-        theirs = CandidateCertification.from_selection(selection)
-    except ClearancePolicyReconstructionError as err:
+    except ClearancePolicyReconstructionError as err:  # pragma: no cover - ordered before
         return (STATE_MALFORMED, err)
-    if mine.candidate_id != theirs.candidate_id:
+    try:
+        theirs = CandidateCertification.from_selection(selection)
+    except ClearancePolicyReconstructionError:
+        # C6 / S14: a defect of the SELECTION's own ``clearance`` block is the
+        # SELECTION's MALFORMED report. This row says only that its
+        # co-published half is not usable — one artifact never reports
+        # another's defect, and a co-published-half defect is STALE, not a
+        # failed shape precondition of THIS document.
         return (
             STATE_STALE,
             ClearancePolicyReconstructionError(
                 mine.candidate_id,
-                f"{LEVEL_ACCESSES_ARTIFACT} and {LAYOUT_V2_SELECTED_ARTIFACT} "
-                f"disagree on 'candidateId' ('{theirs.candidate_id}' is selected)",
+                f"its co-published {LAYOUT_V2_SELECTED_ARTIFACT} carries a defective "
+                "clearance certification",
             ),
         )
-    if mine.provenance_key != theirs.provenance_key or mine.error_bound != theirs.error_bound:
-        return (
-            STATE_STALE,
-            ClearancePolicyReconstructionError(
-                mine.candidate_id,
-                f"{LEVEL_ACCESSES_ARTIFACT} and {LAYOUT_V2_SELECTED_ARTIFACT} "
-                "disagree on the recorded clearance certification",
-            ),
-        )
-    return None
+    return _certification_disagreement(
+        mine, theirs, LEVEL_ACCESSES_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT
+    )
 
 
 def _capability_network_source_check(
@@ -570,28 +703,40 @@ def _development_mesh_source_check(
     (``DesignService.generate_development_mesh``) and is re-checked against
     the resolved active source: a switch would have DELETED the mesh
     (rule 151), so a mismatch is residue. No rule-named stale code exists for
-    it → ``ARTIFACT_STALE``."""
+    it → ``ARTIFACT_STALE``.
+
+    Stage D S1: when the active source cannot be resolved AT ALL, the check
+    does not DEFER. ``ramp_source.json`` present but unreadable (an I/O or
+    permission failure on its bytes — ``obs.present`` with ``obs.data is
+    None``) used to ``return None``, so the provenance check was silently
+    skipped and ``GET …/design/development-mesh`` answered **200** (and the
+    GLB route 200) for a mesh whose own writer refused the same state with
+    409, while ``GET …/design/ramp-source`` answered 409 ARTIFACT_MALFORMED on
+    the very same observation. Unreadable and unparseable are ONE outcome now,
+    and it names the file the defect belongs to (``ramp_source.json``, not the
+    mesh — "one artifact never reports another's defect"); the MISMATCH below
+    stays the mesh's own ``ARTIFACT_STALE``."""
     obs = snapshot.observation(RAMP_SOURCE_FILE)
     if obs is None:
         return None  # the caller did not ask for the ramp source
     active: str | None
     if not obs.present:
         active = "LEGACY"  # rule 150: the documented absent default
-    elif obs.data is None:
-        return None
     else:
-        try:
-            document = json.loads(obs.data)
-        except ValueError:
-            document = None
+        document: Any = None
+        if obs.data is not None:
+            try:
+                document = json.loads(obs.data)
+            except ValueError:
+                document = None
         active = document.get("activeSource") if isinstance(document, dict) else None
         if active not in RAMP_SOURCES:
             return (
-                STATE_STALE,
-                ArtifactStaleError(
-                    DEVELOPMENT_MESH_ARTIFACT,
-                    f"the active ramp source cannot be resolved ('{RAMP_SOURCE_FILE}' "
-                    "is not usable)",
+                STATE_MALFORMED,
+                ArtifactMalformedError(
+                    RAMP_SOURCE_FILE,
+                    "it is not usable, so the active ramp source the development mesh "
+                    "records cannot be checked",
                 ),
             )
     sources = data.get("sources")
@@ -642,13 +787,17 @@ READ_SPECS: Mapping[str, ReadSpec] = {
         LAYOUT_V2_SELECTED_ARTIFACT,
         absent_error=LayoutV2NotSelectedError,
         # A1 fixes the ORDER: revision (STALE) → certification (MISMATCH) →
-        # the generic shape precondition
+        # the generic shape precondition → pair agreement with the
+        # co-published level accesses (C5 — the pair is ONE read unit in
+        # BOTH directions)
         checks=(
             _selection_revision_check,
             _selection_certification_check,
             _selection_segments_check,
+            _selection_pair_check,
         ),
         provenance_inputs=(LAYOUT_V2_ARTIFACT,),
+        agreement_inputs=(LEVEL_ACCESSES_ARTIFACT,),
     ),
     LEVEL_ACCESSES_ARTIFACT: _spec(
         LEVEL_ACCESSES_ARTIFACT,

@@ -282,13 +282,22 @@ def test_every_provenance_link_is_a_registry_closure_edge() -> None:
 def test_agreement_pairs_are_one_registry_capture() -> None:
     """The selection ↔ level-access pair is CO-PUBLISHED, not a dependency:
     the registry declares identical ordered inputs and the same ramp-source
-    gate for both (core/artifact_registry.py:217-230)."""
+    gate for both (core/artifact_registry.py:217-230).
+
+    C5 makes the declaration SYMMETRIC — each half names the other — because
+    the pair is one READ unit in both directions, not only in the direction
+    the crash window happens not to produce."""
     pairs = [
         (name, other)
         for name, read_spec in READ_SPECS.items()
         for other in read_spec.agreement_inputs
     ]
-    assert pairs == [(LEVEL_ACCESSES_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT)]
+    assert sorted(pairs) == sorted(
+        [
+            (LEVEL_ACCESSES_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT),
+            (LAYOUT_V2_SELECTED_ARTIFACT, LEVEL_ACCESSES_ARTIFACT),
+        ]
+    )
     for name, other in pairs:
         assert spec(name).inputs == spec(other).inputs
         assert spec(name).ramp_source == spec(other).ramp_source == "LAYOUT_V2"
@@ -408,15 +417,41 @@ def test_first_level_shape_preconditions_are_the_subscripts_consumers_perform(
     stack: tuple[ScenarioStore, ArtifactReader, Path],
 ) -> None:
     _, reader, derived = stack
-    cases = {
-        DECLINE_ARTIFACT: {"levels": "not-a-list"},
-        LEGACY_RAMP_ARTIFACT: {"segments": ["not-an-object"]},
-        LAYOUT_V2_ARTIFACT: {"candidates": {}},
-        RAMP_SOURCE_FILE: {"activeSource": "MAGIC"},
-        TUNNEL_MESH_ARTIFACT: {"status": "SUCCESS", "artifactRevision": "short"},
-        DEVELOPMENT_MESH_ARTIFACT: {"status": "FAILED", "sources": {}},
-    }
-    for name, document in cases.items():
+    layout_revision = expected_revision(derived / LAYOUT_V2_ARTIFACT)
+    # (artifact, document) ROWS, not a dict: Stage D B2 ADDS three rows for
+    # the same artifacts rather than replacing the ones that were here, so the
+    # WRONG-TYPE case and the LIST-OF-NON-OBJECTS case are both still pinned.
+    cases: tuple[tuple[str, dict[str, Any]], ...] = (
+        (DECLINE_ARTIFACT, {"levels": "not-a-list"}),
+        (LEGACY_RAMP_ARTIFACT, {"segments": ["not-an-object"]}),
+        (LAYOUT_V2_ARTIFACT, {"candidates": {}}),
+        (RAMP_SOURCE_FILE, {"activeSource": "MAGIC"}),
+        (TUNNEL_MESH_ARTIFACT, {"status": "SUCCESS", "artifactRevision": "short"}),
+        (DEVELOPMENT_MESH_ARTIFACT, {"status": "FAILED", "sources": {}}),
+        # Stage D B2: the three preconditions that tested the LIST and not its
+        # ELEMENTS. The consumers subscript DICTS
+        # (``lv.get("selectedCandidateId")``, ``for k, v in c.items()``,
+        # ``acc.get("status")``), so a list of NON-objects used to be VALID and
+        # leaked a bare 500 one step later. The certification-bearing document
+        # keeps a valid ``layoutRevision`` and certification so A1's fixed
+        # order reaches the SHAPE check.
+        (DECLINE_ARTIFACT, {"levels": [1, 2]}),
+        (LAYOUT_V2_ARTIFACT, {"candidates": [1, 2]}),
+        (
+            LEVEL_ACCESSES_ARTIFACT,
+            {**_accesses(layout_revision), "accesses": ["not-an-object"]},
+        ),
+        # the SELECTION's ``segments`` precondition already used the right
+        # helper and was exercised by no row at all: deleting
+        # ``_selection_segments_check`` outright (Stage D mutation M22) left
+        # the whole suite green. A1's fixed order reaches it only over a
+        # valid ``layoutRevision`` and a valid ``clearance`` block.
+        (
+            LAYOUT_V2_SELECTED_ARTIFACT,
+            {**_selection(layout_revision), "segments": ["not-an-object"]},
+        ),
+    )
+    for name, document in cases:
         with mutated(derived / name):
             write_json(derived / name, document)
             snapshot = reader.snapshot(SID, [name, *READ_SPECS[name].provenance_inputs])
@@ -1011,3 +1046,152 @@ def test_the_reader_imports_no_service_it_will_be_consumed_by() -> None:
     }
     assert not (modules & forbidden), sorted(modules & forbidden)
     assert "minegen.core.artifact_registry" in modules
+
+
+# --------------------------------------------------------------------------- #
+# Stage D S1 — "present but unreadable" is never a SKIPPED provenance check
+# --------------------------------------------------------------------------- #
+
+
+def test_an_unreadable_ramp_source_makes_the_development_mesh_malformed(
+    stack: tuple[ScenarioStore, ArtifactReader, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S1. ``_development_mesh_source_check`` used to ``return None`` when
+    ``ramp_source.json`` was PRESENT but its bytes could not be read — the one
+    observation the reader classifies MALFORMED for the artifact's own read
+    and the ``_accesses_pair_check`` treats as an unusable half. A skipped
+    provenance check is not a deferral to another artifact's report: nobody
+    reports it, and the mesh is SERVED.
+
+    Unreadable and unparseable are one outcome now, and it names
+    ``ramp_source.json`` — the file the defect belongs to."""
+    _, reader, _derived = stack
+    original = Path.read_bytes
+
+    def patched(self: Path) -> bytes:
+        if self.name == RAMP_SOURCE_FILE:
+            raise PermissionError(self.name)
+        return original(self)
+
+    monkeypatch.setattr(Path, "read_bytes", patched)
+    snapshot = reader.snapshot(SID, [DEVELOPMENT_MESH_ARTIFACT, RAMP_SOURCE_FILE])
+    source_obs = snapshot.observation(RAMP_SOURCE_FILE)
+    assert source_obs is not None
+    # the observation really is "present, bytes unreadable" — never ABSENT
+    assert source_obs.present and source_obs.data is None
+
+    read = reader.read(snapshot, DEVELOPMENT_MESH_ARTIFACT)
+    assert read.state == "MALFORMED", read.state
+    assert isinstance(read.error, ArtifactMalformedError)
+    assert read.error.artifact == RAMP_SOURCE_FILE, read.error.artifact
+    # and the source's own read agrees, from the SAME observation
+    assert reader.read(snapshot, RAMP_SOURCE_FILE).state == "MALFORMED"
+    monkeypatch.undo()
+    assert_reads_valid(reader, DEVELOPMENT_MESH_ARTIFACT)
+
+
+# --------------------------------------------------------------------------- #
+# Stage D C5 / C6 — the pair, in the SELECTION's direction, on the unit level
+# --------------------------------------------------------------------------- #
+
+
+def test_the_selection_reports_its_co_published_half(
+    stack: tuple[ScenarioStore, ArtifactReader, Path],
+) -> None:
+    """C5/C6 on the read spec itself. Every row is a state the two-write
+    publish window of ``select_layout_candidate`` can leave behind, and each
+    one names the OUTCOME of the SELECTION's read — the direction that had no
+    check at all.
+
+    C6's labels: a defect of an artifact's OWN certification block is
+    MALFORMED; a disagreement between two parseable halves, or a co-published
+    half that is missing / not usable / certification-defective, is STALE."""
+    _, reader, derived = stack
+    accesses_path = derived / LEVEL_ACCESSES_ARTIFACT
+    layout_revision = expected_revision(derived / LAYOUT_V2_ARTIFACT)
+    names = [LAYOUT_V2_SELECTED_ARTIFACT, LAYOUT_V2_ARTIFACT, LEVEL_ACCESSES_ARTIFACT]
+
+    def read_selection() -> Any:
+        return reader.read(reader.snapshot(SID, names), LAYOUT_V2_SELECTED_ARTIFACT)
+
+    def accesses_with(**changes: Any) -> dict[str, Any]:
+        return {**_accesses(layout_revision), **changes}
+
+    with mutated(accesses_path):
+        # 1. the half is GONE
+        accesses_path.unlink()
+        read = read_selection()
+        assert read.state == "STALE" and type(read.error).code == "LAYOUT_V2_SELECTION_STALE"
+        assert LEVEL_ACCESSES_ARTIFACT in str(read.error)
+
+        # 2. the half is not a usable document
+        for junk in ("{", json.dumps([1, 2]), json.dumps("text")):
+            accesses_path.write_text(junk, encoding="utf-8")
+            read = read_selection()
+            assert read.state == "STALE", junk
+            assert type(read.error).code == "LAYOUT_V2_SELECTION_STALE", junk
+
+        # 3. capture-revision disagreement → a freshness fact
+        for field_name in ("sourceRevision", "layoutRevision"):
+            write_json(accesses_path, accesses_with(**{field_name: "0000000000000000"}))
+            read = read_selection()
+            assert read.state == "STALE", field_name
+            assert type(read.error).code == "LAYOUT_V2_SELECTION_STALE", field_name
+
+        # 4. candidate identity / clearance RECIPE → A1's third row, the
+        #    pinned AC-01D code. ``requiredClearance`` is C6's addition: it is
+        #    the fourth key ``CandidateCertification`` parses and the pair
+        #    check compared only the first three.
+        for changes in (
+            {"candidateId": "OTHER-CANDIDATE"},
+            {"clearanceBasis": "COARSE_CONSERVATIVE"},
+            {"clearanceErrorBound": (CLEARANCE_BOUND or 0.0) + 1e-3},
+            {"clearanceRefinement": {"factor": 2}},
+            {"requiredClearance": REQUIRED_CLEARANCE + 1e-3},
+        ):
+            write_json(accesses_path, accesses_with(**changes))
+            read = read_selection()
+            assert read.state == "STALE", changes
+            assert type(read.error).code == "LAYOUT_V2_CLEARANCE_MISMATCH", changes
+
+        # 5. the co-published half's OWN certification block is defective:
+        #    STALE here, and this row never carries the other artifact's text
+        broken = accesses_with()
+        broken.pop("clearanceBasis")
+        write_json(accesses_path, broken)
+        read = read_selection()
+        assert read.state == "STALE"
+        assert type(read.error).code == "LAYOUT_V2_CLEARANCE_MISMATCH"
+        assert "co-published" in str(read.error) and LEVEL_ACCESSES_ARTIFACT in str(read.error)
+        # while the accesses' OWN read calls the same defect MALFORMED
+        own = reader.read(reader.snapshot(SID, names), LEVEL_ACCESSES_ARTIFACT)
+        assert own.state == "MALFORMED"
+        assert type(own.error).code == "LAYOUT_V2_CLEARANCE_MISMATCH"
+    assert_reads_valid(reader, LAYOUT_V2_SELECTED_ARTIFACT)
+
+
+def test_a_defective_selection_certification_is_not_reported_by_the_accesses_row(
+    stack: tuple[ScenarioStore, ArtifactReader, Path],
+) -> None:
+    """S14 / C6. With the SELECTION's ``clearance`` block null, the
+    ``level_accesses.json`` row used to come back ``state=MALFORMED`` carrying
+    the SELECTION's own message — a failed shape precondition of a document
+    whose shape is fine, and one artifact reporting another's defect. It is
+    STALE, with its own text, and the wire code is unchanged."""
+    _, reader, derived = stack
+    selection = derived / LAYOUT_V2_SELECTED_ARTIFACT
+    names = [LEVEL_ACCESSES_ARTIFACT, LAYOUT_V2_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT]
+    with mutated(selection):
+        document = json.loads(selection.read_text(encoding="utf-8"))
+        document["clearance"] = None
+        write_json(selection, document)
+        accesses_read = reader.read(reader.snapshot(SID, names), LEVEL_ACCESSES_ARTIFACT)
+        assert accesses_read.state == "STALE"
+        assert type(accesses_read.error).code == "LAYOUT_V2_CLEARANCE_MISMATCH"
+        assert "co-published" in str(accesses_read.error)
+        assert LAYOUT_V2_SELECTED_ARTIFACT in str(accesses_read.error)
+        # the selection's OWN block defect stays MALFORMED, on its own row
+        own = reader.read(reader.snapshot(SID, names), LAYOUT_V2_SELECTED_ARTIFACT)
+        assert own.state == "MALFORMED"
+        assert type(own.error).code == "LAYOUT_V2_CLEARANCE_MISMATCH"
+    assert_reads_valid(reader, LEVEL_ACCESSES_ARTIFACT)

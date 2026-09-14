@@ -391,7 +391,7 @@ New error codes (all HTTP 409):
 | `ARTIFACT_MALFORMED` | `code`, `message` (names the FILE, never a path) | a present artifact is not a usable document |
 | `ARTIFACT_STALE` | `code`, `message` | a provenance check failed and no rule-named stale code exists (today: `development_mesh.sources.rampSource` vs the active source) |
 | `SCENE_ARTIFACT_INVALID` | `code`, `message`, `artifacts: [{artifact, state, code, message}]` | `GET …/scene` found at least one present-but-invalid artifact; EVERY failure of that snapshot is listed, each with its own specific code (`SHAFTS_STALE`, `LAYOUT_V2_CLEARANCE_MISMATCH`, `ARTIFACT_MALFORMED`, …). No filesystem path, traceback or exception repr is exposed |
-| `READ_SNAPSHOT_CHANGED` | `code`, `message` | **live from AC-01F commit 3.** It means "a coherent read snapshot could not be acquired because the scenario / artifact set kept changing; retry the read", and it is deliberately distinct from `JOB_INPUTS_CHANGED`, which is a GENERATION whose inputs moved (nothing is built or discarded by a read). Two producers: `WorldService._bound_scenario`, bounded internally at `SNAPSHOT_ATTEMPTS` (3), when `scenario.json` moves on every attempt; and `WorldService.load_bound`, which raises on FIRST detection when `arrays.npz` is REPLACED between its stat and its `np.load` — only `GET …/scene` retries that producer (bounded at 3); `GET …/world` and `GET …/world/slice` answer the code on the first mismatch (a DELETED `arrays.npz` is `WORLD_NOT_GENERATED`, not this code). The surfaces this commit adds are **`GET …/scene`** (which additionally retries the whole bound load + lock-held artifact observation and only then answers this code), **`GET …/world`**, **`GET …/world/slice`** and **`POST …/world/generate`**'s pre-read binding — the generation's own post-build re-check stays `JOB_INPUTS_CHANGED`. Every other route that loads the world goes through the same `load_bound` (the eight `DesignService` builders and `POST …/design/layout-v2`'s world guard), so it can answer this code too; all four routers map it identically through the one `guard` table. The remaining `_bound_scenario` branch — `scenario.json` appearing between the stat and the read — is unreachable through the API: only `ScenarioStore.create` writes a fresh id and no client can name one before it exists |
+| `READ_SNAPSHOT_CHANGED` | `code`, `message` | **live from AC-01F commit 3.** It means "a coherent read snapshot could not be acquired because the scenario / artifact set kept changing; retry the read", and it is deliberately distinct from `JOB_INPUTS_CHANGED`, which is a GENERATION whose inputs moved (nothing is built or discarded by a read). Two producers: `WorldService._bound_scenario`, bounded internally at `SNAPSHOT_ATTEMPTS` (3), when `scenario.json` moves on every attempt; and `WorldService.load_bound`, which raises on FIRST detection when EITHER of its two inputs moved across the cold load — `arrays.npz` REPLACED between its stat and its `np.load`, or `scenario.json` replaced between the bound document read and the publish re-check (Stage D B1 made the two halves symmetric: the scenario re-check used to gate the CACHE PUBLISH only, while the `return` was unconditional, so the two world routes still served a body mixing the OLD document's orebody with the NEW world's terrain and fields) — only `GET …/scene` retries that producer (bounded at 3); `GET …/world` and `GET …/world/slice` answer the code on the first mismatch (a DELETED `arrays.npz` is `WORLD_NOT_GENERATED`, not this code). The surfaces this commit adds are **`GET …/scene`** (which additionally retries the whole bound load + lock-held artifact observation and only then answers this code), **`GET …/world`**, **`GET …/world/slice`** and **`POST …/world/generate`**'s pre-read binding — the generation's own post-build re-check stays `JOB_INPUTS_CHANGED`. Every other route that loads the world goes through the same `load_bound` (the eight `DesignService` builders and `POST …/design/layout-v2`'s world guard), so it can answer this code too; all four routers map it identically through the one `guard` table. The remaining `_bound_scenario` branch — `scenario.json` appearing between the stat and the read — is unreachable through the API: only `ScenarioStore.create` writes a fresh id and no client can name one before it exists |
 
 An existing domain-specific code always wins over a generic one: a stale shaft
 artifact stays `SHAFTS_STALE`, a stale capability graph
@@ -445,36 +445,80 @@ BOTH owners:
 
 A present-but-INVALID active owner is a different thing and answers its own
 typed 409 — this status endpoint must never report `available: true` for a
-ramp every builder refuses. A corrupt `ramp_source.json` is 409
+ramp every builder refuses. Since the C5 pair read, "invalid" includes a
+selection whose co-published `level_accesses.json` is missing or unusable:
+that is 409 `LAYOUT_V2_SELECTION_STALE` here, not `available: false`. Only the
+ABSENT selection above is the expected absence. The pair is classified in both
+directions REGARDLESS of the active ramp source (A14: the scene collects every
+invalid artifact of its snapshot, and a half-published pair is crash residue
+whatever the source): under an active LEGACY source a deleted or unusable
+`level_accesses.json` beside a selection flips `GET …/scene` from 200 to 409
+`SCENE_ARTIFACT_INVALID` (measured), while `GET …/design/ramp` and the LEGACY
+ramp itself are unaffected.
+
+A corrupt `ramp_source.json` is 409
 `ARTIFACT_MALFORMED`, never a silent `LEGACY`; `PUT …/design/ramp-source` is
 the explicit repair, and it evaluates its guards (world, VALID selection)
-BEFORE it writes, so a refused switch leaves the file byte-identical. A writer
+BEFORE it writes, so a refused switch leaves the file byte-identical. Since
+C5 that VALID-selection guard reads the pair too: `PUT …/design/ramp-source`
+`{activeSource: LAYOUT_V2}` over a selection whose `level_accesses.json` is
+missing or unusable answers 409 `LAYOUT_V2_SELECTION_STALE` and writes nothing
+(before C5 it answered 200 and activated the half pair). A writer
 that has already persisted its artifact and meets an unusable
 `ramp_source.json` at its cascade deletes the UNION of both sources' closures
 — strictly more, never less, and never a guessed source.
 
-**The selection ↔ level-access pair, and its documented asymmetry.**
+**The selection ↔ level-access pair is ONE read unit, in BOTH directions.**
 `layout_v2_selected.json` and `level_accesses.json` are co-published under one
-capture (rule 157), so a disagreeing half is crash residue. The disagreement is
-typed by DEFECT CLASS:
+capture (rule 157) — `select_layout_candidate` writes the selection first and
+the accesses second inside one lock hold, and catalogue regeneration deletes
+both — so a missing or disagreeing half is crash residue of that two-write
+window and never a legitimate state. EACH half's read spec observes the other
+and classifies the pair; the disagreement is typed by DEFECT CLASS:
 
-| disagreeing field | code | why |
+| what is wrong | code | why |
 |---|---|---|
-| `candidateId`, or the recorded certification (`clearanceBasis` / refinement provenance / `clearanceErrorBound`) | `LAYOUT_V2_CLEARANCE_MISMATCH` | a candidate-identity / clearance-recipe defect — the same class, and the same pinned AC-01D code, that a defective `clearance` block on the selection itself answers (rule 172) |
-| `sourceRevision`, `layoutRevision`, or an orphaned / unparseable selection half | `LAYOUT_V2_SELECTION_STALE` | the two halves belong to different captures: a freshness fact, not a certification defect |
+| `candidateId` | `LAYOUT_V2_CLEARANCE_MISMATCH` | a candidate-identity defect — the same class, and the same pinned AC-01D code, that a defective `clearance` block answers (rule 172) |
+| the recorded certification: `clearanceBasis` / refinement provenance (together the `provenance_key`), `clearanceErrorBound`, `requiredClearance` | `LAYOUT_V2_CLEARANCE_MISMATCH` | a clearance-RECIPE defect. All FOUR keys `CandidateCertification` parses are compared, in both directions; `requiredClearance` used to be omitted, so a selection whose `requiredClearance` had been moved (measured: 10.590169943749475 → 999.0) was 200 on its own GET, 200 in the scene and 200 on `POST …/network/generate` while `POST …/design/levels` refused it 409 |
+| `sourceRevision` or `layoutRevision` | `LAYOUT_V2_SELECTION_STALE` | the two halves belong to different captures: a freshness fact, not a certification defect |
+| the OTHER half is absent, unreadable, or not a JSON object | `LAYOUT_V2_SELECTION_STALE` | the pair is incomplete — an orphan, in whichever direction it is read |
 
-Both are read state STALE. The asymmetry this leaves is deliberate and
-documented: a selection that is shape-valid and revision-valid but
-VALUE-tampered (its recorded error bound moved, or it names a candidate the
-catalogue does not contain) still answers **200 on its own
-`GET …/design/layout-v2/selected`** — the selection's read is shape +
-revision, and judging its VALUES needs the world and the rebuilt policy, which
-is a search-level check, not a read. The same tampering answers **409
-`LAYOUT_V2_CLEARANCE_MISMATCH`** on `GET …/design/level-accesses`, in the
-scene, and on every builder that reads the level accesses. The co-published
-pair is what makes the residue visible on a read.
+**Read-state labels.** A defect of an artifact's OWN certification block is
+read state **MALFORMED** (a failed shape precondition of that document). A
+disagreement between two parseable halves, or a co-published half that is
+missing / not usable / certification-defective, is read state **STALE**. The
+wire code is the one in the table either way. An aggregate row never carries
+the OTHER artifact's message: the `level_accesses.json` row of a scene refused
+because the SELECTION's `clearance` block is null says "its co-published
+`layout_v2_selected.json` carries a defective clearance certification", not the
+selection's own text.
 
-That also moves where four builders get their answer.
+The earlier C1 asymmetry is **gone**. A selection that is shape-valid and
+revision-valid but VALUE-tampered used to answer 200 on its own
+`GET …/design/layout-v2/selected` while `GET …/design/level-accesses`, the
+scene and every accesses-reading builder answered 409. The selection now
+carries the symmetric pair check, so the same tampering answers **409** on its
+own GET, on `GET …/design/ramp`, on `GET …/design/ramp-source` under an active
+LAYOUT_V2, in the scene and on the builders. Judging a selection's values
+against the WORLD (the rebuilt stage-4 policy) is still a search-level check
+and still lives in the four policy POSTs; what the pair read adds is the
+persisted-evidence half, which needs no world.
+
+Measured before the change, with the selection intact and its co-published
+`level_accesses.json` DELETED: `GET …/design/ramp-source` **200
+`available:true`**, `GET …/design/ramp` **200**, `GET …/scene` **200** with
+`levelAccesses: null` — while `POST …/design/levels` and
+`POST …/network/generate` both answered 409 `LEVEL_ACCESSES_NOT_GENERATED`.
+That is exactly the state the status endpoint promises never to report.
+
+**Repair is still an explicit user write, and it now writes.**
+`POST …/design/layout-v2/select` treats the already-selected candidate at the
+same catalogue revision as a no-op only when BOTH halves are VALID; otherwise
+it falls through and rewrites both. Measured before the change: with
+`level_accesses.json` deleted or replaced by `{`, `select` and `activate` both
+answered 200 and restored nothing.
+
+The pair read also moves where four builders get their answer.
 `POST …/network/generate`, `POST …/design/timeline`,
 `POST …/infrastructure/communication` and `POST …/infrastructure/sensors` read
 `level_accesses.json` but restore no clearance policy; their
@@ -487,6 +531,17 @@ tampered selection, and that is not an oversight: the registry declares its
 inputs as `scenario + arrays + levels` (rule 79), so it reads no ramp at all —
 giving it a ramp dependency would be an engineering change, not a read-trust
 change.
+
+**`select` / `activate` answer 404 for an unknown scenario.**
+`POST …/design/layout-v2/select` and `…/activate` now call `ScenarioStore.get`
+as their FIRST statement, so an unknown scenario id is **404
+`SCENARIO_NOT_FOUND`** where commit 3 answered **409
+`LAYOUT_V2_NOT_GENERATED`** (base `12d7725` answered the same 409). The reason
+is not cosmetic: both routes used to enter `ArtifactReader.snapshot` →
+`ScenarioStore.lock` before any existence check, and `ScenarioStore._locks` is
+never pruned — measured, 500 distinct unknown ids on `select` left
+`len(_locks) == 502` (base `12d7725`: 0). Every other scenario-scoped route
+already checked first and grew nothing.
 
 **A MALFORMED catalogue can no longer be selected.**
 `POST …/design/layout-v2/select` and `…/activate` require a VALID
@@ -511,9 +566,29 @@ no consumer reads; that is the honesty limit, stated rather than papered over.
 `networkSourceRevision` and AC-01F cross-checks it against the network
 payload's own `sourceRevision`. That cross-check DEFERS when `network.json`
 cannot be parsed — the network's own read is the `ARTIFACT_MALFORMED` report.
-In practice the graph is refused anyway, one check earlier: rewriting the file
-changed its `file_revision`, so the `networkRevision` relation fires first with
-`CAPABILITY_GRAPH_STALE` (measured).
+The deferral is directly OBSERVABLE, and the earlier claim that the
+`networkRevision` relation always catches it first is false: `file_revision` is
+`sha256(name:size:mtime_ns)`, so a same-size rewrite with `st_mtime_ns`
+restored leaves it identical. Measured at commit 3 (`file_revision` unchanged:
+True): `GET …/network` 409 `ARTIFACT_MALFORMED`, `GET …/design/capability-graph`
+**200** over a `network.json` nobody can parse, `GET …/scene` 409
+`SCENE_ARTIFACT_INVALID`. The deferral itself is the contract (A12: one
+artifact never reports another's defect, and the scene collects both rows); it
+is the PROTECTION that was overstated, not the rule.
+
+The same applies to the OTHER two-artifact deferral — and it does NOT: when
+the ACTIVE RAMP SOURCE cannot be resolved at all (`ramp_source.json` present
+but unreadable or unparseable), `development_mesh.json` does not defer. Its
+provenance check cannot run without an active source, so the read is refused
+with 409 `ARTIFACT_MALFORMED` NAMING `ramp_source.json`. Two answers changed
+with Stage D S1. The UNREADABLE half (its stat succeeds, its bytes do not)
+silently skipped the check, so `GET …/design/development-mesh` and its GLB
+route answered **200** for a mesh whose own writer refused the same state with
+409. The UNPARSEABLE half was refused, but with the wrong code and the wrong
+file: 409 `ARTIFACT_STALE` naming `development_mesh.json`. Both are now 409
+`ARTIFACT_MALFORMED` naming `ramp_source.json` — one artifact never reports
+another's defect. A `rampSource` MISMATCH, which needs a RESOLVED source to be
+a mismatch at all, remains the mesh's OWN `ARTIFACT_STALE`.
 
 **Q-WORLD-GUARD: the world guard is DISK-authoritative on every derived read.**
 A derived artifact is never trusted without a world (the snapshot's own
@@ -615,10 +690,9 @@ commit 3).** The in-memory world cache entry carries the `scenario.json` and
 `arrays.npz` revisions the world was built at and is served only while BOTH
 still match, so:
 
-* deleting `arrays.npz` with the world warm in memory makes both routes (and
-  `WorldService.is_generated`) answer 409 `WORLD_NOT_GENERATED`; at HEAD both
-  answered **200** (probe 2 §4.9) — "is the world there?" depended on process
-  state;
+* deleting `arrays.npz` with the world warm in memory makes both routes answer
+  409 `WORLD_NOT_GENERATED`; at HEAD both answered **200** (probe 2 §4.9) —
+  "is the world there?" depended on process state;
 * a scenario PUT can no longer be observed half-applied. `PUT /scenarios/{id}`
   is ONE locked section (document write + derived invalidation + cache drop);
   an in-flight `GET …/scene` either completes as a consistent OLD snapshot or
@@ -636,7 +710,19 @@ still match, so:
   the replaced case and normally answers a consistent 200. Measured on the
   intermediate commit-3 draft with the load paused: the deleted case answered
   **500 Internal Server Error**, the replaced case answered **200** for a
-  world loaded from a file the reader had never stat'ed.
+  world loaded from a file the reader had never stat'ed;
+* the SCENARIO half of that window has the SAME outcome (Stage D B1). A
+  `PUT /scenarios/{id}` **plus** a world regeneration landing between the
+  bound document read and the publish re-check moves `scenario.json` too, and
+  `load_bound` refuses the triple instead of returning it: 409
+  `READ_SNAPSHOT_CHANGED` on `GET …/world` and `GET …/world/slice`, a retry on
+  `GET …/scene`. Commit 3 re-stat'ed the document but let the result through
+  and gated only the cache entry, so the R3d body it claims to have made
+  impossible was still served on those two routes — measured with the read
+  paused inside `load_bound`: ONE **200** carrying `orebody.center
+  [40.0, 20.0, -50.0]` from the OLD document beside `terrain.zMax
+  116.367159085105` and `rockQuality.mean 64.97196970309594` from the NEW
+  world, a body equal to neither the before nor the after state.
 
 No wire shape changes: `PUT /scenarios/{id}` keeps its request and response
 exactly as before.

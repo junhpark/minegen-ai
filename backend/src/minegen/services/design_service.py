@@ -242,7 +242,13 @@ class DesignService:
         self.store = store
         self.worlds = worlds
         self._evaluators: dict[str, tuple[SyntheticWorld, DesignCostEvaluator]] = {}
-        self._targets: dict[str, AccessTargetSet] = {}
+        #: Stage D S16: bound to the WORLD object like its two siblings
+        #: (``_evaluators``, ``_layouts``) — the cache was keyed on presence
+        #: alone while its consumer (``generate_decline``) PERSISTS what it
+        #: returns, so a warm set surviving a world change would have been
+        #: written out (measured out-of-band: warm decline 599 centerline
+        #: points vs cold 737 on bit-identical inputs)
+        self._targets: dict[str, tuple[SyntheticWorld, AccessTargetSet]] = {}
         self._layouts: dict[str, tuple[SyntheticWorld, LayoutV2Search, LayoutSearchResult]] = {}
         self._selected_policies: dict[str, _RestoredPolicy] = {}
         #: AC-01F: the ONE validated read authority over ``derived/``. Every
@@ -304,9 +310,9 @@ class DesignService:
         NOT this path — they stay ``WorldService.invalidate`` →
         ``ScenarioStore.clear_derived`` (rules 40 / 46).
 
-        AC-01F A7: this is the ONE caller that must not RAISE on an unusable
-        ``ramp_source.json``. It runs AFTER the writer's file write, so a
-        typed refusal here would leave a published artifact with no cascade —
+        AC-01F A7: the source READ never aborts the cascade. It runs AFTER
+        the writer's file write, so a typed refusal on an unusable
+        ``ramp_source.json`` here would leave a published artifact with no cascade —
         a worse residue than the corruption. Unknown source at write cleanup
         therefore deletes the UNION of both closures: strictly more, never
         less, never a guessed LEGACY. Reads stay strict (ARTIFACT_MALFORMED)
@@ -315,8 +321,18 @@ class DesignService:
         C3: the rescue catches ``OSError`` beside ``ArtifactMalformedError``.
         "Unusable" is not only "corrupt bytes": a permission or I/O failure on
         the stat/read of the source file raises out of the snapshot itself,
-        and the A7 principle is about the CASCADE never raising after a write
-        — not about one exception class."""
+        and the A7 principle is about the source READ never aborting the
+        cascade — not about one exception class.
+
+        S12 states the limit exactly: the DELETES themselves can still fail (a
+        directory in place of a derived file, a permission error). The loop is
+        MAXIMAL — every other file of the closure is still removed — and the
+        failure is reported ONCE afterwards, as the ``OSError`` it has always
+        been (an unmapped 500, unchanged). The pre-S12 loop stopped at the
+        FIRST ``OSError``, leaving the rest of the closure on disk beside a
+        freshly written artifact — measured: ``derived/tunnel_mesh.json``
+        replaced by a directory, ``POST …/design/decline/smooth?sync=true``
+        500, ``decline_smoothed.json`` rewritten and the deleted set ``[]``."""
         derived = self.store.derived_dir(scenario_id)
         artifacts: tuple[Any, ...]
         if source is not None:
@@ -330,14 +346,30 @@ class DesignService:
                     for artifact in invalidated_by(written, candidate):
                         union.setdefault(artifact.name, artifact)
                 artifacts = tuple(union.values())
+        failed: list[str] = []
         for artifact in artifacts:
             for file in artifact.files:
                 # every invalidatable artifact lives under derived/ (the two
                 # scenario-directory roots are reachable from no derived one)
-                assert file.location == LOCATION_DERIVED, file
+                if file.location != LOCATION_DERIVED:  # pragma: no cover - registry invariant
+                    raise ValueError(
+                        f"'{file.name}' is invalidated but does not live under derived/"
+                    )
                 path = derived / file.name
-                if path.exists():
-                    path.unlink()
+                try:
+                    if path.exists():
+                        path.unlink()
+                except OSError:
+                    failed.append(file.name)
+        if failed:
+            # an UNDELETABLE file is an I/O fault, not an artifact read state:
+            # it keeps the unmapped-500 answer it has always had (the guard
+            # table's documented behaviour for an unmapped exception), and it
+            # is raised only after the cascade has done everything it could
+            raise OSError(
+                f"scenario '{scenario_id}': the invalidation cascade could not delete "
+                + ", ".join(failed)
+            )
 
     # -- evaluator --------------------------------------------------------- #
 
@@ -395,7 +427,7 @@ class DesignService:
             path = self.targets_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-            self._targets[scenario_id] = targets
+            self._targets[scenario_id] = (world, targets)
             # rule 46: the decline built on the old targets and (rule 64) its
             # smoothed derivative are stale; everything derived from the
             # LEGACY effective ramp follows (rules 67/74/79/86/92/98/68 — a
@@ -415,11 +447,11 @@ class DesignService:
         and the in-memory set is then rebuilt deterministically exactly as
         before (``AccessTargetSet`` has no ``from_dict``)."""
         self._reader.require(scenario_id, TARGETS_ARTIFACT)
-        cached = self._targets.get(scenario_id)
-        if cached is not None:
-            return cached
-        # targets.json exists from an earlier process: rebuild deterministically
         scenario, world, ev = self.evaluator(scenario_id)
+        cached = self._targets.get(scenario_id)
+        if cached is not None and cached[0] is world:
+            return cached[1]
+        # targets.json exists from an earlier process: rebuild deterministically
         portal, generated = resolve_portal(scenario, world)
         targets = generate_access_targets(
             world,
@@ -430,7 +462,7 @@ class DesignService:
             portal,
             generated,
         )
-        self._targets[scenario_id] = targets
+        self._targets[scenario_id] = (world, targets)
         return targets
 
     def input_fingerprint(self, scenario_id: str) -> InputFingerprint:
@@ -616,7 +648,16 @@ class DesignService:
         (``derived/layout_v2_selected.json``, rule 149). Selecting the
         candidate that is already selected for the same layout revision is a
         no-op; a different selection invalidates the LAYOUT_V2 downstream
-        chain when that source is active."""
+        chain when that source is active.
+
+        Stage D S3: ``store.get`` is the FIRST statement, before any
+        fingerprint, snapshot or lock. An unknown, client-supplied scenario id
+        used to reach ``ArtifactReader.snapshot`` → ``ScenarioStore.lock``
+        first, and ``_locks`` is never pruned — measured at commit 3, 500
+        distinct unknown ids on this route left ``len(_locks) == 502`` (base
+        ``12d7725``: 0). The 404 is the same 404; it is just no longer paid for
+        with an entry in a dict an attacker keys."""
+        self.store.get(scenario_id)  # 404 / schema 422 / migration-on-read (A10)
         fingerprint = self._fingerprint_of(scenario_id, LAYOUT_V2_SELECTED_ARTIFACT)
         # AC-01D: the idempotent re-select / re-activate of the already
         # selected candidate at the same catalogue revision never touches
@@ -626,16 +667,27 @@ class DesignService:
         # document is "no usable selection", so this explicit re-selection
         # proceeds and WRITES. The repair is always the user's explicit write,
         # never a read-side fixup.
+        # Stage D S5: the no-op requires BOTH halves of the rule-157 pair to
+        # be VALID. With only the selection observed, a deleted or corrupt
+        # ``level_accesses.json`` left the documented repair ("Repair is
+        # always an explicit user write") a measured no-op — re-select and
+        # re-activate both answered 200 and restored nothing.
         snapshot = self._reader.snapshot(
-            scenario_id, [LAYOUT_V2_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT]
+            scenario_id,
+            [LAYOUT_V2_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT, LEVEL_ACCESSES_ARTIFACT],
         )
         layout_rev = snapshot.revision_of(LAYOUT_V2_ARTIFACT)
         existing = self._reader.read(snapshot, LAYOUT_V2_SELECTED_ARTIFACT)
+        accesses_half = self._reader.read(snapshot, LEVEL_ACCESSES_ARTIFACT)
+        # a VALID selection read has already passed ``_selection_revision_check``
+        # against THIS snapshot's catalogue revision (R7: the old
+        # ``layoutRevision == layout_rev`` conjunct here was the last textual
+        # copy of a resolver freshness relation outside the reader)
         if (
             existing.state == "VALID"
+            and accesses_half.state == "VALID"
             and existing.raw is not None
             and existing.raw.get("candidateId") == candidate_id
-            and existing.raw.get("layoutRevision") == layout_rev
         ):
             return existing.raw
         search, result = self._layout_object(scenario_id)
@@ -807,11 +859,13 @@ class DesignService:
         return self.level_accesses(scenario_id)
 
     def _ramp_snapshot(self, scenario_id: str) -> ArtifactSnapshot:
-        """ONE observation of the four ramp files (source switch, both owners,
-        catalogue), so a resolution and its availability flags can never
-        disagree (Stage A R4). The world guard is that same observation's
-        ``arrays.npz`` stat — a derived artifact is never trusted without a
-        world (A1 / Q-WORLD-GUARD) — and never a second probe."""
+        """ONE observation of ``RAMP_FILES`` (source switch, both owners, the
+        catalogue and — since the C5 pair read — the level accesses the
+        layout-v2 owner is co-published with), so a resolution and its
+        availability flags can never disagree (Stage A R4). The world guard is
+        that same observation's ``arrays.npz`` stat — a derived artifact is
+        never trusted without a world (A1 / Q-WORLD-GUARD) — and never a
+        second probe."""
         self.store.get(scenario_id)  # 404 / schema 422 / migration-on-read (A10)
         snapshot = self._reader.snapshot(scenario_id, RAMP_FILES)
         if snapshot.arrays_revision is None:
@@ -1165,9 +1219,36 @@ class DesignService:
         self, scenario_id: str, source: str, target: str, capability: Capability
     ) -> CapabilityPathQuery:
         """``can_reach(source, target, capability)`` (directive §35): the
-        physical answer and the capability-filtered answer, distinct."""
-        cap = self.capability_graph(scenario_id)
-        network = self.network(scenario_id)
+        physical answer and the capability-filtered answer, distinct.
+
+        Stage D S2: the ONE read endpoint that needs TWO artifacts reads them
+        from ONE snapshot. It used to take two independent
+        ``ArtifactReader`` snapshots, and it is not a builder, so no rule-60
+        fingerprint re-check could fail it closed: with a
+        ``POST …/network/generate`` landing between them the capability
+        payload came from the OLD network and the node set from the NEW one,
+        and the route answered a bare **500** (``KeyError`` in
+        ``capability/builder.py`` building the endpoints). One snapshot is the
+        linearization point — the same shape ``_glb`` uses for its two-file
+        unit; a non-VALID network raises the NETWORK's own typed error.
+        ``READ_SPECS[capability_graph.json].provenance_inputs`` already names
+        ``network.json``, so the bytes were in the first snapshot all along
+        and were simply discarded."""
+        self.store.get(scenario_id)
+        cap_read, snapshot = self._reader.require_files(scenario_id, CAPABILITY_GRAPH_ARTIFACT)
+        cap = cap_read.model
+        if not isinstance(cap, CapabilityGraphPayload):  # pragma: no cover - READ_SPECS declares it
+            raise ArtifactMalformedError(
+                CAPABILITY_GRAPH_ARTIFACT, "does not satisfy CapabilityGraphPayload"
+            )
+        network_read = self._reader.read(snapshot, NETWORK_ARTIFACT)
+        if network_read.state == "ABSENT":
+            raise NetworkNotFoundError(scenario_id)
+        if network_read.error is not None:
+            raise network_read.error
+        network = network_read.model
+        if not isinstance(network, NetworkPayload):  # pragma: no cover - READ_SPECS declares it
+            raise ArtifactMalformedError(NETWORK_ARTIFACT, "does not satisfy NetworkPayload")
         graph = query_graph_from(
             network.model_dump(mode="json", by_alias=True),
             cap.model_dump(mode="json", by_alias=True),

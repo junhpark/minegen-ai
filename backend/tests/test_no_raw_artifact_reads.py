@@ -10,6 +10,22 @@ the whole scene a bare 500 (I-5).
 Pattern: ``tests/test_no_block_semantics.py`` (rule 127) — a static AST proof
 over the source tree with a LITERAL allowlist, so a new raw reader fails the
 suite the moment it is written, not two phases later.
+
+Stage D S15 widened the proof to match the claim. It scanned
+``services`` + ``api`` only, NON-recursively — 21 of the package's 108 modules,
+leaving 15 sub-packages (``layout``, ``design``, ``world``, ``network``,
+``levels``, ``regression``, …) outside a claim commit 2 stated tree-wide — and
+its presence detector modelled only the RECEIVER of ``is_file`` / ``exists``,
+so ``os.path.exists(p)``, ``os.path.isfile(p)``, ``os.path.getsize(p)``,
+``p.stat()`` and ``p.glob(…)`` were invisible. The scan is
+``SRC.rglob("*.py")`` now, the vocabulary covers those five spellings, and
+both detectors inspect call ARGUMENTS as well as receivers. One boundary
+stays: a derived path built INLINE and bound to a local first (never through a
+named path helper) is invisible to ``_derived_path_locals``, so an inline
+derived path must be probed directly or through a named helper to be seen. The four
+``regression/`` REPORT readers are the explicit allowlist: they read and write
+the regression REPORT files under ``backend/golden/`` (rule 132), which are
+not derived artifacts of a scenario at all.
 """
 
 from __future__ import annotations
@@ -28,10 +44,13 @@ from minegen.services.world_service import SCENE_SLOTS
 #: the repository root, and an empty scan asserts ``[] == []`` — a green test
 #: that proves nothing (§29). ``test_the_scan_is_not_empty`` pins the count.
 SRC = Path(__file__).resolve().parents[1] / "src" / "minegen"
-#: the two packages the directive names: every read surface lives here
-SCANNED = (SRC / "services", SRC / "api")
-#: measured at AC-01F commit 2: 11 service modules + 10 api modules
-MINIMUM_SCANNED_MODULES = 20
+#: the WHOLE package (S15). Commit 2's claim — "no json.loads / read_text /
+#: is_file of a derived artifact exists outside ``services/artifact_reader.py``"
+#: — is tree-wide, so the proof is tree-wide.
+SCANNED = (SRC,)
+#: measured at Stage D: 108 modules under ``src/minegen`` (21 of which are the
+#: ``services`` + ``api`` packages the pre-S15 scan covered)
+MINIMUM_SCANNED_MODULES = 100
 
 #: the ONE module allowed to read a derived artifact file
 READ_AUTHORITY = "artifact_reader.py"
@@ -42,9 +61,33 @@ READ_AUTHORITY = "artifact_reader.py"
 #: kept as the documented exception to "a read must not write", AC-01F A10).
 #: ``WorldService.load`` reads ``arrays.npz`` through ``np.load``, which is
 #: not a ``read_text`` / ``read_bytes`` / ``open`` call at all.
+#:
+#: S15: the four ``regression/`` REPORT readers. ``python -m minegen.regression``
+#: writes and re-reads its own report files under ``backend/golden/``
+#: (rule 132) — a regression baseline, never a derived artifact of a scenario,
+#: and never on any API read path. Named one function at a time, so a new
+#: reader anywhere in those modules still fails the proof.
+#: keyed by the module's path RELATIVE to ``src/minegen`` — a bare basename
+#: would grant ``regression/warped_vein.py``'s exemption to
+#: ``world/warped_vein.py`` as well once the scan covers the whole package
 ALLOWED_FILE_READS: dict[str, tuple[str, ...]] = {
-    "scenario_service.py": ("get",),
+    "services/scenario_service.py": ("get",),
+    "regression/golden.py": ("write_report", "load_report"),
+    "regression/layout_v2.py": ("write_report", "load_report"),
+    "regression/warped_vein.py": ("write_report", "load_report"),
+    "regression/repool.py": ("main",),
 }
+
+
+def _allowed_reads(module: Path) -> tuple[str, ...]:
+    return ALLOWED_FILE_READS.get(module.relative_to(SRC).as_posix(), ())
+
+
+def test_every_allowlist_key_names_exactly_one_scanned_module() -> None:
+    scanned = {m.relative_to(SRC).as_posix() for m in _modules()}
+    missing = sorted(k for k in ALLOWED_FILE_READS if k not in scanned)
+    assert missing == [], missing
+
 
 READ_CALLS = frozenset({"read_text", "read_bytes", "open"})
 
@@ -53,7 +96,13 @@ READ_CALLS = frozenset({"read_text", "read_bytes", "open"})
 #: and the search re-run against a document nobody could parse (C3), and the
 #: ramp resolution's three ``is_file`` probes were the R4 interleaving. Only
 #: the READ AUTHORITY may decide that a derived artifact is there.
-PRESENCE_CALLS = frozenset({"is_file", "exists"})
+#:
+#: S15 added the four spellings the receiver-only detector could not see:
+#: ``os.path.exists`` / ``os.path.isfile`` / ``os.path.getsize`` (a MODULE
+#: function whose receiver is ``os.path``, never the path) and ``stat`` /
+#: ``glob`` / ``rglob`` (a stat IS the rule-60 identity, and a glob is a
+#: presence decision over a set of them).
+PRESENCE_CALLS = frozenset({"is_file", "exists", "isfile", "getsize", "stat", "glob", "rglob"})
 
 #: every file name the AC-01E registry declares under ``derived/`` …
 DERIVED_FILE_NAMES = frozenset(f.name for a in derived_artifacts() for f in a.files)
@@ -78,7 +127,7 @@ ALLOWED_PRESENCE_PROBES: dict[str, tuple[str, ...]] = {
 
 
 def _modules() -> list[Path]:
-    return sorted(p for package in SCANNED for p in package.glob("*.py"))
+    return sorted(p for package in SCANNED for p in package.rglob("*.py"))
 
 
 def _derived_path_functions(tree: ast.AST) -> set[str]:
@@ -159,18 +208,11 @@ def test_no_module_outside_the_read_authority_reads_an_artifact_file() -> None:
         if module.name == READ_AUTHORITY:
             continue
         tree = ast.parse(module.read_text(encoding="utf-8"))
-        allowed = ALLOWED_FILE_READS.get(module.name, ())
+        allowed = _allowed_reads(module)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            func = node.func
-            name = (
-                func.attr
-                if isinstance(func, ast.Attribute)
-                else func.id
-                if isinstance(func, ast.Name)
-                else None
-            )
+            name = _call_name(node)
             if name not in READ_CALLS:
                 continue
             where = _enclosing_function(tree, node)
@@ -189,7 +231,7 @@ def test_no_module_outside_the_read_authority_parses_a_file_it_read() -> None:
         if module.name == READ_AUTHORITY:
             continue
         tree = ast.parse(module.read_text(encoding="utf-8"))
-        allowed = ALLOWED_FILE_READS.get(module.name, ())
+        allowed = _allowed_reads(module)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
                 continue
@@ -211,6 +253,7 @@ def test_the_scan_is_not_empty() -> None:
     true. The scan is anchored on this file and its size is pinned."""
     modules = _modules()
     assert len(modules) >= MINIMUM_SCANNED_MODULES, [m.name for m in modules]
+    # the two packages the pre-S15 scan covered …
     assert {
         "artifact_reader.py",
         "design_service.py",
@@ -222,40 +265,87 @@ def test_the_scan_is_not_empty() -> None:
         "network.py",
         "infrastructure.py",
     } <= {m.name for m in modules}
+    # … and one module from every sub-package that used to be outside it
+    by_package = {m.parent.name for m in modules}
+    assert {
+        "layout",
+        "design",
+        "world",
+        "network",
+        "levels",
+        "capability",
+        "shafts",
+        "regression",
+        "core",
+    } <= by_package, sorted(by_package)
     assert READ_AUTHORITY in {m.name for m in modules}
     # and the detector's vocabulary is the registry's, not a hand list
     assert len(DERIVED_FILE_NAMES) == 19
     assert {"LAYOUT_V2_ARTIFACT", "TUNNEL_MESH_GLB", "RAMP_SOURCE_FILE"} <= DERIVED_NAME_IDENTIFIERS
 
 
+def _is_derived_expression(
+    node: ast.AST | None, path_functions: set[str], path_locals: set[str]
+) -> bool:
+    """One EXPRESSION that denotes a derived-artifact path: a constant / name
+    the registry declares, a local bound from a derived-path helper, or a call
+    to one of those helpers."""
+    if node is None:
+        return False
+    if _names_a_derived_artifact(node):
+        return True
+    if isinstance(node, ast.Name) and node.id in path_locals:
+        return True
+    if isinstance(node, ast.Call):
+        called = node.func
+        name = called.attr if isinstance(called, ast.Attribute) else None
+        if name is None and isinstance(called, ast.Name):
+            name = called.id
+        if name in path_functions:
+            return True
+    return False
+
+
+def _call_name(node: ast.Call) -> str | None:
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    if isinstance(func, ast.Name):
+        return func.id
+    return None
+
+
 def _presence_offenders(module_name: str, source: str) -> list[str]:
-    """Every ``is_file`` / ``exists`` probe of a derived-artifact path in one
-    module, minus the explicitly allowed WRITE-side cleanups."""
+    """Every presence probe of a derived-artifact path in one module, minus
+    the explicitly allowed WRITE-side cleanups.
+
+    S15: a probe is flagged whether the path is the RECEIVER
+    (``p.is_file()``, ``p.stat()``) or an ARGUMENT
+    (``os.path.exists(p)``, ``os.path.getsize(p)``) — the module-function
+    spellings have ``os.path`` as their receiver and were invisible to a
+    receiver-only detector."""
     tree = ast.parse(source)
     path_functions = _derived_path_functions(tree)
     allowed = ALLOWED_PRESENCE_PROBES.get(module_name, ())
     offenders: list[str] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        if not isinstance(node, ast.Call):
             continue
-        if node.func.attr not in PRESENCE_CALLS:
+        called = _call_name(node)
+        if called not in PRESENCE_CALLS:
             continue
-        receiver = node.func.value
         path_locals = _derived_path_locals(_enclosing_function_node(tree, node), path_functions)
-        probes_derived = _names_a_derived_artifact(receiver) or (
-            isinstance(receiver, ast.Name) and receiver.id in path_locals
+        candidates: list[ast.AST] = list(node.args)
+        if isinstance(node.func, ast.Attribute):
+            candidates.append(node.func.value)
+        probes_derived = any(
+            _is_derived_expression(candidate, path_functions, path_locals)
+            for candidate in candidates
         )
-        if isinstance(receiver, ast.Call):
-            called = receiver.func
-            name = called.attr if isinstance(called, ast.Attribute) else None
-            if name is None and isinstance(called, ast.Name):
-                name = called.id
-            probes_derived = probes_derived or name in path_functions
         if not probes_derived or _enclosing_function(tree, node) in allowed:
             continue
         offenders.append(
-            f"{module_name}:{node.lineno} "
-            f"{_enclosing_function(tree, node)}() probes {node.func.attr}()"
+            f"{module_name}:{node.lineno} {_enclosing_function(tree, node)}() probes {called}()"
         )
     return offenders
 
@@ -306,10 +396,55 @@ REMOVED_PROBE_SOURCE = "\n".join(
     )
 )
 
+#: S15's positive control: the four spellings a RECEIVER-only detector with
+#: the ``{is_file, exists}`` vocabulary could not see. Each names a derived
+#: artifact as a call ARGUMENT (``os.path.*``) or takes the rule-60 stat /
+#: a glob directly off a derived path.
+WIDENED_PROBE_SOURCE = "\n".join(
+    (
+        "import os",
+        "from minegen.core.artifacts import LAYOUT_V2_ARTIFACT",
+        "",
+        "",
+        "class Fake:",
+        "    def layout_path(self, sid):",
+        "        return self.store.derived_dir(sid) / LAYOUT_V2_ARTIFACT",
+        "",
+        "    def a(self, sid):",
+        "        return os.path.exists(self.layout_path(sid))",
+        "",
+        "    def b(self, sid):",
+        "        return os.path.isfile(self.layout_path(sid))",
+        "",
+        "    def c(self, sid):",
+        "        return os.path.getsize(self.layout_path(sid))",
+        "",
+        "    def d(self, sid):",
+        "        return self.layout_path(sid).stat().st_size",
+        "",
+        "    def e(self, derived):",
+        "        return sorted(derived.glob(LAYOUT_V2_ARTIFACT))",
+    )
+)
+
 
 def test_the_presence_detector_sees_the_probe_it_was_written_for() -> None:
     offenders = _presence_offenders("design_service.py", REMOVED_PROBE_SOURCE)
     assert offenders == ["design_service.py:12 _layout_object() probes is_file()"], offenders
+
+
+def test_the_presence_detector_sees_the_four_spellings_s15_added() -> None:
+    """A widened vocabulary that flags nothing new is not a widening (§29).
+    Each of these is a presence decision about a derived artifact that the
+    pre-S15 detector reported as clean."""
+    offenders = _presence_offenders("design_service.py", WIDENED_PROBE_SOURCE)
+    assert offenders == [
+        "design_service.py:10 a() probes exists()",
+        "design_service.py:13 b() probes isfile()",
+        "design_service.py:16 c() probes getsize()",
+        "design_service.py:19 d() probes stat()",
+        "design_service.py:22 e() probes glob()",
+    ], offenders
 
 
 def test_the_removed_duplicate_readers_are_gone() -> None:

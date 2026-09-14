@@ -437,3 +437,53 @@ def test_effective_ramp_re_exports_the_core_ramp_source_literal() -> None:
     assert effective_ramp.RampSource is core_artifacts.RampSource
     assert "RampSource" in effective_ramp.__all__
     assert effective_ramp.RAMP_SOURCES == SOURCES
+
+
+def test_the_invalidation_cascade_is_maximal_and_reports_one_failure(
+    store: ScenarioStore, design_service: DesignService
+) -> None:
+    """Stage D S12. The cascade's delete loop called ``path.unlink()``
+    unguarded, so the FIRST undeletable file aborted it and left the rest of
+    the closure on disk beside a freshly written artifact — the residue A7
+    exists to prevent (measured: ``derived/tunnel_mesh.json`` replaced by a
+    directory, then ``POST …/design/decline/smooth?sync=true`` → 500,
+    ``decline_smoothed.json`` rewritten, deleted set ``[]``).
+
+    The loop is MAXIMAL now — every other file of the closure is removed —
+    and ONE error is raised afterwards naming EVERY file that could not be
+    deleted. Both halves are asserted, and the two blocked files are the FIRST
+    and the LAST of the cascade's own iteration order: an abort-at-first-
+    failure loop can neither reach the second name nor delete what follows the
+    first, whatever the order happens to be. The guarantee in the docstring is
+    likewise narrowed: it is the source READ that never aborts the cascade,
+    never the unlinks."""
+    from minegen.core.artifacts import TARGETS_ARTIFACT
+
+    sid = "cascade"
+    store.scenario_path(sid).parent.mkdir(parents=True, exist_ok=True)
+    store.scenario_path(sid).write_text('{"schemaVersion": 2}', encoding="utf-8")
+    store.arrays_path(sid).write_bytes(b"npz")
+    derived = store.derived_dir(sid)
+    derived.mkdir(parents=True, exist_ok=True)
+
+    # the cascade's OWN order, not a sorted set: which file the loop meets
+    # first is what an abort-at-first-failure loop would leave behind
+    order = [f.name for a in invalidated_by((TARGETS_ARTIFACT,), "LEGACY") for f in a.files]
+    closure = list(dict.fromkeys(order))
+    assert len(closure) > 5, closure
+    for name in closure:
+        (derived / name).write_text("x", encoding="utf-8")
+    blocked = {closure[0], closure[-1]}
+    assert len(blocked) == 2, closure
+    for name in blocked:
+        (derived / name).unlink()
+        (derived / name).mkdir()
+        (derived / name / "inside").write_text("x", encoding="utf-8")
+
+    with pytest.raises(OSError) as info:
+        design_service._invalidate_downstream(sid, TARGETS_ARTIFACT, source="LEGACY")
+    # ONE error, naming BOTH — so the loop ran past the first failure
+    for name in blocked:
+        assert name in str(info.value), (name, str(info.value))
+    # every OTHER file of the closure is gone; only the undeletable ones stayed
+    assert {p.name for p in derived.iterdir()} == blocked

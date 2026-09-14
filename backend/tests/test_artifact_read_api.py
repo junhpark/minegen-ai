@@ -502,7 +502,13 @@ CORRUPT_LAYOUT_V2: tuple[Corrupt, ...] = (
     Corrupt(
         LEVEL_ACCESSES_ARTIFACT,
         ms_code=SELECTION_STALE,
-        builder=("/design/levels", MALFORMED),
+        # C5: the builder reads the ACTIVE RAMP first, and the selection's own
+        # read now observes its co-published half — an unusable
+        # ``level_accesses.json`` makes the PAIR incomplete, which is
+        # ``LAYOUT_V2_SELECTION_STALE`` (pre-change literal on this cell:
+        # ``ARTIFACT_MALFORMED``, from the accesses read one step later). The
+        # artifact's OWN GET is still ``ARTIFACT_MALFORMED`` (``mj_code``).
+        builder=("/design/levels", SELECTION_STALE),
     ),
     Corrupt(RAMP_SOURCE_FILE, builder=("/design/levels", MALFORMED)),
 )
@@ -702,30 +708,50 @@ ACCESSES_ONLY_BUILDERS: tuple[str, ...] = (
 )
 
 
-def test_a_value_tampered_selection_is_refused_through_the_pair_read(layout_v2: Stack) -> None:
-    """C1 on the wire. The selection is SHAPE-valid and REVISION-valid — only
-    its recorded clearance error bound was moved — so its own GET is 200 (the
-    documented asymmetry: the selection's read is shape + revision, and value
-    truth needs the world). The co-published ``level_accesses.json`` disagrees
-    with it, so the accesses GET, the scene and every accesses-reading builder
-    answer ``LAYOUT_V2_CLEARANCE_MISMATCH``: A1's third row, the AC-01D pinned
-    code, decided in ONE place."""
+@pytest.mark.parametrize("key", ["clearanceErrorBound", "requiredClearance"])
+def test_a_value_tampered_selection_is_refused_through_the_pair_read(
+    key: str, layout_v2: Stack
+) -> None:
+    """C1 on the wire, as amended by C5/C6. The selection is SHAPE-valid and
+    REVISION-valid — only ONE recorded certification number was moved — and
+    the co-published ``level_accesses.json`` still carries the true one, so
+    the accesses GET, the scene and every accesses-reading builder answer
+    ``LAYOUT_V2_CLEARANCE_MISMATCH``: A1's third row, the AC-01D pinned code,
+    decided in ONE place.
+
+    Two Stage D corrections are pinned here.
+
+    C5: the selection's OWN GET is 409 too. The pair is one read unit in BOTH
+    directions now; the pre-change literal for this line was ``(200, None)``
+    — the documented C1 asymmetry, which is gone.
+
+    C6: ``requiredClearance`` is compared. It is the fourth key
+    ``CandidateCertification`` parses and the pair check omitted it, so moving
+    it (measured: 10.590169943749475 → 999.0) left ``GET
+    …/design/layout-v2/selected``, ``GET …/design/level-accesses``,
+    ``GET …/scene`` and ``POST …/network/generate`` all 200 while
+    ``POST …/design/levels`` answered 409 — the scene mixing what a builder
+    refuses with what it accepts."""
     selection = layout_v2.derived / LAYOUT_V2_SELECTED_ARTIFACT
     with mutated(selection), derived_restored(layout_v2):
         document = json.loads(selection.read_text(encoding="utf-8"))
-        bound = document["clearance"]["clearanceErrorBound"] or 0.0
-        document["clearance"]["clearanceErrorBound"] = bound + 1e-3
+        document["clearance"][key] = (document["clearance"][key] or 0.0) + 1e-3
         selection.write_text(json.dumps(document), encoding="utf-8")
-        # the OWNER's own read is shape + revision only
-        assert layout_v2.get("/design/layout-v2/selected") == (200, None)
-        # the pair makes the residue visible
+        # C5: the OWNER's own read carries the pair check too (was 200)
+        assert layout_v2.get("/design/layout-v2/selected") == (409, CLEARANCE_MISMATCH)
+        assert layout_v2.get("/design/ramp") == (409, CLEARANCE_MISMATCH)
+        assert layout_v2.get("/design/ramp-source") == (409, CLEARANCE_MISMATCH)
+        # the pair makes the residue visible on the other half as well
         assert layout_v2.get("/design/level-accesses") == (409, CLEARANCE_MISMATCH)
         assert_scene_refuses(layout_v2, LEVEL_ACCESSES_ARTIFACT, CLEARANCE_MISMATCH)
+        assert_scene_refuses(layout_v2, LAYOUT_V2_SELECTED_ARTIFACT, CLEARANCE_MISMATCH)
         for route in ACCESSES_ONLY_BUILDERS:
             assert layout_v2.post(route) == (409, CLEARANCE_MISMATCH), route
+        assert layout_v2.post("/design/levels") == (409, CLEARANCE_MISMATCH)
         # rule 79 / D1: stopes reads no ramp at all, so nothing makes it stale
         assert layout_v2.post("/design/stopes") == (200, None)
     assert layout_v2.get("/design/level-accesses")[0] == 200
+    assert layout_v2.get("/design/layout-v2/selected")[0] == 200
 
 
 def test_a_wrong_shaped_targets_marker_is_valid_and_the_decline_still_builds(
@@ -1371,3 +1397,372 @@ def test_no_read_surface_writes_anything(legacy: Stack, layout_v2: Stack) -> Non
         for route in COLD_ROUTES:
             assert stack.client.get(f"{API}/{stack.sid}{route}").status_code in (200, 404, 409)
         assert _tree_state(stack) == before
+
+
+# --------------------------------------------------------------------------- #
+# Stage D B2 — a first-level precondition is the subscript the consumer PERFORMS
+# --------------------------------------------------------------------------- #
+
+#: artifact → (the list key, the route whose GET must refuse it, the builder
+#: POST that used to leak a bare 500). Every consumer here subscripts the
+#: ELEMENTS of the list, so ``isinstance(value, list)`` was not the
+#: precondition it claimed to be: a present, parseable document with a list of
+#: NON-objects passed the check and crashed one step later.
+#:
+#: Pre-change literals, measured at commit 3 through this very API:
+#:   decline.json  = {"levels":[1,2]}         GET 200 | scene 200 |
+#:                   POST /design/decline/smooth?sync=true  -> 500, no detail.code
+#:   level_accesses.json accesses=[1,2]       GET 200 | scene 200 |
+#:                   POST /design/levels                    -> 500, no detail.code
+#:   layout_v2.json = {"candidates":[1,2]}    GET 200 | GET …/selected 200 |
+#:                   GET /scene                             -> 500 "Internal Server Error"
+#: ``(artifact, list key, dependent POST, params, json body)`` — the POST is a
+#: CONSUMER of the artifact, never its own regeneration.
+LIST_OF_NON_DICTS: tuple[tuple[str, str, str, dict[str, Any], Any], ...] = (
+    (DECLINE_ARTIFACT, "levels", "/design/decline/smooth", {"sync": "true"}, None),
+    (LEVEL_ACCESSES_ARTIFACT, "accesses", "/design/levels", {}, None),
+    (
+        LAYOUT_V2_ARTIFACT,
+        "candidates",
+        "/design/layout-v2/select",
+        {},
+        {"candidateId": "SPIRAL-n1-g0.100"},
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "artifact,key,builder,params,body", LIST_OF_NON_DICTS, ids=lambda v: str(v)
+)
+def test_a_list_of_non_objects_is_malformed_on_every_surface(
+    artifact: str,
+    key: str,
+    builder: str,
+    params: dict[str, Any],
+    body: Any,
+    legacy: Stack,
+    layout_v2: Stack,
+) -> None:
+    """B2. The three preconditions that tested the LIST and not its ELEMENTS.
+    ``_is_dict_list`` — the correct helper, already used by two other specs —
+    is the precondition now, so the document is 409 ``ARTIFACT_MALFORMED`` on
+    its own route, in the scene aggregate and on the builder, instead of a
+    bare 500 with no ``detail.code``."""
+    stack = legacy if artifact == DECLINE_ARTIFACT else layout_v2
+    path = stack.derived / artifact
+    with mutated(path), derived_restored(stack):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        document[key] = [1, 2]
+        path.write_text(json.dumps(document), encoding="utf-8")
+        assert stack.get(ROUTES[artifact]) == (409, MALFORMED), artifact
+        assert_scene_refuses(stack, artifact, MALFORMED)
+        kwargs: dict[str, Any] = {"params": params}
+        if body is not None:
+            kwargs["json"] = body
+        status, code = stack.post(builder, **kwargs)
+        assert (status, code) == (409, MALFORMED), (artifact, builder, status, code)
+    assert stack.get(ROUTES[artifact])[0] == 200, artifact
+
+
+# --------------------------------------------------------------------------- #
+# Stage D C5 — the selection ↔ level-access pair is ONE read unit
+# --------------------------------------------------------------------------- #
+
+#: every surface C5 names, plus the two builders that read the pair
+PAIR_GETS: tuple[str, ...] = (
+    "/design/layout-v2/selected",
+    "/design/level-accesses",
+    "/design/ramp",
+    "/design/ramp-source",
+)
+PAIR_POSTS: tuple[str, ...] = ("/design/levels", "/network/generate")
+
+
+def _pair_answers(stack: Stack) -> dict[str, tuple[int, str | None]]:
+    answers = {route: stack.get(route) for route in PAIR_GETS}
+    answers["/scene"] = _answer(stack.scene())
+    for route in PAIR_POSTS:
+        answers[route] = stack.post(route)
+    return answers
+
+
+def test_a_selection_without_its_level_accesses_is_refused_everywhere(
+    layout_v2: Stack,
+) -> None:
+    """C5, the direction the crash window actually produces:
+    ``select_layout_candidate`` writes the selection FIRST and the accesses
+    second, and only the accesses → selection direction used to be checked.
+
+    Pre-change literals, measured at commit 3 with the accesses DELETED:
+    ``GET …/design/ramp-source`` **200 available:true activeSource:LAYOUT_V2
+    layoutV2Selected:true**, ``GET …/design/ramp`` **200 (PARAMETRIC_V2)**,
+    ``GET …/scene`` **200** with ``levelAccesses: null`` — while
+    ``POST …/design/levels`` and ``POST …/network/generate`` answered 409
+    ``LEVEL_ACCESSES_NOT_GENERATED``. That is exactly the split
+    ``design_service.ramp_source`` and the scene docstring promise never to
+    report."""
+    accesses = layout_v2.derived / LEVEL_ACCESSES_ARTIFACT
+    for junk in (None, "{", json.dumps([1, 2])):
+        with mutated(accesses), derived_restored(layout_v2):
+            if junk is None:
+                accesses.unlink()
+            else:
+                accesses.write_text(junk, encoding="utf-8")
+            answers = _pair_answers(layout_v2)
+            for route, (status, code) in answers.items():
+                assert status == 409, (junk, route, status, code)
+                assert code is not None, (junk, route)
+            # the SELECTION's own read reports the incomplete pair as STALE
+            for route in ("/design/layout-v2/selected", "/design/ramp", "/design/ramp-source"):
+                assert answers[route] == (409, SELECTION_STALE), (junk, route)
+            # the accesses' own read reports its own state
+            expected = {
+                None: "LEVEL_ACCESSES_NOT_GENERATED",
+                "{": MALFORMED,
+                json.dumps([1, 2]): MALFORMED,
+            }[junk]
+            assert answers["/design/level-accesses"] == (409, expected), junk
+            assert_scene_refuses(layout_v2, LAYOUT_V2_SELECTED_ARTIFACT, SELECTION_STALE)
+    assert layout_v2.get("/design/layout-v2/selected")[0] == 200
+
+
+def test_a_selection_naming_another_candidate_than_its_accesses_is_a_mismatch(
+    layout_v2: Stack,
+) -> None:
+    """C5's value half in the SELECTION's direction: a candidateId
+    disagreement is A1's third row — the pinned AC-01D
+    ``LAYOUT_V2_CLEARANCE_MISMATCH`` — on BOTH halves now."""
+    selection = layout_v2.derived / LAYOUT_V2_SELECTED_ARTIFACT
+    with mutated(selection), derived_restored(layout_v2):
+        document = json.loads(selection.read_text(encoding="utf-8"))
+        document["candidateId"] = "NO-SUCH-CANDIDATE"
+        selection.write_text(json.dumps(document), encoding="utf-8")
+        answers = _pair_answers(layout_v2)
+        # the scene is the AGGREGATE: its top-level code names the scene, and
+        # each artifact's own code is a row (A14)
+        assert answers.pop("/scene") == (409, "SCENE_ARTIFACT_INVALID")
+        for route, (status, code) in answers.items():
+            assert (status, code) == (409, CLEARANCE_MISMATCH), (route, status, code)
+        assert_scene_refuses(layout_v2, LAYOUT_V2_SELECTED_ARTIFACT, CLEARANCE_MISMATCH)
+        assert_scene_refuses(layout_v2, LEVEL_ACCESSES_ARTIFACT, CLEARANCE_MISMATCH)
+    assert layout_v2.get("/design/layout-v2/selected")[0] == 200
+
+
+def test_accesses_without_their_selection_are_refused_everywhere(layout_v2: Stack) -> None:
+    """The other orphan direction, which C1 already covered — pinned here
+    beside its new twin so the pair contract is one readable table."""
+    selection = layout_v2.derived / LAYOUT_V2_SELECTED_ARTIFACT
+    with mutated(selection), derived_restored(layout_v2):
+        selection.unlink()
+        assert layout_v2.get("/design/level-accesses") == (409, SELECTION_STALE)
+        assert layout_v2.get("/design/layout-v2/selected") == (409, "LAYOUT_V2_NOT_SELECTED")
+        assert layout_v2.get("/design/ramp") == (409, "LAYOUT_V2_NOT_SELECTED")
+        # C2 is unchanged: an ABSENT selection stays the EXPECTED absence
+        assert layout_v2.get("/design/ramp-source") == (200, None)
+        assert_scene_refuses(layout_v2, LEVEL_ACCESSES_ARTIFACT, SELECTION_STALE)
+        # the builders read the ACTIVE RAMP first, and an ABSENT selection is
+        # C2's expected absence there — the ramp is not selected, not stale
+        for route in PAIR_POSTS:
+            assert layout_v2.post(route) == (409, "LAYOUT_V2_NOT_SELECTED"), route
+    assert layout_v2.get("/design/level-accesses")[0] == 200
+
+
+def test_re_selecting_the_same_candidate_repairs_a_damaged_pair(layout_v2: Stack) -> None:
+    """S5. "Repair is always an explicit user write" was a measured no-op: the
+    idempotency short-circuit snapshotted only the selection, so for the same
+    candidate at the same catalogue revision ``select`` and ``activate``
+    answered **200** and restored NOTHING whatever state the co-published half
+    was in (measured: accesses deleted → ``level_accesses.json`` restored:
+    False; accesses = ``{`` → bytes still ``b'{'``). The no-op now requires
+    BOTH halves VALID."""
+    accesses = layout_v2.derived / LEVEL_ACCESSES_ARTIFACT
+    selection = layout_v2.derived / LAYOUT_V2_SELECTED_ARTIFACT
+    candidate = json.loads(selection.read_text(encoding="utf-8"))["candidateId"]
+    pristine_accesses = accesses.read_bytes()
+    wrong_shape = json.dumps({**json.loads(pristine_accesses), "accesses": [1, 2]})
+    # the third row is a PARSEABLE, revision- and identity-consistent half that
+    # only the explicit ``accesses_half.state == "VALID"`` conjunct of the
+    # idempotent no-op can see (C5's pair check reads presence, parseability
+    # and identity, never the shape) — it is what pins S5 on its own
+    for damage in (None, "{", wrong_shape):
+        with mutated(accesses, selection), derived_restored(layout_v2):
+            if damage is None:
+                accesses.unlink()
+            else:
+                accesses.write_text(damage, encoding="utf-8")
+            assert layout_v2.post("/design/layout-v2/select", json={"candidateId": candidate}) == (
+                200,
+                None,
+            ), damage
+            assert accesses.is_file(), damage
+            assert json.loads(accesses.read_text(encoding="utf-8")) == json.loads(
+                pristine_accesses
+            ), damage
+            assert layout_v2.get("/design/level-accesses")[0] == 200, damage
+            assert layout_v2.get("/design/layout-v2/selected")[0] == 200, damage
+
+
+# --------------------------------------------------------------------------- #
+# Stage D S1 — an unresolvable ramp source never SKIPS the mesh provenance check
+# --------------------------------------------------------------------------- #
+
+
+def test_an_unreadable_ramp_source_refuses_the_development_mesh(layout_v2: Stack) -> None:
+    """S1 on the wire. ``ramp_source.json`` present but UNREADABLE (its stat
+    succeeds, its bytes do not) used to make ``_development_mesh_source_check``
+    ``return None`` — a silently skipped provenance check.
+
+    Pre-change literals, measured at commit 3 with the file replaced by a
+    DIRECTORY (``stat`` succeeds, ``read_bytes`` raises ``IsADirectoryError``):
+    ``GET …/design/development-mesh`` **200** and its GLB route **200**, while
+    ``POST …/design/development-mesh?sync=true`` answered 409
+    ``ARTIFACT_MALFORMED`` — the reader serving what the writer refused. The
+    control (``ramp_source.json`` = ``{``) answered 409 on the mesh even then,
+    but with the WRONG code and the WRONG file: 409 ``ARTIFACT_STALE`` naming
+    ``development_mesh.json`` for a defect that belongs to ``ramp_source.json``
+    ("one artifact never reports another's defect"). Unreadable and
+    unparseable are ONE outcome now, and both name the source file."""
+    source = layout_v2.derived / RAMP_SOURCE_FILE
+    with mutated(source), derived_restored(layout_v2):
+        source.unlink()
+        source.mkdir()
+        try:
+            assert layout_v2.get("/design/development-mesh") == (409, MALFORMED)
+            assert layout_v2.get("/design/development-mesh/mesh.glb") == (409, MALFORMED)
+            assert layout_v2.get("/design/ramp-source") == (409, MALFORMED)
+            assert_scene_refuses(layout_v2, RAMP_SOURCE_FILE, MALFORMED)
+            assert_scene_refuses(layout_v2, DEVELOPMENT_MESH_ARTIFACT, MALFORMED)
+        finally:
+            source.rmdir()
+    # the UNPARSEABLE control, whose code changed with it (was ARTIFACT_STALE
+    # on development_mesh.json)
+    for junk in ("{", json.dumps({"activeSource": "NOT_A_SOURCE"})):
+        with mutated(source), derived_restored(layout_v2):
+            source.write_text(junk, encoding="utf-8")
+            assert layout_v2.get("/design/development-mesh") == (409, MALFORMED), junk
+            assert layout_v2.get("/design/development-mesh/mesh.glb") == (409, MALFORMED), junk
+            assert_scene_refuses(layout_v2, DEVELOPMENT_MESH_ARTIFACT, MALFORMED)
+    assert layout_v2.get("/design/development-mesh")[0] == 200
+
+
+# --------------------------------------------------------------------------- #
+# Stage D S2 — the one two-artifact read endpoint has a linearization point
+# --------------------------------------------------------------------------- #
+
+
+def test_the_capability_path_reads_its_two_artifacts_from_one_snapshot(
+    legacy: Stack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S2. ``GET …/design/capability-graph/path`` used to read
+    ``capability_graph.json`` in one ``ArtifactReader`` snapshot and
+    ``network.json`` in a SECOND one, and it is not a builder, so no rule-60
+    fingerprint re-check could fail it closed.
+
+    Pre-change literal, measured at commit 3 with a timing hook between the
+    two reads and a real ``POST …/design/levels`` + ``POST …/network/generate``
+    landing in it: **500 Internal Server Error** with no ``detail.code``
+    (``KeyError`` in ``capability/builder.py``: the endpoints were built from
+    the NEW network and the capability payload came from the OLD snapshot).
+
+    The hook here changes TIMING only: an unmodified ``ArtifactReader.read``
+    pauses AFTER it has classified the capability graph."""
+    from minegen.services.artifact_reader import ArtifactReader as Reader
+
+    nodes = legacy.client.get(f"{API}/{legacy.sid}/network").json()["nodes"]
+    portal = next(n["id"] for n in nodes if n["type"] == "PORTAL")
+    target = next(n["id"] for n in nodes if n["type"] != "PORTAL")
+    route = f"{API}/{legacy.sid}/design/capability-graph/path"
+    params = {"source": portal, "target": target, "capability": "PERSONNEL_ACCESS"}
+    assert legacy.client.get(route, params=params).status_code == 200
+
+    inside = threading.Event()
+    release = threading.Event()
+    original = Reader.read
+    armed = [True]
+
+    def patched(self: Reader, snapshot: Any, name: str) -> Any:
+        result = original(self, snapshot, name)
+        if armed[0] and name == CAPABILITY_GRAPH_ARTIFACT:
+            armed[0] = False
+            inside.set()
+            assert release.wait(60), "the test never released the paused read"
+        return result
+
+    with derived_restored(legacy):
+        monkeypatch.setattr(Reader, "read", patched)
+        box: dict[str, Any] = {}
+
+        def run() -> None:
+            box["answer"] = _answer(legacy.client.get(route, params=params))
+
+        reader = threading.Thread(target=run, daemon=True)
+        reader.start()
+        assert inside.wait(60), "the path read never reached its pause"
+        assert legacy.post("/design/levels") == (200, None)
+        assert legacy.post("/network/generate") == (200, None)
+        release.set()
+        reader.join(120)
+        monkeypatch.undo()
+        status, code = box["answer"]
+        assert status != 500, box["answer"]
+        assert status == 200 or code is not None, box["answer"]
+
+
+# --------------------------------------------------------------------------- #
+# Stage D S7 — Q-WORLD-GUARD, observed on the wire
+# --------------------------------------------------------------------------- #
+
+#: the 21 derived read routes of ``docs/api.md``'s Q-WORLD-GUARD table,
+#: transcribed as literals. 11 of the answers changed at AC-01F commit 2, of
+#: which 4 changed STATUS — the four marked below.
+Q_WORLD_GUARD: tuple[tuple[str, str], ...] = (
+    ("/design/targets", "unchanged"),
+    ("/design/decline", "unchanged"),
+    ("/design/decline/smooth", "unchanged"),
+    ("/design/layout-v2", "unchanged"),
+    ("/design/ramp", "unchanged"),
+    ("/design/tunnel", "unchanged"),
+    ("/design/tunnel/mesh.glb", "unchanged"),
+    ("/design/development-mesh", "unchanged"),
+    ("/design/development-mesh/mesh.glb", "unchanged"),
+    ("/scene", "unchanged"),
+    ("/design/layout-v2/selected", "409 LAYOUT_V2_NOT_SELECTED"),
+    ("/design/level-accesses", "409 LEVEL_ACCESSES_NOT_GENERATED"),
+    ("/design/levels", "409 LEVELS_NOT_GENERATED"),
+    ("/design/stopes", "409 STOPES_NOT_GENERATED"),
+    ("/design/timeline", "409 TIMELINE_NOT_GENERATED"),
+    ("/infrastructure/communication", "409 COMMUNICATION_NOT_GENERATED"),
+    ("/infrastructure/sensors", "409 SENSORS_NOT_GENERATED"),
+    ("/design/ramp-source", "200 summary"),  # STATUS CHANGE
+    ("/design/shafts", "404 SHAFTS_NOT_GENERATED"),  # STATUS CHANGE
+    ("/network", "404 NETWORK_NOT_GENERATED"),  # STATUS CHANGE
+    ("/design/capability-graph", "404 CAPABILITY_GRAPH_NOT_GENERATED"),  # STATUS CHANGE
+)
+
+
+@pytest.fixture(scope="module")
+def no_world(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Stack]:
+    """A scenario CREATED but never world-generated — the state the
+    Q-WORLD-GUARD table describes."""
+    stack, context = _make_stack(tmp_path_factory.mktemp("no_world"))
+    assert not stack.store.arrays_path(stack.sid).exists()
+    yield stack
+    context.__exit__(None, None, None)
+    stack.jobs.shutdown()
+
+
+def test_every_derived_read_route_answers_world_not_generated_without_a_world(
+    no_world: Stack,
+) -> None:
+    """S7. Q-WORLD-GUARD is the largest documented observable change of
+    commit 2 and had no wire-level test: every existing ``WORLD_NOT_GENERATED``
+    assertion in the suite covered a row the table marks UNCHANGED, so the 11
+    changed answers — and the 4 changed STATUSES — were pinned nowhere. A
+    derived artifact is never trusted without a world (the snapshot's own
+    ``arrays.npz`` stat), so all 21 routes answer 409 ``WORLD_NOT_GENERATED``;
+    the HEAD ``12d7725`` answer of each row is quoted beside it."""
+    assert len(Q_WORLD_GUARD) == 21
+    assert sum(1 for _, head in Q_WORLD_GUARD if head != "unchanged") == 11
+    assert sum(1 for _, head in Q_WORLD_GUARD if head.startswith(("200", "404"))) == 4
+    for route, head_answer in Q_WORLD_GUARD:
+        assert no_world.get(route) == (409, "WORLD_NOT_GENERATED"), (route, head_answer)

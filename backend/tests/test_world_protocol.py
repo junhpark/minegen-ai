@@ -339,7 +339,11 @@ def test_a_warm_cache_without_arrays_is_no_longer_a_world(
         "WORLD_NOT_GENERATED",
     )
     assert _answer(client.get(f"{API}/{sid}/scene")) == (409, "WORLD_NOT_GENERATED")
-    assert not world_service.is_generated(sid)
+    # the same fact, stated where it lives: the world guard is ``arrays.npz``
+    # on disk (S11 deleted ``WorldService.is_generated``, which had no
+    # production caller and used a ``Path.is_file`` probe the live guard —
+    # ``file_revision`` — does not share)
+    assert not store.arrays_path(sid).exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -638,3 +642,163 @@ def test_arrays_regenerated_inside_the_cold_load_window_is_never_a_mixed_body(
     assert served.status_code == 200, _answer(served)
     assert _identity(served.json()) == _identity(undisturbed.json())
     assert served.json() == client.get(f"{API}/{sid}/scene").json()
+
+
+# --------------------------------------------------------------------------- #
+# Stage D B1 — the SCENARIO half of load_bound's re-check binds the RESULT
+# --------------------------------------------------------------------------- #
+
+#: Stage D B1, measured at commit 3 on this very interleaving (the pause after
+#: the bound document read, the writers the real API): ONE ``GET …/world`` body
+#: equal to NEITHER the before nor the after state —
+#: ``orebody.center [40.0, 20.0, -50.0]`` from the OLD document beside
+#: ``terrain.zMax 116.367159085105`` and ``rockQuality.mean 64.97196970309594``
+#: from the NEW world. ``GET …/scene`` was already protected (its
+#: ``expect_scenario_revision`` binding forces the retry), which is exactly why
+#: the two world routes were the surviving R3d surface.
+PRE_CHANGE_B1 = (
+    "GET /world 200 mixing the OLD document's orebody with the NEW world's "
+    "terrain + fields (== BEFORE False, == AFTER False)"
+)
+
+
+class _PauseInsideLoadBound:
+    """Pause the FIRST ``WorldService._bound_scenario`` AFTER it returns — i.e.
+    INSIDE ``load_bound``, between the bound document read and the
+    ``arrays.npz`` stat that precedes the cold ``np.load``, and OUTSIDE the
+    store lock so the concurrent mutation really runs. TIMING only: the
+    original call is made, unmodified, and its result returned."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.inside = threading.Event()
+        self.release = threading.Event()
+        original = WorldService._bound_scenario
+        armed = [True]
+
+        def patched(svc: WorldService, scenario_id: str) -> Any:
+            result = original(svc, scenario_id)
+            if armed[0]:
+                armed[0] = False
+                self.inside.set()
+                assert self.release.wait(30), "the test never released the paused read"
+            return result
+
+        monkeypatch.setattr(WorldService, "_bound_scenario", patched)
+
+
+def _world_identity(body: dict[str, Any]) -> tuple[Any, ...]:
+    """The three numbers Stage D B1 found disagreeing inside ONE
+    ``GET …/world`` body: the orebody comes from the scenario DOCUMENT
+    (``build_orebody(scenario.orebody)`` inside ``_read_arrays``), the terrain
+    and the field statistics from ``arrays.npz``."""
+    return (
+        tuple(body["orebody"]["center"]),
+        float(body["terrain"]["zMax"]),
+        float(body["fields"]["rockQuality"]["mean"]),
+    )
+
+
+@pytest.mark.parametrize(
+    "route,params",
+    [("/world", {}), ("/world/slice", {"axis": "z", "index": 0})],
+    ids=["world", "slice"],
+)
+def test_a_put_and_regeneration_inside_load_bound_never_mixes_two_documents(
+    route: str,
+    params: dict[str, Any],
+    client: TestClient,
+    world_service: WorldService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B1. ``load_bound`` re-stats BOTH inputs under the lock, but the scenario
+    half used to gate only the CACHE PUBLISH while the ``return`` was
+    unconditional — so the arrays half was typed and the scenario half was
+    not, and the R3d mixed body this protocol claims to have made impossible
+    was still served by the two world routes. The two halves are symmetric now.
+
+    The mutation is a PUT **plus** a world regeneration, so a world exists on
+    both sides of it and the read CAN complete; what it may not do is complete
+    with a body that was never true.
+
+    Pre-change literal: ``{PRE_CHANGE_B1}``."""
+    sid = _generated(client)
+    before = client.get(f"{API}/{sid}/world").json()
+    _cold(world_service, sid)
+
+    pause = _PauseInsideLoadBound(monkeypatch)
+    reader, box = _run(lambda: client.get(f"{API}/{sid}{route}", params=params))
+    assert pause.inside.wait(30), f"{route} never reached the bound document read"
+
+    doc = _document(client, sid)
+    doc["seed"] = 777
+    doc["orebody"]["center"] = {"x": -60.0, "y": -70.0, "z": -50.0}
+    assert client.put(f"{API}/{sid}", json=doc).status_code == 200
+    assert client.post(f"{API}/{sid}/world/generate").status_code == 200
+    after = client.get(f"{API}/{sid}/world").json()
+    # the two documents really are distinguishable in all three numbers
+    assert _world_identity(before) != _world_identity(after)
+    for i in range(3):
+        assert _world_identity(before)[i] != _world_identity(after)[i], i
+
+    pause.release.set()
+    reader.join(60)
+    assert "error" not in box, box.get("error")
+    status, code = _answer(box["value"])
+    if status == 409:
+        assert code == "READ_SNAPSHOT_CHANGED", (code, PRE_CHANGE_B1)
+    else:  # pragma: no cover - the fix makes the 409 deterministic here
+        assert status == 200, (status, code)
+        assert route == "/world", route
+        assert _world_identity(box["value"].json()) in (
+            _world_identity(before),
+            _world_identity(after),
+        ), PRE_CHANGE_B1
+    monkeypatch.undo()
+    # the undisturbed read still answers the post-mutation truth
+    assert _world_identity(client.get(f"{API}/{sid}/world").json()) == _world_identity(after)
+
+
+# --------------------------------------------------------------------------- #
+# Stage D S6 — the revision-bound world cache, pinned
+# --------------------------------------------------------------------------- #
+
+
+def test_a_warm_world_cache_is_never_served_across_a_mutation(
+    client: TestClient, store: ScenarioStore, world_service: WorldService
+) -> None:
+    """S6. The headline mechanism of commit 3 — the world cache entry carrying
+    the two revisions it was built at — was pinned by NO test: mutation M14
+    (``cached.bound_to(scenario_revision, arrays_revision)`` →
+    ``cached is not None``, ``world_service.py``) left 63 targeted tests and
+    the whole FAST tier green, with the mutation observable measured as
+    ``MIXED_OLD_WORLD_WITH_NEW_DOCUMENT`` False at HEAD and **True** under M14.
+
+    The mutation happens through a SECOND ``WorldService`` over the SAME
+    ``ScenarioStore`` — a second process, in effect — so the first service's
+    cache is never invalidated in memory and can only be rejected by its
+    binding."""
+    sid = _generated(client)
+    warm = client.get(f"{API}/{sid}/scene")
+    assert warm.status_code == 200
+    assert sid in world_service._cache  # warm
+
+    other = WorldService(store)
+    replacement = small_scenario(seed=777).model_dump(exclude={"id", "schema_version"})
+    replacement["world"]["depth"] = 300.0
+    other.replace_scenario(sid, ScenarioCreate(**replacement))
+    other.generate(sid)
+
+    # the first service still holds its entry: nothing in memory dropped it
+    assert sid in world_service._cache
+    stale_entry = world_service._cache[sid]
+    assert stale_entry.scenario_revision != file_revision(store.scenario_path(sid))
+    assert stale_entry.arrays_revision != file_revision(store.arrays_path(sid))
+
+    served = client.get(f"{API}/{sid}/scene")
+    assert served.status_code == 200, _answer(served)
+    assert _identity(served.json()) == _identity(other.scene(sid))
+    assert _identity(served.json()) != _identity(warm.json())
+    # … and the entry it published is bound to the CURRENT revisions of both
+    published = world_service._cache[sid]
+    assert published.scenario_revision == file_revision(store.scenario_path(sid))
+    assert published.arrays_revision == file_revision(store.arrays_path(sid))

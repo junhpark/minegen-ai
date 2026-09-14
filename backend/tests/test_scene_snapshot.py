@@ -10,9 +10,14 @@ from two sides of a locked write. Probe 4 reproduced three of them —
                                                (measured: OLD_A_PLUS_NEW_B)
     R4  the active ramp read twice per response, the two reads disagreeing
 
-— and a 20 s writer/reader loop measured **218 failed artifact reads and 16
-failed scene reads** on HEAD. Those four numbers are the pre-change literals
-this module asserts the AFTER of; the hooks below change TIMING only.
+— and a **45 s** writer/reader loop measured **218 failed artifact reads and
+16 failed scene reads** on HEAD (Stage A §7.2, ``p4_f06b_e2e_race.py``:
+``{'writes': 266, 'reads': 31968, 'read_err': 218, 'scene': 1681,
+'scene_err': 16}``; earlier copies of this header said 20 s, which was never
+the measured duration). Those four numbers are the pre-change literals this
+module asserts the AFTER of; the hooks below change TIMING only. This module's
+own ``duration = 10.0`` is deliberately shorter — the AFTER is 0, and 0 does
+not need the same wall time to be visible.
 
 Marked ``slow``/``e2e`` centrally in ``tests/conftest.py``.
 """
@@ -32,7 +37,8 @@ from minegen.core.artifacts import LEVELS_ARTIFACT, TARGETS_ARTIFACT
 from minegen.services.artifact_reader import READ_SPECS
 from tests.test_artifact_read_api import API, Stack, _build, _make_stack, derived_restored
 
-#: probe 4, measured on HEAD 12d7725 over a 20 s loop (Stage A §7.2)
+#: probe 4, measured on HEAD 12d7725 over a **45 s** loop (Stage A §7.2,
+#: ``p4_f06b_e2e_race.py``: 266 writes, 31,968 reads, 1,681 scene reads)
 PRE_CHANGE_READ_ERRORS = 218
 PRE_CHANGE_SCENE_ERRORS = 16
 
@@ -226,8 +232,9 @@ def test_a_writer_loop_never_tears_a_concurrent_read(legacy: Stack) -> None:
     """The torn-read measurement, repeated: a writer looping
     ``generate_stopes`` against readers looping the artifact GET and the whole
     scene. HEAD measured 218 failed artifact reads and 16 failed scene reads
-    over 20 s (Stage A §7.2); a reader that holds the writer's own lock while
-    it observes bytes cannot see half a document, so both must be 0."""
+    over **45 s** (Stage A §7.2, ``p4_f06b_e2e_race.py``); a reader that holds
+    the writer's own lock while it observes bytes cannot see half a document,
+    so both must be 0 — which is why this repetition needs only 10 s."""
     duration = 10.0
     stop = threading.Event()
     read_err: list[str] = []

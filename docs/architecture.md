@@ -291,6 +291,19 @@ independent runs on the same 10,245,989 bytes). `world.stats` is computed by
 `generate` before it enters the lock and handed to `_save`, so the lock now
 holds the two writes and the cache publish and nothing else — the compressed
 NPZ write is what remains, and it is the reason nothing expensive may join it.
+
+The cost of that hold is CONTENTION, and it is new: `POST /world/generate` now
+holds the per-scenario lock across the NPZ write, and every read of the same
+scenario now enters the same lock (the reader snapshot, the world cache probe,
+the publish re-check). A reader that arrives inside the window WAITS for it,
+and a reader whose `arrays.npz` or `scenario.json` revision moved across it
+fails CLOSED with 409 `READ_SNAPSHOT_CHANGED` rather than serving a mixed
+body — that is the intended trade (a bounded wait or a retryable refusal
+instead of a silently inconsistent 200), stated here because the hold itself
+was documented and its consequence for concurrent readers was not. Measured
+hold: 0.62 s on WARPED-301's 10,245,989-byte `arrays.npz`, 32.6 ms on the
+small scenario.
+
 The scenario / world half of the same guarantee:
 
 * `WorldService._bound_scenario(sid) -> (scenario, scenario_revision)` is the
@@ -308,8 +321,18 @@ The scenario / world half of the same guarantee:
   file may go away under the reader, and both outcomes are typed rather than
   an escaping exception: deleted → `WorldNotGeneratedError`, replaced →
   `ReadSnapshotChangedError` (the world in hand cannot be attested to the
-  captured revision). `load(sid)` is the unchanged two-value wrapper every
-  engineering consumer still calls. `is_generated` is the disk.
+  captured revision). The SCENARIO half of the same window is SYMMETRIC
+  (Stage D B1): a `scenario.json` that moved between the bound document read
+  and the publish re-check is `ReadSnapshotChangedError` for the RESULT, not
+  only for the cache entry. Commit 3 re-stat'ed the document but gated only
+  the cache publish while the `return` was unconditional, so `GET …/world`
+  and `GET …/world/slice` still served the R3d mixed body — measured,
+  ONE 200 carrying the OLD document's `orebody.center [40.0, 20.0, -50.0]`
+  beside the NEW world's `terrain.zMax 116.367159085105`. `load(sid)` is the
+  unchanged two-value wrapper every engineering consumer still calls. The world guard is
+  `file_revision(arrays.npz)` — `load_bound`'s own stat and the reader
+  snapshot's, and nothing else (Stage D S11 deleted the caller-less
+  `is_generated` helper, whose `Path.is_file` probe was never that guard).
 * `WorldService.generate` re-checks the scenario revision under the lock
   before `_save` + cache: a scenario PUT landing during generation fails the
   generation closed (`JOB_INPUTS_CHANGED`) instead of publishing a world for
@@ -317,7 +340,12 @@ The scenario / world half of the same guarantee:
   now only ever true of a real third-party mutation.
 * `PUT /scenarios/{id}` is ONE locked section (`WorldService.replace_scenario`
   = document write + `invalidate`), so external readers see one mutation
-  boundary instead of a window in which the document is new and the world old.
+  boundary instead of a window in which the document is new and the world old
+  — for reads that SUCCEED. `ScenarioStore._write` is still a non-atomic
+  truncate+write and `ScenarioStore.get` parses the document unlocked, so a
+  reader landing INSIDE the document write sees neither side and throws before
+  any revision re-check can fire: a torn `scenario.json` is an unmapped 500,
+  exactly as a torn `arrays.npz` is, and both are the open F06-B residual.
 * Retry exhaustion is its own code: 409 `READ_SNAPSHOT_CHANGED` (a READ whose
   snapshot kept moving — nothing was built and nothing discarded), never
   `JOB_INPUTS_CHANGED` (a GENERATION whose inputs moved).

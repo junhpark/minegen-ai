@@ -34,6 +34,7 @@ from minegen.core.artifacts import (
     LAYOUT_V2_ARTIFACT,
     LAYOUT_V2_SELECTED_ARTIFACT,
     LEGACY_RAMP_ARTIFACT,
+    LEVEL_ACCESSES_ARTIFACT,
     RAMP_OWNING_ARTIFACTS,
     RAMP_SOURCE_FILE,
     RampSource,
@@ -43,13 +44,18 @@ from minegen.services.artifact_reader import ArtifactReader, ArtifactSnapshot
 
 RAMP_SOURCES: tuple[RampSource, ...] = ("LEGACY", "LAYOUT_V2")
 
-#: the artifacts one ramp resolution observes: the source switch, both owners
-#: and the catalogue whose presence the summary reports
+#: the artifacts one ramp resolution observes: the source switch, both owners,
+#: the catalogue whose presence the summary reports, and — from the C5
+#: checkpoint decision — the level accesses the layout-v2 owner is
+#: co-published with (rule 157), because the selection's READ SPEC now
+#: classifies the pair in both directions and needs the other half in the
+#: SAME observation
 RAMP_FILES: tuple[str, ...] = (
     RAMP_SOURCE_FILE,
     LEGACY_RAMP_ARTIFACT,
     LAYOUT_V2_ARTIFACT,
     LAYOUT_V2_SELECTED_ARTIFACT,
+    LEVEL_ACCESSES_ARTIFACT,
 )
 
 __all__ = [

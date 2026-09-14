@@ -299,8 +299,17 @@ class WorldService:
                                                        absorbed, not reported
                                                        as a race (C4)
             stat arrays.npz      →  np.load + build_orebody   OUTSIDE the lock
-            with lock:              cache probe, then re-stat both and publish
-                                    (world, srev, arev) only if neither moved
+            with lock:              cache probe, then re-stat BOTH inputs;
+                                    the triple (world, srev, arev) is returned
+                                    AND cached only if neither moved — a moved
+                                    input is ``ReadSnapshotChangedError``, and
+                                    the two halves are symmetric (Stage D B1:
+                                    the scenario re-stat used to gate the CACHE
+                                    only while the ``return`` was
+                                    unconditional, so ``GET …/world`` and
+                                    ``GET …/world/slice`` still served an OLD
+                                    document beside a NEW world — the R3d class
+                                    this protocol claims to close)
 
         The cache entry carries its two revisions, so a warm world is served
         only while the document and the arrays it was built from are still the
@@ -325,6 +334,17 @@ class WorldService:
             ``READ_SNAPSHOT_CHANGED``). ``GET …/scene`` retries the whole bound
             load and normally answers a consistent 200; ``GET …/world`` and
             ``GET …/world/slice`` take no artifact snapshot and answer the 409.
+
+        The SCENARIO document has exactly the same MOVED outcome (Stage D B1).
+        A scenario PUT + world regeneration that lands between the bound
+        document read and the cold ``np.load`` leaves this call holding a world
+        built from the NEW ``arrays.npz`` beside the OLD document, and the
+        orebody of the returned triple comes from that document — MEASURED at
+        commit 3 before the fix, with the pause after ``_bound_scenario``:
+        ``GET …/world`` answered **200** with ``orebody.center [40, 20, -50]``
+        (OLD document) beside ``terrain.zMax 116.367159085105`` and
+        ``rockQuality.mean 64.97196970309594`` (NEW world) — a body equal to
+        neither the before nor the after state. It is the 409 now.
         """
         scenario_path = self.store.scenario_path(scenario_id)
         arrays_path = self.store.arrays_path(scenario_id)
@@ -343,11 +363,11 @@ class WorldService:
             # regeneration): "there is no world" is the honest answer
             raise WorldNotGeneratedError(scenario_id) from exc
         with self.store.lock(scenario_id):
-            current_arrays = file_revision(arrays_path)
-            if current_arrays != arrays_revision:
+            if file_revision(arrays_path) != arrays_revision:
                 raise ReadSnapshotChangedError(scenario_id, "arrays.npz changed during the read")
-            if file_revision(scenario_path) == scenario_revision:
-                self._cache[scenario_id] = _BoundWorld(world, scenario_revision, arrays_revision)
+            if file_revision(scenario_path) != scenario_revision:
+                raise ReadSnapshotChangedError(scenario_id, "scenario.json changed during the read")
+            self._cache[scenario_id] = _BoundWorld(world, scenario_revision, arrays_revision)
         return scenario, world, scenario_revision, arrays_revision
 
     def load(self, scenario_id: str) -> tuple[Scenario, SyntheticWorld]:
@@ -402,9 +422,12 @@ class WorldService:
         validation and assembly all run outside the lock.
 
         The retry covers ``load_bound`` as well as the observation, because
-        ``load_bound`` raises the same ``ReadSnapshotChangedError`` when
-        ``arrays.npz`` MOVES under its cold load: a world regenerated while the
-        scene was loading is a retryable miss, not a refusal."""
+        ``load_bound`` raises the same ``ReadSnapshotChangedError`` when either
+        of its inputs MOVES under the cold load — ``arrays.npz`` replaced
+        between its stat and ``np.load``, or (Stage D B1, the symmetric half)
+        ``scenario.json`` replaced between the bound document read and the
+        publish re-check: a world regenerated while the scene was loading is a
+        retryable miss, not a refusal."""
         attempt = 0
         while True:
             attempt += 1
@@ -524,10 +547,3 @@ class WorldService:
             updated = self.store.replace(scenario_id, payload)
             self.invalidate(scenario_id)
         return updated
-
-    def is_generated(self, scenario_id: str) -> bool:
-        """DISK-authoritative (AC-01F A2): the answer to "is the world there?"
-        is ``arrays.npz``, never process state. The old ``scenario_id in
-        self._cache or …`` made a warm process answer True for a world that had
-        been deleted — the same warm-cache lie ``load_bound`` closes."""
-        return self.store.arrays_path(scenario_id).is_file()
