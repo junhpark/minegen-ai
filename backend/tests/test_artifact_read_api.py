@@ -1245,3 +1245,129 @@ def test_the_valid_stacks_still_answer_200_everywhere(legacy: Stack, layout_v2: 
                 continue
             assert status == 200, (route, status, code)
         assert stack.scene().status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# T9 — a restarted process reads exactly what the warm one serves
+# --------------------------------------------------------------------------- #
+
+#: every READ surface of a built stack: the 17 artifact routes, the Effective
+#: Ramp, both GLB routes and the scene aggregate
+COLD_ROUTES: tuple[str, ...] = (
+    *ROUTES.values(),
+    "/design/ramp",
+    "/design/tunnel/mesh.glb",
+    "/design/development-mesh/mesh.glb",
+    "/scene",
+)
+
+
+@contextmanager
+def cold_services(stack: Stack) -> Iterator[TestClient]:
+    """A RESTARTED process over the same ``data/scenarios`` tree: brand-new
+    ``WorldService`` / ``DesignService`` / ``InfrastructureService`` with empty
+    in-memory caches, sharing the ``ScenarioStore`` (and therefore the same
+    per-scenario locks, since a process boundary is what the store lock does
+    NOT cross — Q-PROCESS-SCOPE stays a recorded residual)."""
+    worlds = WorldService(stack.store)
+    design = DesignService(stack.store, worlds)
+    infra = InfrastructureService(stack.store, design)
+    jobs = JobService(max_workers=1)
+    app = create_app()
+    app.dependency_overrides[get_scenario_store] = lambda: stack.store
+    app.dependency_overrides[get_world_service] = lambda: worlds
+    app.dependency_overrides[get_design_service] = lambda: design
+    app.dependency_overrides[get_infrastructure_service] = lambda: infra
+    app.dependency_overrides[get_job_service] = lambda: jobs
+    assert not worlds._cache and not design._targets and not design._layouts
+    try:
+        with TestClient(app, raise_server_exceptions=False) as client:
+            yield client
+    finally:
+        jobs.shutdown()
+
+
+def test_a_cold_process_reads_exactly_what_the_warm_one_serves(
+    legacy: Stack, layout_v2: Stack
+) -> None:
+    """T9 (Stage B §28). Every read is a function of the FILES, never of
+    process state: a service constructed over the same store answers the same
+    bytes on every route and the same typed code on a mutation. This is the
+    property the revision-bound world cache (AC-01F commit 3) restores — Stage
+    A probe 2 §4.9 measured the opposite, a warm process answering 200 for a
+    world a cold one refused."""
+    for stack in (legacy, layout_v2):
+        warm_bodies = {
+            route: stack.client.get(f"{API}/{stack.sid}{route}") for route in COLD_ROUTES
+        }
+        with cold_services(stack) as cold:
+            for route in COLD_ROUTES:
+                warm = warm_bodies[route]
+                fresh = cold.get(f"{API}/{stack.sid}{route}")
+                assert fresh.status_code == warm.status_code, (route, fresh.status_code)
+                assert fresh.content == warm.content, route
+
+        # and the same typed refusal on a STALE mutation (the shafts canary)
+        levels = stack.derived / LEVELS_ARTIFACT
+        with mutated(levels):
+            bump(levels)
+            for route in ("/design/shafts", "/scene"):
+                warm = stack.client.get(f"{API}/{stack.sid}{route}")
+                with cold_services(stack) as cold:
+                    fresh = cold.get(f"{API}/{stack.sid}{route}")
+                assert warm.status_code == fresh.status_code == 409, (route, warm.status_code)
+                assert fresh.content == warm.content, route
+
+        # … and on a MALFORMED one
+        network = stack.derived / NETWORK_ARTIFACT
+        with mutated(network):
+            network.write_text("{", encoding="utf-8")
+            for route in ("/network", "/scene"):
+                warm = stack.client.get(f"{API}/{stack.sid}{route}")
+                with cold_services(stack) as cold:
+                    fresh = cold.get(f"{API}/{stack.sid}{route}")
+                assert warm.status_code == fresh.status_code == 409, (route, warm.status_code)
+                assert fresh.content == warm.content, route
+
+
+# --------------------------------------------------------------------------- #
+# T10 — a read never writes
+# --------------------------------------------------------------------------- #
+
+
+def _tree_state(stack: Stack) -> dict[str, tuple[str, int, int]]:
+    """``name -> (sha256, size, st_mtime_ns)`` for ``scenario.json``,
+    ``arrays.npz`` and every file under ``derived/``."""
+    import hashlib
+
+    paths = [
+        stack.store.scenario_path(stack.sid),
+        stack.store.arrays_path(stack.sid),
+        *sorted(p for p in stack.derived.iterdir() if p.is_file()),
+    ]
+    state: dict[str, tuple[str, int, int]] = {}
+    for path in paths:
+        st = os.stat(path)
+        state[path.name] = (
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            st.st_size,
+            st.st_mtime_ns,
+        )
+    return state
+
+
+def test_no_read_surface_writes_anything(legacy: Stack, layout_v2: Stack) -> None:
+    """T10: READ ≠ WRITE. After every read surface of a built stack — the 17
+    artifact routes, the Effective Ramp, both GLB routes and the scene — every
+    byte AND every ``st_mtime_ns`` under the scenario directory is unchanged.
+
+    The read authority performs no repair, no migration and no regeneration
+    (§10.2 item 6); the ONE documented exception is ``ScenarioStore.get``'s
+    Phase 18 migration-on-read (A10), which cannot fire here because both
+    fixtures persist a current-schema document."""
+    for stack in (legacy, layout_v2):
+        before = _tree_state(stack)
+        assert len(before) > 10, sorted(before)
+        for route in COLD_ROUTES:
+            assert stack.client.get(f"{API}/{stack.sid}{route}").status_code in (200, 404, 409)
+        assert _tree_state(stack) == before

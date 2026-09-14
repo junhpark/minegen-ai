@@ -70,15 +70,17 @@ def get_scenario(scenario_id: str, store: Store) -> Scenario:
 
 
 @router.put("/{scenario_id}", response_model=Scenario, response_model_by_alias=True)
-def replace_scenario(
-    scenario_id: str, payload: ScenarioCreate, store: Store, world: World
-) -> Scenario:
+def replace_scenario(scenario_id: str, payload: ScenarioCreate, world: World) -> Scenario:
     """Replacing the document invalidates every derived artefact
     (world arrays, derived/*). Downstream phases add their own derived
-    products under derived/, so this one call stays the single choke point."""
+    products under derived/, so this one call stays the single choke point.
+
+    AC-01F commit 3: the document write and that invalidation are ONE locked
+    section inside ``WorldService.replace_scenario`` — at HEAD they were two,
+    and a reader in between saw the NEW document beside the OLD world (Stage A
+    §5.2, R3b/R3d). The router still takes its service from a dependency
+    (rule 40) and holds no lock of its own; the wire contract is unchanged."""
     try:
-        updated = store.replace(scenario_id, payload)
-        world.invalidate(scenario_id)
-        return updated
+        return world.replace_scenario(scenario_id, payload)
     except ScenarioNotFoundError as e:
         raise _not_found(scenario_id) from e

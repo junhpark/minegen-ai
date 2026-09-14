@@ -14,11 +14,14 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  /api/v1/scenarios                           list scenario summaries
     GET  /api/v1/scenarios/{id}                      fetch scenario document
     PUT  /api/v1/scenarios/{id}                      replace scenario document; deletes
-                                                     arrays.npz and derived/* (rule 40)
+                                                     arrays.npz and derived/* (rule 40) — ONE
+                                                     locked mutation (AC-01F)
     POST /api/v1/scenarios/{id}/world/generate       generate terrain / orebody / spatial fields
                                                      (rock quality, grade, fault measurements);
                                                      persists arrays.npz (field_artifact_version);
                                                      returns neutral field stats
+                                                     (409 JOB_INPUTS_CHANGED if scenario.json
+                                                     moved during generation — nothing persisted)
     GET  /api/v1/scenarios/{id}/world                stats (409 WORLD_NOT_GENERATED if missing;
                                                      409 WORLD_ARTIFACT_INCOMPATIBLE when arrays.npz
                                                      predates the Phase-18 field artifact)
@@ -388,7 +391,7 @@ New error codes (all HTTP 409):
 | `ARTIFACT_MALFORMED` | `code`, `message` (names the FILE, never a path) | a present artifact is not a usable document |
 | `ARTIFACT_STALE` | `code`, `message` | a provenance check failed and no rule-named stale code exists (today: `development_mesh.sources.rampSource` vs the active source) |
 | `SCENE_ARTIFACT_INVALID` | `code`, `message`, `artifacts: [{artifact, state, code, message}]` | `GET …/scene` found at least one present-but-invalid artifact; EVERY failure of that snapshot is listed, each with its own specific code (`SHAFTS_STALE`, `LAYOUT_V2_CLEARANCE_MISMATCH`, `ARTIFACT_MALFORMED`, …). No filesystem path, traceback or exception repr is exposed |
-| `READ_SNAPSHOT_CHANGED` | `code`, `message` | **reserved — emitted from AC-01F commit 3** (the scene's bounded snapshot retry). The class, the code, the wire mapping and the reader's binding parameters (`expect_scenario_revision` / `expect_arrays_revision`) exist from commit 2 and are tested, but no API surface passes those parameters yet, so the code cannot reach a client before commit 3. It means "a coherent read snapshot could not be acquired because the scenario / artifact set kept changing; retry the read", and it is deliberately distinct from `JOB_INPUTS_CHANGED`, which is a GENERATION whose inputs moved |
+| `READ_SNAPSHOT_CHANGED` | `code`, `message` | **live from AC-01F commit 3.** It means "a coherent read snapshot could not be acquired because the scenario / artifact set kept changing; retry the read", and it is deliberately distinct from `JOB_INPUTS_CHANGED`, which is a GENERATION whose inputs moved (nothing is built or discarded by a read). Two producers: `WorldService._bound_scenario`, bounded internally at `SNAPSHOT_ATTEMPTS` (3), when `scenario.json` moves on every attempt; and `WorldService.load_bound`, which raises on FIRST detection when `arrays.npz` is REPLACED between its stat and its `np.load` — only `GET …/scene` retries that producer (bounded at 3); `GET …/world` and `GET …/world/slice` answer the code on the first mismatch (a DELETED `arrays.npz` is `WORLD_NOT_GENERATED`, not this code). The surfaces this commit adds are **`GET …/scene`** (which additionally retries the whole bound load + lock-held artifact observation and only then answers this code), **`GET …/world`**, **`GET …/world/slice`** and **`POST …/world/generate`**'s pre-read binding — the generation's own post-build re-check stays `JOB_INPUTS_CHANGED`. Every other route that loads the world goes through the same `load_bound` (the eight `DesignService` builders and `POST …/design/layout-v2`'s world guard), so it can answer this code too; all four routers map it identically through the one `guard` table. The remaining `_bound_scenario` branch — `scenario.json` appearing between the stat and the read — is unreachable through the API: only `ScenarioStore.create` writes a fresh id and no client can name one before it exists |
 
 An existing domain-specific code always wins over a generic one: a stale shaft
 artifact stays `SHAFTS_STALE`, a stale capability graph
@@ -562,6 +565,12 @@ activation. It is validated like every other slot.
 exception to "a read must not write": reading a scenario document of an older
 schema version migrates it, persists it and clears every derived artifact
 (rules 40/46). The read authority adds no migration and no repair of its own.
+From AC-01F commit 3 the document read that wraps it is BOUND
+(`WorldService._bound_scenario`, C4), so the rewrite is absorbed by a re-read
+rather than reported as a race; what the repeated read then finds decides the
+answer — where the migration's `clear_derived` removed a world, 409
+`WORLD_NOT_GENERATED` (regenerate is the explicit repair); where there was
+none to remove, the read simply succeeds.
 
 **`JOB_INPUTS_CHANGED` on the three generation guards.** `StaleInputsError`
 now answers its own canonical code — the one the `?sync=true` branches and the
@@ -573,6 +582,88 @@ retry"` (design), `"network inputs changed during generation; retry"`
 status (409) is unchanged and the message is now the exception's own.
 `POST …/design/targets` gained this path: it is the last derived writer to
 adopt the rule-60 capture/re-check protocol.
+
+**`POST …/world/generate` gained the same guard (AC-01F commit 3).** The world
+writer binds the scenario document through `WorldService._bound_scenario`,
+runs `generate_world` OUTSIDE the store lock, and publishes (`arrays.npz` +
+`derived/world.json` + the in-memory cache) under the lock only if the document
+has not moved since that binding; otherwise 409 `JOB_INPUTS_CHANGED` and
+nothing is written. At HEAD `12d7725` a scenario PUT landing inside
+`generate_world` left `arrays.npz` and the cache holding a world built for the
+REPLACED document while `GET …/world` answered **200** (Stage A §7.5 case A).
+
+**The document read is itself bound (C4), so the migration is not a race.**
+`_bound_scenario` reads `scenario.json` as stat → `ScenarioStore.get` →
+re-stat and REPEATS while the revision moves (at most `SNAPSHOT_ATTEMPTS` = 3
+attempts; exhaustion is a READ that could not be bound → 409
+`READ_SNAPSHOT_CHANGED`, never `JOB_INPUTS_CHANGED`). Capturing only *before*
+`ScenarioStore.get` would make the Phase 18 migration-on-read (above — the ONE
+documented read that writes) look like a concurrent mutation; capturing only
+*after* would leave the read itself outside the guarded window, so a PUT
+between `get` and the stat would bind an OLD document to the NEW revision.
+Re-reading absorbs the migration: the second attempt parses the already
+migrated document and its revision holds. **`POST …/world/generate` on a
+schemaVersion-1 document therefore answers 200** and publishes a world bound
+to the migrated revision, exactly as at HEAD `12d7725`; an intermediate
+commit-3 draft answered 409 `JOB_INPUTS_CHANGED` on that first call, and that
+consequence no longer exists. The post-build re-check stays
+`StaleInputsError` / `JOB_INPUTS_CHANGED` and is now only ever *true*: a
+document that moved after the binding really was replaced by someone else.
+
+**`GET …/world` and `GET …/world/slice` are DISK-authoritative too (AC-01F
+commit 3).** The in-memory world cache entry carries the `scenario.json` and
+`arrays.npz` revisions the world was built at and is served only while BOTH
+still match, so:
+
+* deleting `arrays.npz` with the world warm in memory makes both routes (and
+  `WorldService.is_generated`) answer 409 `WORLD_NOT_GENERATED`; at HEAD both
+  answered **200** (probe 2 §4.9) — "is the world there?" depended on process
+  state;
+* a scenario PUT can no longer be observed half-applied. `PUT /scenarios/{id}`
+  is ONE locked section (document write + derived invalidation + cache drop);
+  an in-flight `GET …/scene` either completes as a consistent OLD snapshot or
+  sees the post-PUT state. At HEAD an in-flight scene answered **200**
+  describing a world the PUT had already deleted (R3b), and a PUT plus a world
+  regeneration produced ONE response whose `world.depth` /
+  `referenceElevation` / `bottomElevation` came from the OLD document and
+  whose `terrain.zMax` came from the NEW world (R3d);
+* the cold-load window — `arrays.npz` stat → lock (cache probe) → `np.load` —
+  has two TYPED outcomes instead of an exception escaping the service. The
+  file **deleted** in that window (a scenario PUT, a world regeneration in
+  flight) → 409 `WORLD_NOT_GENERATED`; **replaced** in it → 409
+  `READ_SNAPSHOT_CHANGED`, because the world in hand cannot be attested to the
+  revision the read captured. `GET …/scene` repeats the whole bound load in
+  the replaced case and normally answers a consistent 200. Measured on the
+  intermediate commit-3 draft with the load paused: the deleted case answered
+  **500 Internal Server Error**, the replaced case answered **200** for a
+  world loaded from a file the reader had never stat'ed.
+
+No wire shape changes: `PUT /scenarios/{id}` keeps its request and response
+exactly as before.
+
+**`WORLD_ARTIFACT_INCOMPATIBLE` is now uniform across the four routers
+(intended unification).** `WorldArtifactIncompatibleError` is a subclass of
+`WorldNotGeneratedError`, and at HEAD `12d7725` each router's own ladder gave
+it a different answer: design 409 `WORLD_ARTIFACT_INCOMPATIBLE`
+(`api/design.py:88-94`), world 409 `WORLD_ARTIFACT_INCOMPATIBLE`
+(`api/world.py:38-44`), network 409 `WORLD_NOT_GENERATED` (no specific row —
+the base-class row at `api/network.py:44-49` won) and infrastructure 500
+`INTERNAL_ERROR` (no row at all — the `api/infrastructure.py:74` catch-all).
+The single `api/errors.guard` table answers 409 `WORLD_ARTIFACT_INCOMPATIBLE`
+on all four. The two changed rows need a Phase-17 `arrays.npz` beside a
+current document (upgrade / crash residue), no route on those two routers is
+exercised with it today and no test pinned either answer; the new answer is
+strictly more specific than both, and a 500 for a recognisable, recoverable
+state was the defect AC-01F set out to remove. The four HEAD rows are frozen
+in `backend/tests/test_api_errors.py::HEAD_WORLD_ARTIFACT_INCOMPATIBLE` with
+their `file:line` provenance.
+
+That record and this paragraph BACK-FILL a **commit-2** behaviour change: the
+unified `guard` table shipped in commit 2, so the two changed answers
+(network 409 `WORLD_NOT_GENERATED` → 409 `WORLD_ARTIFACT_INCOMPATIBLE`,
+infrastructure 500 `INTERNAL_ERROR` → 409 `WORLD_ARTIFACT_INCOMPATIBLE`) have
+been live since that commit and were simply not written down until commit 3.
+Nothing about them changes in commit 3.
 
 **Recorded 404/409 drift (AC-01I owns it).** Absence answers 409 for fourteen
 routes and 404 for three: `GET …/design/shafts` (`SHAFTS_NOT_GENERATED`),

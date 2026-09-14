@@ -368,16 +368,51 @@ HEAD_GUARD_ANSWERS: dict[str, dict[str, HeadAnswer | None]] = {
     },
 }
 
-#: the subclass row the ladder ORDER decided at HEAD: transcribed from
-#: ``api/design.py:88-94`` for ``WorldArtifactIncompatibleError("field
-#: artifact version 1")``, which is a SUBCLASS of ``WorldNotGeneratedError``.
-HEAD_WORLD_ARTIFACT_INCOMPATIBLE: HeadAnswer = (
-    409,
-    "WORLD_ARTIFACT_INCOMPATIBLE",
-    "scenario 'guarded' has a world artifact from an older schema "
-    "(field artifact version 1); POST …/world/generate to regenerate it",
-    "api/design.py:88-94",
-)
+#: the subclass row, per router, as the four ladders answered it at HEAD
+#: ``12d7725`` for ``WorldArtifactIncompatibleError("field artifact version
+#: 1")`` — a SUBCLASS of ``WorldNotGeneratedError``, so which row won was
+#: decided by each ladder's ORDER and by whether it carried a specific row at
+#: all. ``None`` = no row: design / world / network fall through (``raise
+#: exc``), infrastructure answers its ``:74`` catch-all 500 ``INTERNAL_ERROR``
+#: — the same convention as ``HEAD_GUARD_ANSWERS``.
+HEAD_WORLD_ARTIFACT_INCOMPATIBLE: dict[str, HeadAnswer | None] = {
+    "design": (
+        409,
+        "WORLD_ARTIFACT_INCOMPATIBLE",
+        "scenario 'guarded' has a world artifact from an older schema "
+        "(field artifact version 1); POST …/world/generate to regenerate it",
+        "api/design.py:88-94",
+    ),
+    "world": (
+        409,
+        "WORLD_ARTIFACT_INCOMPATIBLE",
+        "scenario 'guarded' has a world artifact from an older schema "
+        "(field artifact version 1); POST …/world/generate to regenerate it",
+        "api/world.py:38-44",
+    ),
+    # no WorldArtifactIncompatibleError row: the BASE class row caught it and
+    # reported the less specific code
+    "network": (
+        409,
+        "WORLD_NOT_GENERATED",
+        "scenario 'guarded' has no generated world; POST …/world/generate first",
+        "api/network.py:44-49",
+    ),
+    "infrastructure": None,  # fell through to :74 500 INTERNAL_ERROR
+}
+
+#: the ONE unified answer ``api/errors.guard`` gives on every router (the
+#: ladder order in ``CODE_LADDER`` puts the subclass before its base).
+UNIFIED_WORLD_ARTIFACT_INCOMPATIBLE: tuple[int, str] = (409, "WORLD_ARTIFACT_INCOMPATIBLE")
+
+#: the two routers whose HEAD answer the unification CHANGES, with what they
+#: answered. Both states need a Phase-17 ``arrays.npz`` beside a current
+#: document (upgrade / crash residue); no test pinned either row, and the new
+#: answer is strictly more specific than both — recorded in ``docs/api.md``.
+WORLD_ARTIFACT_ANSWERS_REPLACED: dict[str, tuple[int, str]] = {
+    "network": (409, "WORLD_NOT_GENERATED"),
+    "infrastructure": (500, "INTERNAL_ERROR"),
+}
 
 #: A9: the ONE approved deviation of the new table from HEAD's literals. The
 #: status is unchanged; the code becomes the exception's canonical one, which
@@ -428,8 +463,15 @@ def test_the_head_table_is_complete_and_carries_its_provenance() -> None:
             status, code, _message, source = row
             assert status in (404, 409, 422), (name, router, status)
             assert code and source.startswith(f"api/{router}.py:"), (name, router, row)
-    status, code, _m, source = HEAD_WORLD_ARTIFACT_INCOMPATIBLE
-    assert (status, code, source) == (409, "WORLD_ARTIFACT_INCOMPATIBLE", "api/design.py:88-94")
+    assert set(HEAD_WORLD_ARTIFACT_INCOMPATIBLE) == set(api_errors.ROUTERS)
+    for router, row in HEAD_WORLD_ARTIFACT_INCOMPATIBLE.items():
+        if row is None:
+            assert router == "infrastructure"  # the only ladder with a catch-all
+            continue
+        status, code, _message, source = row
+        assert status == 409 and source.startswith(f"api/{router}.py:"), (router, row)
+    assert HEAD_WORLD_ARTIFACT_INCOMPATIBLE["design"] is not None
+    assert HEAD_WORLD_ARTIFACT_INCOMPATIBLE["design"][3] == "api/design.py:88-94"
 
 
 @pytest.mark.parametrize("exc_type", RELOCATED, ids=[t.__name__ for t in RELOCATED])
@@ -516,16 +558,38 @@ def test_unmapped_exceptions_fall_through() -> None:
 def test_the_ladder_order_keeps_the_world_artifact_subclass_specific() -> None:
     """``WorldArtifactIncompatibleError`` is a SUBCLASS of
     ``WorldNotGeneratedError``; the ladder order decides, exactly as the
-    isinstance ladder of ``api/design.py:88-100`` did at HEAD."""
+    isinstance ladder of ``api/design.py:88-100`` did at HEAD.
+
+    Per router, against the frozen four-row census: design and world are
+    byte-identical to HEAD; network (which had no specific row, so its BASE
+    row won) and infrastructure (which had no row at all, so its catch-all
+    answered 500 ``INTERNAL_ERROR``) now get the SAME specific 409 — an
+    intended unification, recorded in ``docs/api.md``. Both HEAD answers
+    needed a Phase-17 ``arrays.npz`` beside a current document, and no test
+    pinned either."""
     from minegen.services.world_service import WorldArtifactIncompatibleError
 
     exc = WorldArtifactIncompatibleError("field artifact version 1")
     assert api_errors.code_of(exc) == "WORLD_ARTIFACT_INCOMPATIBLE"
-    response = api_errors.guard(SID, exc, router="design")
-    assert response is not None
-    status, code, message, _source = HEAD_WORLD_ARTIFACT_INCOMPATIBLE
-    detail: Any = response.detail
-    assert (response.status_code, detail["code"], detail["message"]) == (status, code, message)
+    for router in api_errors.ROUTERS:
+        response = api_errors.guard(SID, exc, router=router)
+        assert response is not None, router
+        detail: Any = response.detail
+        answer = (response.status_code, detail["code"])
+        assert answer == UNIFIED_WORLD_ARTIFACT_INCOMPATIBLE, (router, answer)
+        head = HEAD_WORLD_ARTIFACT_INCOMPATIBLE[router]
+        if router in WORLD_ARTIFACT_ANSWERS_REPLACED:
+            replaced = WORLD_ARTIFACT_ANSWERS_REPLACED[router]
+            assert answer != replaced, (router, answer, replaced)
+            if head is not None:  # network: the recorded row IS what it replaces
+                assert (head[0], head[1]) == replaced, (router, head)
+            continue
+        assert head is not None, router
+        assert (answer[0], answer[1], detail["message"]) == (head[0], head[1], head[2]), (
+            router,
+            detail,
+            head,
+        )
 
 
 def test_every_table_row_is_reachable_and_documented() -> None:

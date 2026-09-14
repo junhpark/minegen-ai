@@ -175,13 +175,50 @@ two projections are derived from it by one algorithm:
   wrote). No service holds a delete list of its own.
 
 The global choke point is unchanged and NOT registry-derived:
-`WorldService.invalidate` (`world_service.py:184-191`) →
-`ScenarioStore.clear_derived` (`scenario_service.py:106-121`, a directory
-walk that also removes `derived/world.json` and unknown files), called from
-world generation (`world_service.py:76`), scenario PUT (`api/scenarios.py:81`)
-and a schema migration on read (`scenario_service.py:74-77` — this caller
-bypasses the `WorldService._cache` drop, an as-is quirk recorded here and not
-changed).
+`WorldService.invalidate` → `ScenarioStore.clear_derived` (a directory walk
+that also removes `derived/world.json` and unknown files), called from world
+generation, scenario PUT and a schema migration on read
+(`scenario_service.py:74-77`). **AC-01F commit 3** changed HOW two of those
+callers reach it, not what it does:
+
+* scenario PUT is now ONE locked section — `WorldService.replace_scenario`
+  (`store.replace` + `invalidate` under the per-scenario `RLock`), called by
+  `api/scenarios.py`. At the AC-01B baseline these were two separate critical
+  sections, so between them the persisted document was the NEW one while
+  `arrays.npz`, `derived/` and the world cache were still the OLD one (Stage A
+  §5.2, R3b/R3d). The router obtains the service from a dependency (rule 40)
+  and holds no lock of its own; `ScenarioStore.replace` is unchanged;
+* the migration-on-read caller still bypasses the `WorldService._cache` drop
+  (`clear_derived` is called directly). That quirk no longer has an
+  observable consequence: the cache entry is bound to the `scenario.json` /
+  `arrays.npz` revisions it was built at, so after a migration it simply
+  MISSES — the pre-change literal was a warm-cache `GET /scene` **200** with
+  all 17 derived keys `null` over a store the same read had just cleared
+  (Stage A §7.3 / probe 2 §4.8), now 409 `WORLD_NOT_GENERATED`.
+
+The two INPUT files are not registry artifacts but are inside the same
+protocol from AC-01F commit 3:
+
+| file | writer protocol | read binding |
+|---|---|---|
+| `scenario.json` | `ScenarioStore._write` from `create` / `replace` / the migration; `replace` runs inside `WorldService.replace_scenario`'s lock | `WorldService._bound_scenario`: stat → `ScenarioStore.get` → re-stat, REPEATED while the revision moves (≤ `SNAPSHOT_ATTEMPTS` = 3, then `READ_SNAPSHOT_CHANGED`). The A10 migration rewrites the document from inside `get`; the re-read absorbs it and binds the migrated revision, so it is never reported as a race (C4) |
+| `arrays.npz` + `derived/world.json` | `WorldService._save`, now INSIDE the store lock and only after a re-check that `scenario.json` did not move during `generate_world` (→ `JOB_INPUTS_CHANGED`; the pre-change literal was a silently published world for the REPLACED document, Stage A §7.5 case A). `world.stats` is computed BEFORE the lock and handed in, so the lock holds the two writes and the cache publish only (WARPED-301: the lock holds `_save` alone, 0.62 s wall for a 10,245,989-byte `arrays.npz`; before the hoist 0.72–0.75 s with `world.stats` 0.099 s inside) | `file_revision` captured BEFORE `np.load`, and re-checked after it: deleted in that window → `WORLD_NOT_GENERATED`, replaced → `READ_SNAPSHOT_CHANGED` (never an escaping `FileNotFoundError`). The world cache entry is `(world, scenario_revision, arrays_revision)` and is served only while BOTH still match |
+
+Where "DISK-authoritative" comes from, split by mechanism — the two halves are
+different claims and neither implies the other:
+
+* `WorldService.is_generated` is disk-authoritative because it stopped
+  consulting the cache at all: it is now `arrays_path(sid).is_file()` and
+  nothing else (at the baseline it was `sid in self._cache or …`, so a warm
+  process answered True for a world that had been deleted) — it has no
+  production caller after AC-01F (a test-facing helper); the production disk
+  authority is `load_bound`'s stat plus the reader snapshot's stat;
+* `GET …/world`, `GET …/world/slice` and `GET …/scene` are disk-authoritative
+  because the cache ENTRY is revision-bound: they still consult the cache, but
+  the entry is returned only when the `scenario.json` and `arrays.npz`
+  revisions stat'ed on that very request still equal the ones the world was
+  built at. The world guard itself (`arrays.npz` absent → 409
+  `WORLD_NOT_GENERATED`) is the disk stat taken before the probe.
 
 `tests/test_artifact_registry.py` holds the census below as frozen literal
 tables (with the pre-AC-01E file:line provenance of every row) and checks both
@@ -222,9 +259,14 @@ Two structural facts this table makes explicit, both inputs to later AC steps:
   `SCENE_ARTIFACT_INVALID`, every failure listed in `detail.artifacts[]` with
   its own specific code. The scene also applies the same DISK-authoritative
   world guard as `require` (`arrays.npz` absent → 409 `WORLD_NOT_GENERATED`,
-  even with a warm world cache). The scenario / world REVISION BINDING of that
-  snapshot (`load_bound`, the bounded retry and `READ_SNAPSHOT_CHANGED`) is
-  AC-01F commit 3 (F06-A).
+  even with a warm world cache). **AC-01F commit 3** binds that snapshot to
+  the scenario and world it describes: `WorldService.load_bound` returns the
+  two revisions the document and the arrays were taken at, the snapshot is
+  acquired with `expect_scenario_revision` / `expect_arrays_revision`, and a
+  mismatch re-runs the load — at most `SNAPSHOT_ATTEMPTS` (3) times, after
+  which the read answers 409 `READ_SNAPSHOT_CHANGED` (never
+  `JOB_INPUTS_CHANGED`, which is a GENERATION whose inputs moved). No
+  `generate_world`, `np.load` or `build_orebody` ever runs inside the lock.
 * `InfrastructureService` no longer reaches into a `DesignService` private:
   its two fingerprints call the module-level `artifact_fingerprint` (AC-01E;
   the pre-AC-01E `design._ramp_input_paths` access was the only cross-service
@@ -408,7 +450,7 @@ Each step is one PR. The prohibitions in §4 apply to all of them.
 | **AC-01C** | extract the search materialization / certification DTOs and the public access boundary | search order, parameters, serialization, gates, geometry | existing selection / clearance restart tests, TABULAR + WARPED canaries, payload equivalence, FULL |
 | **AC-01D** | restore the selected certification from its recipe; remove the full-search re-run | trusting a recorded number as a policy; auto-repairing stale state | cold and warm results and failures equal; zero `search.run` calls downstream; recipe mismatch fails closed; FULL + affected goldens |
 | **AC-01E** ✅ | artifact dependency registry expressing today's fingerprint / delete sets; services stay facades | widening or narrowing a delete set; changing stat-revision semantics | source switch, candidate switch, regeneration, shaft / capability sibling preservation; FULL |
-| **AC-01F** | one validated read resolver for the scene and the per-artifact APIs | auto-regenerating stale data; changing upstream geometry | stale partial snapshot / restart / concurrent invalidation cases; API error changes approved explicitly; FULL |
+| **AC-01F** ✅ | one validated read resolver for the scene and the per-artifact APIs, in three commits: (1) the resolver + the old-vs-new characterization proof, additive; (2) every consumer switched to it + one `api/errors.guard` table + GLB validation + the `generate_targets` fingerprint; (3) the world / scenario revision binding (`load_bound`, the stat-bound world cache, the scenario-PUT mutation boundary, the world-generate publish guard, the bounded snapshot retry) | auto-regenerating stale data; changing upstream geometry | stale partial snapshot / restart / concurrent invalidation cases; API error changes approved explicitly; FULL |
 | **AC-01G** | section provider vs search stage boundary; less candidate-state coupling | reimplementing the screen; redesigning shortlist or ranking | candidate ids / order / status / winner, EXACT vs CONSERVATIVE authority, stage-4 trace weld; FULL + affected goldens |
 | **AC-01H** | after proving old/new equivalence, collapse the duplicated CI FULL run | weakening coverage or trigger authority | old and new gate sets compared on one revision; one release verdict |
 | **AC-01I** | geometry resolver / API schemas / frontend invalidation mirror, where needed | payload enum, null or coordinate meaning | malformed ref / endpoint / shaft tests, API contract, frontend gates, FULL; browser acceptance if the UI changes |
@@ -430,8 +472,8 @@ Numbering follows the Architecture Reality Report (2026-09-10, audit baseline
 | F03 | search context and candidate state mutate across stages | open — AC-01C / AC-01G |
 | F04 | artifact lifecycle is several hand-maintained lists | **resolved by AC-01E**: one declarative registry (`core/artifact_registry.py`) derives every ordered fingerprint list and every source-conditional delete cascade; the 13 `_delete_*` helpers, 12 `_*_input_paths` lists, the inline selection capture and the `InfrastructureService` reach-in are gone; census + e2e proofs in §6. The frontend mirror (`scene/invalidation.ts`) stays AC-01I |
 | F05 | the same artifact is stale-checked differently per read path | **resolved by AC-01F (commit 2)**: ONE validated read authority (`services/artifact_reader.py`) over a per-artifact spec table; every direct GET, every builder's upstream read, both GLB routes, the async job path and the scene classify an artifact identically (ABSENT / VALID / STALE / MALFORMED) and answer the same typed code. `tests/test_no_raw_artifact_reads.py` is the static proof that no module outside the authority reads — or presence-probes — a derived artifact; `tests/test_artifact_read_api.py` pins the contract through the real API. The frontend mirror stays AC-01I |
-| F06-A | reads are not taken against a coherent, revision-bound snapshot | **in progress — AC-01F**: the DERIVED half is resolved in commit 2 (one lock-held observation per scene / per `require`, one observation per file, the disk-authoritative world guard). The scenario / world binding — `load_bound`, the revision-bound world cache, the scenario-PUT mutation boundary, the world-generate optimistic publish guard and the bounded retry that emits `READ_SNAPSHOT_CHANGED` — is resolved in-process from commit 3 |
-| F06-B | publication is not atomic (a writer's `write_text` is not temp + fsync + replace) | open — **AC-01F.2** (separate PR). The stat semantics of `file_revision` / `InputFingerprint._stat` are rule 60 and are NOT to be replaced by a content hash without a decision; AC-01F deliberately changed no write-site bytes |
+| F06-A | reads are not taken against a coherent, revision-bound snapshot | **F06-A resolved in-process (AC-01F commit 3)**: every response is a serializable snapshot — there is one instant at which every scenario, world and derived statement in it was simultaneously true on disk (the lock hold; for a world-cache hit, the instant at which that entry was published under the lock). Commit 2 closed the derived half (one lock-held observation per scene / per `require`, one observation per file, the disk-authoritative world guard); commit 3 closed the scenario / world half (the bound document read `_bound_scenario`, `load_bound`, the revision-bound world cache, the typed cold-load window — a vanished `arrays.npz` is `WORLD_NOT_GENERATED` and a replaced one `READ_SNAPSHOT_CHANGED`, never an escaping `FileNotFoundError` — the one-locked-section scenario PUT, the world-generate optimistic publish guard, the bounded retry → `READ_SNAPSHOT_CHANGED`). Reproductions R1, R2, R3b, R3d, R4 and the non-injected migration-on-read case are now impossible; **residuals: cross-process** (`ScenarioStore.lock` is a `threading.RLock`; no OS lock exists or is added) **and crash residue** (a torn or half-published derived artifact is a TYPED refusal rather than a silent projection; a torn `arrays.npz` stays an unmapped 500 as at HEAD — the open F06-B residual; prevention is F06-B) |
+| F06-B | publication is not atomic (a writer's `write_text` is not temp + fsync + replace) | open — **AC-01F.2** (separate PR; 22 write sites, a behaviour-preserving mechanical extraction with its own fault-injection proof). The stat semantics of `file_revision` / `InputFingerprint._stat` are rule 60 and are NOT to be replaced by a content hash without a decision; AC-01F deliberately changed no write-site bytes |
 | F07 | level development rebuilds search-side section / track state | open — AC-01G |
 | F08 | `ci.yml` and `verify-full.yml` both run the whole gate set | open — AC-01H |
 | F09 | typed-API principle vs `dict[str, Any]` layout payloads | open — AC-01C / AC-01I |

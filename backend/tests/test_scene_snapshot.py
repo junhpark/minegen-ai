@@ -28,9 +28,9 @@ from typing import Any
 
 import pytest
 
-from minegen.core.artifacts import LEVELS_ARTIFACT
+from minegen.core.artifacts import LEVELS_ARTIFACT, TARGETS_ARTIFACT
 from minegen.services.artifact_reader import READ_SPECS
-from tests.test_artifact_read_api import API, Stack, _build, derived_restored
+from tests.test_artifact_read_api import API, Stack, _build, _make_stack, derived_restored
 
 #: probe 4, measured on HEAD 12d7725 over a 20 s loop (Stage A §7.2)
 PRE_CHANGE_READ_ERRORS = 218
@@ -44,6 +44,20 @@ LEVELS_CASCADE_SLOTS = ("network", "shafts", "stopes", "timeline", "communicatio
 @pytest.fixture(scope="module")
 def legacy(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Stack]:
     stack, context = _build(tmp_path_factory.mktemp("snapshot"), "LEGACY")
+    yield stack
+    context.__exit__(None, None, None)
+    stack.jobs.shutdown()
+
+
+@pytest.fixture
+def world_only(tmp_path: Path) -> Iterator[Stack]:
+    """A world plus ONE derived artifact — the cheapest stack that still has
+    something for a snapshot to observe. Function-scoped on purpose: the
+    scenario/world half of T6 mutates the SCENARIO, which no module-scoped
+    fixture could survive."""
+    stack, context = _make_stack(tmp_path / "world_only")
+    assert stack.post("/world/generate") == (200, None)
+    assert stack.post("/design/targets") == (200, None)
     yield stack
     context.__exit__(None, None, None)
     stack.jobs.shutdown()
@@ -264,3 +278,49 @@ def test_the_scene_route_and_the_service_agree(legacy: Stack) -> None:
     served = legacy.client.get(f"{API}/{legacy.sid}/scene")
     assert served.status_code == 200
     assert served.json() == legacy.worlds.scene(legacy.sid)
+
+
+def test_a_scenario_put_waits_for_the_scenes_lock_held_snapshot(
+    world_only: Stack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T6, the scenario/world half. The derived half above proves a DERIVED
+    writer cannot interleave with the snapshot; the scenario PUT is the other
+    mutation that used to run straight through it — at HEAD it was two
+    unlocked/locked sections (``api/scenarios.py:80-81``) and a scene in flight
+    could serve a world the PUT had already deleted (Stage A R3b: **200**,
+    ``terrain.zMax 120.638291``, every derived slot ``null``).
+
+    ``WorldService.replace_scenario`` is now ONE locked section, so a PUT that
+    arrives while the scene holds the snapshot lock BLOCKS until the
+    observation is complete; the scene then answers the consistent OLD state
+    and the mutation lands after it."""
+    before = world_only.worlds.scene(world_only.sid)
+    assert before["accessTargets"] is not None
+
+    pause = _PauseInsideSnapshot(monkeypatch, TARGETS_ARTIFACT)
+    reader, read_box = _run(lambda: world_only.worlds.scene(world_only.sid))
+    assert pause.inside.wait(30), "the scene never reached its lock-held read"
+
+    document = world_only.client.get(f"{API}/{world_only.sid}").json()
+    document.pop("id")
+    document.pop("schemaVersion")
+    document["seed"] = 555
+    writer, write_box = _run(
+        lambda: world_only.client.put(f"{API}/{world_only.sid}", json=document).status_code
+    )
+    time.sleep(0.75)
+    assert not write_box.get("done"), "PUT /scenarios/{id} ran while the scene held the lock"
+
+    pause.release.set()
+    reader.join(60)
+    writer.join(60)
+    assert "error" not in read_box, read_box.get("error")
+    assert write_box.get("value") == 200, write_box
+
+    # the scene that held the lock is the consistent OLD snapshot …
+    scene = read_box["value"]
+    assert scene["accessTargets"] == before["accessTargets"]
+    assert scene["terrain"]["zMax"] == before["terrain"]["zMax"]
+    # … and the mutation really did land afterwards
+    assert not world_only.store.arrays_path(world_only.sid).exists()
+    assert world_only.get("/scene") == (409, "WORLD_NOT_GENERATED")

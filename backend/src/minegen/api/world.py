@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from minegen.api.deps import get_world_service
 from minegen.api.errors import ROUTER_WORLD, guard
 from minegen.core.models import ErrorDetail
-from minegen.services.scenario_service import ScenarioNotFoundError
 from minegen.services.world_service import WorldService
 from minegen.world.warped_vein import WarpedVeinGeometryBudgetError
 
@@ -31,8 +30,11 @@ def _fail(scenario_id: str, exc: Exception) -> HTTPException:
 
     AC-01F: this is where ``SCENE_ARTIFACT_INVALID`` reaches the client — 409
     with every invalid artifact of the refused snapshot in
-    ``detail.artifacts[]`` (A14) — and where ``READ_SNAPSHOT_CHANGED`` will
-    (A9: the scene's bounded snapshot retry is commit 3)."""
+    ``detail.artifacts[]`` (A14) — where ``READ_SNAPSHOT_CHANGED`` reaches it
+    (A9, commit 3: the scene's bounded snapshot retry, the bound document read
+    of ``/world/generate`` and an ``arrays.npz`` REPLACED under a cold
+    ``/world`` or ``/world/slice`` load) and where a world generation whose
+    scenario document moved answers ``JOB_INPUTS_CHANGED``."""
     mapped = guard(scenario_id, exc, router=ROUTER_WORLD)
     if mapped is None:
         raise exc
@@ -43,8 +45,6 @@ def _fail(scenario_id: str, exc: Exception) -> HTTPException:
 def generate_world(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.generate(scenario_id)
-    except ScenarioNotFoundError as e:
-        raise _fail(scenario_id, e) from e
     except WarpedVeinGeometryBudgetError as e:
         # Phase 19: an edited WARPED_VEIN whose derived geometry lattice
         # exceeds the supported budget fails explicitly — never coarsened
@@ -53,6 +53,14 @@ def generate_world(scenario_id: str, svc: Service) -> dict[str, Any]:
             "OREBODY_GEOMETRY_BUDGET_EXCEEDED",
             f"scenario '{scenario_id}': {e}",
         ) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        # AC-01F commit 3: the generation's own optimistic publish guard —
+        # a scenario PUT that lands while ``generate_world`` runs answers
+        # ``StaleInputsError`` → 409 JOB_INPUTS_CHANGED through the ONE guard
+        # table, exactly as the ?sync=true design routes already did
+        raise _fail(scenario_id, e) from e
 
 
 @router.get("/world")
