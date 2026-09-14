@@ -14,6 +14,7 @@ from typing import TypeVar
 
 from minegen.core.artifacts import COMMUNICATION_ARTIFACT, SENSORS_ARTIFACT
 from minegen.core.models import ApiModel
+from minegen.core.publication import publish_text
 from minegen.infrastructure.builder import CommunicationBuilder
 from minegen.infrastructure.models import CommunicationPayload, SensorPayload
 from minegen.infrastructure.sensors import SensorBuilder
@@ -101,7 +102,7 @@ class InfrastructureService:
                 raise StaleInputsError(scenario_id)
             path = self.communication_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(serialized, encoding="utf-8")
+            publish_text(path, serialized)
         return payload
 
     def communication(self, scenario_id: str) -> CommunicationPayload:
@@ -150,7 +151,7 @@ class InfrastructureService:
                 raise StaleInputsError(scenario_id)
             path = self.sensors_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(serialized, encoding="utf-8")
+            publish_text(path, serialized)
         return payload
 
     def sensors(self, scenario_id: str) -> SensorPayload:

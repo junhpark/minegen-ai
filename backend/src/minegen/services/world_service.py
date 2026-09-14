@@ -70,6 +70,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_ARTIFACT,
 )
 from minegen.core.models import Scenario, ScenarioCreate
+from minegen.core.publication import publish_npz, publish_text
 from minegen.core.revision import file_revision
 from minegen.export.scene_manifest import (
     SliceAxis,
@@ -226,11 +227,18 @@ class WorldService:
         return stats
 
     def _save(self, scenario: Scenario, world: SyntheticWorld, stats: dict[str, Any]) -> None:
-        """Write ``arrays.npz`` and ``derived/world.json``. Called under the
+        """Publish ``arrays.npz`` and ``derived/world.json``. Called under the
         store lock, so it does the two WRITES and nothing else: ``stats`` is
         computed by the caller beforehand (measured on WARPED-301: the whole
         ``_save`` is 0.747 s wall for a 10,245,989-byte ``arrays.npz``, of
-        which ``world.stats`` was 0.099 s — now outside the lock)."""
+        which ``world.stats`` was 0.099 s — now outside the lock).
+
+        AC-01F.2 D1/D3: both files are published atomically
+        (``minegen.core.publication``), ``arrays.npz`` FIRST — it is the file
+        the world guard stats, while ``derived/world.json`` is read by no
+        consumer — so a crash between the two atomic replacements leaves a
+        world whose arrays are whole and whose stats snapshot is one
+        generation behind, never a half-written NPZ."""
         path = self.store.arrays_path(scenario.id)
         fields: dict[str, Any] = dict(world.fields.to_npz_fields())
         fields["terrain_z"] = world.terrain.z
@@ -238,10 +246,10 @@ class WorldService:
             [world.terrain.x0, world.terrain.y0, world.terrain.spacing], dtype=np.float64
         )
         path.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(path, **fields)
+        publish_npz(path, **fields)
         derived = self.store.derived_dir(scenario.id)
         derived.mkdir(parents=True, exist_ok=True)
-        (derived / "world.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
+        publish_text(derived / "world.json", json.dumps(stats, indent=2))
 
     # -- access ------------------------------------------------------------ #
 

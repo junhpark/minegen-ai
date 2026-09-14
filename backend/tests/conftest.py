@@ -59,6 +59,16 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     # AC-01F commit 2: the scene snapshot boundary — concurrent writers against
     # a paused reader, plus a timed torn-read loop
     "test_scene_snapshot": ("slow", "e2e"),
+    # AC-01F.2 D5.1: every one of the 22 write sites driven three times
+    # through the REAL LEGACY and LAYOUT_V2 stacks with an injected
+    # publication failure (two module-scoped builds ≈ 19 s + 66 driver runs)
+    "test_publication_fault_injection": ("slow", "e2e"),
+    # AC-01F.2 D5.4: the three paired publications, each on a stack built to
+    # the point where the pair has never been written
+    "test_publication_pair_order": ("slow", "e2e"),
+    # AC-01F.2 D5.2: a subprocess reader against the real publish loop,
+    # 10 s per artifact plus the stack build
+    "test_publication_cross_process": ("slow", "e2e"),
 }
 #: test function name (any module) → markers
 TEST_MARKERS: dict[str, tuple[str, ...]] = {

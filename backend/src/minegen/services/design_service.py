@@ -43,6 +43,7 @@ from minegen.core.artifacts import (
 )
 from minegen.core.enums import Capability, DistanceContract, OrebodyType
 from minegen.core.models import ApiModel, Scenario
+from minegen.core.publication import publish_bytes, publish_text
 from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import ClearancePolicy, DesignCostEvaluator, clearance_policy_for
 from minegen.design.development_mesh import DevelopmentMeshBuilder
@@ -426,7 +427,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.targets_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            publish_text(path, json.dumps(payload, indent=2))
             self._targets[scenario_id] = (world, targets)
             # rule 46: the decline built on the old targets and (rule 64) its
             # smoothed derivative are stale; everything derived from the
@@ -493,7 +494,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.decline_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(payload), encoding="utf-8")
+            publish_text(path, json.dumps(payload))
             # rule 64: the old smoothed artifact is stale, and with it (rules
             # 67–98) the chain derived from the LEGACY effective ramp
             self._invalidate_downstream(scenario_id, DECLINE_ARTIFACT)
@@ -554,7 +555,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.smoothed_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(payload), encoding="utf-8")
+            publish_text(path, json.dumps(payload))
             # rules 67/74/79/86/92/98/68: the LEGACY effective ramp changed
             self._invalidate_downstream(scenario_id, LEGACY_RAMP_ARTIFACT)
         return payload
@@ -599,7 +600,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.layout_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(serialized, encoding="utf-8")
+            publish_text(path, serialized)
             self._layouts[scenario_id] = (world, search, result)
             # rule 157: the selection (and the level accesses it owns) is
             # stale; the LAYOUT_V2-derived chain follows while that source
@@ -717,9 +718,18 @@ class DesignService:
             current = self._fingerprint_of(scenario_id, LAYOUT_V2_SELECTED_ARTIFACT)
             if current != fingerprint:
                 raise StaleInputsError(scenario_id)
+            # AC-01F.2 D3: the level accesses are published FIRST and the
+            # selection second. Two atomic replacements are not one atomic
+            # pair, so the ORDER decides what a crash between them leaves:
+            # accesses without a selection is an ABSENT selection
+            # (LAYOUT_V2_NOT_SELECTED) beside the typed forward orphan
+            # (LAYOUT_V2_SELECTION_STALE on the accesses), which the explicit
+            # re-selection repairs — never a selection whose accesses are
+            # missing, which rule 157 forbids and the network builder only
+            # discovers as a weld error two builders later (Stage A §7.4).
+            publish_text(self.level_accesses_path(scenario_id), serialized_accesses)
             path = self.layout_selected_path(scenario_id)
-            path.write_text(serialized, encoding="utf-8")
-            self.level_accesses_path(scenario_id).write_text(serialized_accesses, encoding="utf-8")
+            publish_text(path, serialized)
             # rule 151 / 169: a NEW selection invalidates the LAYOUT_V2-derived
             # chain while that source is active (inert under LEGACY)
             self._invalidate_downstream(
@@ -997,7 +1007,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.levels_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(serialized, encoding="utf-8")
+            publish_text(path, serialized)
             # rules 184 / 74 / 79 / 86 / 92 / 98 / closeout v3 §4: shafts,
             # network (+ capability), stopes, timeline, communication,
             # sensors, development mesh — never the tunnel (rule 74)
@@ -1047,7 +1057,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.stopes_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(serialized, encoding="utf-8")
+            publish_text(path, serialized)
             self._invalidate_downstream(scenario_id, STOPES_ARTIFACT)  # rule 86: timeline
         return payload
 
@@ -1097,7 +1107,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.timeline_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(serialized, encoding="utf-8")
+            publish_text(path, serialized)
         return payload
 
     def timeline(self, scenario_id: str) -> TimelinePayload:
@@ -1148,7 +1158,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.shafts_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(serialized, encoding="utf-8")
+            publish_text(path, serialized)
             # rule 184: shafts → network (+ capability), timeline,
             # communication, sensors — never stopes / development mesh
             self._invalidate_downstream(scenario_id, SHAFTS_ARTIFACT)
@@ -1203,7 +1213,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.capability_graph_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(serialized, encoding="utf-8")
+            publish_text(path, serialized)
         return payload
 
     def capability_graph(self, scenario_id: str) -> CapabilityGraphPayload:
@@ -1296,7 +1306,7 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             path = self.network_path(scenario_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(serialized, encoding="utf-8")
+            publish_text(path, serialized)
             # rules 86 / 92 / 98 / 185: timeline, communication, sensors,
             # capability graph — rebuilt, never patched; shafts kept (rule 184)
             self._invalidate_downstream(scenario_id, NETWORK_ARTIFACT)
@@ -1374,12 +1384,29 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             report_path = self.tunnel_report_path(scenario_id)
             report_path.parent.mkdir(parents=True, exist_ok=True)
-            report_path.write_text(json.dumps(payload), encoding="utf-8")
+            # AC-01F.2 D3, SUCCESS path: GLB FIRST, report second. Two atomic
+            # replacements are not one atomic pair, so a crash between them
+            # leaves a GLB with no report — the artifact is ABSENT, a stray
+            # GLB no reader looks up and the next publish overwrites — never a
+            # SUCCESS report whose GLB is missing or stale (ARTIFACT_MALFORMED,
+            # the Stage A §7.4 R2 residue).
+            #
+            # FAILED path: the OTHER order, HEAD's — the FAILED report is
+            # published FIRST, and only then is the stale GLB unlinked.
+            # Unlinking first would open a window in which a failing report
+            # publish leaves the PREVIOUS SUCCESS report beside no GLB: exactly
+            # the MALFORMED half D3 exists to avoid, and a 200 scene turned
+            # into a 409. Report-then-unlink leaves at worst a FAILED report
+            # beside a stale GLB, which the reader already refuses on the
+            # binary route and serves as FAILED on the report route.
             glb_path = self.tunnel_glb_path(scenario_id)
             if result.glb is not None:
-                glb_path.write_bytes(result.glb)
-            elif glb_path.exists():
-                glb_path.unlink()  # never leave a stale GLB beside a FAILED report
+                publish_bytes(glb_path, result.glb)
+                publish_text(report_path, json.dumps(payload))
+            else:
+                publish_text(report_path, json.dumps(payload))
+                if glb_path.exists():
+                    glb_path.unlink()  # never leave a stale GLB beside a FAILED report
         return payload
 
     # -- development mesh (Phase 20B closeout v3 §4) ------------------------- #
@@ -1479,12 +1506,18 @@ class DesignService:
                 raise StaleInputsError(scenario_id)
             report_path = self.development_mesh_report_path(scenario_id)
             report_path.parent.mkdir(parents=True, exist_ok=True)
-            report_path.write_text(json.dumps(payload), encoding="utf-8")
+            # AC-01F.2 D3, exactly as ``generate_tunnel``: on SUCCESS the GLB
+            # is published first and the report second; on FAILED the report is
+            # published first and only then is the stale GLB unlinked (see the
+            # comment there for why the two paths differ)
             glb_path = self.development_mesh_glb_path(scenario_id)
             if result.glb is not None:
-                glb_path.write_bytes(result.glb)
-            elif glb_path.exists():
-                glb_path.unlink()
+                publish_bytes(glb_path, result.glb)
+                publish_text(report_path, json.dumps(payload))
+            else:
+                publish_text(report_path, json.dumps(payload))
+                if glb_path.exists():
+                    glb_path.unlink()
         return payload
 
     def development_mesh(self, scenario_id: str) -> dict[str, Any]:

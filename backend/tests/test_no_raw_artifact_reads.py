@@ -70,7 +70,21 @@ READ_AUTHORITY = "artifact_reader.py"
 #: keyed by the module's path RELATIVE to ``src/minegen`` — a bare basename
 #: would grant ``regression/warped_vein.py``'s exemption to
 #: ``world/warped_vein.py`` as well once the scan covers the whole package
+#:
+#: AC-01F.2: ``core/publication.py`` is the WRITE authority (D1/D2). Its two
+#: ``open`` calls are the only ones in the package that are not reads at all:
+#: ``os.open(temp, O_WRONLY|O_CREAT|O_EXCL)`` in ``_open_temp`` creates the
+#: temp SIBLING a publication is written into, and ``os.open(dir, O_RDONLY)``
+#: in ``_fsync_directory`` opens the DIRECTORY to fsync the rename — no
+#: artifact file is ever read there, and the detector's vocabulary
+#: (``READ_CALLS``) cannot tell a write-mode ``open`` from a read-mode one.
+#: The entry names those two functions one at a time, exactly like the
+#: ``regression/`` entries, so any other read added to that module still
+#: fails this proof. ``tests/test_publication.py`` holds the matching
+#: WRITE-side proof: no raw ``write_text`` / ``write_bytes`` / ``np.savez*``
+#: / write-mode ``open`` exists outside this module.
 ALLOWED_FILE_READS: dict[str, tuple[str, ...]] = {
+    "core/publication.py": ("_open_temp", "_fsync_directory"),
     "services/scenario_service.py": ("get",),
     "regression/golden.py": ("write_report", "load_report"),
     "regression/layout_v2.py": ("write_report", "load_report"),

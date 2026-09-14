@@ -667,6 +667,27 @@ nothing is written. At HEAD `12d7725` a scenario PUT landing inside
 `generate_world` left `arrays.npz` and the cache holding a world built for the
 REPLACED document while `GET …/world` answered **200** (Stage A §7.5 case A).
 
+**Every persisted file is published atomically (AC-01F.2).** `scenario.json`,
+`arrays.npz` and every file under `derived/` are written to a temp sibling,
+fsynced and installed with `os.replace`
+(`backend/src/minegen/core/publication.py`), so a torn file can no longer be
+produced by this process — a reader, in this process or another, observes the
+whole previous file or the whole new one. A torn **`scenario.json` or
+`arrays.npz`** left by an EXTERNAL writer is still an unmapped **500**
+(`json.JSONDecodeError` / `zipfile.BadZipFile` escapes the read), unchanged; a
+torn REGISTERED artifact under `derived/` left by an external writer is the
+typed 409 `ARTIFACT_MALFORMED` the read authority already answers (AC-01F). A
+PAIR is two atomic publications, not one atomic pair: the write ORDER is fixed
+(on SUCCESS the GLB before its report, `level_accesses.json` before
+`layout_v2_selected.json`, `arrays.npz` before `derived/world.json`) so a crash
+between them leaves the half the read authority classifies most conservatively
+— an ABSENT artifact or the typed forward orphan, never a `SUCCESS` report
+whose GLB is missing or a selection whose level accesses are gone. The FAILED
+mesh path is the deliberate exception: the FAILED report is published FIRST and
+the stale GLB unlinked after it, so a failure there leaves the previous SUCCESS
+pair whole (200 on the report, the GLB and the scene) instead of a SUCCESS
+report with no GLB.
+
 **The document read is itself bound (C4), so the migration is not a race.**
 `_bound_scenario` reads `scenario.json` as stat → `ScenarioStore.get` →
 re-stat and REPEATS while the revision moves (at most `SNAPSHOT_ATTEMPTS` = 3
