@@ -341,11 +341,11 @@ The scenario / world half of the same guarantee:
 * `PUT /scenarios/{id}` is ONE locked section (`WorldService.replace_scenario`
   = document write + `invalidate`), so external readers see one mutation
   boundary instead of a window in which the document is new and the world old
-  — for reads that SUCCEED. `ScenarioStore._write` is still a non-atomic
-  truncate+write and `ScenarioStore.get` parses the document unlocked, so a
-  reader landing INSIDE the document write sees neither side and throws before
-  any revision re-check can fire: a torn `scenario.json` is an unmapped 500,
-  exactly as a torn `arrays.npz` is, and both are the open F06-B residual.
+  — for reads that SUCCEED. AC-01F.2 closed the "SUCCEED" qualification for
+  this process: `ScenarioStore._write` publishes `scenario.json` atomically
+  (below), so a reader landing inside the document write now sees the whole
+  previous document or the whole new one, and a torn `scenario.json` can no
+  longer be produced here.
 * Retry exhaustion is its own code: 409 `READ_SNAPSHOT_CHANGED` (a READ whose
   snapshot kept moving — nothing was built and nothing discarded), never
   `JOB_INPUTS_CHANGED` (a GENERATION whose inputs moved).
@@ -366,13 +366,79 @@ was nothing to delete, the read is simply repeated and succeeds, which is why
 `POST …/world/generate` on a schemaVersion-1 document is a 200.
 Crash residue (a torn or half-published file left by a killed
 process) becomes a typed refusal rather than a silent projection for every
-registered derived artifact; a torn or half-written `arrays.npz` is the
-explicit, still-open F06-B residual (`np.load` raises `zipfile.BadZipFile`,
-an unmapped 500, exactly as at HEAD 12d7725), and `load_bound`'s
-"replaced → `READ_SNAPSHOT_CHANGED`" outcome presumes a COMPLETE replacement.
-Preventing the residue —
-publication atomicity (temp + `fsync` + `os.replace`), finding F06-B — is
-**AC-01F.2**, a separate PR that changes write sites only.
+registered derived artifact, and `load_bound`'s "replaced →
+`READ_SNAPSHOT_CHANGED`" outcome presumes a COMPLETE replacement — which
+AC-01F.2 makes the only replacement this process performs.
+
+**Publication is atomic per file (AC-01F.2, finding F06-B).** Every persisted
+file — `scenario.json`, `arrays.npz` and every file under `derived/` — is
+written through ONE leaf helper, `backend/src/minegen/core/publication.py`
+(`publish_bytes` / `publish_text` / `publish_npz`): the bytes go to a temp
+sibling `.<name>.<8 hex>.tmp` in the target's own directory, the handle is
+`flush()`ed and `os.fsync`ed, `os.replace` installs it (atomic on POSIX), the
+directory is fsynced best-effort, and any failure before the replace removes
+the temp and leaves the previous file — or its absence — untouched. The 22
+in-place `write_text` / `write_bytes` / `np.savez_compressed` sites are gone
+(`tests/test_publication.py` is the static proof), and a reader in ANOTHER
+process now observes whole files: measured at 450f9df, a subprocess reading
+`derived/stopes.json` under a real publish loop saw 7,679 of 164,384 reads
+torn (4.67 %) and `arrays.npz` was unreadable for 357,563 of 357,563 reads
+(100 %); after the change both are 0. Those two rates are the Stage A
+measurement protocol — an ARTIFICIAL back-to-back publish loop on one
+filesystem, with a reader doing nothing but re-read — so they size the window,
+they are not production probabilities.
+
+Publication ATOMICITY is per file; GENERATION COHERENCE is what the AC-01F.2
+correction adds on top of it. `derived/world.json` is the world COMMIT RECORD —
+`{"publication": {scenarioId, scenarioRevision, arraysRevision}, "stats": …}`,
+published LAST, after `arrays.npz`, so its publication is the commit point of a
+generation — and every world read refuses a world whose record does not name the
+two live files (409 `WORLD_PUBLICATION_STALE`, one definition,
+`ArtifactReader.require_world`, at five enforcement points). That closes the
+state a process death between `ScenarioStore.replace` and
+`WorldService.invalidate` used to leave PERMANENTLY: a NEW `scenario.json`
+beside an OLD `arrays.npz`, which a fresh process had no evidence to distinguish
+from a coherent pair and served as 200. Both recorded revisions are the rule-60
+stat identity the PUBLISHER installed — `publish_bytes` / `publish_text` /
+`publish_npz` return it from the temp file's own `os.fstat` before the rename —
+never a stat of the path afterwards, which across processes can name another
+generation's file. The same mechanism commits each mesh pair: `derived/<mesh>.commit.json` names
+the report and GLB identities its own publication installed, so every surface
+detects a GLB/report generation mixture — which the content hash cannot see at
+all, because a deterministic rebuild installs identical bytes — without hashing
+anything and without adding a field to the served report or the scene.
+
+Two costs are stated rather than discovered. The record is validated in
+`load_bound` AFTER the arrays load, so a Phase-17 `arrays.npz` keeps its
+stricter `WORLD_ARTIFACT_INCOMPATIBLE` (A1); the price is that while a world is
+uncommitted EVERY request pays one full `np.load` of `arrays.npz` before the
+409 — measured 0.62 s for a 10.2 MB WARPED-301 artifact — and it keeps paying
+it until the world is regenerated, because a refusal is never cached. And the
+record observation is the first thing that makes `GET …/world` and
+`GET …/world/slice` touch `derived/` at all: one extra stat plus a small read
+per snapshot, and an unstattable record is treated as ABSENT so those two
+routes keep the robustness they had before.
+
+What is NOT claimed: a PAIR is two atomic publications, not one atomic pair —
+the order is fixed (on SUCCESS the GLB before its report, `level_accesses.json`
+before `layout_v2_selected.json`, `arrays.npz` before `derived/world.json`) so
+a crash between them leaves the half the read authority classifies most
+conservatively, and the read-side checks stay the durable answer. The FAILED
+mesh path is the deliberate exception to the GLB order: there the FAILED report
+is published FIRST and only then is the stale GLB unlinked, because unlinking
+first would open a window in which a failing report publish leaves the previous
+SUCCESS report beside no GLB — exactly the `ARTIFACT_MALFORMED` half the
+SUCCESS order exists to avoid. Cross-process readers still take no lock; they
+now see whole files rather than a coherent sequence of them. A crash before the
+replace can leave a `.tmp` sibling, which no reader and no cascade looks at;
+`clear_derived` removes one under `derived/`, while a temp beside
+`scenario.json` / `arrays.npz` in the scenario root is removed only by
+`ScenarioStore.delete` — no startup sweep exists. The publication also installs
+a NEW inode, so mode, ownership and symlink identity of an existing target are
+not preserved (nothing in MineGen sets any of them). A torn `scenario.json` or
+`arrays.npz` written by an EXTERNAL process is still an unmapped 500; a torn
+registered artifact under `derived/` is the typed 409 `ARTIFACT_MALFORMED`
+(AC-01F).
 
 ## Non-goals (v0.1)
 

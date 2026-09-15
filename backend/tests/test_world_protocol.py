@@ -62,6 +62,7 @@ from fastapi.testclient import TestClient
 
 from minegen.core.models import ScenarioCreate
 from minegen.core.revision import file_revision
+from minegen.core.world_record import WORLD_RECORD_FILE, build_world_record
 from minegen.services.artifact_errors import ReadSnapshotChangedError, StaleInputsError
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import SNAPSHOT_ATTEMPTS, WorldService
@@ -351,12 +352,45 @@ def test_a_warm_cache_without_arrays_is_no_longer_a_world(
 # --------------------------------------------------------------------------- #
 
 
+def _rebind_world_record(store: ScenarioStore, scenario_id: str) -> None:
+    """Re-point the world COMMIT RECORD at the CURRENT ``scenario.json``.
+
+    AC-01F.2 correction: the record binds the world to the document's rule-60
+    revision, so a hook that moves ONLY the document's mtime would leave the
+    world uncommitted — a state production cannot produce (a scenario PUT runs
+    ``invalidate`` under the SAME lock, and the A10 migration clears
+    ``derived/``), and one the reader is now required to refuse. Moving the
+    document AND re-binding the record is the faithful simulation of "the
+    inputs moved under the reader", which is what these tests are about; the
+    retry semantics they assert are untouched."""
+    record_path = store.derived_dir(scenario_id) / WORLD_RECORD_FILE
+    record = json.loads(record_path.read_text())
+    scenario_revision = file_revision(store.scenario_path(scenario_id))
+    arrays_revision = file_revision(store.arrays_path(scenario_id))
+    assert scenario_revision is not None and arrays_revision is not None
+    record_path.write_text(
+        json.dumps(
+            build_world_record(
+                scenario_id=scenario_id,
+                scenario_revision=scenario_revision,
+                arrays_revision=arrays_revision,
+                stats=record["stats"],
+            ),
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 class _BumpAfterLoadBound:
     """Move ``scenario.json``'s mtime AFTER each of the first ``misses``
     bindings, so the snapshot's lock-held re-stat cannot agree with it. The
     BYTES are never touched — only ``st_mtime_ns``, which is what
     ``file_revision`` (rule 60) hashes — so a read that does get through
-    assembles exactly the scene it would have assembled anyway."""
+    assembles exactly the scene it would have assembled anyway. The world
+    COMMIT RECORD is re-bound with the bump (see :func:`_rebind_world_record`)
+    so the hook keeps simulating a MOVING input rather than an uncommitted
+    world."""
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch, store: ScenarioStore, misses: int) -> None:
         self.calls = 0
@@ -369,6 +403,7 @@ class _BumpAfterLoadBound:
                 path = store.scenario_path(scenario_id)
                 st = os.stat(path)
                 os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+                _rebind_world_record(store, scenario_id)
             return result
 
         monkeypatch.setattr(WorldService, "load_bound", patched)

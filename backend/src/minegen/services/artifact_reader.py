@@ -86,8 +86,10 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_GLB,
     RampSource,
 )
+from minegen.core.mesh_record import mesh_commit_name, mesh_commit_rejection
 from minegen.core.models import ApiModel
 from minegen.core.revision import file_revision
+from minegen.core.world_record import WORLD_RECORD_FILE, record_rejection
 from minegen.infrastructure.models import CommunicationPayload, SensorPayload
 from minegen.layout.certification import (
     CandidateCertification,
@@ -121,6 +123,7 @@ from minegen.services.artifact_errors import (
     TimelineNotGeneratedError,
     TunnelNotGeneratedError,
     WorldNotGeneratedError,
+    WorldPublicationStaleError,
 )
 from minegen.services.scenario_service import ScenarioNotFoundError, ScenarioStore
 from minegen.shafts.models import ShaftsPayload
@@ -172,6 +175,12 @@ class ArtifactSnapshot:
     scenario_revision: str | None
     #: ``file_revision(arrays.npz)`` — ``None`` ⇒ no generated world
     arrays_revision: str | None
+    #: the WORLD COMMIT RECORD file (``derived/world.json``), observed with its
+    #: BYTES beside the two revisions above and under the SAME lock hold. It is
+    #: a THIRD special file, never an entry of ``files``: ``world.json`` is
+    #: unregistered (no fingerprint, no cascade, not a ``READ_SPECS`` row) and
+    #: only :meth:`ArtifactReader.require_world` interprets it
+    world_record: FileObservation
     files: Mapping[str, FileObservation]
 
     def observation(self, file_name: str) -> FileObservation | None:
@@ -239,6 +248,11 @@ class ReadSpec:
     agreement_inputs: tuple[str, ...] = ()
     #: the documented value an ABSENT artifact resolves to (rule 150)
     absent_default: str | None = None
+    #: the INTERNAL publication sidecar this artifact commits itself with
+    #: (AC-01F.2 correction B3, the two mesh sweeps). UNREGISTERED — it is
+    #: publication provenance, not a dependency (A12) — so it is observed
+    #: because this table declares it, never because the registry lists it
+    commit_record: str | None = None
 
 
 def _is_dict_list(value: Any) -> bool:
@@ -309,6 +323,54 @@ def _shape_development_mesh_report(data: dict[str, Any]) -> str | None:
     if not isinstance(sources, dict) or not isinstance(sources.get("rampSource"), str):
         return "'sources.rampSource' is missing"
     return None
+
+
+def _mesh_commit_check(report_name: str, glb_name: str, commit_name: str) -> Check:
+    """The report and its GLB belong to the SAME publication generation
+    (AC-01F.2 correction B3).
+
+    ``artifactRevision`` is a content hash and can only be verified where the
+    snapshot captured the GLB BYTES — the binary route alone. Worse, a mesh
+    rebuild is DETERMINISTIC, so a republication that dies between the GLB and
+    its report installs IDENTICAL bytes and the content hash AGREES: it cannot
+    see that mixture on any route. The discriminator is the publication
+    identity, and it lives in an INTERNAL sidecar (``core/mesh_record``) so the
+    report and the scene keep their public success shape unchanged.
+
+    The sidecar is published LAST, so a crash anywhere in the pair leaves it
+    naming the PREVIOUS generation and every surface refuses typed. Registered
+    AFTER :func:`_glb_check`, so where the bytes ARE in hand a hash mismatch
+    keeps its more specific ``ARTIFACT_MALFORMED`` (A1) and every pinned
+    binary-route expectation is unchanged. ``ARTIFACT_STALE`` is used because
+    no mesh-specific stale code exists."""
+
+    def check(
+        data: dict[str, Any], snapshot: ArtifactSnapshot
+    ) -> tuple[ReadState, Exception] | None:
+        report = snapshot.observation(report_name)
+        sidecar = snapshot.observation(commit_name)
+        if report is None or sidecar is None:
+            return None  # the caller did not ask for the unit
+        glb = snapshot.observation(glb_name)
+        record: object = None
+        if sidecar.present and sidecar.data is not None:
+            try:
+                record = json.loads(sidecar.data)
+            except (ValueError, RecursionError):
+                record = None
+        rejection = mesh_commit_rejection(
+            record,
+            report_name=report_name,
+            report_revision=report.revision or "",
+            glb_name=glb_name,
+            glb_revision=(glb.revision if glb is not None and glb.present else None),
+            expects_glb=data.get("status") == "SUCCESS",
+        )
+        if rejection is None:
+            return None
+        return (STATE_STALE, ArtifactStaleError(report_name, rejection))
+
+    return check
 
 
 def _glb_check(report_name: str, glb_name: str) -> Check:
@@ -825,7 +887,13 @@ READ_SPECS: Mapping[str, ReadSpec] = {
         TUNNEL_MESH_ARTIFACT,
         absent_error=TunnelNotGeneratedError,
         shape=_shape_mesh_report,
-        checks=(_glb_check(TUNNEL_MESH_ARTIFACT, TUNNEL_MESH_GLB),),
+        checks=(
+            _glb_check(TUNNEL_MESH_ARTIFACT, TUNNEL_MESH_GLB),
+            _mesh_commit_check(
+                TUNNEL_MESH_ARTIFACT, TUNNEL_MESH_GLB, mesh_commit_name(TUNNEL_MESH_ARTIFACT)
+            ),
+        ),
+        commit_record=mesh_commit_name(TUNNEL_MESH_ARTIFACT),
     ),
     DEVELOPMENT_MESH_ARTIFACT: _spec(
         DEVELOPMENT_MESH_ARTIFACT,
@@ -833,8 +901,14 @@ READ_SPECS: Mapping[str, ReadSpec] = {
         shape=_shape_development_mesh_report,
         checks=(
             _glb_check(DEVELOPMENT_MESH_ARTIFACT, DEVELOPMENT_MESH_GLB),
+            _mesh_commit_check(
+                DEVELOPMENT_MESH_ARTIFACT,
+                DEVELOPMENT_MESH_GLB,
+                mesh_commit_name(DEVELOPMENT_MESH_ARTIFACT),
+            ),
             _development_mesh_source_check,
         ),
+        commit_record=mesh_commit_name(DEVELOPMENT_MESH_ARTIFACT),
         provenance_inputs=(RAMP_SOURCE_FILE,),
     ),
     # -- typed payloads ------------------------------------------------------ #
@@ -936,6 +1010,7 @@ class ArtifactReader:
         with self.store.lock(scenario_id):
             scenario_revision = file_revision(self.store.scenario_path(scenario_id))
             arrays_revision = file_revision(self.store.arrays_path(scenario_id))
+            world_record = self._observe_world_record(derived)
             for file_name in requested:
                 want_bytes = file_name.endswith(".json") or glb_bytes
                 observations[file_name] = self._observe(derived / file_name, want_bytes)
@@ -947,8 +1022,22 @@ class ArtifactReader:
             scenario_id=scenario_id,
             scenario_revision=scenario_revision,
             arrays_revision=arrays_revision,
+            world_record=world_record,
             files=observations,
         )
+
+    @classmethod
+    def _observe_world_record(cls, derived: Path) -> FileObservation:
+        """The WORLD COMMIT RECORD observation. An OSError from the STAT — a
+        ``derived/`` that is not a directory, a permission or ELOOP failure —
+        is an absent record (a typed 409), never an escaping 500: this guard
+        is the first thing that made ``GET …/world`` and ``GET …/world/slice``
+        touch ``derived/`` at all, and they must keep the robustness they had
+        before it."""
+        try:
+            return cls._observe(derived / WORLD_RECORD_FILE, True)
+        except OSError:
+            return FileObservation(WORLD_RECORD_FILE, False, None, None)
 
     @staticmethod
     def _observe(path: Path, want_bytes: bool) -> FileObservation:
@@ -977,6 +1066,11 @@ class ArtifactReader:
             for file in artifact.files:
                 if file.name not in files:
                     files.append(file.name)
+            # the INTERNAL publication sidecar this READ_SPEC declares — it is
+            # unregistered, so the registry expansion above cannot yield it
+            sidecar = READ_SPECS[artifact.name].commit_record
+            if sidecar is not None and sidecar not in files:
+                files.append(sidecar)
         return tuple(files)
 
     # -- read (pure over the snapshot) -------------------------------------- #
@@ -1065,17 +1159,68 @@ class ArtifactReader:
             raise read.error
         return read
 
+    # -- the world guard (ONE definition, four enforcement points) ---------- #
+
+    @staticmethod
+    def require_world(snapshot: ArtifactSnapshot) -> None:
+        """The world guard: the scenario exists, a world was generated, and
+        that world is the COMMITTED generation of this document (AC-01F.2
+        correction B1). A1 order — ``SCENARIO_NOT_FOUND`` →
+        ``WORLD_NOT_GENERATED`` → ``WORLD_PUBLICATION_STALE``. Derived
+        artifacts are never trusted without a VALID world.
+
+        A PURE function of the snapshot: the record's bytes were captured
+        under the store lock beside the two revisions it is compared against,
+        so the three observations are one instant, and nothing is parsed,
+        repaired or re-published on a read path. It carries the whole ladder
+        rather than asserting a caller's order, so a snapshot with no scenario
+        or no world answers the SAME code here as anywhere else (an ``assert``
+        would also be stripped by ``python -O``, and the stripped code would
+        answer this 409 for a scenario that does not exist).
+
+        The FIVE enforcement points: :meth:`_read_bound` (every direct derived
+        read), ``WorldService.load_bound`` (``/world``, ``/world/slice``, the
+        scene and every builder that loads the world),
+        ``DesignService._ramp_snapshot`` (``/design/ramp``,
+        ``/design/ramp-source``), ``DesignService.set_ramp_source`` and the
+        ``select_layout_candidate`` idempotency probe."""
+        if snapshot.scenario_revision is None:
+            raise ScenarioNotFoundError(snapshot.scenario_id)
+        if snapshot.arrays_revision is None:
+            # derived artifacts are never trusted without a world (A1)
+            raise WorldNotGeneratedError(snapshot.scenario_id)
+        observation = snapshot.world_record
+        record: object = None
+        detail: str | None = None
+        if observation.present and observation.data is None:
+            # present but UNREADABLE — ``_observe`` distinguishes that from
+            # ABSENT deliberately, so the message must not say "missing"
+            detail = f"{WORLD_RECORD_FILE} is present but its bytes could not be read"
+        elif observation.data is not None:
+            try:
+                record = json.loads(observation.data)
+            except (ValueError, RecursionError):
+                # RecursionError, not ValueError, is what a deeply nested
+                # document raises: without it a degenerate record escapes as
+                # an unmapped 500 on every route this guard protects
+                record = None
+        if detail is None:
+            detail = record_rejection(
+                record,
+                scenario_id=snapshot.scenario_id,
+                scenario_revision=snapshot.scenario_revision,
+                arrays_revision=snapshot.arrays_revision,
+            )
+        if detail is not None:
+            raise WorldPublicationStaleError(snapshot.scenario_id, detail)
+
     def _read_bound(
         self, scenario_id: str, name: str, *, glb_bytes: bool = False
     ) -> tuple[ArtifactRead, ArtifactSnapshot]:
         read_spec = READ_SPECS[name]
         names = (name, *read_spec.provenance_inputs, *read_spec.agreement_inputs)
         snapshot = self.snapshot(scenario_id, names, glb_bytes=glb_bytes)
-        if snapshot.scenario_revision is None:
-            raise ScenarioNotFoundError(scenario_id)
-        if snapshot.arrays_revision is None:
-            # derived artifacts are never trusted without a world (A1)
-            raise WorldNotGeneratedError(scenario_id)
+        self.require_world(snapshot)
         return self.read(snapshot, name), snapshot
 
     @staticmethod

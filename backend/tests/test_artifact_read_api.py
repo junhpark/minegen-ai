@@ -65,6 +65,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_ARTIFACT,
     TUNNEL_MESH_GLB,
 )
+from minegen.core.mesh_record import mesh_commit_name
 from minegen.layout.certification import ClearancePolicyReconstructionError
 from minegen.main import create_app
 from minegen.services.artifact_errors import (
@@ -889,7 +890,14 @@ def test_a_malformed_ramp_source_is_refused_by_every_read(layout_v2: Stack) -> N
 #: ramp, while the LAYOUT_V2 closure stops at ``decline_smoothed.json``; the
 #: literal file set below is what survives the union.
 AFTER_UNION_CASCADE: set[str] = {
-    "world.json",  # unregistered stats snapshot, never in a cascade
+    "world.json",  # unregistered world COMMIT RECORD, never in a cascade
+    # the two INTERNAL mesh publication sidecars (AC-01F.2 correction B3) are
+    # unregistered for the same reason — publication provenance is not a
+    # dependency (A12) — so no cascade deletes them. A sidecar left beside a
+    # cascade-deleted report is INERT: the artifact is then ABSENT, the read
+    # never reaches its checks, and the next publication overwrites it.
+    mesh_commit_name(TUNNEL_MESH_ARTIFACT),
+    mesh_commit_name(DEVELOPMENT_MESH_ARTIFACT),
     TARGETS_ARTIFACT,  # the artifact the writer just published
     LAYOUT_V2_ARTIFACT,
     LAYOUT_V2_SELECTED_ARTIFACT,
@@ -985,6 +993,8 @@ def test_ramp_source_expected_absence_stays_available_false(bare: Stack) -> None
 #: (Stage A §1.3 / §4.3), which is exactly why the state below is reachable.
 AFTER_CATALOGUE_REGENERATION: set[str] = {
     "world.json",
+    mesh_commit_name(TUNNEL_MESH_ARTIFACT),
+    mesh_commit_name(DEVELOPMENT_MESH_ARTIFACT),
     LAYOUT_V2_ARTIFACT,
     RAMP_SOURCE_FILE,
 }
@@ -1250,10 +1260,16 @@ def test_a_world_that_moves_during_target_generation_fails_the_write_closed(
         assert answer.get("value") == (409, "JOB_INPUTS_CHANGED"), answer
         assert targets_path.read_bytes() == before  # nothing was persisted
 
-        # and the normal path, with nothing moving, still answers 200
+        # and the normal path, with nothing moving, still answers 200.
+        # "Nothing moving" is what the restore establishes: the bumped mtime is
+        # a rule-60 MUTATION of arrays.npz, and since the AC-01F.2 correction
+        # the world commit record refuses a world whose arrays no longer carry
+        # the revision the generation published (409 WORLD_PUBLICATION_STALE) —
+        # so the input is put back to its recorded identity BEFORE the control
+        # assertion instead of after it
+        os.utime(arrays, ns=(arrays_stat.st_atime_ns, arrays_stat.st_mtime_ns))
         monkeypatch.setattr(design_service_module, "generate_access_targets", original)
         assert legacy.post("/design/targets") == (200, None)
-    os.utime(arrays, ns=(arrays_stat.st_atime_ns, arrays_stat.st_mtime_ns))
 
 
 def test_the_valid_stacks_still_answer_200_everywhere(legacy: Stack, layout_v2: Stack) -> None:

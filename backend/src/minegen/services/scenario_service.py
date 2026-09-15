@@ -18,6 +18,7 @@ import threading
 from pathlib import Path
 
 from minegen.core.models import SCENARIO_SCHEMA_VERSION, Scenario, ScenarioCreate, ScenarioSummary
+from minegen.core.publication import publish_text
 from minegen.services.scenario_migration import migrate_scenario_document
 
 
@@ -127,6 +128,4 @@ class ScenarioStore:
         d.mkdir(parents=True, exist_ok=True)
         self.derived_dir(scenario.id).mkdir(exist_ok=True)
         data = scenario.model_dump(mode="json", by_alias=True)
-        self.scenario_path(scenario.id).write_text(
-            json.dumps(data, indent=2, sort_keys=True), encoding="utf-8"
-        )
+        publish_text(self.scenario_path(scenario.id), json.dumps(data, indent=2, sort_keys=True))

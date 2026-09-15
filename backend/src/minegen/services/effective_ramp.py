@@ -39,6 +39,7 @@ from minegen.core.artifacts import (
     RAMP_SOURCE_FILE,
     RampSource,
 )
+from minegen.core.publication import publish_text
 from minegen.core.revision import file_revision
 from minegen.services.artifact_reader import ArtifactReader, ArtifactSnapshot
 
@@ -96,9 +97,7 @@ def read_ramp_source(reader: ArtifactReader, scenario_id: str) -> RampSource:
 
 def write_ramp_source(derived_dir: Path, source: RampSource) -> None:
     derived_dir.mkdir(parents=True, exist_ok=True)
-    (derived_dir / RAMP_SOURCE_FILE).write_text(
-        json.dumps({"activeSource": source}), encoding="utf-8"
-    )
+    publish_text(derived_dir / RAMP_SOURCE_FILE, json.dumps({"activeSource": source}))
 
 
 def legacy_adapter(smoothed_payload: dict[str, Any], revision: str | None) -> dict[str, Any]:

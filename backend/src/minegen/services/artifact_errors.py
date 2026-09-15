@@ -65,6 +65,7 @@ __all__ = [
     "TimelineNotGeneratedError",
     "TunnelNotGeneratedError",
     "WorldNotGeneratedError",
+    "WorldPublicationStaleError",
     "read_state_code",
 ]
 
@@ -231,6 +232,36 @@ class CapabilityGraphStaleError(RuntimeError):
             f"the capability graph of scenario '{scenario_id}' belongs to a previous "
             "network revision; POST …/design/capability-graph again"
         )
+
+
+class WorldPublicationStaleError(RuntimeError):
+    """``arrays.npz`` exists, but ``derived/world.json`` — the world COMMIT
+    RECORD (AC-01F.2 correction, B1) — does not commit THIS scenario document
+    and THIS ``arrays.npz``.
+
+    It is the *_STALE family in the exact sense of the two above: a published
+    product whose own recorded inputs no longer match the live ones. Reachable
+    states: a writer died between the document publication and the derived
+    invalidation (NEW ``scenario.json`` beside an OLD world, which a fresh
+    process previously served as 200), a generation died after publishing
+    ``arrays.npz`` and before its record, an input was replaced afterwards, or
+    a CROSS-PROCESS reader caught a live writer between the two publications.
+
+    The message therefore does NOT claim that a retry never succeeds — in that
+    last case it does — and it is deliberately NOT folded into the scene's
+    bounded ``READ_SNAPSHOT_CHANGED`` retry, which exists for inputs that moved
+    under ONE reader. The remedy named to the client is the regeneration."""
+
+    code: ClassVar[str] = "WORLD_PUBLICATION_STALE"
+    http_status: ClassVar[int] = 409
+
+    def __init__(self, scenario_id: str, detail: str) -> None:
+        super().__init__(
+            f"the world of scenario '{scenario_id}' is not a committed generation of the "
+            f"current document ({detail}); POST …/world/generate"
+        )
+        self.scenario_id = scenario_id
+        self.detail = detail
 
 
 class ShaftsStaleError(RuntimeError):

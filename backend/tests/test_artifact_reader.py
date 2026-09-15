@@ -46,6 +46,8 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_ARTIFACT,
     TUNNEL_MESH_GLB,
 )
+from minegen.core.mesh_record import build_mesh_commit, mesh_commit_name
+from minegen.core.world_record import WORLD_RECORD_FILE, build_world_record
 from minegen.layout.certification import ClearancePolicyReconstructionError
 from minegen.services.artifact_errors import (
     ArtifactMalformedError,
@@ -54,6 +56,7 @@ from minegen.services.artifact_errors import (
     LayoutSelectionStaleError,
     ShaftsStaleError,
     WorldNotGeneratedError,
+    WorldPublicationStaleError,
 )
 from minegen.services.artifact_reader import READ_SPECS, ArtifactReader
 from minegen.services.scenario_service import ScenarioNotFoundError, ScenarioStore
@@ -160,6 +163,29 @@ def write_json(path: Path, document: Any) -> None:
     path.write_text(json.dumps(document), encoding="utf-8")
 
 
+def write_world_record(store: ScenarioStore, scenario_id: str = SID) -> None:
+    """Publish the WORLD COMMIT RECORD for the CURRENT ``scenario.json`` and
+    ``arrays.npz`` of this hand-written store (AC-01F.2 correction B1).
+
+    A hand-built store must be a COMMITTED store: since the correction, a
+    world is trusted only while ``derived/world.json`` names the two live
+    revisions, so a fixture that writes the two files without the record
+    describes a state production can no longer produce. Every test that
+    rewrites ``arrays.npz`` or the document re-publishes the record — except
+    where the STALE record is the subject."""
+    derived = store.derived_dir(scenario_id)
+    derived.mkdir(parents=True, exist_ok=True)
+    write_json(
+        derived / WORLD_RECORD_FILE,
+        build_world_record(
+            scenario_id=scenario_id,
+            scenario_revision=expected_revision(store.scenario_path(scenario_id)),
+            arrays_revision=expected_revision(store.arrays_path(scenario_id)),
+            stats={},
+        ),
+    )
+
+
 @pytest.fixture
 def stack(tmp_path: Path) -> tuple[ScenarioStore, ArtifactReader, Path]:
     """A complete, VALID derived set — every registered artifact present."""
@@ -169,6 +195,7 @@ def stack(tmp_path: Path) -> tuple[ScenarioStore, ArtifactReader, Path]:
     store.arrays_path(SID).write_bytes(b"npz")
     derived = store.derived_dir(SID)
     derived.mkdir(parents=True, exist_ok=True)
+    write_world_record(store)
 
     write_json(derived / TARGETS_ARTIFACT, {"levels": []})
     write_json(derived / DECLINE_ARTIFACT, {"levels": []})
@@ -193,6 +220,20 @@ def stack(tmp_path: Path) -> tuple[ScenarioStore, ArtifactReader, Path]:
             "sources": {"levelAccesses": True, "levels": True, "rampSource": "LEGACY"},
         },
     )
+    # AC-01F.2 correction B3: the publication identity of each pair lives in an
+    # INTERNAL sidecar, published LAST — never in the report, whose success
+    # shape is a public contract. A hand-written pair must be COMMITTED too.
+    for report_name, glb_name in (
+        (TUNNEL_MESH_ARTIFACT, TUNNEL_MESH_GLB),
+        (DEVELOPMENT_MESH_ARTIFACT, DEVELOPMENT_MESH_GLB),
+    ):
+        write_json(
+            derived / mesh_commit_name(report_name),
+            build_mesh_commit(
+                report_revision=expected_revision(derived / report_name),
+                glb_revision=expected_revision(derived / glb_name),
+            ),
+        )
     write_json(
         derived / LEVELS_ARTIFACT,
         _payload(developments=[], levels=[], metrics=None),
@@ -596,13 +637,20 @@ def test_two_file_units_fail_closed(
     read = reader.read(snapshot, DEVELOPMENT_MESH_ARTIFACT)
     assert read.state == "MALFORMED" and isinstance(read.error, ArtifactMalformedError)
     assert "artifactRevision" in str(read.error)
-    # stat-only snapshot: the truncated GLB is PRESENT, so only the hash check
-    # (which needs the bytes) can see it
+    # stat-only snapshot: the truncated GLB is PRESENT and its BYTES are not
+    # in hand, so the hash check cannot see it — until the AC-01F.2 correction
+    # that made this read VALID, which is finding B3 (a republication that died
+    # between the GLB and its report was 200 on the report route and in the
+    # scene). The publication identity in the INTERNAL sidecar is visible to a
+    # stat, so the read is now STALE. Two codes for one physical state, by
+    # design: the binary route holds the bytes and keeps the more specific
+    # MALFORMED (asserted above).
     stat_only = reader.read(
         reader.snapshot(SID, [DEVELOPMENT_MESH_ARTIFACT, RAMP_SOURCE_FILE]),
         DEVELOPMENT_MESH_ARTIFACT,
     )
-    assert stat_only.state == "VALID"
+    assert stat_only.state == "STALE" and isinstance(stat_only.error, ArtifactStaleError)
+    assert DEVELOPMENT_MESH_GLB in str(stat_only.error)
 
 
 # --------------------------------------------------------------------------- #
@@ -865,7 +913,7 @@ def test_the_co_published_pair_compares_its_own_identity_not_a_recomputation(
 # --------------------------------------------------------------------------- #
 
 
-def test_require_guard_order_is_scenario_world_absent_malformed(
+def test_require_guard_order_is_scenario_world_uncommitted_absent_malformed(
     stack: tuple[ScenarioStore, ArtifactReader, Path],
 ) -> None:
     store, reader, derived = stack
@@ -877,6 +925,13 @@ def test_require_guard_order_is_scenario_world_absent_malformed(
     with pytest.raises(WorldNotGeneratedError):
         reader.require(SID, LEVELS_ARTIFACT)  # world guard BEFORE the artifact
     store.arrays_path(SID).write_bytes(b"npz")
+    # AC-01F.2 correction: the re-created arrays.npz is a NEW rule-60 revision,
+    # so the record no longer commits it — the third rung, between the absent
+    # world and the artifact's own states, and still BEFORE the malformed
+    # artifact is even looked at
+    with pytest.raises(WorldPublicationStaleError):
+        reader.require(SID, LEVELS_ARTIFACT)
+    write_world_record(store)
     with pytest.raises(ArtifactMalformedError):
         reader.require(SID, LEVELS_ARTIFACT)
     (derived / LEVELS_ARTIFACT).unlink()
