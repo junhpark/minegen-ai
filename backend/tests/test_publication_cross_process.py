@@ -45,6 +45,7 @@ from pathlib import Path
 
 import pytest
 
+from minegen.core.revision import file_revision
 from tests.test_artifact_read_api import API, Stack, _make_stack
 
 #: this module is marked ``slow`` + ``e2e`` CENTRALLY (rule 181,
@@ -145,7 +146,9 @@ def test_a_cross_process_reader_never_sees_a_torn_arrays_npz(raced: Stack) -> No
     scenario, world = raced.worlds.load(raced.sid)
     stats = world.stats(scenario)
     path = raced.store.arrays_path(raced.sid)
-    counts = _race("npz", path, lambda: raced.worlds._save(scenario, world, stats))
+    revision = file_revision(raced.store.scenario_path(raced.sid))
+    assert revision is not None
+    counts = _race("npz", path, lambda: raced.worlds._save(scenario, world, stats, revision))
     assert counts["decode_errors"] == 0, counts
     assert counts["os_errors"] == 0, counts
     # pre-change this artifact was UNREADABLE for the whole run (487

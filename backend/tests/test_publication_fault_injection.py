@@ -47,6 +47,7 @@ from typing import Any
 import pytest
 
 from minegen.core.models import ScenarioCreate
+from minegen.core.revision import file_revision
 from tests.test_artifact_read_api import API, Stack, _build
 
 # --------------------------------------------------------------------------- #
@@ -177,7 +178,12 @@ def _world_save(stack: Stack) -> None:
     behaviour with nothing to say about publication atomicity and would leave
     no previous artifact set to compare against."""
     scenario, world = stack.worlds.load(stack.sid)
-    stack.worlds._save(scenario, world, world.stats(scenario))
+    # the 4th argument is the scenario revision ``generate`` verifies under the
+    # store lock before publishing (correction Q1.1); here the live one, since
+    # nothing is mutating the document
+    revision = file_revision(stack.store.scenario_path(stack.sid))
+    assert revision is not None
+    stack.worlds._save(scenario, world, world.stats(scenario), revision)
 
 
 def _scenario_write(stack: Stack) -> None:

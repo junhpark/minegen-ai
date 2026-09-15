@@ -9,7 +9,11 @@ mismatch, catalogue-point normalisation (contiguous float64 — a strided view
 changes bits in ``Frame.world_to_local``), ``layout.setup`` /
 ``layout.certification`` are leaves, ``run()`` uses the shared setup, and a
 COLD service chain (fresh WorldService + fresh DesignService, search re-run
-forbidden) produces byte-equal downstream artifacts.
+forbidden) produces byte-equal downstream artifacts under the declared
+wall-clock / stat-fingerprint mask (``WALL_CLOCK_KEYS``, ``*Seconds``) — which
+since the AC-01F.2 correction includes the mesh reports' ``glbRevision``, a new
+stat identity on every regeneration BY DESIGN. ``artifactRevision``, the sha256
+of the GLB bytes, stays compared, so a real difference in the mesh still fails.
 """
 
 from __future__ import annotations
@@ -55,12 +59,19 @@ from .conftest import small_scenario
 # helpers
 # --------------------------------------------------------------------------- #
 
-WALL_CLOCK_KEYS = {"sourceRevision"}
+#: ``glbRevision`` joins this set with the AC-01F.2 correction (B3): it is the
+#: rule-60 stat identity of the GLB the report was PUBLISHED with, so it is a
+#: new (size, mtime_ns) on every regeneration BY DESIGN — the same class as
+#: ``sourceRevision``, and the reason the mesh report is no longer byte-
+#: identical across two builds of the same scenario. The ENGINEERING output is
+#: what this test compares, and ``artifactRevision`` — the sha256 of the GLB
+#: bytes — is still compared, so a real difference in the mesh still fails it.
+WALL_CLOCK_KEYS = {"sourceRevision", "glbRevision"}
 
 
 def _strip(obj: Any) -> Any:
     """Drop wall-clock / stat-fingerprint keys (``sourceRevision``,
-    ``*Seconds``) recursively; everything else — including
+    ``glbRevision``, ``*Seconds``) recursively; everything else — including
     ``artifactRevision`` (sha256 of the GLB) — is compared."""
     if isinstance(obj, dict):
         return {

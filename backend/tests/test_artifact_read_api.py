@@ -1250,10 +1250,16 @@ def test_a_world_that_moves_during_target_generation_fails_the_write_closed(
         assert answer.get("value") == (409, "JOB_INPUTS_CHANGED"), answer
         assert targets_path.read_bytes() == before  # nothing was persisted
 
-        # and the normal path, with nothing moving, still answers 200
+        # and the normal path, with nothing moving, still answers 200.
+        # "Nothing moving" is what the restore establishes: the bumped mtime is
+        # a rule-60 MUTATION of arrays.npz, and since the AC-01F.2 correction
+        # the world commit record refuses a world whose arrays no longer carry
+        # the revision the generation published (409 WORLD_PUBLICATION_STALE) —
+        # so the input is put back to its recorded identity BEFORE the control
+        # assertion instead of after it
+        os.utime(arrays, ns=(arrays_stat.st_atime_ns, arrays_stat.st_mtime_ns))
         monkeypatch.setattr(design_service_module, "generate_access_targets", original)
         assert legacy.post("/design/targets") == (200, None)
-    os.utime(arrays, ns=(arrays_stat.st_atime_ns, arrays_stat.st_mtime_ns))
 
 
 def test_the_valid_stacks_still_answer_200_everywhere(legacy: Stack, layout_v2: Stack) -> None:

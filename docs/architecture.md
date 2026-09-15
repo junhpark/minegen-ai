@@ -388,6 +388,36 @@ measurement protocol — an ARTIFICIAL back-to-back publish loop on one
 filesystem, with a reader doing nothing but re-read — so they size the window,
 they are not production probabilities.
 
+Publication ATOMICITY is per file; GENERATION COHERENCE is what the AC-01F.2
+correction adds on top of it. `derived/world.json` is the world COMMIT RECORD —
+`{"publication": {scenarioId, scenarioRevision, arraysRevision}, "stats": …}`,
+published LAST, after `arrays.npz`, so its publication is the commit point of a
+generation — and every world read refuses a world whose record does not name the
+two live files (409 `WORLD_PUBLICATION_STALE`, one definition,
+`ArtifactReader.require_world`, at five enforcement points). That closes the
+state a process death between `ScenarioStore.replace` and
+`WorldService.invalidate` used to leave PERMANENTLY: a NEW `scenario.json`
+beside an OLD `arrays.npz`, which a fresh process had no evidence to distinguish
+from a coherent pair and served as 200. Both recorded revisions are the rule-60
+stat identity the PUBLISHER installed — `publish_bytes` / `publish_text` /
+`publish_npz` return it from the temp file's own `os.fstat` before the rename —
+never a stat of the path afterwards, which across processes can name another
+generation's file. The same mechanism gives a SUCCESS mesh report its
+`glbRevision`, so the report route and the scene detect a GLB/report generation
+mixture that only the byte-hashing binary route could see before, without
+hashing anything.
+
+Two costs are stated rather than discovered. The record is validated in
+`load_bound` AFTER the arrays load, so a Phase-17 `arrays.npz` keeps its
+stricter `WORLD_ARTIFACT_INCOMPATIBLE` (A1); the price is that while a world is
+uncommitted EVERY request pays one full `np.load` of `arrays.npz` before the
+409 — measured 0.62 s for a 10.2 MB WARPED-301 artifact — and it keeps paying
+it until the world is regenerated, because a refusal is never cached. And the
+record observation is the first thing that makes `GET …/world` and
+`GET …/world/slice` touch `derived/` at all: one extra stat plus a small read
+per snapshot, and an unstattable record is treated as ABSENT so those two
+routes keep the robustness they had before.
+
 What is NOT claimed: a PAIR is two atomic publications, not one atomic pair —
 the order is fixed (on SUCCESS the GLB before its report, `level_accesses.json`
 before `layout_v2_selected.json`, `arrays.npz` before `derived/world.json`) so

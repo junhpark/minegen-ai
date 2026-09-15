@@ -31,8 +31,11 @@ state is always the one the reader classifies MOST conservatively:
         surfaced only two builders later as a 79.76 m weld error)
 
     arrays.npz + derived/world.json
-        arrays.npz FIRST — it is the file the world guard stats, while
-        derived/world.json is read by no consumer
+        arrays.npz FIRST and the world COMMIT RECORD LAST (AC-01F.2
+        correction): the record's publication IS the commit point, so a crash
+        between them leaves an UNCOMMITTED generation — typed 409
+        WORLD_PUBLICATION_STALE — where it used to leave a world that was
+        served 200 with nothing on disk attesting to it
 
 Each case is a FIRST generation of the pair (nothing of it on disk), with a
 hook that raises between the two publishes, and each asserts the state AND
@@ -56,6 +59,7 @@ that disagreement (``LAYOUT_V2_SELECTION_STALE``) rather than serving it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -64,6 +68,7 @@ from typing import Any
 
 import pytest
 
+from minegen.core import publication
 from minegen.core.artifacts import (
     DEVELOPMENT_MESH_ARTIFACT,
     DEVELOPMENT_MESH_GLB,
@@ -72,8 +77,17 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_ARTIFACT,
     TUNNEL_MESH_GLB,
 )
+from minegen.core.revision import file_revision
 from minegen.services import design_service, world_service
 from tests.test_artifact_read_api import API, Stack, _make_stack
+
+
+def expected_revision(path: Path) -> str:
+    """``file_revision`` of a file that must exist — the comparand the
+    report's ``glbRevision`` is checked against (AC-01F.2 correction B3)."""
+    revision = file_revision(path)
+    assert revision is not None, path.name
+    return revision
 
 
 class PublishHookError(Exception):
@@ -393,6 +407,94 @@ def test_a_crash_between_accesses_and_selection_leaves_a_forward_orphan(
     assert stack.scene().status_code == 200
 
 
+def test_a_crash_while_republishing_the_pair_leaves_two_halves_that_disagree(
+    before_selection: Stack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The REPUBLISH crash, required by the AC-01F.2 correction architecture
+    (Q5) and not covered by the first-publication case above: a selection of
+    candidate A exists, candidate B is selected, and the process dies between
+    ``level_accesses.json`` (B) and ``layout_v2_selected.json`` (still A).
+
+    Nothing new guards this — the AC-01F C5/C6 pair check already compares
+    ``candidateId``, ``sourceRevision``, ``layoutRevision`` and the recorded
+    certification BETWEEN the halves, in both directions. What this case adds
+    is the PROOF that the check covers a republication and not only a first
+    write: ``sourceRevision`` hashes the candidate id, so the surviving halves
+    cannot agree, and both reads plus the scene refuse typed. Re-selecting the
+    SAME candidate at the SAME catalogue revision is byte-identical in both
+    halves, so that mixture is indistinguishable from the committed state and
+    is harmless — the control at the end asserts exactly that."""
+    stack = before_selection
+    derived = stack.derived
+    catalogue = json.loads((derived / "layout_v2.json").read_text(encoding="utf-8"))
+    winner = catalogue["winnerId"]
+    assert stack.post("/design/layout-v2/select", json={"candidateId": winner})[0] == 200
+    other = next(
+        c["candidateId"]
+        for c in catalogue["candidates"]
+        if c["status"] == "FEASIBLE" and c["candidateId"] != winner
+    )
+    selection_a = json.loads((derived / LAYOUT_V2_SELECTED_ARTIFACT).read_text(encoding="utf-8"))
+    # activate while the pair is whole: a switch requires a VALID selection, so
+    # it cannot be done after the crash
+    assert (
+        stack.client.put(
+            f"{API}/{stack.sid}/design/ramp-source", json={"activeSource": "LAYOUT_V2"}
+        ).status_code
+        == 200
+    )
+
+    _raise_between(monkeypatch, design_service, "publish_text", LAYOUT_V2_SELECTED_ARTIFACT)
+    with pytest.raises(PublishHookError):
+        stack.design.select_layout_candidate(stack.sid, other)
+    monkeypatch.undo()
+
+    # the halves belong to different selections, and say so
+    accesses_b = json.loads((derived / LEVEL_ACCESSES_ARTIFACT).read_text(encoding="utf-8"))
+    selection_on_disk = json.loads(
+        (derived / LAYOUT_V2_SELECTED_ARTIFACT).read_text(encoding="utf-8")
+    )
+    assert selection_on_disk == selection_a, "the selection publication never happened"
+    assert accesses_b["candidateId"] == other != selection_a["candidateId"]
+    assert accesses_b["sourceRevision"] != selection_a["sourceRevision"]
+    assert [p.name for p in derived.rglob("*") if ".tmp" in p.name] == []
+
+    # every surface refuses, typed, in both directions of the pair — including
+    # the ramp, which resolves the selection only under an ACTIVE LAYOUT_V2
+    # source (Stage D D4-4: the architecture declared these surfaces and the
+    # first draft of this case asserted only the two reads and the scene)
+    assert stack.get("/design/layout-v2/selected") == (409, "LAYOUT_V2_SELECTION_STALE")
+    assert stack.get("/design/level-accesses") == (409, "LAYOUT_V2_SELECTION_STALE")
+    assert stack.get("/design/ramp") == (409, "LAYOUT_V2_SELECTION_STALE")
+    scene = stack.scene()
+    assert scene.status_code == 409
+    assert scene.json()["detail"]["code"] == "SCENE_ARTIFACT_INVALID"
+    # the explicit re-selection is the repair
+    assert stack.post("/design/layout-v2/select", json={"candidateId": other})[0] == 200
+    assert stack.get("/design/layout-v2/selected")[0] == 200
+    assert stack.get("/design/level-accesses")[0] == 200
+
+    # the control: re-selecting the SAME candidate republishes both halves
+    # byte-identically, so a crash in the same place is not observable
+    before = {
+        name: (derived / name).read_bytes()
+        for name in (LAYOUT_V2_SELECTED_ARTIFACT, LEVEL_ACCESSES_ARTIFACT)
+    }
+    assert stack.post("/design/layout-v2/select", json={"candidateId": other})[0] == 200
+    for name, data in before.items():
+        assert (derived / name).read_bytes() == data, name
+
+    # leave the MODULE fixture exactly as it was found: this is the only case
+    # that switches the ramp source, and under an active LAYOUT_V2 the
+    # ramp-source summary has a different shape, which a later case reads
+    assert (
+        stack.client.put(
+            f"{API}/{stack.sid}/design/ramp-source", json={"activeSource": "LEGACY"}
+        ).status_code
+        == 200
+    )
+
+
 def test_the_opposite_order_would_leave_a_selection_without_its_accesses(
     before_selection: Stack,
 ) -> None:
@@ -437,28 +539,41 @@ def test_the_opposite_order_would_leave_a_selection_without_its_accesses(
 # --------------------------------------------------------------------------- #
 
 
-def test_a_crash_between_arrays_and_world_json_leaves_a_usable_world(
+def test_a_crash_between_arrays_and_the_record_is_an_uncommitted_generation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``arrays.npz`` is published first because it is the file the world
-    guard stats; ``derived/world.json`` is a stats snapshot no consumer
-    reads. A crash between them therefore leaves a world that loads."""
+    """``arrays.npz`` is published FIRST and ``derived/world.json`` — the
+    world COMMIT RECORD — LAST, so its publication is the commit point of the
+    generation and a crash between the two leaves a generation that is not
+    visible.
+
+    Until the AC-01F.2 CORRECTION this same test asserted the opposite
+    ("leaves a usable world"): ``world.json`` was an unread stats snapshot, so
+    ``GET …/world`` and ``GET …/scene`` answered **200** for a world nothing on
+    disk attested to. That 200 is the B1 defect — the same shape as a NEW
+    ``scenario.json`` beside an OLD ``arrays.npz`` — and the 409 below is the
+    correction. Nothing about the ORDER changed; what changed is that the
+    second file now means something."""
     stack, context = _make_stack(tmp_path / "pair_world")
     try:
         _raise_between(monkeypatch, world_service, "publish_text", "world.json")
         with pytest.raises(PublishHookError):
             stack.worlds.generate(stack.sid)
         monkeypatch.undo()
+        stack.worlds._cache.clear()  # a fresh process has no cache either
         root = stack.store.scenario_dir(stack.sid)
         assert (root / "arrays.npz").is_file()
         assert not (root / "derived" / "world.json").exists()
         assert [p.name for p in root.rglob("*") if ".tmp" in p.name] == []
-        # the world guard is satisfied by arrays.npz alone …
-        assert stack.client.get(f"{API}/{stack.sid}/world").status_code == 200
-        assert stack.client.get(f"{API}/{stack.sid}/scene").status_code == 200
-        # … and a re-generation publishes both
+        # the arrays are whole — and that is NOT enough to be a world
+        for route in (f"{API}/{stack.sid}/world", f"{API}/{stack.sid}/scene"):
+            response = stack.client.get(route)
+            assert response.status_code == 409, route
+            assert response.json()["detail"]["code"] == "WORLD_PUBLICATION_STALE", route
+        # … and a re-generation commits both
         assert stack.client.post(f"{API}/{stack.sid}/world/generate").status_code == 200
         assert (root / "derived" / "world.json").is_file()
+        assert stack.client.get(f"{API}/{stack.sid}/world").status_code == 200
     finally:
         context.__exit__(None, None, None)
         stack.jobs.shutdown()
@@ -489,7 +604,11 @@ def test_the_pair_order_is_the_one_the_writers_implement() -> None:
             "publish_text(self.level_accesses_path(scenario_id)",
             "publish_text(path, serialized)",
         ),
-        (WorldService._save, "publish_npz(path, **fields)", 'publish_text(derived / "world.json"'),
+        (
+            WorldService._save,
+            "publish_npz(path, **fields)",
+            "publish_text(derived / WORLD_RECORD_FILE",
+        ),
     ):
         body = inspect.getsource(function)
         assert first in body and second in body, (function.__qualname__, first, second)
@@ -512,3 +631,159 @@ def test_the_failed_branch_publishes_the_report_before_it_unlinks_the_glb() -> N
         assert body.rindex("publish_text(report_path") < body.index("glb_path.unlink()"), (
             function.__qualname__
         )
+
+
+# --------------------------------------------------------------------------- #
+# AC-01F.2 CORRECTION (B3) — the report/GLB GENERATION transition matrix
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(("report", "glb", "route", "builder_attr"), FAILED_PAIRS)
+def test_success_to_success_a_crash_before_the_second_report_is_refused_everywhere(
+    before_tunnel: Stack,
+    monkeypatch: pytest.MonkeyPatch,
+    report: str,
+    glb: str,
+    route: str,
+    builder_attr: str,
+) -> None:
+    """The B3 case. A COMPLETE pair is republished; the crash lands between
+    GLB G2 and report G2, leaving report G1 beside GLB G2.
+
+    Measured on PR #34 HEAD ``57c64a5``: the report route and the scene
+    answered **200** for that pair, because ``artifactRevision`` is a CONTENT
+    hash and only the binary route captures the bytes to check it. Worse, the
+    mesh build is deterministic — G2's bytes equal G1's — so the content hash
+    cannot see the mixture AT ALL, on any route. What distinguishes the two
+    generations is the PUBLICATION identity, which a stat already has: the
+    report's ``glbRevision``. Every surface now refuses typed."""
+    stack = before_tunnel
+    derived = stack.derived
+    _generate(stack, report)  # a complete SUCCESS pair, self-contained
+    first = json.loads((derived / report).read_text(encoding="utf-8"))
+    assert first["status"] == "SUCCESS" and first["glbRevision"]
+    glb_bytes_before = (derived / glb).read_bytes()
+
+    _raise_between(monkeypatch, design_service, "publish_text", report)
+    with pytest.raises(PublishHookError):
+        _generate(stack, report)
+    monkeypatch.undo()
+
+    on_disk = json.loads((derived / report).read_text(encoding="utf-8"))
+    assert on_disk == first, "the report is still G1 — its publication never happened"
+    assert (derived / glb).read_bytes() == glb_bytes_before, "a deterministic rebuild"
+    live_digest = hashlib.sha256((derived / glb).read_bytes()).hexdigest()
+    assert on_disk["artifactRevision"] == live_digest, (
+        "the CONTENT hash still agrees — it cannot see this mixture"
+    )
+    assert on_disk["glbRevision"] != expected_revision(derived / glb), (
+        "the PUBLICATION identity is what differs"
+    )
+
+    assert stack.get(route) == (409, "ARTIFACT_STALE")
+    assert stack.get(f"{route}/mesh.glb") == (409, "ARTIFACT_STALE")
+    scene = stack.scene()
+    assert scene.status_code == 409
+    assert scene.json()["detail"]["code"] == "SCENE_ARTIFACT_INVALID"
+    assert any(
+        f["artifact"] == report and f["code"] == "ARTIFACT_STALE"
+        for f in scene.json()["detail"]["artifacts"]
+    ), scene.json()["detail"]
+
+    # a complete republication is the remedy, and restores the module fixture
+    _generate(stack, report)
+    assert stack.get(route)[0] == 200
+    assert stack.client.get(f"{API}/{stack.sid}{route}/mesh.glb").status_code == 200
+
+
+@pytest.mark.parametrize(("report", "glb", "route", "builder_attr"), FAILED_PAIRS)
+def test_success_to_failed_and_back(
+    before_tunnel: Stack,
+    monkeypatch: pytest.MonkeyPatch,
+    report: str,
+    glb: str,
+    route: str,
+    builder_attr: str,
+) -> None:
+    """The other two transitions. SUCCESS→FAILED: the FAILED report carries
+    ``glbRevision: null``, expects no GLB, and the generation check is inert
+    on it — a leftover GLB beside a FAILED report is ignored, because no
+    surface presents it. FAILED→SUCCESS: the new pair is whole and the report
+    names the GLB that was just installed."""
+    stack = before_tunnel
+    derived = stack.derived
+    _generate(stack, report)
+
+    _fail_the_build(monkeypatch, builder_attr)
+    _generate(stack, report)
+    monkeypatch.undo()
+    failed = json.loads((derived / report).read_text(encoding="utf-8"))
+    assert failed["status"] == "FAILED"
+    assert failed["glbRevision"] is None
+    assert not (derived / glb).exists(), "the FAILED path unlinks the stale GLB after its report"
+    response = stack.client.get(f"{API}/{stack.sid}{route}")
+    assert response.status_code == 200 and response.json()["status"] == "FAILED"
+    assert stack.get(f"{route}/mesh.glb")[0] == 409
+
+    # FAILED → SUCCESS
+    _generate(stack, report)
+    success = json.loads((derived / report).read_text(encoding="utf-8"))
+    assert success["status"] == "SUCCESS"
+    assert success["glbRevision"] == expected_revision(derived / glb)
+    assert stack.get(route)[0] == 200
+    assert stack.client.get(f"{API}/{stack.sid}{route}/mesh.glb").status_code == 200
+    assert stack.scene().status_code == 200
+
+
+@pytest.mark.parametrize(("report", "glb", "route", "builder_attr"), FAILED_PAIRS)
+def test_the_report_names_the_glb_its_own_publication_installed(
+    before_tunnel: Stack,
+    monkeypatch: pytest.MonkeyPatch,
+    report: str,
+    glb: str,
+    route: str,
+    builder_attr: str,
+) -> None:
+    """Stage D D2-1: the B3 identity must come from the RETURN VALUE of
+    ``publish_bytes`` — the temp file's own ``os.fstat`` — never from a stat of
+    the GLB path after the write.
+
+    MEASURED before this case: replacing the call site with
+    ``payload["glbRevision"] = file_revision(glb_path)`` survived all 289 tests
+    of the publication and reader suites, because in a quiet process the two
+    values agree. The hook below is the same interleaving MP4 stalls a real
+    second process into, applied to the GLB: a foreign generation takes the
+    path between our ``os.replace`` and anything we could stat afterwards. A
+    post-hoc stat then records the INTRUDER's identity, the reader finds
+    agreement, and the mixed pair reads 200."""
+    stack = before_tunnel
+    derived = stack.derived
+    intruder = b"glTF" + b"\x00" * 64  # a foreign generation at the GLB path
+    fired: list[str] = []
+    real_fsync = publication._fsync_directory
+
+    def intrude(directory: Path) -> None:
+        real_fsync(directory)
+        target = derived / glb
+        if not fired and target.is_file():
+            fired.append(glb)
+            target.write_bytes(intruder)
+
+    monkeypatch.setattr(publication, "_fsync_directory", intrude)
+    payload = _generate(stack, report)
+    monkeypatch.undo()
+
+    assert fired == [glb], "the hook must fire exactly once, on the GLB publication"
+    assert (derived / glb).read_bytes() == intruder
+    on_disk = json.loads((derived / report).read_text(encoding="utf-8"))
+    assert on_disk["glbRevision"] == payload["glbRevision"]
+    assert on_disk["glbRevision"] != expected_revision(derived / glb), (
+        "the report recorded a POST-HOC stat of the GLB path: it names the intruder's "
+        "file, not the bytes this publication installed"
+    )
+    # and because it names OUR bytes, every surface sees the mixture
+    assert stack.get(route) == (409, "ARTIFACT_STALE")
+    assert stack.scene().status_code == 409
+
+    _generate(stack, report)  # restore the module fixture
+    assert stack.get(route)[0] == 200

@@ -94,7 +94,6 @@ from minegen.services.artifact_errors import (
     TargetsNotGeneratedError,
     TimelineNotGeneratedError,
     TunnelNotGeneratedError,
-    WorldNotGeneratedError,
 )
 from minegen.services.artifact_reader import ArtifactReader, ArtifactSnapshot
 from minegen.services.effective_ramp import (
@@ -677,6 +676,11 @@ class DesignService:
             scenario_id,
             [LAYOUT_V2_ARTIFACT, LAYOUT_V2_SELECTED_ARTIFACT, LEVEL_ACCESSES_ARTIFACT],
         )
+        # AC-01F.2 correction: the SAME world guard the non-idempotent path
+        # reaches one statement later through ``_layout_object``'s VALID
+        # catalogue — applied here so the no-op early return cannot be the one
+        # answer that trusts a derived artifact without a valid world
+        self._reader.require_world(snapshot)
         layout_rev = snapshot.revision_of(LAYOUT_V2_ARTIFACT)
         existing = self._reader.read(snapshot, LAYOUT_V2_SELECTED_ARTIFACT)
         accesses_half = self._reader.read(snapshot, LEVEL_ACCESSES_ARTIFACT)
@@ -873,13 +877,16 @@ class DesignService:
         catalogue and — since the C5 pair read — the level accesses the
         layout-v2 owner is co-published with), so a resolution and its
         availability flags can never disagree (Stage A R4). The world guard is
-        that same observation's ``arrays.npz`` stat — a derived artifact is
-        never trusted without a world (A1 / Q-WORLD-GUARD) — and never a
-        second probe."""
+        applied to that same observation — a derived artifact is never trusted
+        without a VALID world (A1 / Q-WORLD-GUARD; ``require_world`` is the ONE
+        definition these routes share with ``_read_bound``) — and never a
+        second probe. These two routes have their own guard because they never
+        pass through ``_read_bound``; before the AC-01F.2 correction that made
+        them the two surfaces that still answered 200 for a world whose
+        generation no longer matched the document."""
         self.store.get(scenario_id)  # 404 / schema 422 / migration-on-read (A10)
         snapshot = self._reader.snapshot(scenario_id, RAMP_FILES)
-        if snapshot.arrays_revision is None:
-            raise WorldNotGeneratedError(scenario_id)
+        self._reader.require_world(snapshot)
         return snapshot
 
     def ramp_source(self, scenario_id: str) -> dict[str, Any]:
@@ -930,8 +937,8 @@ class DesignService:
             # rule 172 / A8: never ACTIVATE what every downstream builder
             # refuses — the selection must be VALID, not merely present
             self._reader.require(scenario_id, LAYOUT_V2_SELECTED_ARTIFACT)
-        elif self._reader.snapshot(scenario_id, ()).arrays_revision is None:
-            raise WorldNotGeneratedError(scenario_id)
+        else:
+            self._reader.require_world(self._reader.snapshot(scenario_id, ()))
         derived = self.store.derived_dir(scenario_id)
         with self.store.lock(scenario_id):
             try:
@@ -1401,9 +1408,15 @@ class DesignService:
             # binary route and serves as FAILED on the report route.
             glb_path = self.tunnel_glb_path(scenario_id)
             if result.glb is not None:
-                publish_bytes(glb_path, result.glb)
+                # AC-01F.2 correction B3: the report records the rule-60
+                # identity of the GLB THIS publication installed, so the report
+                # route and the scene — which stat the GLB anyway and must
+                # never hash megabytes — can see a mixed generation that only
+                # the byte-hashing binary route could see before
+                payload["glbRevision"] = publish_bytes(glb_path, result.glb)
                 publish_text(report_path, json.dumps(payload))
             else:
+                payload["glbRevision"] = None
                 publish_text(report_path, json.dumps(payload))
                 if glb_path.exists():
                     glb_path.unlink()  # never leave a stale GLB beside a FAILED report
@@ -1512,9 +1525,11 @@ class DesignService:
             # comment there for why the two paths differ)
             glb_path = self.development_mesh_glb_path(scenario_id)
             if result.glb is not None:
-                publish_bytes(glb_path, result.glb)
+                # correction B3, exactly as ``generate_tunnel``
+                payload["glbRevision"] = publish_bytes(glb_path, result.glb)
                 publish_text(report_path, json.dumps(payload))
             else:
+                payload["glbRevision"] = None
                 publish_text(report_path, json.dumps(payload))
                 if glb_path.exists():
                     glb_path.unlink()

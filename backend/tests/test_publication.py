@@ -34,8 +34,9 @@ from typing import Any
 import numpy as np
 import pytest
 
-from minegen.core import publication
+from minegen.core import publication, revision
 from minegen.core.publication import publish_bytes, publish_npz, publish_text
+from minegen.core.revision import file_revision, revision_of_stat
 
 # --------------------------------------------------------------------------- #
 # D1 — helper semantics
@@ -365,20 +366,106 @@ def test_publish_npz_bytes_equal_a_direct_savez_compressed(tmp_path: Path) -> No
             assert np.array_equal(loaded[key], value)
 
 
-def test_publication_is_a_leaf_importing_stdlib_and_numpy_only() -> None:
-    source = Path(publication.__file__).read_text(encoding="utf-8")
-    imported = {
+def _imported_roots(module_file: str) -> set[str | None]:
+    source = Path(module_file).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    return {
         node.module.split(".")[0] if isinstance(node, ast.ImportFrom) and node.module else None
-        for node in ast.walk(ast.parse(source))
+        for node in ast.walk(tree)
         if isinstance(node, ast.ImportFrom)
     } | {
         alias.name.split(".")[0]
-        for node in ast.walk(ast.parse(source))
+        for node in ast.walk(tree)
         if isinstance(node, ast.Import)
         for alias in node.names
     }
-    assert imported <= {"__future__", "contextlib", "os", "secrets", "pathlib", "typing", "numpy"}
-    assert "minegen" not in imported
+
+
+def _imported_modules(module_file: str) -> set[str]:
+    tree = ast.parse(Path(module_file).read_text(encoding="utf-8"))
+    from_imports = {
+        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module
+    }
+    plain = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    return from_imports | plain
+
+
+def test_the_returned_identity_names_the_bytes_this_call_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-01F.2 correction Q1.1, in one process.
+
+    ``publish_*`` returns the rule-60 identity taken from the TEMP FILE's own
+    ``os.fstat``, before the rename. A stat of the PATH afterwards names
+    whatever file is there — and between our ``os.replace`` and that stat,
+    another process's replace can land. The hook below is exactly that
+    interleaving, placed where MP4 stalls a real second process: inside
+    ``_fsync_directory``, which runs after the rename and before the return.
+
+    What does NOT detect a reversion to a post-hoc stat:
+    ``returned == file_revision(path)`` in a quiet process, because with
+    nothing racing the two agree (measured — the reversion survives every
+    other single-process assertion in this module). Without this case the only
+    killer is the cross-process MP4."""
+    intruder = b"another generation, installed right after our rename"
+
+    for name, publish in (
+        ("a.json", lambda q: publish_text(q, "mine")),
+        ("b.bin", lambda q: publish_bytes(q, b"mine")),
+        ("c.npz", lambda q: publish_npz(q, q=np.arange(3))),
+    ):
+        path = tmp_path / name
+        installed: dict[str, str] = {}
+
+        def intrude(directory: Path, _path: Path = path, _seen: dict[str, str] = installed) -> None:
+            st = _path.stat()  # the inode THIS publication just installed
+            _seen["revision"] = revision_of_stat(_path.name, st.st_size, st.st_mtime_ns)
+            _path.write_bytes(intruder)  # a foreign generation takes the path
+
+        monkeypatch.setattr(publication, "_fsync_directory", intrude)
+        returned = publish(path)
+        monkeypatch.undo()
+
+        assert path.read_bytes() == intruder, name  # the intruder holds the path
+        assert returned == installed["revision"], f"{name}: it must name OUR bytes"
+        assert returned != file_revision(path), (
+            f"{name}: the returned identity is a POST-HOC stat of the path — it names the "
+            "intruder's file, not the bytes this publication installed"
+        )
+
+
+def test_publication_is_a_leaf_importing_stdlib_numpy_and_the_revision_leaf() -> None:
+    """The leaf contract, WIDENED by exactly one module in the AC-01F.2
+    correction and by nothing else.
+
+    ``publish_*`` returns the rule-60 revision of the file it installed, and
+    rule 60 has ONE stat identity: duplicating the formula here to keep the
+    import list shorter would create a second definition of the thing the whole
+    provenance system compares. ``minegen.core.revision`` is itself a leaf —
+    the transitive closure is asserted below — so what the original contract
+    protects (no service, registry, domain or API dependency in the publisher)
+    is unchanged."""
+    imported = _imported_roots(publication.__file__)
+    assert imported <= {
+        "__future__",
+        "contextlib",
+        "os",
+        "secrets",
+        "pathlib",
+        "typing",
+        "numpy",
+        "minegen",
+    }
+    modules = _imported_modules(publication.__file__)
+    minegen_imports = {m for m in modules if m.startswith("minegen")}
+    assert minegen_imports == {"minegen.core.revision"}
+    # and the one allowed import is a stdlib-only leaf, so the closure is clean
+    assert _imported_roots(revision.__file__) <= {"__future__", "hashlib", "pathlib"}
 
 
 def test_every_publication_is_a_new_stat_identity(tmp_path: Path) -> None:

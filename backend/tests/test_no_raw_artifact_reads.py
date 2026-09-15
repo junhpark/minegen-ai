@@ -36,6 +36,7 @@ from pathlib import Path
 from minegen.core import artifacts as artifact_names
 from minegen.core.artifact_registry import derived_artifacts
 from minegen.core.artifacts import RAMP_SOURCE_FILE
+from minegen.core.world_record import WORLD_RECORD_FILE
 from minegen.services.artifact_reader import READ_SPECS
 from minegen.services.world_service import SCENE_SLOTS
 
@@ -119,7 +120,14 @@ READ_CALLS = frozenset({"read_text", "read_bytes", "open"})
 PRESENCE_CALLS = frozenset({"is_file", "exists", "isfile", "getsize", "stat", "glob", "rglob"})
 
 #: every file name the AC-01E registry declares under ``derived/`` …
-DERIVED_FILE_NAMES = frozenset(f.name for a in derived_artifacts() for f in a.files)
+#: … plus ``derived/world.json``, which is UNREGISTERED (no fingerprint, no
+#: cascade) and was therefore invisible to this proof, but became LOAD-BEARING
+#: in the AC-01F.2 correction: it is the world COMMIT RECORD every world read
+#: is now validated against. Only the read authority may observe it (Stage D
+#: D3-7 — a second module parsing it would have passed this proof silently).
+DERIVED_FILE_NAMES = frozenset(f.name for a in derived_artifacts() for f in a.files) | {
+    WORLD_RECORD_FILE
+}
 #: … and the ``core/artifacts`` identifiers bound to them, because that is how
 #: the source spells them. ``scenario.json`` / ``arrays.npz`` are scenario
 #: -directory roots, not derived artifacts, so ``scenario_service.py``'s own
@@ -293,8 +301,11 @@ def test_the_scan_is_not_empty() -> None:
         "core",
     } <= by_package, sorted(by_package)
     assert READ_AUTHORITY in {m.name for m in modules}
-    # and the detector's vocabulary is the registry's, not a hand list
-    assert len(DERIVED_FILE_NAMES) == 19
+    # and the detector's vocabulary is the registry's, not a hand list —
+    # 18 registry files + ``derived/world.json``, the UNREGISTERED world commit
+    # record the AC-01F.2 correction made load-bearing (Stage D D3-7)
+    assert len(DERIVED_FILE_NAMES) == 20
+    assert WORLD_RECORD_FILE in DERIVED_FILE_NAMES
     assert {"LAYOUT_V2_ARTIFACT", "TUNNEL_MESH_GLB", "RAMP_SOURCE_FILE"} <= DERIVED_NAME_IDENTIFIERS
 
 

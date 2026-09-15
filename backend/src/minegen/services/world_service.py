@@ -2,7 +2,7 @@
 
     data/scenarios/{id}/arrays.npz         spatial field arrays + lattice + terrain
                                            (``field_artifact_version`` stamped)
-    data/scenarios/{id}/derived/world.json stats snapshot
+    data/scenarios/{id}/derived/world.json world COMMIT RECORD + stats
 
 Generated worlds are cached in memory per scenario id so slice requests do
 not reload the NPZ every time. An ``arrays.npz`` that is not a current field
@@ -72,6 +72,7 @@ from minegen.core.artifacts import (
 from minegen.core.models import Scenario, ScenarioCreate
 from minegen.core.publication import publish_npz, publish_text
 from minegen.core.revision import file_revision
+from minegen.core.world_record import WORLD_RECORD_FILE, build_world_record
 from minegen.export.scene_manifest import (
     SliceAxis,
     SliceField,
@@ -213,20 +214,17 @@ class WorldService:
         with self.store.lock(scenario_id):
             if file_revision(scenario_path) != scenario_revision:
                 raise StaleInputsError(scenario_id)
-            self._save(scenario, world, stats)
-            arrays_revision = file_revision(self.store.arrays_path(scenario_id))
-            if arrays_revision is None:  # pragma: no cover - ``_save`` just wrote it
-                # never an ``assert``: ``python -O`` strips one, and a cache
-                # entry with no arrays revision is exactly the unbound world
-                # this commit exists to make impossible
-                raise RuntimeError(
-                    f"arrays.npz of scenario '{scenario_id}' vanished between its write "
-                    "and its stat; nothing was published"
-                )
+            arrays_revision = self._save(scenario, world, stats, scenario_revision)
             self._cache[scenario_id] = _BoundWorld(world, scenario_revision, arrays_revision)
         return stats
 
-    def _save(self, scenario: Scenario, world: SyntheticWorld, stats: dict[str, Any]) -> None:
+    def _save(
+        self,
+        scenario: Scenario,
+        world: SyntheticWorld,
+        stats: dict[str, Any],
+        scenario_revision: str,
+    ) -> str:
         """Publish ``arrays.npz`` and ``derived/world.json``. Called under the
         store lock, so it does the two WRITES and nothing else: ``stats`` is
         computed by the caller beforehand (measured on WARPED-301: the whole
@@ -234,11 +232,22 @@ class WorldService:
         which ``world.stats`` was 0.099 s — now outside the lock).
 
         AC-01F.2 D1/D3: both files are published atomically
-        (``minegen.core.publication``), ``arrays.npz`` FIRST — it is the file
-        the world guard stats, while ``derived/world.json`` is read by no
-        consumer — so a crash between the two atomic replacements leaves a
-        world whose arrays are whole and whose stats snapshot is one
-        generation behind, never a half-written NPZ."""
+        (``minegen.core.publication``), ``arrays.npz`` FIRST, so a crash
+        between the two atomic replacements never leaves a half-written NPZ.
+
+        AC-01F.2 CORRECTION (B1): the second file is no longer an unread stats
+        snapshot but the WORLD COMMIT RECORD (``minegen.core.world_record``),
+        and its publication is the COMMIT POINT of this generation. Ordering
+        the arrays first therefore also means a crash between the two leaves an
+        UNCOMMITTED world — typed 409 ``WORLD_PUBLICATION_STALE`` on every
+        surface — instead of the previous "usable world, stats one generation
+        behind". Both recorded revisions are the ones the publisher OWNS:
+        ``scenario_revision`` is the value ``generate`` verified under this
+        lock, and the arrays revision is what ``publish_npz`` installed
+        (returned from its own file descriptor, never a stat of the path
+        afterwards — across processes that stat can name another generation's
+        file, correction Q1.1). Returns the arrays revision so the caller binds
+        its cache entry to the same identity."""
         path = self.store.arrays_path(scenario.id)
         fields: dict[str, Any] = dict(world.fields.to_npz_fields())
         fields["terrain_z"] = world.terrain.z
@@ -246,10 +255,17 @@ class WorldService:
             [world.terrain.x0, world.terrain.y0, world.terrain.spacing], dtype=np.float64
         )
         path.parent.mkdir(parents=True, exist_ok=True)
-        publish_npz(path, **fields)
+        arrays_revision = publish_npz(path, **fields)
         derived = self.store.derived_dir(scenario.id)
         derived.mkdir(parents=True, exist_ok=True)
-        publish_text(derived / "world.json", json.dumps(stats, indent=2))
+        record = build_world_record(
+            scenario_id=scenario.id,
+            scenario_revision=scenario_revision,
+            arrays_revision=arrays_revision,
+            stats=stats,
+        )
+        publish_text(derived / WORLD_RECORD_FILE, json.dumps(record, indent=2))
+        return arrays_revision
 
     # -- access ------------------------------------------------------------ #
 
@@ -357,19 +373,46 @@ class WorldService:
         scenario_path = self.store.scenario_path(scenario_id)
         arrays_path = self.store.arrays_path(scenario_id)
         scenario, scenario_revision = self._bound_scenario(scenario_id)
-        arrays_revision = file_revision(arrays_path)
+        # ONE lock-held observation of scenario.json, arrays.npz and the world
+        # COMMIT RECORD (correction B1). In THIS process the store lock makes
+        # the three one instant. Across processes it does not — the lock is a
+        # ``threading.RLock`` — and the comparison is sound anyway for a
+        # stronger reason (Stage D D2-5): a rule-60 revision is a
+        # self-validating NAME, so equality between a recorded revision and an
+        # observed one identifies the file whenever each was observed. The
+        # observation ORDER inside ``snapshot()`` is therefore not load-bearing.
+        published = self._reader.snapshot(scenario_id, ())
+        arrays_revision = published.arrays_revision
         if arrays_revision is None:
             raise WorldNotGeneratedError(scenario_id)
+        if published.scenario_revision != scenario_revision:
+            raise ReadSnapshotChangedError(scenario_id, "scenario.json changed during the read")
         with self.store.lock(scenario_id):
             cached = self._cache.get(scenario_id)
-            if cached is not None and cached.bound_to(scenario_revision, arrays_revision):
-                return scenario, cached.world, scenario_revision, arrays_revision
+            warm = (
+                cached.world
+                if cached is not None and cached.bound_to(scenario_revision, arrays_revision)
+                else None
+            )
+        if warm is not None:
+            # the cached world proves these arrays were loadable at this
+            # revision, so no domain-specific artifact error can be pre-empted
+            self._reader.require_world(published)
+            return scenario, warm, scenario_revision, arrays_revision
         try:
             world = self._read_arrays(scenario, arrays_path)  # OUTSIDE the lock
         except FileNotFoundError as exc:
             # deleted between the stat and the open (a scenario PUT, a world
             # regeneration): "there is no world" is the honest answer
             raise WorldNotGeneratedError(scenario_id) from exc
+        # AFTER the load, so ``WorldArtifactIncompatibleError`` — an existing,
+        # strictly more specific domain error (A1) — still wins for a Phase-17
+        # NPZ dropped beside a current document. The price, stated rather than
+        # discovered (Stage D D6-1): while a world is uncommitted EVERY request
+        # pays this full ``np.load`` before the 409 (measured 0.62 s for a
+        # 10.2 MB arrays.npz) and keeps paying it until the world is
+        # regenerated — a refusal is never cached, and nothing uncommitted is.
+        self._reader.require_world(published)
         with self.store.lock(scenario_id):
             if file_revision(arrays_path) != arrays_revision:
                 raise ReadSnapshotChangedError(scenario_id, "arrays.npz changed during the read")

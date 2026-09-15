@@ -75,6 +75,7 @@ from minegen.services.artifact_errors import (
     TimelineNotGeneratedError,
     TunnelNotGeneratedError,
     WorldNotGeneratedError,
+    WorldPublicationStaleError,
 )
 from minegen.services.design_service import (
     LayoutCandidateInfeasibleError,
@@ -135,6 +136,9 @@ CODE_LADDER: Final[tuple[tuple[type[Exception], str], ...]] = (
     (ScenarioNotFoundError, "SCENARIO_NOT_FOUND"),
     (WorldArtifactIncompatibleError, "WORLD_ARTIFACT_INCOMPATIBLE"),
     (WorldNotGeneratedError, "WORLD_NOT_GENERATED"),
+    # AC-01F.2 correction (B1): NOT a subclass of WorldNotGeneratedError, so
+    # this row's position is documentation, not precedence
+    (WorldPublicationStaleError, "WORLD_PUBLICATION_STALE"),
     (TargetsNotGeneratedError, "TARGETS_NOT_GENERATED"),
     (DeclineNotGeneratedError, "DECLINE_NOT_GENERATED"),
     (SmoothedNotGeneratedError, "SMOOTHED_NOT_GENERATED"),
@@ -193,6 +197,7 @@ ERRORS: Final[dict[str, ErrorSpec]] = {
         "scenario '{scenario_id}' has no generated world; POST …/world/generate first",
         "api/design.py:95-100, world.py:45-50, network.py:44-49",
     ),
+    "WORLD_PUBLICATION_STALE": ErrorSpec(409, None, "AC-01F.2 correction B1"),
     "TARGETS_NOT_GENERATED": ErrorSpec(
         409,
         "scenario '{scenario_id}' has no access targets; POST …/design/targets first",

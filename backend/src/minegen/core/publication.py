@@ -59,6 +59,21 @@ What it does NOT do, stated so nobody assumes it:
   byte-identical regeneration still counts as a new revision, exactly as
   an in-place rewrite did.
 
+Each publication RETURNS that revision, computed from the temp file's own
+``os.fstat`` before the rename (AC-01F.2 correction Q1.1). A caller that
+records provenance about what it just published must use the returned value
+and never a stat of the path afterwards: across processes the path can
+already hold another generation's file, and a record built from such a stat
+certifies bytes its own generation never wrote.
+
+Two pre-existing recorders still stat a path after reading the bytes they
+describe — ``shafts.levelsRevision`` and ``capabilityGraph.networkRevision``
+(Stage D D2-7). They are safe only INCIDENTALLY: both artifacts' fingerprints
+name the file they stat and both builders re-check that fingerprint under the
+store lock before publishing, so any movement in the window raises
+``StaleInputsError`` and nothing is persisted. They are recorded here rather
+than rewritten, because changing them is outside this correction's scope.
+
 The bytes are the caller's bytes: no ``json.dumps`` argument, encoding or
 serializer changes here — ``np.savez_compressed`` is still the NPZ
 serializer, only its destination moved.
@@ -73,6 +88,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from minegen.core.revision import revision_of_stat
 
 __all__ = ["publish_bytes", "publish_npz", "publish_text"]
 
@@ -126,31 +143,42 @@ def _fsync_directory(directory: Path) -> None:
                 os.close(fd)
 
 
-def publish_bytes(path: Path, data: bytes) -> None:
-    """Publish ``data`` as ``path``, atomically (module docstring)."""
+def publish_bytes(path: Path, data: bytes) -> str:
+    """Publish ``data`` as ``path``, atomically (module docstring).
+
+    Returns the rule-60 revision of the bytes it INSTALLED, taken from the
+    temp file's own ``os.fstat`` (after the flush + fsync that fixes its
+    mtime, before the rename that keeps its inode) and hashed with the FINAL
+    name. It is therefore ``file_revision(path)`` of THIS publication, and —
+    unlike a stat of the path afterwards — it cannot name a file another
+    process installed in the meantime (AC-01F.2 correction Q1.1). Callers
+    that do not record provenance ignore it."""
     temp = _temp_sibling(path)
     try:
         with _open_temp(temp) as handle:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
+            st = os.fstat(handle.fileno())
         os.replace(temp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             temp.unlink()
         raise
     _fsync_directory(path.parent)
+    return revision_of_stat(path.name, st.st_size, st.st_mtime_ns)
 
 
-def publish_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
+def publish_text(path: Path, text: str, *, encoding: str = "utf-8") -> str:
     """Publish ``text`` as ``path``, atomically. Exactly
     ``publish_bytes(path, text.encode(encoding))`` — the encoding default is
     the one every migrated call site passed explicitly."""
-    publish_bytes(path, text.encode(encoding))
+    return publish_bytes(path, text.encode(encoding))
 
 
-def publish_npz(path: Path, **arrays: Any) -> None:
-    """Publish ``arrays`` as a compressed NPZ at ``path``, atomically.
+def publish_npz(path: Path, **arrays: Any) -> str:
+    """Publish ``arrays`` as a compressed NPZ at ``path``, atomically, and
+    return the installed revision exactly as :func:`publish_bytes` does.
 
     ``np.savez_compressed`` remains the serializer and is handed the OPEN
     temp file, so the durability path is the one of :func:`publish_bytes`
@@ -164,9 +192,11 @@ def publish_npz(path: Path, **arrays: Any) -> None:
             np.savez_compressed(handle, **arrays)
             handle.flush()
             os.fsync(handle.fileno())
+            st = os.fstat(handle.fileno())
         os.replace(temp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             temp.unlink()
         raise
     _fsync_directory(path.parent)
+    return revision_of_stat(path.name, st.st_size, st.st_mtime_ns)
