@@ -43,18 +43,23 @@ the reader's classification of it. The counterfactual — the state the
 OPPOSITE order would have left — is asserted beside it, so "the order
 matters" is measured, not claimed.
 
-SCOPE, stated exactly. The improvement is on the FIRST publication of a
-pair. On a RE-publication the order is symmetric: whichever file lands
-first, the survivor is a report and a GLB that do not agree, and
-``_glb_check`` (``services/artifact_reader.py``) hashes the GLB against the
-report's ``artifactRevision`` only where the snapshot captured its BYTES —
-so the binary route answers 409 ``ARTIFACT_MALFORMED`` and the report route
-and the scene answer 200 for the stale-but-present half, in BOTH orders.
-That is AC-01F's declared route-local trade-off, unchanged here. For the
-selection pair the re-publication case is not symmetric: the accesses land
-first either way under D3, so the selection is the half that can be one
-generation behind, and the rule-157 pair check in its READ SPEC classifies
-that disagreement (``LAYOUT_V2_SELECTION_STALE``) rather than serving it.
+SCOPE, stated exactly. The ORDER above is about the FIRST publication of a
+pair. The RE-publication case was AC-01F.2's declared route-local trade-off
+— ``_glb_check`` hashes the GLB against the report's ``artifactRevision``
+only where the snapshot captured its BYTES, so the binary route answered
+409 ``ARTIFACT_MALFORMED`` while the report route and the scene answered
+**200** for the stale-but-present half — and the AC-01F.2 CORRECTION (B3)
+closes it: each mesh pair now commits itself with an INTERNAL sidecar
+(``core/mesh_record``) published LAST, naming the report and GLB revisions
+its own publication installed, so every surface refuses a mixed generation
+typed. That matters more than it sounds: the mesh build is deterministic,
+so a crash between the two installs IDENTICAL GLB bytes and the content
+hash AGREES — without the publication identity the mixture is invisible on
+every route, including the binary one. For the selection pair the
+re-publication case was never symmetric: the accesses land first either way
+under D3, so the selection is the half that can be one generation behind,
+and the rule-157 pair check in its READ SPEC classifies that disagreement
+(``LAYOUT_V2_SELECTION_STALE``) rather than serving it.
 """
 
 from __future__ import annotations
@@ -77,6 +82,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_ARTIFACT,
     TUNNEL_MESH_GLB,
 )
+from minegen.core.mesh_record import mesh_commit_name
 from minegen.core.revision import file_revision
 from minegen.services import design_service, world_service
 from tests.test_artifact_read_api import API, Stack, _make_stack
@@ -661,8 +667,11 @@ def test_success_to_success_a_crash_before_the_second_report_is_refused_everywhe
     derived = stack.derived
     _generate(stack, report)  # a complete SUCCESS pair, self-contained
     first = json.loads((derived / report).read_text(encoding="utf-8"))
-    assert first["status"] == "SUCCESS" and first["glbRevision"]
+    assert first["status"] == "SUCCESS"
+    assert "glbRevision" not in first, "the public report carries no publication provenance"
     glb_bytes_before = (derived / glb).read_bytes()
+    commit = derived / mesh_commit_name(report)
+    commit_before = json.loads(commit.read_text(encoding="utf-8"))
 
     _raise_between(monkeypatch, design_service, "publish_text", report)
     with pytest.raises(PublishHookError):
@@ -676,8 +685,11 @@ def test_success_to_success_a_crash_before_the_second_report_is_refused_everywhe
     assert on_disk["artifactRevision"] == live_digest, (
         "the CONTENT hash still agrees — it cannot see this mixture"
     )
-    assert on_disk["glbRevision"] != expected_revision(derived / glb), (
-        "the PUBLICATION identity is what differs"
+    assert json.loads(commit.read_text(encoding="utf-8")) == commit_before, (
+        "the sidecar is published LAST, so it is still G1's"
+    )
+    assert commit_before["glbRevision"] != expected_revision(derived / glb), (
+        "the PUBLICATION identity in the sidecar is what differs"
     )
 
     assert stack.get(route) == (409, "ARTIFACT_STALE")
@@ -719,7 +731,10 @@ def test_success_to_failed_and_back(
     monkeypatch.undo()
     failed = json.loads((derived / report).read_text(encoding="utf-8"))
     assert failed["status"] == "FAILED"
-    assert failed["glbRevision"] is None
+    assert "glbRevision" not in failed
+    failed_commit = json.loads((derived / mesh_commit_name(report)).read_text(encoding="utf-8"))
+    assert failed_commit["glbRevision"] is None, "a FAILED publication commits NO GLB"
+    assert failed_commit["reportRevision"] == expected_revision(derived / report)
     assert not (derived / glb).exists(), "the FAILED path unlinks the stale GLB after its report"
     response = stack.client.get(f"{API}/{stack.sid}{route}")
     assert response.status_code == 200 and response.json()["status"] == "FAILED"
@@ -729,7 +744,12 @@ def test_success_to_failed_and_back(
     _generate(stack, report)
     success = json.loads((derived / report).read_text(encoding="utf-8"))
     assert success["status"] == "SUCCESS"
-    assert success["glbRevision"] == expected_revision(derived / glb)
+    assert "glbRevision" not in success
+    commit_after = json.loads((derived / mesh_commit_name(report)).read_text(encoding="utf-8"))
+    assert commit_after == {
+        "reportRevision": expected_revision(derived / report),
+        "glbRevision": expected_revision(derived / glb),
+    }
     assert stack.get(route)[0] == 200
     assert stack.client.get(f"{API}/{stack.sid}{route}/mesh.glb").status_code == 200
     assert stack.scene().status_code == 200
@@ -775,10 +795,10 @@ def test_the_report_names_the_glb_its_own_publication_installed(
 
     assert fired == [glb], "the hook must fire exactly once, on the GLB publication"
     assert (derived / glb).read_bytes() == intruder
-    on_disk = json.loads((derived / report).read_text(encoding="utf-8"))
-    assert on_disk["glbRevision"] == payload["glbRevision"]
-    assert on_disk["glbRevision"] != expected_revision(derived / glb), (
-        "the report recorded a POST-HOC stat of the GLB path: it names the intruder's "
+    assert "glbRevision" not in payload, "the public payload carries no provenance"
+    commit = json.loads((derived / mesh_commit_name(report)).read_text(encoding="utf-8"))
+    assert commit["glbRevision"] != expected_revision(derived / glb), (
+        "the sidecar recorded a POST-HOC stat of the GLB path: it names the intruder's "
         "file, not the bytes this publication installed"
     )
     # and because it names OUR bytes, every surface sees the mixture

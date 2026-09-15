@@ -402,10 +402,11 @@ from a coherent pair and served as 200. Both recorded revisions are the rule-60
 stat identity the PUBLISHER installed — `publish_bytes` / `publish_text` /
 `publish_npz` return it from the temp file's own `os.fstat` before the rename —
 never a stat of the path afterwards, which across processes can name another
-generation's file. The same mechanism gives a SUCCESS mesh report its
-`glbRevision`, so the report route and the scene detect a GLB/report generation
-mixture that only the byte-hashing binary route could see before, without
-hashing anything.
+generation's file. The same mechanism commits each mesh pair: `derived/<mesh>.commit.json` names
+the report and GLB identities its own publication installed, so every surface
+detects a GLB/report generation mixture — which the content hash cannot see at
+all, because a deterministic rebuild installs identical bytes — without hashing
+anything and without adding a field to the served report or the scene.
 
 Two costs are stated rather than discovered. The record is validated in
 `load_bound` AFTER the arrays load, so a Phase-17 `arrays.npz` keeps its

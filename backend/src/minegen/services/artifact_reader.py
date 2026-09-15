@@ -86,6 +86,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_GLB,
     RampSource,
 )
+from minegen.core.mesh_record import mesh_commit_name, mesh_commit_rejection
 from minegen.core.models import ApiModel
 from minegen.core.revision import file_revision
 from minegen.core.world_record import WORLD_RECORD_FILE, record_rejection
@@ -247,6 +248,11 @@ class ReadSpec:
     agreement_inputs: tuple[str, ...] = ()
     #: the documented value an ABSENT artifact resolves to (rule 150)
     absent_default: str | None = None
+    #: the INTERNAL publication sidecar this artifact commits itself with
+    #: (AC-01F.2 correction B3, the two mesh sweeps). UNREGISTERED — it is
+    #: publication provenance, not a dependency (A12) — so it is observed
+    #: because this table declares it, never because the registry lists it
+    commit_record: str | None = None
 
 
 def _is_dict_list(value: Any) -> bool:
@@ -319,52 +325,50 @@ def _shape_development_mesh_report(data: dict[str, Any]) -> str | None:
     return None
 
 
-def _glb_generation_check(report_name: str, glb_name: str) -> Check:
-    """The SUCCESS report and its GLB belong to the SAME publication
-    generation (AC-01F.2 correction B3).
+def _mesh_commit_check(report_name: str, glb_name: str, commit_name: str) -> Check:
+    """The report and its GLB belong to the SAME publication generation
+    (AC-01F.2 correction B3).
 
     ``artifactRevision`` is a content hash and can only be verified where the
-    snapshot captured the GLB BYTES — the binary route alone. A republication
-    that dies between the GLB and its report (GLB G2 beside report G1) was
-    therefore 200 on the report route and in the scene, which never hash
-    megabytes (D6). The report now records ``glbRevision``, the rule-60
-    identity ``publish_bytes`` installed, and it is compared against the GLB
-    stat the two-file registry expansion ALREADY takes: zero extra I/O.
+    snapshot captured the GLB BYTES — the binary route alone. Worse, a mesh
+    rebuild is DETERMINISTIC, so a republication that dies between the GLB and
+    its report installs IDENTICAL bytes and the content hash AGREES: it cannot
+    see that mixture on any route. The discriminator is the publication
+    identity, and it lives in an INTERNAL sidecar (``core/mesh_record``) so the
+    report and the scene keep their public success shape unchanged.
 
-    Registered AFTER :func:`_glb_check`, so where the bytes ARE in hand a hash
-    mismatch keeps its more specific ``ARTIFACT_MALFORMED`` (A1) and every
-    pinned binary-route expectation is unchanged. Which code a mixed pair
-    answers therefore depends on the EVIDENCE, not on the route: a mesh rebuild
-    is deterministic, so the republication this closes normally installs
-    IDENTICAL bytes — the content hash agrees, cannot see the mixture at all,
-    and every surface including the binary route answers ``ARTIFACT_STALE`` on
-    the publication identity (``tests/test_publication_pair_order.py`` asserts
-    exactly that). Only when the bytes ALSO differ does the binary route answer
-    MALFORMED first. ``ARTIFACT_STALE`` is used because no mesh-specific stale
-    code exists."""
+    The sidecar is published LAST, so a crash anywhere in the pair leaves it
+    naming the PREVIOUS generation and every surface refuses typed. Registered
+    AFTER :func:`_glb_check`, so where the bytes ARE in hand a hash mismatch
+    keeps its more specific ``ARTIFACT_MALFORMED`` (A1) and every pinned
+    binary-route expectation is unchanged. ``ARTIFACT_STALE`` is used because
+    no mesh-specific stale code exists."""
 
     def check(
         data: dict[str, Any], snapshot: ArtifactSnapshot
     ) -> tuple[ReadState, Exception] | None:
-        if data.get("status") != "SUCCESS":
-            # a FAILED report expects no GLB; a leftover beside it is presented
-            # by no surface (both binary routes refuse a non-SUCCESS report)
-            return None
-        obs = snapshot.observation(glb_name)
-        if obs is None or not obs.present:
-            return None  # not asked for, or already MALFORMED by _glb_check
-        recorded = data.get("glbRevision")
-        if recorded == obs.revision:
-            return None
-        detail = (
-            f"it records no '{glb_name}' publication revision"
-            if recorded is None
-            else f"it was published with '{glb_name}' revision '{recorded}'"
+        report = snapshot.observation(report_name)
+        sidecar = snapshot.observation(commit_name)
+        if report is None or sidecar is None:
+            return None  # the caller did not ask for the unit
+        glb = snapshot.observation(glb_name)
+        record: object = None
+        if sidecar.present and sidecar.data is not None:
+            try:
+                record = json.loads(sidecar.data)
+            except (ValueError, RecursionError):
+                record = None
+        rejection = mesh_commit_rejection(
+            record,
+            report_name=report_name,
+            report_revision=report.revision or "",
+            glb_name=glb_name,
+            glb_revision=(glb.revision if glb is not None and glb.present else None),
+            expects_glb=data.get("status") == "SUCCESS",
         )
-        return (
-            STATE_STALE,
-            ArtifactStaleError(report_name, f"{detail}, and the file on disk is '{obs.revision}'"),
-        )
+        if rejection is None:
+            return None
+        return (STATE_STALE, ArtifactStaleError(report_name, rejection))
 
     return check
 
@@ -885,8 +889,11 @@ READ_SPECS: Mapping[str, ReadSpec] = {
         shape=_shape_mesh_report,
         checks=(
             _glb_check(TUNNEL_MESH_ARTIFACT, TUNNEL_MESH_GLB),
-            _glb_generation_check(TUNNEL_MESH_ARTIFACT, TUNNEL_MESH_GLB),
+            _mesh_commit_check(
+                TUNNEL_MESH_ARTIFACT, TUNNEL_MESH_GLB, mesh_commit_name(TUNNEL_MESH_ARTIFACT)
+            ),
         ),
+        commit_record=mesh_commit_name(TUNNEL_MESH_ARTIFACT),
     ),
     DEVELOPMENT_MESH_ARTIFACT: _spec(
         DEVELOPMENT_MESH_ARTIFACT,
@@ -894,9 +901,14 @@ READ_SPECS: Mapping[str, ReadSpec] = {
         shape=_shape_development_mesh_report,
         checks=(
             _glb_check(DEVELOPMENT_MESH_ARTIFACT, DEVELOPMENT_MESH_GLB),
-            _glb_generation_check(DEVELOPMENT_MESH_ARTIFACT, DEVELOPMENT_MESH_GLB),
+            _mesh_commit_check(
+                DEVELOPMENT_MESH_ARTIFACT,
+                DEVELOPMENT_MESH_GLB,
+                mesh_commit_name(DEVELOPMENT_MESH_ARTIFACT),
+            ),
             _development_mesh_source_check,
         ),
+        commit_record=mesh_commit_name(DEVELOPMENT_MESH_ARTIFACT),
         provenance_inputs=(RAMP_SOURCE_FILE,),
     ),
     # -- typed payloads ------------------------------------------------------ #
@@ -1054,6 +1066,11 @@ class ArtifactReader:
             for file in artifact.files:
                 if file.name not in files:
                     files.append(file.name)
+            # the INTERNAL publication sidecar this READ_SPEC declares — it is
+            # unregistered, so the registry expansion above cannot yield it
+            sidecar = READ_SPECS[artifact.name].commit_record
+            if sidecar is not None and sidecar not in files:
+                files.append(sidecar)
         return tuple(files)
 
     # -- read (pure over the snapshot) -------------------------------------- #

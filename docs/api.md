@@ -389,7 +389,7 @@ New error codes (all HTTP 409):
 | code | detail | raised when |
 |---|---|---|
 | `ARTIFACT_MALFORMED` | `code`, `message` (names the FILE, never a path) | a present artifact is not a usable document |
-| `ARTIFACT_STALE` | `code`, `message` | a provenance check failed and no rule-named stale code exists. Producers: `development_mesh.sources.rampSource` vs the active source, and (AC-01F.2 correction) a SUCCESS mesh report whose `glbRevision` does not name the GLB on disk — on `GET …/design/tunnel`, `GET …/design/development-mesh`, both `mesh.glb` routes and in the scene |
+| `ARTIFACT_STALE` | `code`, `message` | a provenance check failed and no rule-named stale code exists. Producers: `development_mesh.sources.rampSource` vs the active source, and (AC-01F.2 correction) a mesh pair whose INTERNAL publication sidecar does not name the report and GLB on disk — on `GET …/design/tunnel`, `GET …/design/development-mesh`, both `mesh.glb` routes and in the scene |
 | `WORLD_PUBLICATION_STALE` | `code`, `message` | **AC-01F.2 correction (B1).** `arrays.npz` exists, but `derived/world.json` — the world COMMIT RECORD — does not commit THIS `scenario.json` and THIS `arrays.npz`. It is a *_STALE code in the exact sense of `SHAFTS_STALE` / `CAPABILITY_GRAPH_STALE`: a published product whose own recorded inputs no longer match the live ones. Reachable states: a writer died between the document publication and the derived invalidation (a fresh process previously served that as **200** — NEW document beside an OLD world), a generation died after publishing `arrays.npz` and before its record, an input was replaced afterwards (a content-preserving `touch` counts — rule 60 is a stat identity), or a CROSS-PROCESS reader caught a live writer between the two publications. That last case is the reason the message does NOT claim a retry never succeeds; it is deliberately NOT folded into the bounded `READ_SNAPSHOT_CHANGED` retry, which exists for inputs that moved under ONE reader. The remedy named to the client is `POST …/world/generate`. `WORLD_NOT_GENERATED` (no `arrays.npz`) and `WORLD_ARTIFACT_INCOMPATIBLE` (a Phase-17 NPZ) both keep precedence over it |
 | `SCENE_ARTIFACT_INVALID` | `code`, `message`, `artifacts: [{artifact, state, code, message}]` | `GET …/scene` found at least one present-but-invalid artifact; EVERY failure of that snapshot is listed, each with its own specific code (`SHAFTS_STALE`, `LAYOUT_V2_CLEARANCE_MISMATCH`, `ARTIFACT_MALFORMED`, …). No filesystem path, traceback or exception repr is exposed |
 | `READ_SNAPSHOT_CHANGED` | `code`, `message` | **live from AC-01F commit 3.** It means "a coherent read snapshot could not be acquired because the scenario / artifact set kept changing; retry the read", and it is deliberately distinct from `JOB_INPUTS_CHANGED`, which is a GENERATION whose inputs moved (nothing is built or discarded by a read). Two producers: `WorldService._bound_scenario`, bounded internally at `SNAPSHOT_ATTEMPTS` (3), when `scenario.json` moves on every attempt; and `WorldService.load_bound`, which raises on FIRST detection when EITHER of its two inputs moved across the cold load — `arrays.npz` REPLACED between its stat and its `np.load`, or `scenario.json` replaced between the bound document read and the publish re-check (Stage D B1 made the two halves symmetric: the scenario re-check used to gate the CACHE PUBLISH only, while the `return` was unconditional, so the two world routes still served a body mixing the OLD document's orebody with the NEW world's terrain and fields) — only `GET …/scene` retries that producer (bounded at 3); `GET …/world` and `GET …/world/slice` answer the code on the first mismatch (a DELETED `arrays.npz` is `WORLD_NOT_GENERATED`, not this code). The surfaces this commit adds are **`GET …/scene`** (which additionally retries the whole bound load + lock-held artifact observation and only then answers this code), **`GET …/world`**, **`GET …/world/slice`** and **`POST …/world/generate`**'s pre-read binding — the generation's own post-build re-check stays `JOB_INPUTS_CHANGED`. Every other route that loads the world goes through the same `load_bound` (the eight `DesignService` builders and `POST …/design/layout-v2`'s world guard), so it can answer this code too; all four routers map it identically through the one `guard` table. The remaining `_bound_scenario` branch — `scenario.json` appearing between the stat and the read — is unreachable through the API: only `ScenarioStore.create` writes a fresh id and no client can name one before it exists |
@@ -414,10 +414,12 @@ Freshness uses only the relations that exist on disk:
 `capabilityGraph.networkRevision` (plus its recorded `networkSourceRevision`)
 ↔ `network.json`, the selection ↔ level-access agreement (rule 157),
 `development_mesh.sources.rampSource` ↔ the active source, the two-file
-GLB content hash, and — added by the AC-01F.2 correction — the world COMMIT
-RECORD `derived/world.json` ↔ the live `scenario.json` / `arrays.npz`
-(publication provenance: one publication's OWN recorded inputs, never a
-recomputed fingerprint) and `<mesh>.glbRevision` ↔ the GLB file beside it. Where persisted evidence cannot prove freshness, the reader
+GLB content hash, and — added by the AC-01F.2 correction — two INTERNAL
+publication records: `derived/world.json` ↔ the live `scenario.json` /
+`arrays.npz`, and `derived/<mesh>.commit.json` ↔ the mesh report and GLB
+beside it. Both are publication provenance — one publication's OWN recorded
+identities, never a recomputed fingerprint — and neither appears in a served
+payload. Where persisted evidence cannot prove freshness, the reader
 claims nothing; the cascade and the rule-60 writer protocol remain the
 guarantee.
 
@@ -695,25 +697,31 @@ specific `WORLD_ARTIFACT_INCOMPATIBLE`. Consequence for an existing store: a
 world generated before this commit has no record and answers the 409 until it
 is regenerated once.
 
-**A SUCCESS mesh report names the GLB it was published with (AC-01F.2
-correction, B3).** `artifactRevision` is a content hash and can only be checked
-where the bytes are in hand — the binary routes. A republication that died
-between the GLB and its report (GLB G2 beside report G1) was therefore 200 on
-`GET …/design/tunnel`, `GET …/design/development-mesh` and in the scene. The
-report now also records `glbRevision`, the rule-60 identity its own
-`publish_bytes` installed, and the read authority compares it against the GLB
-stat the two-file registry expansion already takes — no bytes are hashed on the
-report route or in the scene. Which code a mixed pair answers depends on the
-evidence, not on the route alone. A mesh rebuild is DETERMINISTIC, so the
-republication that this closes normally installs IDENTICAL bytes: the content
-hash still agrees, it cannot see the mixture at all, and every surface —
-including the binary route — answers `ARTIFACT_STALE` on the publication
-identity. Only when the bytes also differ does the binary route answer the
-stricter `ARTIFACT_MALFORMED` first, because there the hash is the more
-specific evidence and it is checked first.
-A FAILED report carries `glbRevision: null`, expects no GLB, and a leftover GLB
-beside it is presented by no surface. A SUCCESS report published before this
-commit carries no `glbRevision` and is refused until regenerated.
+**A mesh pair commits itself with an INTERNAL sidecar (AC-01F.2 correction,
+B3).** `artifactRevision` is a content hash and can only be checked where the
+bytes are in hand — the binary routes. A republication that died between the
+GLB and its report (GLB G2 beside report G1) was therefore 200 on
+`GET …/design/tunnel`, `GET …/design/development-mesh` and in the scene. Worse,
+a mesh rebuild is DETERMINISTIC, so that crash installs IDENTICAL bytes and the
+content hash AGREES: it cannot see the mixture on any route at all.
+
+The discriminator is the publication IDENTITY, recorded in
+`derived/<mesh>.commit.json` — `{reportRevision, glbRevision}`, the rule-60
+identities the publication itself installed — published LAST, so its
+publication is the COMMIT POINT of a mesh generation. **The served report and
+the scene are unchanged**: their success payload carries no new field, because
+publication provenance is internal evidence, not a public projection. The
+reader compares the sidecar against the report and GLB stats it already takes
+in the same snapshot; nothing is hashed on the report route or in the scene.
+
+A FAILED report has no GLB contract — the binary routes refuse a non-SUCCESS
+report outright — so a leftover GLB beside one is ignored, and the FAILED path
+publishes its sidecar BEFORE unlinking that GLB (the generation is committed by
+the report + sidecar; the unlink is housekeeping no reader depends on). The
+sidecar is UNREGISTERED: in no fingerprint and in no cascade, exactly like
+`derived/world.json`, so one left beside a cascade-deleted report is inert. A
+mesh published before this commit has no sidecar and is refused until
+regenerated.
 
 **Every persisted file is published atomically (AC-01F.2).** `scenario.json`,
 `arrays.npz` and every file under `derived/` are written to a temp sibling,

@@ -65,6 +65,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_ARTIFACT,
     TUNNEL_MESH_GLB,
 )
+from minegen.core.mesh_record import mesh_commit_name
 from minegen.layout.certification import ClearancePolicyReconstructionError
 from minegen.main import create_app
 from minegen.services.artifact_errors import (
@@ -889,7 +890,14 @@ def test_a_malformed_ramp_source_is_refused_by_every_read(layout_v2: Stack) -> N
 #: ramp, while the LAYOUT_V2 closure stops at ``decline_smoothed.json``; the
 #: literal file set below is what survives the union.
 AFTER_UNION_CASCADE: set[str] = {
-    "world.json",  # unregistered stats snapshot, never in a cascade
+    "world.json",  # unregistered world COMMIT RECORD, never in a cascade
+    # the two INTERNAL mesh publication sidecars (AC-01F.2 correction B3) are
+    # unregistered for the same reason — publication provenance is not a
+    # dependency (A12) — so no cascade deletes them. A sidecar left beside a
+    # cascade-deleted report is INERT: the artifact is then ABSENT, the read
+    # never reaches its checks, and the next publication overwrites it.
+    mesh_commit_name(TUNNEL_MESH_ARTIFACT),
+    mesh_commit_name(DEVELOPMENT_MESH_ARTIFACT),
     TARGETS_ARTIFACT,  # the artifact the writer just published
     LAYOUT_V2_ARTIFACT,
     LAYOUT_V2_SELECTED_ARTIFACT,
@@ -985,6 +993,8 @@ def test_ramp_source_expected_absence_stays_available_false(bare: Stack) -> None
 #: (Stage A §1.3 / §4.3), which is exactly why the state below is reachable.
 AFTER_CATALOGUE_REGENERATION: set[str] = {
     "world.json",
+    mesh_commit_name(TUNNEL_MESH_ARTIFACT),
+    mesh_commit_name(DEVELOPMENT_MESH_ARTIFACT),
     LAYOUT_V2_ARTIFACT,
     RAMP_SOURCE_FILE,
 }

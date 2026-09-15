@@ -46,6 +46,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_ARTIFACT,
     TUNNEL_MESH_GLB,
 )
+from minegen.core.mesh_record import build_mesh_commit, mesh_commit_name
 from minegen.core.world_record import WORLD_RECORD_FILE, build_world_record
 from minegen.layout.certification import ClearancePolicyReconstructionError
 from minegen.services.artifact_errors import (
@@ -206,28 +207,33 @@ def stack(tmp_path: Path) -> tuple[ScenarioStore, ArtifactReader, Path]:
     write_json(derived / RAMP_SOURCE_FILE, {"activeSource": "LEGACY"})
     (derived / TUNNEL_MESH_GLB).write_bytes(GLB_BYTES)
     (derived / DEVELOPMENT_MESH_GLB).write_bytes(GLB_BYTES)
-    # AC-01F.2 correction B3: a SUCCESS report names the GLB publication it
-    # belongs to, so a hand-written pair must name it too — the reports the
-    # production writer publishes always do
     write_json(
         derived / TUNNEL_MESH_ARTIFACT,
-        {
-            "status": "SUCCESS",
-            "artifactRevision": GLB_DIGEST,
-            "glbRevision": expected_revision(derived / TUNNEL_MESH_GLB),
-            "meshUrl": "/mesh.glb",
-        },
+        {"status": "SUCCESS", "artifactRevision": GLB_DIGEST, "meshUrl": "/mesh.glb"},
     )
     write_json(
         derived / DEVELOPMENT_MESH_ARTIFACT,
         {
             "status": "SUCCESS",
             "artifactRevision": GLB_DIGEST,
-            "glbRevision": expected_revision(derived / DEVELOPMENT_MESH_GLB),
             "meshUrl": "/dev.glb",
             "sources": {"levelAccesses": True, "levels": True, "rampSource": "LEGACY"},
         },
     )
+    # AC-01F.2 correction B3: the publication identity of each pair lives in an
+    # INTERNAL sidecar, published LAST — never in the report, whose success
+    # shape is a public contract. A hand-written pair must be COMMITTED too.
+    for report_name, glb_name in (
+        (TUNNEL_MESH_ARTIFACT, TUNNEL_MESH_GLB),
+        (DEVELOPMENT_MESH_ARTIFACT, DEVELOPMENT_MESH_GLB),
+    ):
+        write_json(
+            derived / mesh_commit_name(report_name),
+            build_mesh_commit(
+                report_revision=expected_revision(derived / report_name),
+                glb_revision=expected_revision(derived / glb_name),
+            ),
+        )
     write_json(
         derived / LEVELS_ARTIFACT,
         _payload(developments=[], levels=[], metrics=None),
@@ -635,9 +641,10 @@ def test_two_file_units_fail_closed(
     # in hand, so the hash check cannot see it — until the AC-01F.2 correction
     # that made this read VALID, which is finding B3 (a republication that died
     # between the GLB and its report was 200 on the report route and in the
-    # scene). The publication IDENTITY is visible to a stat, so the read is now
-    # STALE. Two codes for one physical state, by design: the binary route
-    # holds the bytes and keeps the more specific MALFORMED (asserted above).
+    # scene). The publication identity in the INTERNAL sidecar is visible to a
+    # stat, so the read is now STALE. Two codes for one physical state, by
+    # design: the binary route holds the bytes and keeps the more specific
+    # MALFORMED (asserted above).
     stat_only = reader.read(
         reader.snapshot(SID, [DEVELOPMENT_MESH_ARTIFACT, RAMP_SOURCE_FILE]),
         DEVELOPMENT_MESH_ARTIFACT,

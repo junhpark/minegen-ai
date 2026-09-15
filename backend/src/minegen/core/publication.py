@@ -23,9 +23,12 @@ file under ``derived/`` — is PUBLISHED through this module. A publication is
    (best effort) and the exception propagates unchanged — the previous
    target, or its absence, is untouched.
 
-The helper never reads the target, never retries, never logs, and imports
-the standard library and numpy only. It is a LEAF: it knows nothing about
-scenarios, artifacts, locks, fingerprints or the registry.
+The helper never reads the target, never retries and never logs. It imports
+the standard library, numpy, and ONE other module — ``minegen.core.revision``,
+itself a stdlib-only leaf — so that rule 60 keeps a SINGLE formula: the
+returned identity (below) is computed by the same function every provenance
+comparison uses, not by a second copy of it. It is a LEAF: it knows nothing
+about scenarios, artifacts, locks, fingerprints or the registry.
 
 What it does NOT do, stated so nobody assumes it:
 

@@ -42,6 +42,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_GLB,
 )
 from minegen.core.enums import Capability, DistanceContract, OrebodyType
+from minegen.core.mesh_record import build_mesh_commit, mesh_commit_name
 from minegen.core.models import ApiModel, Scenario
 from minegen.core.publication import publish_bytes, publish_text
 from minegen.design.constraints import DesignContext
@@ -235,6 +236,17 @@ def artifact_fingerprint(store: ScenarioStore, scenario_id: str, name: str) -> I
 
 
 _Model = TypeVar("_Model", bound=ApiModel)
+
+
+def _commit_mesh(commit_path: Path, report_revision: str, glb_revision: str | None) -> None:
+    """Publish the INTERNAL mesh commit sidecar (AC-01F.2 correction B3) — the
+    COMMIT POINT of a mesh generation. It names the identities this
+    publication installed, never a stat of a path afterwards, and it stays out
+    of the report, whose success shape is a public contract."""
+    publish_text(
+        commit_path,
+        json.dumps(build_mesh_commit(report_revision=report_revision, glb_revision=glb_revision)),
+    )
 
 
 class DesignService:
@@ -1330,6 +1342,11 @@ class DesignService:
     def tunnel_glb_path(self, scenario_id: str) -> Path:
         return self.store.derived_dir(scenario_id) / TUNNEL_MESH_GLB
 
+    def tunnel_commit_path(self, scenario_id: str) -> Path:
+        """The INTERNAL mesh commit sidecar (AC-01F.2 correction B3) — never a
+        public payload, never registered."""
+        return self.store.derived_dir(scenario_id) / mesh_commit_name(TUNNEL_MESH_ARTIFACT)
+
     def tunnel_fingerprint(self, scenario_id: str) -> InputFingerprint:
         return self._fingerprint_of(scenario_id, TUNNEL_MESH_ARTIFACT)
 
@@ -1407,17 +1424,21 @@ class DesignService:
             # beside a stale GLB, which the reader already refuses on the
             # binary route and serves as FAILED on the report route.
             glb_path = self.tunnel_glb_path(scenario_id)
+            commit_path = self.tunnel_commit_path(scenario_id)
+            # AC-01F.2 correction B3: the publication IDENTITY of the pair goes
+            # into an INTERNAL sidecar published LAST — never into the report,
+            # whose success shape is a public contract. The sidecar's
+            # publication is the COMMIT POINT of this mesh generation.
             if result.glb is not None:
-                # AC-01F.2 correction B3: the report records the rule-60
-                # identity of the GLB THIS publication installed, so the report
-                # route and the scene — which stat the GLB anyway and must
-                # never hash megabytes — can see a mixed generation that only
-                # the byte-hashing binary route could see before
-                payload["glbRevision"] = publish_bytes(glb_path, result.glb)
-                publish_text(report_path, json.dumps(payload))
+                glb_revision = publish_bytes(glb_path, result.glb)
+                report_revision = publish_text(report_path, json.dumps(payload))
+                _commit_mesh(commit_path, report_revision, glb_revision)
             else:
-                payload["glbRevision"] = None
-                publish_text(report_path, json.dumps(payload))
+                report_revision = publish_text(report_path, json.dumps(payload))
+                # the record commits the FAILED generation BEFORE the cleanup:
+                # a FAILED report has no GLB contract, so unlinking a stale GLB
+                # is housekeeping no reader depends on
+                _commit_mesh(commit_path, report_revision, None)
                 if glb_path.exists():
                     glb_path.unlink()  # never leave a stale GLB beside a FAILED report
         return payload
@@ -1429,6 +1450,10 @@ class DesignService:
 
     def development_mesh_glb_path(self, scenario_id: str) -> Path:
         return self.store.derived_dir(scenario_id) / DEVELOPMENT_MESH_GLB
+
+    def development_mesh_commit_path(self, scenario_id: str) -> Path:
+        """The INTERNAL mesh commit sidecar (AC-01F.2 correction B3)."""
+        return self.store.derived_dir(scenario_id) / mesh_commit_name(DEVELOPMENT_MESH_ARTIFACT)
 
     def development_mesh_fingerprint(self, scenario_id: str) -> InputFingerprint:
         return self._fingerprint_of(scenario_id, DEVELOPMENT_MESH_ARTIFACT)
@@ -1524,13 +1549,15 @@ class DesignService:
             # published first and only then is the stale GLB unlinked (see the
             # comment there for why the two paths differ)
             glb_path = self.development_mesh_glb_path(scenario_id)
+            commit_path = self.development_mesh_commit_path(scenario_id)
+            # correction B3, exactly as ``generate_tunnel``
             if result.glb is not None:
-                # correction B3, exactly as ``generate_tunnel``
-                payload["glbRevision"] = publish_bytes(glb_path, result.glb)
-                publish_text(report_path, json.dumps(payload))
+                glb_revision = publish_bytes(glb_path, result.glb)
+                report_revision = publish_text(report_path, json.dumps(payload))
+                _commit_mesh(commit_path, report_revision, glb_revision)
             else:
-                payload["glbRevision"] = None
-                publish_text(report_path, json.dumps(payload))
+                report_revision = publish_text(report_path, json.dumps(payload))
+                _commit_mesh(commit_path, report_revision, None)
                 if glb_path.exists():
                     glb_path.unlink()
         return payload
