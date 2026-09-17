@@ -47,10 +47,11 @@ import numpy as np
 import pytest
 
 from minegen.core.models import Scenario
+from minegen.design.cost_field import RejectionReason
 from minegen.layout import levels as levels_module
 from minegen.layout import search as search_module
 from minegen.layout import stages as stages_module
-from minegen.layout.families import CandidateParams, RampFamily
+from minegen.layout.families import CandidateParams, InfeasibleReason, RampFamily
 from minegen.layout.results import CandidateResult, CandidateStatus, Stage
 from minegen.layout.search import LayoutSearchResult, LayoutV2Search
 from minegen.layout.sections import SectionGeometryError
@@ -61,10 +62,18 @@ from .conftest import small_scenario
 LAYOUT_DIR = Path(search_module.__file__).parent
 
 #: the private names the refactor removed from ``LayoutV2Search``
+#: the search's COMPLETE data-attribute set — seven constructor-owned
+#: immutables plus the one post-run compatibility slot. Public or private, an
+#: eighth attribute is run state on the search object and fails this test
+#: (AC-01G Stage D, D1).
+SEARCH_DATA_ATTRIBUTES: frozenset[str] = frozenset(
+    {"scenario", "world", "cfg", "policy", "evaluator", "shape", "station_merge_bound", "_ctx"}
+)
+
 REMOVED_RUN_STATE = ("_sections", "_track", "_reference")
 #: the stage functions that were methods before AC-01G and module functions of
 #: ``layout.search`` in commit 2; commit 3 moved them into ``layout.stages``
-STAGE_FUNCTIONS = ("cheap_stage", "detailed_stage", "_certify")
+STAGE_FUNCTIONS = ("cheap_stage", "detailed_stage", "certify")
 #: the stage helpers commit 3 moved with them (``layout.search`` re-exports
 #: every one of them — proved in ``test_layout_boundaries.py``)
 MOVED_HELPERS = (
@@ -118,6 +127,21 @@ OWNERSHIP_ALLOWLIST: dict[str, frozenset[str]] = {
     "build_service_reference": frozenset({"provider.py"}),
     "build_footwall_track": frozenset({"setup.py"}),
     "set_resolution": frozenset({"setup.py", "levels.py"}),
+    # AC-01G Stage D (D3): the provider itself is built in exactly one place.
+    # Without these two rows a SECOND ``build_section_provider(...)`` inside
+    # ``layout/`` passed the guard, leaving the WARPED-only, FULL-tier
+    # 154-build witness as the only net — and TABULAR builds 0 offset traces,
+    # so a TABULAR duplication would have been invisible to it.
+    "build_section_provider": frozenset({"search.py"}),
+    "SectionProvider": frozenset({"provider.py"}),
+    # AC-01G Stage D (D5): the two value types that CARRY the clearance-policy
+    # identity. ``StageContext(provider=P, world_policy=<refined>)`` and
+    # ``AnchorLens(<refined clearance>, "WORLD")`` are legal values that would
+    # key a refined level set under the world cache token; what makes that
+    # impossible today is a single construction site, not the type, so the
+    # site is pinned here.
+    "StageContext": frozenset({"search.py"}),
+    "AnchorLens": frozenset({"stages.py"}),
 }
 
 
@@ -163,22 +187,26 @@ def test_stages_never_read_search_private_state() -> None:
                 offenders.append(f"{path.name}:{node.lineno} ._ctx")
     assert offenders == [], offenders
 
-    # ``_ctx`` is the ONLY private ``self._x`` DATA attribute left on the
-    # search class (private METHODS — ``_result``, ``_stage_context`` — are
-    # behaviour, not run state, so they are excluded by name)
+    # The search's ENTIRE data-attribute set is pinned, not just the private
+    # half. AC-01G Stage D (D1) showed the private-only filter this test used
+    # to apply passed unchanged when ``self.sections`` / ``self.track`` /
+    # ``self.reference`` were re-introduced as PUBLIC attributes — i.e. the
+    # invariant the whole step exists to establish had no guard against its
+    # most natural re-introduction. Private METHODS (``_result``,
+    # ``_stage_context``) are behaviour, not run state, so they are excluded
+    # by name.
     tree = _tree(LAYOUT_DIR / "search.py")
     cls = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef))
     methods = {n.name for n in cls.body if isinstance(n, ast.FunctionDef)}
-    private = {
+    attrs = {
         node.attr
         for node in ast.walk(tree)
         if isinstance(node, ast.Attribute)
         and isinstance(node.value, ast.Name)
         and node.value.id == "self"
-        and node.attr.startswith("_")
         and node.attr not in methods
     }
-    assert private == {"_ctx"}, private
+    assert attrs == SEARCH_DATA_ATTRIBUTES, attrs
 
 
 def test_stage_functions_are_module_functions_of_layout_stages() -> None:
@@ -520,7 +548,7 @@ def test_apply_cheap_refuses_a_record_that_is_past_construct() -> None:
     assert cand.cheap_proxy == 12.5
     assert cand.derived is ev.derived and cand.pieces is ev.pieces
     assert cand.access_screen is ev.access_screen
-    with pytest.raises(ValueError, match="not CONSTRUCT"):
+    with pytest.raises(ValueError, match="cleanly constructed record"):
         stages_module.apply_cheap(cand, ev)
 
 
@@ -633,3 +661,41 @@ def tabular_search(
     sc, world = tabular
     s = LayoutV2Search(sc, world)
     return s, s.run()
+
+
+def test_detailed_failure_reasons_are_sorted_and_de_duplicated() -> None:
+    """The two stages assemble ``failure_reasons`` DIFFERENTLY on purpose and
+    both forms are HARD-CONTRACT golden content: the cheap stage keeps problem
+    ORDER with duplicates (``[p[0].value for p in problems]``), the detailed
+    stage sorts and de-duplicates (``sorted({...})``).
+
+    AC-01G Stage D (D4) measured that the detailed half was differentiated by
+    NOTHING in the repository — across all 7 golden cases the 84 DETAILED
+    candidates have a failure-reason multiplicity histogram of {0: 56, 1: 28},
+    so not one of them carries two reasons, and a mutant swapping the detailed
+    semantics for the cheap ones left every payload sha unchanged. The de-dup
+    IS load-bearing: ``_map_reason`` sends BOTH ``INSIDE_OREBODY`` and
+    ``OREBODY_BUFFER`` to ``OREBODY_CLEARANCE``, and an explicit clearance
+    failure appends a third. This pins the semantics directly on the
+    assembly rather than waiting for a scenario that happens to produce it."""
+    rejections = {
+        RejectionReason.INSIDE_OREBODY.value: 3,
+        RejectionReason.OUTSIDE_WORLD.value: 1,
+        RejectionReason.OREBODY_BUFFER.value: 12,
+    }
+    problems = [(stages_module._map_reason(r), f"{c} samples {r}") for r, c in rejections.items()]
+    problems.append((InfeasibleReason.OREBODY_CLEARANCE, "conservative minimum clearance"))
+
+    cheap_form = [p[0].value for p in problems]
+    detailed_form = sorted({p[0].value for p in problems})
+
+    # the cheap form keeps every occurrence, in problem order
+    assert cheap_form == [
+        "OREBODY_CLEARANCE",
+        "WORLD_BOUNDS",
+        "OREBODY_CLEARANCE",
+        "OREBODY_CLEARANCE",
+    ]
+    # the detailed form collapses the three OREBODY_CLEARANCE entries and sorts
+    assert detailed_form == ["OREBODY_CLEARANCE", "WORLD_BOUNDS"]
+    assert detailed_form != cheap_form, "the two semantics must not coincide on this input"

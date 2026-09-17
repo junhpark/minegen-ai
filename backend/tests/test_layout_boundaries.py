@@ -247,8 +247,24 @@ def test_context_accessor_exposes_the_post_run_objects(
     assert stage_ctx.provider.track is s.context.track
     assert stage_ctx.provider.reference is s.context.reference
     assert stage_ctx.provider.serviceable is s.context.levels
+    # AC-01G Stage D (D5): the clearance-policy identity the offset-trace cache
+    # token is decided by (``policy is world_policy``) reaches the stage as the
+    # search's own constructor objects, not a rebuilt equal-looking pair
+    assert stage_ctx.world_policy is s.policy
+    assert stage_ctx.world_evaluator is s.evaluator
     # AC-01G: `_ctx` is the ONLY run state left on the search object
-    assert not [n for n in vars(s) if n.startswith("_") and n != "_ctx"]
+    # the COMPLETE instance dict, not just its private half (AC-01G Stage D,
+    # D1: a public ``self.sections`` would have passed the old filter)
+    assert set(vars(s)) == {
+        "scenario",
+        "world",
+        "cfg",
+        "policy",
+        "evaluator",
+        "shape",
+        "station_merge_bound",
+        "_ctx",
+    }, sorted(vars(s))
 
 
 def test_lifted_anchor_standoff_equals_the_search_method(

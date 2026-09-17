@@ -33,6 +33,7 @@ from minegen.layout.access import (
     plan_level_accesses,
     turnout_heading_change_deg,
 )
+from minegen.layout.geometry import find_crossing
 from minegen.layout.search import LayoutV2Search, chainage_of
 from minegen.services.scenario_realizer import realize_scenario
 from minegen.world.synthetic_world import generate_world
@@ -96,7 +97,7 @@ def audit(seed, cand, res, search, world, sc, role):
             continue
         a = accesses.get(lv.level_id)
         q = np.asarray(anc.position)
-        xing = cand.crossings[i] if i < len(cand.crossings) else None
+        xing = find_crossing(pts, lv.elevation)
         L["accessOk"] = bool(a.ok) if a else None
         L["reportedReason"] = a.failure_reason if a else None
         L["reportedRejections"] = dict(a.rejection_counts) if a else None

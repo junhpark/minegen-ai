@@ -29,7 +29,6 @@ Leaf module: it must not import ``layout.search``, ``layout.results``,
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -44,9 +43,8 @@ from minegen.layout.families import (
     FootwallTrack,
     effective_footwall_standoff,
 )
-from minegen.layout.levels import LevelSection, LevelSections, RequiredLevel
+from minegen.layout.levels import LevelSections, RequiredLevel
 from minegen.layout.reference import ServiceReference, build_service_reference
-from minegen.layout.sections import FootwallTrace, LevelSectionGeometry, OffsetTrace
 from minegen.layout.setup import SearchSetup, build_search_setup
 from minegen.world.synthetic_world import SyntheticWorld
 
@@ -66,6 +64,25 @@ class SectionProvider:
     ``sections``, ``track``, ``serviceable`` and ``reference`` are the very
     objects the stages, the ``LayoutContext`` and the post-run facade use —
     identity, not equality.
+
+    The authority it carries is CONSTRUCTION, not access: it is the one place
+    a run's ``LevelSections``, footwall track and ``ServiceReference`` are
+    built, and consumers read them off it. AC-01G Stage D (D3) removed a set
+    of delegating ``section`` / ``geometry`` / ``footwall_trace`` /
+    ``offset_trace`` forwarders that had ZERO callers — every real consumer
+    reaches ``provider.sections`` and calls ``LevelSections`` directly — and
+    an unexercised second route into a cache whose KEY is what this step
+    exists to protect is a liability, not a facade.
+
+    Deep immutability is not claimed: ``LevelSections`` holds three lazy
+    caches and ``serviceable`` is a list, so ``frozen=True`` here means the
+    four references cannot be rebound, nothing more. Nor is the caches' own
+    failure path a pure value: ``LevelSections`` re-raises the SAME cached
+    exception object on every hit, so its traceback grows two frames per
+    raise and its ``diagnostics`` dict is one object shared by every
+    ``AnchorFailure`` built from it (AC-01G Stage D, D1 — measured, and left
+    as a recorded residual because it predates this step and lives in a
+    module AC-01G does not touch).
     """
 
     sections: LevelSections
@@ -79,34 +96,6 @@ class SectionProvider:
         if self.track is None:
             raise SectionProviderError("the section provider has no footwall track")
         return self.track
-
-    def section(self, level: RequiredLevel) -> LevelSection:
-        return self.sections.section(level)
-
-    def geometry(self, level: RequiredLevel) -> LevelSectionGeometry:
-        return self.sections.geometry(level)
-
-    def footwall_trace(self, level: RequiredLevel) -> FootwallTrace:
-        return self.sections.footwall_trace(level, self.footwall_track.w_h)
-
-    def offset_trace(
-        self,
-        level: RequiredLevel,
-        standoff: float,
-        minimum_length: float,
-        clearance: Callable[[FloatArray], FloatArray],
-        policy_token: str,
-        minimum_clearance: float,
-    ) -> OffsetTrace:
-        return self.sections.offset_trace(
-            level,
-            self.footwall_track.w_h,
-            standoff,
-            minimum_length,
-            clearance,
-            policy_token,
-            minimum_clearance,
-        )
 
 
 def context_provider(
@@ -129,6 +118,17 @@ def build_section_provider(
     scenario: Scenario, world: SyntheticWorld, world_policy: ClearancePolicy
 ) -> tuple[SearchSetup, SectionProvider]:
     """The setup products of one search plus its section-geometry provider.
+
+    ONE measured consequence of the move, recorded because the characterization
+    freeze is structurally unable to see it (its mask drops every ``*Seconds``
+    key): the ``ServiceReference`` build now happens BEFORE ``run()`` starts its
+    setup clock, so its cost is billed to ``performance.setupSeconds`` instead
+    of ``performance.constructAndCheapSeconds``. Both keys are persisted in
+    ``layout_v2.json``. Measured on WARPED_VEIN-301: 7.876 s of a 10.842 s
+    ``setupSeconds`` is work that used to be billed to the other key; TABULAR is
+    unaffected (the reference is inactive there). No engineering quantity moves
+    and the ``performance`` key INSERTION ORDER is unchanged, but a historical
+    comparison of those two fields across this commit is invalid.
 
     The ``ServiceReference`` build is the block ``LayoutV2Search.run()``
     carried before the extraction, moved verbatim — including BOTH stand-offs

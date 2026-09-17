@@ -56,7 +56,7 @@ from minegen.layout.families import (
     enumerate_candidates,
     resolved_station_lengths,
 )
-from minegen.layout.levels import LevelSections, RequiredLevel
+from minegen.layout.levels import RequiredLevel
 from minegen.layout.materialize import (
     LAYOUT_V2_SELECTED_ARTIFACT,
     LEVEL_ACCESSES_ARTIFACT,
@@ -98,9 +98,9 @@ from minegen.layout.stages import (
     SCORE_TIE_TOLERANCE,
     CheapEvaluation,
     StageContext,
-    _certify,
     apply_cheap,
     apply_detailed,
+    certify,
     cheap_checks,
     cheap_proxy,
     cheap_stage,
@@ -249,7 +249,17 @@ class LayoutV2Search:
             perf["sectionGeometry"] = section_error.diagnostics
             perf["totalSeconds"] = time.perf_counter() - t0
             return self._result(
-                levels, sections, portal, generated, results, [], [], None, req_clear, perf, None
+                levels,
+                provider.serviceable,
+                portal,
+                generated,
+                results,
+                [],
+                [],
+                None,
+                req_clear,
+                perf,
+                None,
             )
         if sections.budget_diagnostics is not None:
             perf["sectionGeometry"] = sections.budget_diagnostics
@@ -260,7 +270,17 @@ class LayoutV2Search:
                 c.failure_detail = "no required level intersects the orebody solid"
             perf["totalSeconds"] = time.perf_counter() - t0
             return self._result(
-                levels, sections, portal, generated, results, [], [], None, req_clear, perf, None
+                levels,
+                provider.serviceable,
+                portal,
+                generated,
+                results,
+                [],
+                [],
+                None,
+                req_clear,
+                perf,
+                None,
             )
         # Phase 20C.4: the conservative construction ServiceReference (built
         # by the provider, rule 170 vs rules 158 / 178) is reported here, in
@@ -382,7 +402,7 @@ class LayoutV2Search:
         )
         return self._result(
             levels,
-            sections,
+            serviceable,
             portal,
             generated,
             results,
@@ -397,7 +417,7 @@ class LayoutV2Search:
     def _result(
         self,
         levels: list[RequiredLevel],
-        sections: LevelSections,
+        serviceable: list[RequiredLevel],
         portal: FloatArray,
         generated: bool,
         results: list[CandidateResult],
@@ -411,7 +431,7 @@ class LayoutV2Search:
         standoff = effective_footwall_standoff(self.cfg, self.scenario.ramp)[0]
         return LayoutSearchResult(
             levels=levels,
-            serviceable_ids=[lv.level_id for lv in sections.serviceable()],
+            serviceable_ids=[lv.level_id for lv in serviceable],
             track=track.to_dict() if track is not None else None,
             portal=portal,
             portal_generated=generated,
@@ -475,7 +495,15 @@ class LayoutV2Search:
         # the context carries the run's sections / track / serviceable levels
         # / reference BY IDENTITY, so the provider view recomputes nothing
         provider = context_provider(ctx.sections, ctx.track, ctx.levels, ctx.reference)
-        clearance = _certify(self._stage_context(provider, ctx, result.required_clearance), cand)
+        if cand.points is None:  # pragma: no cover - a DETAILED candidate has points
+            raise ClearancePolicyReconstructionError(
+                candidate_id, "the candidate has no delivered centerline to certify"
+            )
+        clearance = certify(
+            self._stage_context(provider, ctx, result.required_clearance),
+            cand.candidate_id,
+            cand.points,
+        )
         CandidateCertification.from_report(cand.candidate_id, cand.clearance).verify(
             clearance.policy, clearance.refinement
         )
@@ -523,7 +551,11 @@ shortlist_key = _shortlist_key
 
 
 def _rank_key(c: CandidateResult) -> tuple[int, float, int, str]:
-    assert c.scores is not None
+    # AC-01G Stage D (D2): an explicit refusal, not an ``assert`` — the last
+    # candidate-state precondition that ``python -O`` would have removed. The
+    # arithmetic below is unchanged.
+    if c.scores is None:
+        raise ValueError(f"candidate '{c.candidate_id}' has no scores to rank")
     total = round(c.scores.total / SCORE_TIE_TOLERANCE) * SCORE_TIE_TOLERANCE
     return (
         0 if c.status == CandidateStatus.FEASIBLE else 1,

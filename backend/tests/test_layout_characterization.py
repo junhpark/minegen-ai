@@ -83,6 +83,8 @@ from tests.characterization_support import (
 
 TABULAR_KEY = "TABULAR-REFERENCE"
 WARPED_KEY = "WARPED_VEIN-301"
+ACCESS_INFEASIBLE_KEY = "ACCESS-INFEASIBLE"
+GEOMETRY_STRESS_KEY = "GEOMETRY-STRESS"
 
 
 # --------------------------------------------------------------------------- #
@@ -117,9 +119,35 @@ def warped_reference(
     return warped_301_search[1]
 
 
+@pytest.fixture(scope="module")
+def access_infeasible_reference() -> LayoutSearchResult:
+    """AC-01G Stage D (D4): the NO_FEASIBLE_CANDIDATE terminal branch —
+    ``winnerId`` None, zero feasible candidates, and the
+    ``LEVEL_ACCESS_INFEASIBLE`` problem assembly, none of which the first two
+    frozen cases reach."""
+    case = case_by_key(ACCESS_INFEASIBLE_KEY)
+    sc = case.realize()
+    return LayoutV2Search(sc, generate_world(sc)).run()
+
+
+@pytest.fixture(scope="module")
+def geometry_stress_reference() -> LayoutSearchResult:
+    """AC-01G Stage D (D4): a SWITCHBACK winner WITH a hairpin station over a
+    FamilyInfeasible-dominated population (60 CONSTRUCT / 20 CHEAP / 12
+    DETAILED), against 18 / 62 / 12 in both original cases."""
+    case = case_by_key(GEOMETRY_STRESS_KEY)
+    sc = case.realize()
+    return LayoutV2Search(sc, generate_world(sc)).run()
+
+
 #: case → the fixture that produces its search result. Resolved lazily, so
-#: running one case does not build the other's world and search.
-RESULT_FIXTURES = {TABULAR_KEY: "tabular_reference", WARPED_KEY: "warped_reference"}
+#: running one case does not build the others' worlds and searches.
+RESULT_FIXTURES = {
+    TABULAR_KEY: "tabular_reference",
+    WARPED_KEY: "warped_reference",
+    ACCESS_INFEASIBLE_KEY: "access_infeasible_reference",
+    GEOMETRY_STRESS_KEY: "geometry_stress_reference",
+}
 
 
 def _result(request: pytest.FixtureRequest, case_key: str) -> LayoutSearchResult:
@@ -262,9 +290,9 @@ def test_shortlisted_candidates_passed_the_cheap_stage_clean(
     ``status`` / ``stageReached`` of a SHORTLISTED candidate are overwritten by
     stage 4, so the frozen C2 record holds their post-detailed values. Their
     POST-CHEAP values are nevertheless determined: the shortlist is drawn only
-    from ``status == NOT_VALIDATED`` (``layout/search.py:588``), which the cheap
+    from ``status == NOT_VALIDATED`` (``layout/search.py``'s stage-3 filter), which the cheap
     stage sets only on the branch where ``problems`` is empty
-    (``layout/search.py:735-736``), and that branch is also the only one that
+    (``layout/stages.py``'s clean cheap branch), and that branch is also the only one that
     runs the geometric access screen. So every shortlisted candidate WAS
     ``(CHEAP, NOT_VALIDATED, no failure reasons, screened)`` when stage 3 chose
     it. This is a derived invariant, not an observation — it is asserted here

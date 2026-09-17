@@ -573,25 +573,29 @@ def screen_authority(policy: ClearancePolicy) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _certify(sc: StageContext, cand: CandidateResult) -> CandidateClearance:
-    """Stage-4 certification of ONE candidate: the shared world policy, or a
-    per-candidate REFINED_CONSERVATIVE policy, plus the offset-trace cache
-    token the recipe derived (``layout.certification.certify_candidate`` —
-    the token is decided there, never against a search attribute)."""
-    if cand.points is None:
-        raise ValueError(f"candidate '{cand.candidate_id}' has no delivered centerline to certify")
+def certify(sc: StageContext, candidate_id: str, points: FloatArray) -> CandidateClearance:
+    """Stage-4 certification of ONE delivered centerline: the shared world
+    policy, or a per-candidate REFINED_CONSERVATIVE policy, plus the
+    offset-trace cache token the recipe derived
+    (``layout.certification.certify_candidate`` — the token is decided there,
+    never against a search attribute).
+
+    AC-01G Stage D (D1): the centerline is an explicit ARGUMENT, not a field
+    read off a record another stage mutated. Stage 4 passes the cheap
+    outcome's ``points``; the post-run ``LayoutV2Search.candidate_policy``
+    passes the persisted record's, which is the same array."""
     return certify_candidate(
         sc.world,
         sc.scenario,
         sc.cfg,
         world_policy=sc.world_policy,
         world_evaluator=sc.world_evaluator,
-        points=cand.points,
+        points=points,
         levels=sc.ctx.levels,
         sections=sc.provider.sections,
         track=sc.track,
         required_clearance=sc.required_clearance,
-        candidate_id=cand.candidate_id,
+        candidate_id=candidate_id,
     )
 
 
@@ -671,11 +675,15 @@ def detailed_stage(
         )
     ctx = sc.ctx
     req_clear = sc.required_clearance
-    if cand.points is None or cand.diagnostics is None:
-        raise ValueError(f"candidate '{cand.candidate_id}' never completed the cheap stage")
-    clearance = _certify(sc, cand)
+    # AC-01G Stage D (D1): ONE source for the delivered centerline — the cheap
+    # outcome this stage was handed, never the record a previous stage wrote.
+    # Certification, validation, anchors, access planning and exposure all read
+    # ``points`` below, so a mismatched (candidate, cheap outcome) pair can no
+    # longer certify one ramp and score another.
+    points = cheap.points
+    clearance = certify(sc, cand.candidate_id, points)
     evaluator, policy, refinement = clearance.evaluator, clearance.policy, clearance.refinement
-    report = validate_delivered_centerline(evaluator, cand.points)
+    report = validate_delivered_centerline(evaluator, points)
     validation = report.to_dict()
     # clearance under the candidate's policy (EXACT, COARSE_CONSERVATIVE
     # or the stage-4 REFINED_CONSERVATIVE window)
@@ -709,9 +717,9 @@ def detailed_stage(
     anchors: list[LevelDevelopmentAnchor | AnchorFailure | None] = []
     access_plan: LevelAccessPlan | None = None
     if not problems:
-        anchors = build_anchors(sc, detailed_lens(sc, clearance), cand.points)
+        anchors = build_anchors(sc, detailed_lens(sc, clearance), points)
         access_plan = plan_level_accesses(
-            cand.points,
+            points,
             anchors,
             ctx.levels,
             sc.cfg.access,
@@ -731,7 +739,7 @@ def detailed_stage(
                     + ")",
                 )
             )
-    measured = measure_exposure([cand.points], sc.world.faults, sc.world_evaluator.rock_quality)
+    measured = measure_exposure([points], sc.world.faults, sc.world_evaluator.rock_quality)
     exposure = {
         "faultCrossings": measured.fault_crossings,
         "lengthFaultCore": measured.length_fault_core,
@@ -782,11 +790,20 @@ def apply_cheap(cand: CandidateResult, ev: CheapEvaluation) -> None:
     the same values, in the same order the mutating stage used.
 
     The transition is refused explicitly when the record has already moved
-    past CONSTRUCT: never an ``assert``, which ``python -O`` removes."""
-    if cand.stage_reached != Stage.CONSTRUCT:
+    past CONSTRUCT: never an ``assert``, which ``python -O`` removes.
+
+    AC-01G Stage D (D2): the refusal is SYMMETRIC with ``apply_detailed``'s.
+    A candidate whose ``build_family`` returned ``FamilyInfeasible`` is also
+    at CONSTRUCT, but carries the typed construction reason ``run()`` wrote;
+    applying a cheap outcome to it would erase that reason and make it
+    shortlist-eligible. Today only the ``continue`` in ``run()``'s stage-1/2
+    loop prevents it — statement order, which is what this commit set out to
+    replace."""
+    if cand.stage_reached != Stage.CONSTRUCT or cand.failure_reasons:
         raise ValueError(
-            f"candidate '{cand.candidate_id}' is at stage {cand.stage_reached}, "
-            "not CONSTRUCT: a cheap outcome cannot be applied to it"
+            f"candidate '{cand.candidate_id}' is at stage {cand.stage_reached} with "
+            f"{len(cand.failure_reasons)} failure reason(s): a cheap outcome cannot be "
+            "applied to anything but a cleanly constructed record"
         )
     cand.stage_reached = Stage.CHEAP
     cand.points = ev.points

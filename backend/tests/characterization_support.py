@@ -39,7 +39,12 @@ CHARACTERIZATION_SCHEMA_VERSION = 1
 BASELINE_GIT_SHA = "3951d98d91235facb6b95e9d646f0dc62b7c9835"
 
 #: the two frozen cases (minegen.regression.layout_v2.FULL_SUITE keys)
-CASE_KEYS: tuple[str, ...] = ("TABULAR-REFERENCE", "WARPED_VEIN-301")
+CASE_KEYS: tuple[str, ...] = (
+    "TABULAR-REFERENCE",
+    "WARPED_VEIN-301",
+    "ACCESS-INFEASIBLE",
+    "GEOMETRY-STRESS",
+)
 
 #: wall-clock keys — identical to tests/test_layout_policy_restore.py
 WALL_CLOCK_KEYS = {"sourceRevision"}
