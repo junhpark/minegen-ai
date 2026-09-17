@@ -75,6 +75,16 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     # fresh services; ≈ 1–2 s of interpreter start-up per child, ~25 children
     # plus a committed world + targets per test.
     "test_world_publication_processes": ("slow", "e2e"),
+    # AC-01G: the layout-v2 characterization freeze. TABULAR-REFERENCE is a
+    # clean module-scoped search (≈ 18 s) and WARPED_VEIN-301 rides the shared
+    # session search (≈ 55 s, already paid by the other slow consumers), so
+    # the module is `slow` → FULL only, never FAST. NOT added to
+    # CANARY_NODEID_SUFFIXES: a canary is a representative-scenario detector
+    # the FEATURE tier runs clean, and the freeze is a refactor net whose
+    # authority tier is FULL; adding it would put ≈ 75 s into every FEATURE
+    # run. Marked at module level so the baseline-integrity tests travel with
+    # the comparison tests.
+    "test_layout_characterization": ("slow",),
 }
 #: test function name (any module) → markers
 TEST_MARKERS: dict[str, tuple[str, ...]] = {
