@@ -45,25 +45,22 @@ from minegen.design.exposure import measure_exposure
 from minegen.design.profile import build_profile, required_clearance
 from minegen.design.progress import ProgressCallback, ProgressEvent, ProgressStage, no_progress
 from minegen.layout.access import (
-    BACKBONE_END_MARGIN,
-    MIN_DEVELOPMENT_TRACE_LENGTH,
     SCREEN_HEURISTIC,
     SCREEN_NECESSARY_CONDITION,
-    build_anchor,
     geometric_access_screen,
     plan_level_accesses,
 )
 from minegen.layout.certification import (
     CandidateCertification,
+    CandidateClearance,
     ClearancePolicyReconstructionError,
     ClearanceReport,
-    build_candidate_policy,
+    certify_candidate,
     world_search_policy,
 )
 from minegen.layout.certification import anchor_standoff as _anchor_standoff
 from minegen.layout.families import (
     FAMILY_ORDER,
-    RAMP_CORRIDOR_MARGIN_WIDTHS,
     FamilyGeometry,
     FamilyInfeasible,
     InfeasibleReason,
@@ -89,7 +86,7 @@ from minegen.layout.materialize import (
     materialize_effective_ramp,
     materialize_level_accesses,
 )
-from minegen.layout.reference import ServiceReference, build_service_reference
+from minegen.layout.provider import SectionProvider, build_section_provider, context_provider
 from minegen.layout.results import (
     LAYOUT_V2_VERSION,
     CandidateResult,
@@ -100,7 +97,12 @@ from minegen.layout.results import (
     Scores,
     Stage,
 )
-from minegen.layout.setup import build_search_setup
+from minegen.layout.stages import (
+    StageContext,
+    build_anchors,
+    detailed_lens,
+    screen_lens,
+)
 from minegen.layout.validation import validate_delivered_centerline
 from minegen.world.synthetic_world import SyntheticWorld
 
@@ -451,11 +453,11 @@ class LayoutV2Search:
         self.station_merge_bound: float | None = (
             max(stations) + float(self.cfg.sample_spacing) if max(stations) > 0.0 else None
         )
-        self._sections: LevelSections | None = None
-        self._track: Any = None
-        self._reference: ServiceReference | None = None
-        #: the stage-4 LayoutContext of the last run — retained so the
-        #: candidate-specific clearance policy can be rebuilt after the fact
+        #: the stage-4 LayoutContext of the last run — the ONLY run state
+        #: the search keeps (AC-01G): the section geometry, footwall track
+        #: and construction reference are the provider's, and the context
+        #: carries the very same objects, so the candidate-specific
+        #: clearance policy can still be rebuilt after the fact
         self._ctx: LayoutContext | None = None
 
     @property
@@ -487,19 +489,21 @@ class LayoutV2Search:
         starvation audit): every cheap-feasible candidate receives detailed
         validation instead of the bounded shortlist. It is never exposed
         through the scenario config or the API."""
+        self._ctx = None
         t0 = time.perf_counter()
         sc = self.scenario
         world = self.world
         # AC-01D: the setup block has ONE definition (layout.setup), shared
-        # with the search-object-free certification restore
-        setup = build_search_setup(sc, world)
+        # with the search-object-free certification restore. AC-01G: the
+        # section geometry (sections, footwall track, serviceable levels and
+        # the construction ServiceReference) has ONE owner for the run.
+        setup, provider = build_section_provider(sc, world, self.policy)
         levels, sections, section_error, track = (
             setup.levels,
-            setup.sections,
+            provider.sections,
             setup.section_error,
-            setup.track,
+            provider.track,
         )
-        self._sections, self._track = sections, track
         portal, generated = setup.portal, setup.portal_generated
         req_clear = setup.required_clearance
         perf: dict[str, Any] = {}
@@ -519,7 +523,7 @@ class LayoutV2Search:
             )
         if sections.budget_diagnostics is not None:
             perf["sectionGeometry"] = sections.budget_diagnostics
-        serviceable = sections.serviceable()
+        serviceable = provider.serviceable
         if not serviceable or track is None:
             for c in results:
                 c.failure_reasons = [InfeasibleReason.NO_REQUIRED_LEVELS.value]
@@ -528,30 +532,12 @@ class LayoutV2Search:
             return self._result(
                 levels, sections, portal, generated, results, [], [], None, req_clear, perf, None
             )
-        # Phase 20C.4: the conservative construction ServiceReference — the
-        # WORLD-policy offset traces stage 4 builds for coarse anchors (same
-        # cache token), read once here so the ramp corridor and the level
-        # anchors share ONE spacing reference (rule 170 vs rules 158 / 178).
-        # Inactive (delta ≡ 0, bit-identical) on TABULAR and for an explicit
-        # footwallStandoff; per-level trace failures are reported, never hidden.
-        standoff_value, standoff_source = effective_footwall_standoff(self.cfg, sc.ramp)
-        reference = build_service_reference(
-            sections,
-            serviceable,
-            track.w_h,
-            orebody=world.orebody,
-            clearance=self.policy.signed_clearance,
-            basis=self.policy.basis,
-            standoff=standoff_value,
-            standoff_source=standoff_source,
-            margin=RAMP_CORRIDOR_MARGIN_WIDTHS * float(sc.ramp.tunnel_width),
-            anchor_standoff=self.anchor_standoff(req_clear, self.policy),
-            min_trace_length=MIN_DEVELOPMENT_TRACE_LENGTH,
-            end_margin=BACKBONE_END_MARGIN,
-            required_clearance=req_clear,
-        )
-        self._reference = reference
-        perf["serviceReference"] = reference.to_dict()
+        # Phase 20C.4: the conservative construction ServiceReference (built
+        # by the provider, rule 170 vs rules 158 / 178) is reported here, in
+        # the persisted `performance` insertion order it has always had.
+        reference = provider.reference
+        if reference is not None:
+            perf["serviceReference"] = reference.to_dict()
         ctx = LayoutContext(
             portal,
             serviceable,
@@ -564,6 +550,7 @@ class LayoutV2Search:
             reference=reference,
         )
         self._ctx = ctx
+        stage_ctx = self._stage_context(provider, ctx, req_clear)
 
         # -- STAGE 1 + 2: construct and cheap-evaluate every candidate --------- #
         n = len(results)
@@ -577,7 +564,7 @@ class LayoutV2Search:
                     _event(ProgressStage.CANDIDATE_COMPLETED, i, n, cand.candidate_id, cand.status)
                 )
                 continue
-            self._cheap_stage(cand, built, ctx, req_clear)
+            cheap_stage(stage_ctx, cand, built)
             on_progress(
                 _event(ProgressStage.CANDIDATE_COMPLETED, i, n, cand.candidate_id, cand.status)
             )
@@ -623,7 +610,7 @@ class LayoutV2Search:
                     "DETAILED",
                 )
             )
-            self._detailed_stage(cand, ctx, req_clear)
+            detailed_stage(stage_ctx, cand)
             on_progress(
                 _event(
                     ProgressStage.CANDIDATE_COMPLETED,
@@ -704,65 +691,30 @@ class LayoutV2Search:
             config=self.cfg.model_dump(mode="json", by_alias=True),
         )
 
-    # -- stages ------------------------------------------------------------- #
+    # -- stage context ------------------------------------------------------ #
 
-    def _cheap_stage(
-        self, cand: CandidateResult, built: FamilyGeometry, ctx: LayoutContext, req_clear: float
-    ) -> None:
-        cand.stage_reached = Stage.CHEAP
-        cand.points = built.points
-        cand.pieces = built.pieces
-        cand.derived = built.derived
-        diag = analyze_centerline(built.points, station_merge_max_m=self.station_merge_bound)
-        cand.diagnostics = diag
-        problems = cheap_checks(diag, built.points, ctx.ramp, ctx.world_half_x, ctx.world_half_y)
-        records, crossings = level_service(
-            built.points, ctx.levels, ctx.sections, ctx.cfg.access_reach
+    def _stage_context(
+        self, provider: SectionProvider, ctx: LayoutContext, required_clearance: float
+    ) -> StageContext:
+        """The stage-side state as ONE explicit value (AC-01G): the
+        constructor-owned world policy / evaluator / profile / station merge
+        bound, the run's section-geometry provider and the construction
+        context. ``run()`` and the post-run ``candidate_policy`` facade build
+        it from the SAME inputs — in particular the constructor objects
+        ``self.policy`` / ``self.evaluator``, whose identity decides the
+        offset-trace cache token inside the certification recipe."""
+        return StageContext(
+            scenario=self.scenario,
+            world=self.world,
+            cfg=self.cfg,
+            world_policy=self.policy,
+            world_evaluator=self.evaluator,
+            shape=self.shape,
+            station_merge_bound=self.station_merge_bound,
+            required_clearance=required_clearance,
+            provider=provider,
+            ctx=ctx,
         )
-        cand.level_service = records
-        cand.crossings = crossings
-        # closeout v3 §3: only a level the main ramp does NOT vertically cover
-        # (NO_RL_CROSSING — no junction lattice can exist for a ramp that never
-        # reaches the level) is a hard stage-2 failure. ACCESS_REACH_EXCEEDED is
-        # a soft access-potential heuristic: it stays visible per level and in
-        # the stage-3 proxy, and stage 4 plans the explicit access.
-        problems.extend(level_screen_problems(records))
-        cand.cheap_proxy = cheap_proxy(diag, records, ctx)
-        if problems:
-            cand.status = CandidateStatus.INFEASIBLE
-            cand.failure_reasons = [p[0].value for p in problems]
-            cand.failure_detail = "; ".join(p[1] for p in problems)
-        else:
-            cand.status = CandidateStatus.NOT_VALIDATED
-            # Phase 20C.1-Q: evaluator-free geometric access screen on the
-            # delivered polyline (coarse-stand-off anchors) — the stage-3
-            # ordering prefix (rule 176); it never rejects, stage 4 decides
-            assert self._sections is not None and self._track is not None
-            standoff = self.anchor_standoff(req_clear, self.policy)
-            anchors = [
-                build_anchor(
-                    self.world.orebody,
-                    lv,
-                    self._sections,
-                    self._track,
-                    built.points,
-                    standoff,
-                    self.scenario.mining.method.value,
-                    clearance=self.policy.signed_clearance,
-                    policy_token="WORLD",
-                    minimum_clearance=req_clear,
-                )
-                for lv in ctx.levels
-            ]
-            cand.access_screen = geometric_access_screen(
-                built.points,
-                anchors,
-                ctx.levels,
-                self.cfg.access,
-                ctx.ramp,
-                self.shape,
-                screen_authority(self.policy),
-            )
 
     def candidate_policy(
         self, result: LayoutSearchResult, candidate_id: str
@@ -782,134 +734,163 @@ class LayoutV2Search:
             raise ClearancePolicyReconstructionError(
                 candidate_id, "the candidate has no stage-4 clearance report to reconstruct"
             )
-        evaluator, policy, refinement = self._candidate_policy(
-            cand, self._ctx, result.required_clearance
-        )
+        ctx = self._ctx
+        # the context carries the run's sections / track / serviceable levels
+        # / reference BY IDENTITY, so the provider view recomputes nothing
+        provider = context_provider(ctx.sections, ctx.track, ctx.levels, ctx.reference)
+        clearance = _certify(self._stage_context(provider, ctx, result.required_clearance), cand)
         CandidateCertification.from_report(cand.candidate_id, cand.clearance).verify(
-            policy, refinement
+            clearance.policy, clearance.refinement
         )
-        return evaluator, policy, refinement
+        return clearance.evaluator, clearance.policy, clearance.refinement
 
-    def _candidate_policy(
-        self, cand: CandidateResult, ctx: LayoutContext, req_clear: float
-    ) -> tuple[DesignCostEvaluator, ClearancePolicy, dict[str, Any]]:
-        """Stage-4 evaluator for ONE candidate (Phase 20B.1 C-2): the shared
-        policy, or a per-candidate REFINED_CONSERVATIVE policy built from one
-        LOCAL refined window covering (a) the centerline samples whose COARSE
-        certification falls below the requirement and (b) the level-entry
-        corridor (preliminary anchors under the coarse stand-off — the
-        refined bound moves the entries). Points outside the window keep the
-        coarse certification, so refinement can only certify MORE, never
-        admit an optimistic distance. A window over the cell budget skips
-        refinement with an explicit diagnostic."""
-        assert cand.points is not None
-        assert self._sections is not None and self._track is not None
-        return build_candidate_policy(
-            self.world,
-            self.scenario,
-            self.cfg,
-            world_policy=self.policy,
-            world_evaluator=self.evaluator,
-            points=cand.points,
-            levels=ctx.levels,
-            sections=self._sections,
-            track=self._track,
-            required_clearance=req_clear,
+
+# --------------------------------------------------------------------------- #
+# Stages (AC-01G): module functions of a StageContext — no ``self``, so no
+# stage can reach into the search object's run state.
+# --------------------------------------------------------------------------- #
+
+
+def _certify(sc: StageContext, cand: CandidateResult) -> CandidateClearance:
+    """Stage-4 certification of ONE candidate: the shared world policy, or a
+    per-candidate REFINED_CONSERVATIVE policy, plus the offset-trace cache
+    token the recipe derived (``layout.certification.certify_candidate`` —
+    the token is decided there, never against a search attribute)."""
+    if cand.points is None:
+        raise ValueError(f"candidate '{cand.candidate_id}' has no delivered centerline to certify")
+    return certify_candidate(
+        sc.world,
+        sc.scenario,
+        sc.cfg,
+        world_policy=sc.world_policy,
+        world_evaluator=sc.world_evaluator,
+        points=cand.points,
+        levels=sc.ctx.levels,
+        sections=sc.provider.sections,
+        track=sc.track,
+        required_clearance=sc.required_clearance,
+        candidate_id=cand.candidate_id,
+    )
+
+
+def cheap_stage(sc: StageContext, cand: CandidateResult, built: FamilyGeometry) -> None:
+    ctx = sc.ctx
+    cand.stage_reached = Stage.CHEAP
+    cand.points = built.points
+    cand.pieces = built.pieces
+    cand.derived = built.derived
+    diag = analyze_centerline(built.points, station_merge_max_m=sc.station_merge_bound)
+    cand.diagnostics = diag
+    problems = cheap_checks(diag, built.points, ctx.ramp, ctx.world_half_x, ctx.world_half_y)
+    records, crossings = level_service(built.points, ctx.levels, ctx.sections, ctx.cfg.access_reach)
+    cand.level_service = records
+    cand.crossings = crossings
+    # closeout v3 §3: only a level the main ramp does NOT vertically cover
+    # (NO_RL_CROSSING — no junction lattice can exist for a ramp that never
+    # reaches the level) is a hard stage-2 failure. ACCESS_REACH_EXCEEDED is
+    # a soft access-potential heuristic: it stays visible per level and in
+    # the stage-3 proxy, and stage 4 plans the explicit access.
+    problems.extend(level_screen_problems(records))
+    cand.cheap_proxy = cheap_proxy(diag, records, ctx)
+    if problems:
+        cand.status = CandidateStatus.INFEASIBLE
+        cand.failure_reasons = [p[0].value for p in problems]
+        cand.failure_detail = "; ".join(p[1] for p in problems)
+    else:
+        cand.status = CandidateStatus.NOT_VALIDATED
+        # Phase 20C.1-Q: evaluator-free geometric access screen on the
+        # delivered polyline (coarse-stand-off anchors) — the stage-3
+        # ordering prefix (rule 176); it never rejects, stage 4 decides
+        anchors = build_anchors(sc, screen_lens(sc), built.points)
+        cand.access_screen = geometric_access_screen(
+            built.points,
+            anchors,
+            ctx.levels,
+            sc.cfg.access,
+            ctx.ramp,
+            sc.shape,
+            screen_authority(sc.world_policy),
         )
 
-    def _detailed_stage(self, cand: CandidateResult, ctx: LayoutContext, req_clear: float) -> None:
-        assert cand.points is not None and cand.diagnostics is not None
-        cand.stage_reached = Stage.DETAILED
-        evaluator, policy, refinement = self._candidate_policy(cand, ctx, req_clear)
-        report = validate_delivered_centerline(evaluator, cand.points)
-        cand.validation = report.to_dict()
-        # clearance under the candidate's policy (EXACT, COARSE_CONSERVATIVE
-        # or the stage-4 REFINED_CONSERVATIVE window)
-        conservative_min = float(np.min(report.orebody_distance))
-        approx_min: float | None = None
-        bound: float | None = None
-        if policy.basis != "EXACT":
-            bound = float(policy.error_bound)
-            approx_min = conservative_min + bound
-        clear_ok = conservative_min >= req_clear - 1e-9
-        cand.clearance = ClearanceReport(
-            policy.basis, req_clear, conservative_min, approx_min, bound, clear_ok, refinement
+
+def detailed_stage(sc: StageContext, cand: CandidateResult) -> None:
+    ctx = sc.ctx
+    req_clear = sc.required_clearance
+    if cand.points is None or cand.diagnostics is None:
+        raise ValueError(f"candidate '{cand.candidate_id}' never completed the cheap stage")
+    cand.stage_reached = Stage.DETAILED
+    clearance = _certify(sc, cand)
+    evaluator, policy, refinement = clearance.evaluator, clearance.policy, clearance.refinement
+    report = validate_delivered_centerline(evaluator, cand.points)
+    cand.validation = report.to_dict()
+    # clearance under the candidate's policy (EXACT, COARSE_CONSERVATIVE
+    # or the stage-4 REFINED_CONSERVATIVE window)
+    conservative_min = float(np.min(report.orebody_distance))
+    approx_min: float | None = None
+    bound: float | None = None
+    if policy.basis != "EXACT":
+        bound = float(policy.error_bound)
+        approx_min = conservative_min + bound
+    clear_ok = conservative_min >= req_clear - 1e-9
+    cand.clearance = ClearanceReport(
+        policy.basis, req_clear, conservative_min, approx_min, bound, clear_ok, refinement
+    )
+    problems: list[tuple[InfeasibleReason, str]] = []
+    for reason, count in sorted(report.rejection_counts.items()):
+        mapped = _map_reason(reason)
+        problems.append((mapped, f"{count} samples {reason}"))
+    if not clear_ok:
+        problems.append(
+            (
+                InfeasibleReason.OREBODY_CLEARANCE,
+                f"conservative minimum clearance {conservative_min:.2f} m < required "
+                f"{req_clear:.2f} m ({policy.basis})",
+            )
         )
-        problems: list[tuple[InfeasibleReason, str]] = []
-        for reason, count in sorted(report.rejection_counts.items()):
-            mapped = _map_reason(reason)
-            problems.append((mapped, f"{count} samples {reason}"))
-        if not clear_ok:
+    # Phase 20B: explicit ramp-junction + level-access planning (rule 156).
+    # Only a main ramp that is itself valid gets an access plan; an
+    # unreachable level is a HARD failure, never a score term. The plan
+    # runs under the CANDIDATE's policy (C-2): a refined bound shrinks
+    # the anchor stand-off, so entries sit at the configured value again.
+    if not problems:
+        cand.anchors = build_anchors(sc, detailed_lens(sc, clearance), cand.points)
+        cand.access_plan = plan_level_accesses(
+            cand.points,
+            cand.anchors,
+            ctx.levels,
+            sc.cfg.access,
+            sc.scenario.ramp,
+            evaluator,
+            sc.shape,
+            req_clear,
+        )
+        if not cand.access_plan.feasible:
+            failed = [a for a in cand.access_plan.accesses if not a.ok]
             problems.append(
                 (
-                    InfeasibleReason.OREBODY_CLEARANCE,
-                    f"conservative minimum clearance {conservative_min:.2f} m < required "
-                    f"{req_clear:.2f} m ({policy.basis})",
+                    InfeasibleReason.LEVEL_ACCESS_INFEASIBLE,
+                    f"{len(failed)} of {len(cand.access_plan.accesses)} required levels "
+                    "have no valid ramp junction + level access ("
+                    + ", ".join(f"{a.level_id}: {a.failure_reason}" for a in failed)
+                    + ")",
                 )
             )
-        # Phase 20B: explicit ramp-junction + level-access planning (rule 156).
-        # Only a main ramp that is itself valid gets an access plan; an
-        # unreachable level is a HARD failure, never a score term. The plan
-        # runs under the CANDIDATE's policy (C-2): a refined bound shrinks
-        # the anchor stand-off, so entries sit at the configured value again.
-        if not problems:
-            assert self._sections is not None and self._track is not None
-            standoff = self.anchor_standoff(req_clear, policy)
-            # trace cache identity: the shared world policy, or this
-            # candidate's own stage-4 refined policy (deterministic token)
-            token = "WORLD" if policy is self.policy else cand.candidate_id
-            cand.anchors = [
-                build_anchor(
-                    self.world.orebody,
-                    lv,
-                    self._sections,
-                    self._track,
-                    cand.points,
-                    standoff,
-                    self.scenario.mining.method.value,
-                    clearance=policy.signed_clearance,
-                    policy_token=token,
-                    minimum_clearance=req_clear,
-                )
-                for lv in ctx.levels
-            ]
-            cand.access_plan = plan_level_accesses(
-                cand.points,
-                cand.anchors,
-                ctx.levels,
-                self.cfg.access,
-                self.scenario.ramp,
-                evaluator,
-                self.shape,
-                req_clear,
-            )
-            if not cand.access_plan.feasible:
-                failed = [a for a in cand.access_plan.accesses if not a.ok]
-                problems.append(
-                    (
-                        InfeasibleReason.LEVEL_ACCESS_INFEASIBLE,
-                        f"{len(failed)} of {len(cand.access_plan.accesses)} required levels "
-                        "have no valid ramp junction + level access ("
-                        + ", ".join(f"{a.level_id}: {a.failure_reason}" for a in failed)
-                        + ")",
-                    )
-                )
-        exposure = measure_exposure([cand.points], self.world.faults, self.evaluator.rock_quality)
-        cand.exposure = {
-            "faultCrossings": exposure.fault_crossings,
-            "lengthFaultCore": exposure.length_fault_core,
-            "lengthFaultDamage": exposure.length_fault_damage,
-            "lengthPoorRock": exposure.length_poor_rock,
-            "totalLength": exposure.total_length,
-            "fieldCost": report.field_cost,
-        }
-        cand.scores = score_candidate(cand, ctx, cand.exposure, self.cfg.weights)
-        if problems:
-            cand.status = CandidateStatus.INFEASIBLE
-            cand.failure_reasons = sorted({p[0].value for p in problems})
-            cand.failure_detail = "; ".join(p[1] for p in problems)
-        else:
-            cand.status = CandidateStatus.FEASIBLE
+    exposure = measure_exposure([cand.points], sc.world.faults, sc.world_evaluator.rock_quality)
+    cand.exposure = {
+        "faultCrossings": exposure.fault_crossings,
+        "lengthFaultCore": exposure.length_fault_core,
+        "lengthFaultDamage": exposure.length_fault_damage,
+        "lengthPoorRock": exposure.length_poor_rock,
+        "totalLength": exposure.total_length,
+        "fieldCost": report.field_cost,
+    }
+    cand.scores = score_candidate(cand, ctx, cand.exposure, sc.cfg.weights)
+    if problems:
+        cand.status = CandidateStatus.INFEASIBLE
+        cand.failure_reasons = sorted({p[0].value for p in problems})
+        cand.failure_detail = "; ".join(p[1] for p in problems)
+    else:
+        cand.status = CandidateStatus.FEASIBLE
 
 
 def _map_reason(reason: str) -> InfeasibleReason:
