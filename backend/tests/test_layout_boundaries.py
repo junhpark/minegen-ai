@@ -21,7 +21,7 @@ import pytest
 
 from minegen.core.models import Scenario
 from minegen.design import profile as design_profile
-from minegen.layout import certification, materialize, provider, results, search
+from minegen.layout import certification, materialize, provider, results, search, stages
 from minegen.layout.certification import (
     CandidateCertification,
     ClearancePolicyReconstructionError,
@@ -128,6 +128,30 @@ def test_certification_verify_is_the_fail_closed_provenance_check(
         ("materialize_level_accesses", materialize),
         ("chainage_of", materialize),
         ("required_clearance", design_profile),
+        # AC-01G commit 3: the stage helpers and the score coefficients moved
+        # to ``layout.stages``; ``layout.search`` re-exports the owning
+        # module's own object, so every established import path still resolves
+        # to the one definition the search itself uses
+        ("level_service", stages),
+        ("cheap_checks", stages),
+        ("level_screen_problems", stages),
+        ("cheap_proxy", stages),
+        ("score_candidate", stages),
+        ("screen_authority", stages),
+        ("DEV_ACCESS_COEF", stages),
+        ("GEO_CORE_COEF", stages),
+        ("GEO_DAMAGE_COEF", stages),
+        ("GEO_POOR_ROCK_COEF", stages),
+        ("GEO_CROSSING_COEF", stages),
+        ("GEOM_TURNING_COEF", stages),
+        ("GEOM_CLEARANCE_COEF", stages),
+        ("GEOM_CURVATURE_COEF", stages),
+        ("GEOM_REVERSAL_COEF", stages),
+        ("GEOM_HAIRPIN_COEF", stages),
+        ("GEOM_HALF_TURN_COEF", stages),
+        ("SCORE_TIE_TOLERANCE", stages),
+        ("RADIUS_TOLERANCE", stages),
+        ("GRADIENT_TOLERANCE", stages),
     ],
 )
 def test_search_re_exports_the_owning_module_object(name: str, owner: object) -> None:
@@ -194,9 +218,11 @@ def test_context_accessor_exposes_the_post_run_objects(
         seen.setdefault("family_ctx", ctx)
         return real_family(params, ctx)
 
-    def spy_cheap(stage_ctx: Any, cand: Any, built: Any) -> None:
+    def spy_cheap(stage_ctx: Any, built: Any) -> Any:
+        # AC-01G commit 3: the stage RETURNS its outcome (``apply_cheap`` is
+        # the only writer), so the spy must pass it through
         seen.setdefault("stage_ctx", stage_ctx)
-        real_cheap(stage_ctx, cand, built)
+        return real_cheap(stage_ctx, built)
 
     monkeypatch.setattr(provider, "build_search_setup", spy_setup)
     monkeypatch.setattr(provider, "build_service_reference", spy_reference)
