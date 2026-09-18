@@ -274,6 +274,7 @@ class CheapEvaluation:
     de-duplicated ``sorted({...})`` (risk R5).
     """
 
+    candidate_id: str
     points: FloatArray
     diagnostics: CenterlineDiagnostics
     level_service: list[LevelServiceRecord]
@@ -302,6 +303,7 @@ class DetailedEvaluation:
     that is itself valid.
     """
 
+    candidate_id: str
     clearance: ClearanceReport
     validation: dict[str, Any]
     scores: Scores
@@ -599,7 +601,7 @@ def certify(sc: StageContext, candidate_id: str, points: FloatArray) -> Candidat
     )
 
 
-def cheap_stage(sc: StageContext, built: FamilyGeometry) -> CheapEvaluation:
+def cheap_stage(sc: StageContext, candidate_id: str, built: FamilyGeometry) -> CheapEvaluation:
     """Stage 2 on the DELIVERED centerline (rule 144). Pure: it reads the
     context and the constructed geometry and returns the outcome; the
     persisted record is written by ``apply_cheap`` and by nothing else."""
@@ -618,6 +620,7 @@ def cheap_stage(sc: StageContext, built: FamilyGeometry) -> CheapEvaluation:
     proxy = cheap_proxy(diag, records, ctx)
     if problems:
         return CheapEvaluation(
+            candidate_id=candidate_id,
             points=built.points,
             diagnostics=diag,
             level_service=records,
@@ -635,6 +638,7 @@ def cheap_stage(sc: StageContext, built: FamilyGeometry) -> CheapEvaluation:
     # ordering prefix (rule 176); it never rejects, stage 4 decides
     anchors = build_anchors(sc, screen_lens(sc), built.points)
     return CheapEvaluation(
+        candidate_id=candidate_id,
         points=built.points,
         diagnostics=diag,
         level_service=records,
@@ -669,6 +673,17 @@ def detailed_stage(
     is refused explicitly (I4): the shortlist is drawn from
     ``NOT_VALIDATED`` candidates only, so this is unreachable by
     construction — which is exactly why it must not be an ``assert``."""
+    # AC-01G (Park review): the outcome must BELONG to this candidate. Without
+    # it the stage certifies one ramp's centerline under another candidate's
+    # id and scores it from a third's diagnostics — accepted silently, because
+    # every other precondition passes. `run()` keys the outcomes by id, but
+    # "statement ordering guarantees it" is the coupling this step exists to
+    # remove.
+    if cheap.candidate_id != cand.candidate_id:
+        raise ValueError(
+            f"cheap outcome belongs to candidate '{cheap.candidate_id}', "
+            f"not '{cand.candidate_id}': a stage outcome is never reusable across candidates"
+        )
     if cheap.problems:
         raise ValueError(
             f"candidate '{cand.candidate_id}' failed the cheap stage and cannot be validated"
@@ -768,6 +783,7 @@ def detailed_stage(
         failure_reasons = []
         failure_detail = None
     return DetailedEvaluation(
+        candidate_id=cand.candidate_id,
         clearance=clearance_report,
         validation=validation,
         scores=scores,
@@ -799,6 +815,11 @@ def apply_cheap(cand: CandidateResult, ev: CheapEvaluation) -> None:
     shortlist-eligible. Today only the ``continue`` in ``run()``'s stage-1/2
     loop prevents it — statement order, which is what this commit set out to
     replace."""
+    if ev.candidate_id != cand.candidate_id:
+        raise ValueError(
+            f"cheap outcome belongs to candidate '{ev.candidate_id}', not "
+            f"'{cand.candidate_id}': a stage outcome is never applied across candidates"
+        )
     if cand.stage_reached != Stage.CONSTRUCT or cand.failure_reasons:
         raise ValueError(
             f"candidate '{cand.candidate_id}' is at stage {cand.stage_reached} with "
@@ -824,6 +845,11 @@ def apply_detailed(cand: CandidateResult, ev: DetailedEvaluation) -> None:
 
     Only a cheap-feasible record that has not been validated yet can receive
     one; anything else is refused explicitly (I4)."""
+    if ev.candidate_id != cand.candidate_id:
+        raise ValueError(
+            f"detailed outcome belongs to candidate '{ev.candidate_id}', not "
+            f"'{cand.candidate_id}': a stage outcome is never applied across candidates"
+        )
     if (cand.stage_reached, cand.status) != (Stage.CHEAP, CandidateStatus.NOT_VALIDATED):
         raise ValueError(
             f"candidate '{cand.candidate_id}' is ({cand.stage_reached}, {cand.status}), "

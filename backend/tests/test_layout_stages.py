@@ -290,27 +290,48 @@ def test_context_provider_and_stages_share_one_set_of_objects(
     tabular: tuple[Scenario, SyntheticWorld], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The provider the run built, the context the families were built
-    against and the context a stage received all hold the SAME objects."""
+    against and the context a stage received all hold the SAME objects.
+
+    The reference is attached in a SECOND step (``attach_service_reference``,
+    after the early-return guards, so ``performance.setupSeconds`` keeps its
+    meaning), which returns a new frozen provider — so this pins both halves:
+    the attached provider must carry the pre-attach ``sections`` / ``track`` /
+    ``serviceable`` BY IDENTITY (nothing is rebuilt) and the reference the
+    stage sees must be the one ``build_service_reference`` returned."""
     sc, world = tabular
     seen: dict[str, Any] = {}
     real_provider = search_module.build_section_provider
+    real_attach = search_module.attach_service_reference
     real_cheap = search_module.cheap_stage
 
     def spy_provider(*a: Any, **k: Any) -> Any:
         out = real_provider(*a, **k)
-        seen.setdefault("provider", out[1])
+        seen.setdefault("setup_provider", out[1])
         return out
 
-    def spy_cheap(stage_ctx: Any, built: Any) -> Any:
+    def spy_attach(*a: Any, **k: Any) -> Any:
+        out = real_attach(*a, **k)
+        seen.setdefault("provider", out)
+        return out
+
+    def spy_cheap(stage_ctx: Any, candidate_id: str, built: Any) -> Any:
         seen.setdefault("stage_ctx", stage_ctx)
-        return real_cheap(stage_ctx, built)
+        return real_cheap(stage_ctx, candidate_id, built)
 
     monkeypatch.setattr(search_module, "build_section_provider", spy_provider)
+    monkeypatch.setattr(search_module, "attach_service_reference", spy_attach)
     monkeypatch.setattr(search_module, "cheap_stage", spy_cheap)
     s = LayoutV2Search(sc, world)
     s.run()
     provider = seen["provider"]
+    setup_provider = seen["setup_provider"]
     stage_ctx = seen["stage_ctx"]
+    # attaching the reference rebuilds NOTHING: the three section-geometry
+    # references survive the frozen `replace` by identity
+    assert provider.sections is setup_provider.sections
+    assert provider.track is setup_provider.track
+    assert provider.serviceable is setup_provider.serviceable
+    assert setup_provider.reference is None and provider.reference is not None
     assert s.context.sections is provider.sections
     assert s.context.track is provider.track
     assert s.context.reference is provider.reference
@@ -491,11 +512,23 @@ def _params() -> CandidateParams:
     )
 
 
-def _cheap_outcome(problems: list[Any]) -> stages_module.CheapEvaluation:
+def _other_params() -> CandidateParams:
+    """A DIFFERENT candidate — same family, another gradient, so its
+    ``candidate_id`` differs while every other precondition of the transition
+    paths still passes."""
+    return CandidateParams(
+        RampFamily.SPIRAL, 0.12, turns_per_level=1, turn_sense="CW", entry_orientation_deg=0.0
+    )
+
+
+def _cheap_outcome(
+    problems: list[Any], candidate_id: str | None = None
+) -> stages_module.CheapEvaluation:
     """A hand-built stage-2 outcome carrying only what the transition paths
     read. Every field is REQUIRED by the frozen DTO — which is the point: a
     half-built stage result cannot be constructed at all."""
     return stages_module.CheapEvaluation(
+        candidate_id=candidate_id or _params().candidate_id,
         points=np.zeros((2, 3)),
         diagnostics=cast(Any, "DIAGNOSTICS"),
         level_service=[],
@@ -510,8 +543,9 @@ def _cheap_outcome(problems: list[Any]) -> stages_module.CheapEvaluation:
     )
 
 
-def _detailed_outcome() -> stages_module.DetailedEvaluation:
+def _detailed_outcome(candidate_id: str | None = None) -> stages_module.DetailedEvaluation:
     return stages_module.DetailedEvaluation(
+        candidate_id=candidate_id or _params().candidate_id,
         clearance=cast(Any, "CLEARANCE"),
         validation={"probe": 2},
         scores=cast(Any, "SCORES"),
@@ -699,3 +733,64 @@ def test_detailed_failure_reasons_are_sorted_and_de_duplicated() -> None:
     # the detailed form collapses the three OREBODY_CLEARANCE entries and sorts
     assert detailed_form == ["OREBODY_CLEARANCE", "WORLD_BOUNDS"]
     assert detailed_form != cheap_form, "the two semantics must not coincide on this input"
+
+
+# --------------------------------------------------------------------------- #
+# AC-01G (Park review): a stage outcome BELONGS to one candidate
+# --------------------------------------------------------------------------- #
+
+
+def test_apply_cheap_refuses_an_outcome_from_another_candidate() -> None:
+    """The frozen outcomes made a half-built stage result unconstructible,
+    but not a MISAPPLIED one: without an identity on the DTO, candidate B's
+    record accepts candidate A's cheap outcome and ends up with B's
+    ``candidateId`` and ``parameters`` beside A's ``points``, ``diagnostics``,
+    ``derived`` and ``pieces``. Production keys the outcomes by id, which is
+    exactly the statement-order coupling this step exists to replace."""
+    other = CandidateResult(_other_params())
+    ev_a = _cheap_outcome([])
+    assert ev_a.candidate_id != other.candidate_id
+    with pytest.raises(ValueError, match="never applied across candidates"):
+        stages_module.apply_cheap(other, ev_a)
+    # and the record is untouched by the refusal
+    assert other.stage_reached == Stage.CONSTRUCT
+    assert other.points is None
+
+
+def test_detailed_stage_refuses_a_cheap_outcome_from_another_candidate() -> None:
+    """Stage 4 reads the delivered centerline from the cheap outcome and the
+    candidate id from the record. A mismatched pair would certify one ramp
+    under another candidate's id — the identity check comes BEFORE the
+    cheap-problems check so the refusal does not depend on the outcome's
+    feasibility."""
+    other = CandidateResult(_other_params())
+    ev_a = _cheap_outcome([])
+    with pytest.raises(ValueError, match="never reusable across candidates"):
+        stages_module.detailed_stage(cast(Any, None), other, ev_a)
+
+
+def test_apply_detailed_refuses_an_outcome_from_another_candidate() -> None:
+    """The same binding on the stage-4 half: a detailed outcome carries the
+    id of the candidate it was computed for, and the identity check precedes
+    the (stage, status) check."""
+    other = CandidateResult(_other_params())
+    stages_module.apply_cheap(other, _cheap_outcome([], other.candidate_id))
+    assert (other.stage_reached, other.status) == (Stage.CHEAP, CandidateStatus.NOT_VALIDATED)
+    with pytest.raises(ValueError, match="never applied across candidates"):
+        stages_module.apply_detailed(other, _detailed_outcome())
+    # the refusal leaves the cheap-stage record exactly as it was
+    assert other.stage_reached == Stage.CHEAP
+    assert other.clearance is None
+
+
+def test_stage_outcomes_carry_candidate_identity() -> None:
+    """The binding is a FIELD of each outcome, not a convention: both DTOs
+    declare ``candidate_id`` and both are frozen, so an outcome cannot be
+    re-labelled after the stage produced it."""
+    for dto in (stages_module.CheapEvaluation, stages_module.DetailedEvaluation):
+        names = [f.name for f in dataclasses.fields(dto)]
+        assert names[0] == "candidate_id", f"{dto.__name__}: {names}"
+        assert dto.__dataclass_params__.frozen, dto.__name__
+    ev = _cheap_outcome([])
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        ev.candidate_id = "SOMETHING-ELSE"  # type: ignore[misc]

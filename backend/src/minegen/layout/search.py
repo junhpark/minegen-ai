@@ -66,7 +66,12 @@ from minegen.layout.materialize import (
     materialize_effective_ramp,
     materialize_level_accesses,
 )
-from minegen.layout.provider import SectionProvider, build_section_provider, context_provider
+from minegen.layout.provider import (
+    SectionProvider,
+    attach_service_reference,
+    build_section_provider,
+    context_provider,
+)
 from minegen.layout.results import (
     LAYOUT_V2_VERSION,
     CandidateResult,
@@ -285,6 +290,12 @@ class LayoutV2Search:
         # Phase 20C.4: the conservative construction ServiceReference (built
         # by the provider, rule 170 vs rules 158 / 178) is reported here, in
         # the persisted `performance` insertion order it has always had.
+        # AC-01G (Park review): the reference build happens HERE, after the
+        # guards, exactly where the pre-extraction code ran it — so its cost
+        # stays inside ``constructAndCheapSeconds`` and the two persisted
+        # timing keys keep their meaning. The provider is still its ONE
+        # construction owner (``layout/provider.py``).
+        provider = attach_service_reference(provider, setup, sc, world, self.policy)
         reference = provider.reference
         if reference is not None:
             perf["serviceReference"] = reference.to_dict()
@@ -318,7 +329,7 @@ class LayoutV2Search:
                     _event(ProgressStage.CANDIDATE_COMPLETED, i, n, cand.candidate_id, cand.status)
                 )
                 continue
-            evaluation = cheap_stage(stage_ctx, built)
+            evaluation = cheap_stage(stage_ctx, cand.candidate_id, built)
             apply_cheap(cand, evaluation)
             cheap_outcomes[cand.candidate_id] = evaluation
             on_progress(

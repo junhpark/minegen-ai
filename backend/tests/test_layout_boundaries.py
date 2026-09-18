@@ -218,11 +218,11 @@ def test_context_accessor_exposes_the_post_run_objects(
         seen.setdefault("family_ctx", ctx)
         return real_family(params, ctx)
 
-    def spy_cheap(stage_ctx: Any, built: Any) -> Any:
+    def spy_cheap(stage_ctx: Any, candidate_id: str, built: Any) -> Any:
         # AC-01G commit 3: the stage RETURNS its outcome (``apply_cheap`` is
         # the only writer), so the spy must pass it through
         seen.setdefault("stage_ctx", stage_ctx)
-        return real_cheap(stage_ctx, built)
+        return real_cheap(stage_ctx, candidate_id, built)
 
     monkeypatch.setattr(provider, "build_search_setup", spy_setup)
     monkeypatch.setattr(provider, "build_service_reference", spy_reference)

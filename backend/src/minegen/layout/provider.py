@@ -29,7 +29,7 @@ Leaf module: it must not import ``layout.search``, ``layout.results``,
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import numpy.typing as npt
@@ -117,59 +117,71 @@ def context_provider(
 def build_section_provider(
     scenario: Scenario, world: SyntheticWorld, world_policy: ClearancePolicy
 ) -> tuple[SearchSetup, SectionProvider]:
-    """The setup products of one search plus its section-geometry provider.
+    """The setup products of one search plus its section-geometry provider,
+    WITHOUT the construction ``ServiceReference``.
 
-    ONE measured consequence of the move, recorded because the characterization
-    freeze is structurally unable to see it (its mask drops every ``*Seconds``
-    key): the ``ServiceReference`` build now happens BEFORE ``run()`` starts its
-    setup clock, so its cost is billed to ``performance.setupSeconds`` instead
-    of ``performance.constructAndCheapSeconds``. Both keys are persisted in
-    ``layout_v2.json``. Measured on WARPED_VEIN-301: 7.876 s of a 10.842 s
-    ``setupSeconds`` is work that used to be billed to the other key; TABULAR is
-    unaffected (the reference is inactive there). No engineering quantity moves
-    and the ``performance`` key INSERTION ORDER is unchanged, but a historical
-    comparison of those two fields across this commit is invalid.
+    The reference is attached separately by ``attach_service_reference``,
+    after ``run()``'s two early-return guards, because that is where the
+    pre-extraction code built it and because ``performance.setupSeconds`` /
+    ``performance.constructAndCheapSeconds`` are PERSISTED diagnostics: an
+    earlier draft of AC-01G built it here and silently re-attributed 7.876 s
+    of a 10.842 s ``setupSeconds`` on WARPED-301 from the other key. The
+    characterization mask drops every ``*Seconds``, so no net could see it —
+    which is exactly why the accounting is restored rather than defended.
+    """
+    setup = build_search_setup(scenario, world)
+    return setup, SectionProvider(
+        sections=setup.sections,
+        track=setup.track,
+        serviceable=setup.sections.serviceable(),
+        reference=None,
+    )
 
-    The ``ServiceReference`` build is the block ``LayoutV2Search.run()``
-    carried before the extraction, moved verbatim — including BOTH stand-offs
-    it takes: ``standoff`` is the ramp CORRIDOR stand-off
+
+def attach_service_reference(
+    provider: SectionProvider,
+    setup: SearchSetup,
+    scenario: Scenario,
+    world: SyntheticWorld,
+    world_policy: ClearancePolicy,
+) -> SectionProvider:
+    """The same provider with the construction ``ServiceReference`` attached.
+
+    The build is the block ``LayoutV2Search.run()`` carried before the
+    extraction, moved verbatim — including BOTH stand-offs it takes:
+    ``standoff`` is the ramp CORRIDOR stand-off
     (``effective_footwall_standoff``, rule 170) and ``anchor_standoff`` is the
     level-development ANCHOR stand-off (rule 158 / 146 honesty), which is also
     what the WORLD-token offset-trace cache key is built from. Confusing the
     two changes both the cache key and the delivered trace geometry.
+
+    Called only after the two early-return guards, so the conditions it used
+    to be written under (`section_error is None`, a non-empty serviceable set,
+    a footwall track) hold by construction.
     """
-    setup = build_search_setup(scenario, world)
-    serviceable = setup.sections.serviceable()
-    reference: ServiceReference | None = None
-    if setup.section_error is None and serviceable and setup.track is not None:
-        # Phase 20C.4: the conservative construction ServiceReference — the
-        # WORLD-policy offset traces stage 4 builds for coarse anchors (same
-        # cache token), read once here so the ramp corridor and the level
-        # anchors share ONE spacing reference (rule 170 vs rules 158 / 178).
-        # Inactive (delta ≡ 0, bit-identical) on TABULAR and for an explicit
-        # footwallStandoff; per-level trace failures are reported, never hidden.
-        cfg = scenario.layout
-        standoff_value, standoff_source = effective_footwall_standoff(cfg, scenario.ramp)
-        reference = build_service_reference(
-            setup.sections,
-            serviceable,
-            setup.track.w_h,
-            orebody=world.orebody,
-            clearance=world_policy.signed_clearance,
-            basis=world_policy.basis,
-            standoff=standoff_value,
-            standoff_source=standoff_source,
-            margin=RAMP_CORRIDOR_MARGIN_WIDTHS * float(scenario.ramp.tunnel_width),
-            anchor_standoff=anchor_standoff(
-                cfg, scenario.ramp, setup.required_clearance, world_policy
-            ),
-            min_trace_length=MIN_DEVELOPMENT_TRACE_LENGTH,
-            end_margin=BACKBONE_END_MARGIN,
-            required_clearance=setup.required_clearance,
-        )
-    return setup, SectionProvider(
-        sections=setup.sections,
-        track=setup.track,
-        serviceable=serviceable,
-        reference=reference,
+    if setup.section_error is not None or not provider.serviceable or provider.track is None:
+        return provider
+    # Phase 20C.4: the conservative construction ServiceReference — the
+    # WORLD-policy offset traces stage 4 builds for coarse anchors (same
+    # cache token), read once here so the ramp corridor and the level
+    # anchors share ONE spacing reference (rule 170 vs rules 158 / 178).
+    # Inactive (delta ≡ 0, bit-identical) on TABULAR and for an explicit
+    # footwallStandoff; per-level trace failures are reported, never hidden.
+    cfg = scenario.layout
+    standoff_value, standoff_source = effective_footwall_standoff(cfg, scenario.ramp)
+    reference = build_service_reference(
+        setup.sections,
+        provider.serviceable,
+        provider.track.w_h,
+        orebody=world.orebody,
+        clearance=world_policy.signed_clearance,
+        basis=world_policy.basis,
+        standoff=standoff_value,
+        standoff_source=standoff_source,
+        margin=RAMP_CORRIDOR_MARGIN_WIDTHS * float(scenario.ramp.tunnel_width),
+        anchor_standoff=anchor_standoff(cfg, scenario.ramp, setup.required_clearance, world_policy),
+        min_trace_length=MIN_DEVELOPMENT_TRACE_LENGTH,
+        end_margin=BACKBONE_END_MARGIN,
+        required_clearance=setup.required_clearance,
     )
+    return replace(provider, reference=reference)
