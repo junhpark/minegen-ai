@@ -2,7 +2,7 @@
 
 The layout-v2 search behaviour at the freeze SHA is recorded as a committed
 baseline (``tests/fixtures/characterization/<case>.json``) so a later refactor
-cannot change it silently. This module owns the three mechanisms the baseline
+cannot change it silently. This module owns the four mechanisms the baseline
 depends on, and NOTHING else:
 
 1. the wall-clock mask — the SAME rule ``tests/test_layout_policy_restore.py``
@@ -12,7 +12,12 @@ depends on, and NOTHING else:
 2. the observation projections C1–C6 over ``LayoutSearchResult.to_dict()``,
    shared by the generator and the test so the baseline and the comparison
    can never be computed by two different definitions;
-3. the self-fingerprint: a baseline records the git SHA it was generated at
+3. the enumerated platform-sensitivity registry — the ONE leaf whose last
+   bit was MEASURED to move between this container's numpy/LAPACK build and
+   the GitHub runner's, canonicalized by name at a declared precision. Not a
+   blanket float rounding and not a tolerance: see
+   ``PLATFORM_SENSITIVE_LEAVES``;
+4. the self-fingerprint: a baseline records the git SHA it was generated at
    and a content fingerprint over its own body. The fingerprint detects a
    hand-edited body; the SHA is pinned as a CONSTANT in the test module, so
    regenerating at another HEAD requires an explicit, reviewable source edit
@@ -65,6 +70,64 @@ def strip_wall_clock(obj: Any) -> Any:
         }
     if isinstance(obj, list):
         return [strip_wall_clock(v) for v in obj]
+    return obj
+
+
+#: leaf keys whose LAST BIT is platform-sensitive, mapped to the number of
+#: decimal places the characterization compares. This is an ENUMERATED list of
+#: MEASURED findings, never a convenience: every other float in the payload —
+#: candidate ids, statuses, geometry coordinates, scores, ranking, winner,
+#: clearance, access geometry — is compared bit-exactly, and
+#: ``test_layout_characterization.py`` proves a single-ulp change to any of
+#: those still FAILS.
+#:
+#: ``localTangentVsGlobalPcaDeg`` (``layout/access.py`` — the only entry):
+#:   ``math.degrees(math.acos(|pca_axis · tangent|))`` where ``pca_axis`` comes
+#:   from ``numpy.linalg.eigh`` on a 2x2 covariance, whose last bit depends on
+#:   the LAPACK build. MEASURED on WARPED_VEIN-301's fourth level access:
+#:   ``cos = 0.9996624881871111``, so ``d(deg)/d(cos) = 2205.5`` and ONE ulp of
+#:   the dot product (1.110e-16) becomes 2.449e-13 deg. The difference between
+#:   this container (numpy 2.5.2 / CPython 3.12.3) and the GitHub runner
+#:   (numpy 2.5.3 / CPython 3.12.14) is 2.447e-13 deg — ratio 1.00 — and it
+#:   REPRODUCES at the freeze source with zero ``backend/src`` changes
+#:   (probe branch ``ac-01g-probe-base-platform``, run 35303979826), so it is
+#:   platform drift and not a refactor moving a bit. The measured eigh-vs-svd
+#:   eigenvector deviation on the same inputs (1.166e-15) bounds the angle move
+#:   at 2.572e-12 deg; 9 decimals (1e-9 deg) leaves ~390x headroom over that
+#:   bound while staying far below the only engineering use of the number
+#:   (``tests/test_footwall_trace.py``'s ``> 25.0`` threshold).
+#:
+#:   It is safe to canonicalize because it is TERMINAL: ``_principal_axis`` has
+#:   exactly one production call site and its result reaches exactly this one
+#:   diagnostic string — no geometry, score, clearance, ranking or decision can
+#:   inherit its last bit (``test_layout_characterization.py::
+#:   test_the_canonicalized_leaf_is_a_terminal_diagnostic`` is the source-level
+#:   guard for exactly that).
+PLATFORM_SENSITIVE_LEAVES: dict[str, int] = {
+    "localTangentVsGlobalPcaDeg": 9,
+}
+
+
+def canonicalize_platform_sensitive(obj: Any) -> Any:
+    """Round ONLY the leaves enumerated in ``PLATFORM_SENSITIVE_LEAVES``.
+
+    Deliberately NOT a blanket float rounding and NOT a tolerance: a key is
+    canonicalized only by NAME, only when it actually holds a float, and only
+    at the declared number of places. Applied once at the top of
+    ``observations`` so the generator and the comparison use one definition and
+    the C6 payload sha stays computable over the same bytes.
+    """
+    if isinstance(obj, dict):
+        out: dict[Any, Any] = {}
+        for k, v in obj.items():
+            places = PLATFORM_SENSITIVE_LEAVES.get(str(k))
+            if places is not None and isinstance(v, float):
+                out[k] = round(v, places)
+            else:
+                out[k] = canonicalize_platform_sensitive(v)
+        return out
+    if isinstance(obj, list):
+        return [canonicalize_platform_sensitive(v) for v in obj]
     return obj
 
 
@@ -224,7 +287,13 @@ def c6_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def observations(payload: dict[str, Any]) -> dict[str, Any]:
-    """The whole C1–C6 observation set of one search result."""
+    """The whole C1–C6 observation set of one search result.
+
+    The enumerated platform-sensitive leaves are canonicalized FIRST, so every
+    projection below — including the C6 payload sha — is computed over the same
+    canonical bytes on every platform.
+    """
+    payload = canonicalize_platform_sensitive(payload)
     return {
         "header": {
             "status": payload["status"],

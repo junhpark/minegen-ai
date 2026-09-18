@@ -11,9 +11,9 @@
  "metadata": {
   "authority": "CHARACTERIZATION FREEZE \u2014 records observed layout-v2 behaviour at the freeze SHA. Not an engineering specification; a difference is a signal to explain, never on its own a defect. Never auto-rewritten.",
   "caseKey": "WARPED_VEIN-301",
-  "contentFingerprint": "cfce92b45ac3e34c29d2872920de305877bc692cbf6cb69b6b2da6fbc56c1624",
+  "contentFingerprint": "e0b35a2d16ec73fc3c673650bd43b8fa85b18e50f41038588686b48c4f683fa9",
   "fixtureVersion": 1,
-  "generatedAt": "2026-09-17T03:45:31+00:00",
+  "generatedAt": "2026-09-18T04:09:13+00:00",
   "generatedFromGitSha": "3951d98d91235facb6b95e9d646f0dc62b7c9835",
   "schemaVersion": 1
  },
@@ -22685,7 +22685,7 @@
          "vertexCount": 120
         },
         "localTangentAzimuthDeg": 25.750501122560998,
-        "localTangentVsGlobalPcaDeg": 1.498157637109504,
+        "localTangentVsGlobalPcaDeg": 1.498157637,
         "referenceOffset": 34.14988405004516,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -22817,7 +22817,7 @@
          "vertexCount": 279
         },
         "localTangentAzimuthDeg": -152.80548893158578,
-        "localTangentVsGlobalPcaDeg": 1.752542895812609,
+        "localTangentVsGlobalPcaDeg": 1.752542896,
         "referenceOffset": 33.38465809726304,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -22950,7 +22950,7 @@
          "vertexCount": 316
         },
         "localTangentAzimuthDeg": -152.08007432480508,
-        "localTangentVsGlobalPcaDeg": 1.696228826374524,
+        "localTangentVsGlobalPcaDeg": 1.696228826,
         "referenceOffset": 33.09867365455533,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -23083,7 +23083,7 @@
          "vertexCount": 338
         },
         "localTangentAzimuthDeg": -151.4597631160375,
-        "localTangentVsGlobalPcaDeg": 1.4886559404747177,
+        "localTangentVsGlobalPcaDeg": 1.48865594,
         "referenceOffset": 33.01753032273873,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -23216,7 +23216,7 @@
          "vertexCount": 350
         },
         "localTangentAzimuthDeg": -149.94419136666102,
-        "localTangentVsGlobalPcaDeg": 0.2137044716823709,
+        "localTangentVsGlobalPcaDeg": 0.213704472,
         "referenceOffset": 32.5402502377628,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -23349,7 +23349,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -148.98264821761416,
-        "localTangentVsGlobalPcaDeg": 0.5244747977759722,
+        "localTangentVsGlobalPcaDeg": 0.524474798,
         "referenceOffset": 33.27492922591195,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -23482,7 +23482,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -148.00617173014305,
-        "localTangentVsGlobalPcaDeg": 1.374425691160023,
+        "localTangentVsGlobalPcaDeg": 1.374425691,
         "referenceOffset": 33.988858505490704,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -23615,7 +23615,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": 33.17040853866797,
-        "localTangentVsGlobalPcaDeg": 2.4171767003761464,
+        "localTangentVsGlobalPcaDeg": 2.4171767,
         "referenceOffset": 34.746432732589255,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -23748,7 +23748,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": 33.96565734554309,
-        "localTangentVsGlobalPcaDeg": 3.1207036497103053,
+        "localTangentVsGlobalPcaDeg": 3.12070365,
         "referenceOffset": 35.00993355481712,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -23881,7 +23881,7 @@
          "vertexCount": 352
         },
         "localTangentAzimuthDeg": 34.252438466740976,
-        "localTangentVsGlobalPcaDeg": 3.2772385445516043,
+        "localTangentVsGlobalPcaDeg": 3.277238545,
         "referenceOffset": 35.584434232808405,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -24014,7 +24014,7 @@
          "vertexCount": 340
         },
         "localTangentAzimuthDeg": 34.54783072084395,
-        "localTangentVsGlobalPcaDeg": 3.4492864454834518,
+        "localTangentVsGlobalPcaDeg": 3.449286445,
         "referenceOffset": 35.6735792058463,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -24147,7 +24147,7 @@
          "vertexCount": 321
         },
         "localTangentAzimuthDeg": 34.68360620801088,
-        "localTangentVsGlobalPcaDeg": 3.4516656140452384,
+        "localTangentVsGlobalPcaDeg": 3.451665614,
         "referenceOffset": 35.54225626438968,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -24280,7 +24280,7 @@
          "vertexCount": 290
         },
         "localTangentAzimuthDeg": 34.232527819712054,
-        "localTangentVsGlobalPcaDeg": 2.929895055413844,
+        "localTangentVsGlobalPcaDeg": 2.929895055,
         "referenceOffset": 35.868356429494696,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -24413,7 +24413,7 @@
          "vertexCount": 232
         },
         "localTangentAzimuthDeg": 33.737382789861826,
-        "localTangentVsGlobalPcaDeg": 2.2980440844686263,
+        "localTangentVsGlobalPcaDeg": 2.298044084,
         "referenceOffset": 36.59771702310308,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -24862,7 +24862,7 @@
          "vertexCount": 120
         },
         "localTangentAzimuthDeg": 25.779001559305716,
-        "localTangentVsGlobalPcaDeg": 1.4696572003647759,
+        "localTangentVsGlobalPcaDeg": 1.4696572,
         "referenceOffset": 34.63470722031321,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -24994,7 +24994,7 @@
          "vertexCount": 279
         },
         "localTangentAzimuthDeg": -152.78103807614335,
-        "localTangentVsGlobalPcaDeg": 1.7280920403701279,
+        "localTangentVsGlobalPcaDeg": 1.72809204,
         "referenceOffset": 33.7096204440254,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -25127,7 +25127,7 @@
          "vertexCount": 316
         },
         "localTangentAzimuthDeg": -152.06550991311585,
-        "localTangentVsGlobalPcaDeg": 1.681664414685369,
+        "localTangentVsGlobalPcaDeg": 1.681664415,
         "referenceOffset": 33.342900609549325,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -25260,7 +25260,7 @@
          "vertexCount": 338
         },
         "localTangentAzimuthDeg": -151.32621369669346,
-        "localTangentVsGlobalPcaDeg": 1.3551065211308757,
+        "localTangentVsGlobalPcaDeg": 1.355106521,
         "referenceOffset": 33.2242623733539,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -25393,7 +25393,7 @@
          "vertexCount": 350
         },
         "localTangentAzimuthDeg": -149.87533273159255,
-        "localTangentVsGlobalPcaDeg": 0.14484583661397016,
+        "localTangentVsGlobalPcaDeg": 0.144845837,
         "referenceOffset": 32.77010186594615,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -25526,7 +25526,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -148.85932777937228,
-        "localTangentVsGlobalPcaDeg": 0.647795236018701,
+        "localTangentVsGlobalPcaDeg": 0.647795236,
         "referenceOffset": 33.527668044209676,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -25659,7 +25659,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": 32.18107134123999,
-        "localTangentVsGlobalPcaDeg": 1.5616687625430123,
+        "localTangentVsGlobalPcaDeg": 1.561668763,
         "referenceOffset": 34.53086609470024,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -25792,7 +25792,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": 33.36295531240206,
-        "localTangentVsGlobalPcaDeg": 2.609723474110327,
+        "localTangentVsGlobalPcaDeg": 2.609723474,
         "referenceOffset": 35.182258668622644,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -25925,7 +25925,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": 33.96565734554309,
-        "localTangentVsGlobalPcaDeg": 3.1207036497103053,
+        "localTangentVsGlobalPcaDeg": 3.12070365,
         "referenceOffset": 35.725006067187984,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -26058,7 +26058,7 @@
          "vertexCount": 352
         },
         "localTangentAzimuthDeg": 34.4941626593461,
-        "localTangentVsGlobalPcaDeg": 3.518962737156704,
+        "localTangentVsGlobalPcaDeg": 3.518962737,
         "referenceOffset": 36.1377256382784,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -26191,7 +26191,7 @@
          "vertexCount": 340
         },
         "localTangentAzimuthDeg": 34.735432169131016,
-        "localTangentVsGlobalPcaDeg": 3.6368878937705613,
+        "localTangentVsGlobalPcaDeg": 3.636887894,
         "referenceOffset": 36.23835925122517,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -26324,7 +26324,7 @@
          "vertexCount": 321
         },
         "localTangentAzimuthDeg": 34.8658090142985,
-        "localTangentVsGlobalPcaDeg": 3.6338684203327785,
+        "localTangentVsGlobalPcaDeg": 3.63386842,
         "referenceOffset": 36.0475022386832,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -26457,7 +26457,7 @@
          "vertexCount": 290
         },
         "localTangentAzimuthDeg": 34.3836986826229,
-        "localTangentVsGlobalPcaDeg": 3.0810659183246747,
+        "localTangentVsGlobalPcaDeg": 3.081065918,
         "referenceOffset": 35.74955202319522,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -26590,7 +26590,7 @@
          "vertexCount": 232
         },
         "localTangentAzimuthDeg": 33.88786573566232,
-        "localTangentVsGlobalPcaDeg": 2.4485270302691657,
+        "localTangentVsGlobalPcaDeg": 2.44852703,
         "referenceOffset": 36.39419594880638,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -27309,7 +27309,7 @@
          "vertexCount": 120
         },
         "localTangentAzimuthDeg": 25.78300784467417,
-        "localTangentVsGlobalPcaDeg": 1.4656509149960284,
+        "localTangentVsGlobalPcaDeg": 1.465650915,
         "referenceOffset": 56.693426968924044,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -27441,7 +27441,7 @@
          "vertexCount": 279
         },
         "localTangentAzimuthDeg": -153.13088926985552,
-        "localTangentVsGlobalPcaDeg": 2.0779432340823036,
+        "localTangentVsGlobalPcaDeg": 2.077943234,
         "referenceOffset": 56.67342743937512,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -27574,7 +27574,7 @@
          "vertexCount": 316
         },
         "localTangentAzimuthDeg": -152.6448963871099,
-        "localTangentVsGlobalPcaDeg": 2.2610508886795238,
+        "localTangentVsGlobalPcaDeg": 2.261050889,
         "referenceOffset": 56.63590746943131,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -27707,7 +27707,7 @@
          "vertexCount": 338
         },
         "localTangentAzimuthDeg": -152.6275330252361,
-        "localTangentVsGlobalPcaDeg": 2.656425849673291,
+        "localTangentVsGlobalPcaDeg": 2.65642585,
         "referenceOffset": 56.58334278340995,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -27840,7 +27840,7 @@
          "vertexCount": 350
         },
         "localTangentAzimuthDeg": -152.01364079412224,
-        "localTangentVsGlobalPcaDeg": 2.2831538991425435,
+        "localTangentVsGlobalPcaDeg": 2.283153899,
         "referenceOffset": 56.87789541864944,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -27973,7 +27973,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -151.52598372975763,
-        "localTangentVsGlobalPcaDeg": 2.0188607143665447,
+        "localTangentVsGlobalPcaDeg": 2.018860714,
         "referenceOffset": 57.89258141693095,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -28106,7 +28106,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -151.06925718071335,
-        "localTangentVsGlobalPcaDeg": 1.6886597594105455,
+        "localTangentVsGlobalPcaDeg": 1.688659759,
         "referenceOffset": 59.21059737126822,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -28239,7 +28239,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -151.0015524119736,
-        "localTangentVsGlobalPcaDeg": 1.7547842502651718,
+        "localTangentVsGlobalPcaDeg": 1.75478425,
         "referenceOffset": 60.28419849093547,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -28372,7 +28372,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -150.71165206872948,
-        "localTangentVsGlobalPcaDeg": 1.55660576456172,
+        "localTangentVsGlobalPcaDeg": 1.556605765,
         "referenceOffset": 61.06388325504238,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -28505,7 +28505,7 @@
          "vertexCount": 352
         },
         "localTangentAzimuthDeg": -150.07925264802714,
-        "localTangentVsGlobalPcaDeg": 1.0544525702162928,
+        "localTangentVsGlobalPcaDeg": 1.05445257,
         "referenceOffset": 61.49759774909153,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -28638,7 +28638,7 @@
          "vertexCount": 340
         },
         "localTangentAzimuthDeg": -150.04206265854705,
-        "localTangentVsGlobalPcaDeg": 1.140606933907471,
+        "localTangentVsGlobalPcaDeg": 1.140606934,
         "referenceOffset": 61.85728149485197,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -28771,7 +28771,7 @@
          "vertexCount": 321
         },
         "localTangentAzimuthDeg": -149.84463351203442,
-        "localTangentVsGlobalPcaDeg": 1.0765741060001044,
+        "localTangentVsGlobalPcaDeg": 1.076574106,
         "referenceOffset": 61.64711791022327,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -28904,7 +28904,7 @@
          "vertexCount": 290
         },
         "localTangentAzimuthDeg": -150.073653832801,
-        "localTangentVsGlobalPcaDeg": 1.3762865970989153,
+        "localTangentVsGlobalPcaDeg": 1.376286597,
         "referenceOffset": 61.12330707680905,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -29037,7 +29037,7 @@
          "vertexCount": 232
         },
         "localTangentAzimuthDeg": -150.20416603184563,
-        "localTangentVsGlobalPcaDeg": 1.6435047372387575,
+        "localTangentVsGlobalPcaDeg": 1.643504737,
         "referenceOffset": 61.448304727688985,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -29486,7 +29486,7 @@
          "vertexCount": 120
         },
         "localTangentAzimuthDeg": -152.55368647827905,
-        "localTangentVsGlobalPcaDeg": 0.1976547620521519,
+        "localTangentVsGlobalPcaDeg": 0.197654762,
         "referenceOffset": 46.62495405360935,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -29618,7 +29618,7 @@
          "vertexCount": 279
         },
         "localTangentAzimuthDeg": -152.98967034402725,
-        "localTangentVsGlobalPcaDeg": 1.9367243082541676,
+        "localTangentVsGlobalPcaDeg": 1.936724308,
         "referenceOffset": 46.30094819938702,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -29751,7 +29751,7 @@
          "vertexCount": 316
         },
         "localTangentAzimuthDeg": -153.39823199813682,
-        "localTangentVsGlobalPcaDeg": 3.014386499706378,
+        "localTangentVsGlobalPcaDeg": 3.0143865,
         "referenceOffset": 46.68905276352814,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -29884,7 +29884,7 @@
          "vertexCount": 338
         },
         "localTangentAzimuthDeg": -153.7989102064997,
-        "localTangentVsGlobalPcaDeg": 3.8278030309368916,
+        "localTangentVsGlobalPcaDeg": 3.827803031,
         "referenceOffset": 46.930706283826076,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -30017,7 +30017,7 @@
          "vertexCount": 350
         },
         "localTangentAzimuthDeg": -154.15469353683,
-        "localTangentVsGlobalPcaDeg": 4.42420664185013,
+        "localTangentVsGlobalPcaDeg": 4.424206642,
         "referenceOffset": 46.76794923273169,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -30150,7 +30150,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -154.30555970486748,
-        "localTangentVsGlobalPcaDeg": 4.798436689476369,
+        "localTangentVsGlobalPcaDeg": 4.798436689,
         "referenceOffset": 46.90924270840573,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -30283,7 +30283,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -154.2880084672536,
-        "localTangentVsGlobalPcaDeg": 4.907411045950749,
+        "localTangentVsGlobalPcaDeg": 4.907411046,
         "referenceOffset": 47.46190595271335,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -30416,7 +30416,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -154.35187845793217,
-        "localTangentVsGlobalPcaDeg": 5.1051102962238435,
+        "localTangentVsGlobalPcaDeg": 5.105110296,
         "referenceOffset": 47.30297553248786,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -30549,7 +30549,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -154.1692732870926,
-        "localTangentVsGlobalPcaDeg": 5.014226982925141,
+        "localTangentVsGlobalPcaDeg": 5.014226983,
         "referenceOffset": 47.108594716815475,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -30682,7 +30682,7 @@
          "vertexCount": 352
         },
         "localTangentAzimuthDeg": -153.19957415078346,
-        "localTangentVsGlobalPcaDeg": 4.174774072972671,
+        "localTangentVsGlobalPcaDeg": 4.174774073,
         "referenceOffset": 47.23672530575547,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -30815,7 +30815,7 @@
          "vertexCount": 340
         },
         "localTangentAzimuthDeg": -153.68417977371485,
-        "localTangentVsGlobalPcaDeg": 4.7827240490752505,
+        "localTangentVsGlobalPcaDeg": 4.782724049,
         "referenceOffset": 48.01328459379477,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -30948,7 +30948,7 @@
          "vertexCount": 321
         },
         "localTangentAzimuthDeg": -153.25585709050043,
-        "localTangentVsGlobalPcaDeg": 4.487797684466033,
+        "localTangentVsGlobalPcaDeg": 4.487797684,
         "referenceOffset": 47.66922003025937,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -31081,7 +31081,7 @@
          "vertexCount": 290
         },
         "localTangentAzimuthDeg": -153.0974657383727,
-        "localTangentVsGlobalPcaDeg": 4.400098502670615,
+        "localTangentVsGlobalPcaDeg": 4.400098503,
         "referenceOffset": 47.7965973133253,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -31214,7 +31214,7 @@
          "vertexCount": 232
         },
         "localTangentAzimuthDeg": -152.7452307705563,
-        "localTangentVsGlobalPcaDeg": 4.184569475949392,
+        "localTangentVsGlobalPcaDeg": 4.184569476,
         "referenceOffset": 48.323785119725855,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -31726,7 +31726,7 @@
          "vertexCount": 120
         },
         "localTangentAzimuthDeg": 26.647132881515954,
-        "localTangentVsGlobalPcaDeg": 0.6015258781545388,
+        "localTangentVsGlobalPcaDeg": 0.601525878,
         "referenceOffset": 83.97140354591167,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -31859,7 +31859,7 @@
          "vertexCount": 279
         },
         "localTangentAzimuthDeg": -153.12364898802775,
-        "localTangentVsGlobalPcaDeg": 2.070702952254486,
+        "localTangentVsGlobalPcaDeg": 2.070702952,
         "referenceOffset": 34.281974806993354,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -31993,7 +31993,7 @@
          "vertexCount": 316
         },
         "localTangentAzimuthDeg": 29.804539476354,
-        "localTangentVsGlobalPcaDeg": 0.1883849747844207,
+        "localTangentVsGlobalPcaDeg": 0.188384975,
         "referenceOffset": 79.50109409068496,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -32127,7 +32127,7 @@
          "vertexCount": 338
         },
         "localTangentAzimuthDeg": -153.13519357479183,
-        "localTangentVsGlobalPcaDeg": 3.164086399229124,
+        "localTangentVsGlobalPcaDeg": 3.164086399,
         "referenceOffset": 35.033514691062216,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -32261,7 +32261,7 @@
          "vertexCount": 350
         },
         "localTangentAzimuthDeg": 32.50337554266859,
-        "localTangentVsGlobalPcaDeg": 2.2338624376481913,
+        "localTangentVsGlobalPcaDeg": 2.233862438,
         "referenceOffset": 78.89107115612077,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -32395,7 +32395,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -153.1978366821083,
-        "localTangentVsGlobalPcaDeg": 3.6907136667172096,
+        "localTangentVsGlobalPcaDeg": 3.690713667,
         "referenceOffset": 36.61093533449044,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -32529,7 +32529,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": 35.28880138254361,
-        "localTangentVsGlobalPcaDeg": 4.669398803846576,
+        "localTangentVsGlobalPcaDeg": 4.669398804,
         "referenceOffset": 77.93673725066611,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -32663,7 +32663,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -153.48905436429473,
-        "localTangentVsGlobalPcaDeg": 4.242286202586422,
+        "localTangentVsGlobalPcaDeg": 4.242286203,
         "referenceOffset": 40.897906658295966,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -32797,7 +32797,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": 37.26137649641284,
-        "localTangentVsGlobalPcaDeg": 6.416422800580285,
+        "localTangentVsGlobalPcaDeg": 6.416422801,
         "referenceOffset": 79.98944217751259,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -32931,7 +32931,7 @@
          "vertexCount": 352
         },
         "localTangentAzimuthDeg": -152.935010699811,
-        "localTangentVsGlobalPcaDeg": 3.9102106220002484,
+        "localTangentVsGlobalPcaDeg": 3.910210622,
         "referenceOffset": 43.46552584650757,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -33065,7 +33065,7 @@
          "vertexCount": 340
         },
         "localTangentAzimuthDeg": 38.144593147988736,
-        "localTangentVsGlobalPcaDeg": 7.0460488726282975,
+        "localTangentVsGlobalPcaDeg": 7.046048873,
         "referenceOffset": 81.2571679048734,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -33199,7 +33199,7 @@
          "vertexCount": 321
         },
         "localTangentAzimuthDeg": -153.4873175120188,
-        "localTangentVsGlobalPcaDeg": 4.719258105984458,
+        "localTangentVsGlobalPcaDeg": 4.719258106,
         "referenceOffset": 43.323572585703985,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -33333,7 +33333,7 @@
          "vertexCount": 290
         },
         "localTangentAzimuthDeg": 36.830883485451515,
-        "localTangentVsGlobalPcaDeg": 5.5282507211534435,
+        "localTangentVsGlobalPcaDeg": 5.528250721,
         "referenceOffset": 81.41464302475228,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -33466,7 +33466,7 @@
          "vertexCount": 232
         },
         "localTangentAzimuthDeg": -153.15414177973892,
-        "localTangentVsGlobalPcaDeg": 4.593480485132,
+        "localTangentVsGlobalPcaDeg": 4.593480485,
         "referenceOffset": 45.5090990164825,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -33978,7 +33978,7 @@
          "vertexCount": 120
         },
         "localTangentAzimuthDeg": 25.601250361936245,
-        "localTangentVsGlobalPcaDeg": 1.6474083977338718,
+        "localTangentVsGlobalPcaDeg": 1.647408398,
         "referenceOffset": 80.15415159617665,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -34111,7 +34111,7 @@
          "vertexCount": 279
         },
         "localTangentAzimuthDeg": 27.53754567868971,
-        "localTangentVsGlobalPcaDeg": 1.4095082855370433,
+        "localTangentVsGlobalPcaDeg": 1.409508286,
         "referenceOffset": 38.440450651825394,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -34245,7 +34245,7 @@
          "vertexCount": 316
         },
         "localTangentAzimuthDeg": -152.50500197599507,
-        "localTangentVsGlobalPcaDeg": 2.1211564775646643,
+        "localTangentVsGlobalPcaDeg": 2.121156478,
         "referenceOffset": 78.36239038800987,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -34379,7 +34379,7 @@
          "vertexCount": 338
         },
         "localTangentAzimuthDeg": 29.78751483030617,
-        "localTangentVsGlobalPcaDeg": 0.24137799413068778,
+        "localTangentVsGlobalPcaDeg": 0.241377994,
         "referenceOffset": 38.86994789142322,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -34512,7 +34512,7 @@
          "vertexCount": 350
         },
         "localTangentAzimuthDeg": -151.5315946720205,
-        "localTangentVsGlobalPcaDeg": 1.8011077770408144,
+        "localTangentVsGlobalPcaDeg": 1.801107777,
         "referenceOffset": 80.92851879651258,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -34645,7 +34645,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": 31.98268491862876,
-        "localTangentVsGlobalPcaDeg": 1.4898079340194577,
+        "localTangentVsGlobalPcaDeg": 1.489807934,
         "referenceOffset": 39.08032015330279,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -34779,7 +34779,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -150.38820771324558,
-        "localTangentVsGlobalPcaDeg": 1.0076102919424368,
+        "localTangentVsGlobalPcaDeg": 1.007610292,
         "referenceOffset": 86.08448582702098,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -34913,7 +34913,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": 34.36936118945942,
-        "localTangentVsGlobalPcaDeg": 3.616129351167624,
+        "localTangentVsGlobalPcaDeg": 3.616129351,
         "referenceOffset": 45.12986541243605,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -35047,7 +35047,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -149.56530113822797,
-        "localTangentVsGlobalPcaDeg": 0.41025483405969804,
+        "localTangentVsGlobalPcaDeg": 0.410254834,
         "referenceOffset": 90.42419311870712,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -35181,7 +35181,7 @@
          "vertexCount": 352
         },
         "localTangentAzimuthDeg": 35.60756109240676,
-        "localTangentVsGlobalPcaDeg": 4.632361170217339,
+        "localTangentVsGlobalPcaDeg": 4.63236117,
         "referenceOffset": 48.09026647395634,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -35315,7 +35315,7 @@
          "vertexCount": 340
         },
         "localTangentAzimuthDeg": -149.72597820174104,
-        "localTangentVsGlobalPcaDeg": 0.8245224771011588,
+        "localTangentVsGlobalPcaDeg": 0.824522477,
         "referenceOffset": 93.07863834037325,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -35448,7 +35448,7 @@
          "vertexCount": 321
         },
         "localTangentAzimuthDeg": 35.521714960276796,
-        "localTangentVsGlobalPcaDeg": 4.289774366311179,
+        "localTangentVsGlobalPcaDeg": 4.289774366,
         "referenceOffset": 47.421354456335386,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -35582,7 +35582,7 @@
          "vertexCount": 290
         },
         "localTangentAzimuthDeg": -151.51101179045202,
-        "localTangentVsGlobalPcaDeg": 2.813644554750016,
+        "localTangentVsGlobalPcaDeg": 2.813644555,
         "referenceOffset": 91.66751799773901,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -35716,7 +35716,7 @@
          "vertexCount": 232
         },
         "localTangentAzimuthDeg": 34.2962433180151,
-        "localTangentVsGlobalPcaDeg": 2.856904612622042,
+        "localTangentVsGlobalPcaDeg": 2.856904613,
         "referenceOffset": 45.17259043087795,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -36228,7 +36228,7 @@
          "vertexCount": 120
         },
         "localTangentAzimuthDeg": 25.586337496068033,
-        "localTangentVsGlobalPcaDeg": 1.6623212636023783,
+        "localTangentVsGlobalPcaDeg": 1.662321264,
         "referenceOffset": 128.3339743173067,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -36360,7 +36360,7 @@
          "vertexCount": 279
         },
         "localTangentAzimuthDeg": 27.425378769563867,
-        "localTangentVsGlobalPcaDeg": 1.5216751946627234,
+        "localTangentVsGlobalPcaDeg": 1.521675195,
         "referenceOffset": 36.276274973041765,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -36493,7 +36493,7 @@
          "vertexCount": 316
         },
         "localTangentAzimuthDeg": -152.50500197599507,
-        "localTangentVsGlobalPcaDeg": 2.1211564775646643,
+        "localTangentVsGlobalPcaDeg": 2.121156478,
         "referenceOffset": 126.40949379598166,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -36626,7 +36626,7 @@
          "vertexCount": 338
         },
         "localTangentAzimuthDeg": 29.454409527591388,
-        "localTangentVsGlobalPcaDeg": 0.5744832968452711,
+        "localTangentVsGlobalPcaDeg": 0.574483297,
         "referenceOffset": 35.51964337724984,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -36759,7 +36759,7 @@
          "vertexCount": 350
         },
         "localTangentAzimuthDeg": -151.38035953662663,
-        "localTangentVsGlobalPcaDeg": 1.649872641646898,
+        "localTangentVsGlobalPcaDeg": 1.649872642,
         "referenceOffset": 127.65329588732848,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -36892,7 +36892,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": 31.53375446636269,
-        "localTangentVsGlobalPcaDeg": 1.040877481753331,
+        "localTangentVsGlobalPcaDeg": 1.040877482,
         "referenceOffset": 34.9882663790569,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -37025,7 +37025,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -150.2273120753384,
-        "localTangentVsGlobalPcaDeg": 0.8467146540357462,
+        "localTangentVsGlobalPcaDeg": 0.846714654,
         "referenceOffset": 128.7540062304928,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -37158,7 +37158,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": 33.892544230629284,
-        "localTangentVsGlobalPcaDeg": 3.1393123923375272,
+        "localTangentVsGlobalPcaDeg": 3.139312392,
         "referenceOffset": 37.25111746766527,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -37291,7 +37291,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -149.28261294508664,
-        "localTangentVsGlobalPcaDeg": 0.12756664091662193,
+        "localTangentVsGlobalPcaDeg": 0.127566641,
         "referenceOffset": 131.7795357883106,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -37424,7 +37424,7 @@
          "vertexCount": 352
         },
         "localTangentAzimuthDeg": 34.95839249829522,
-        "localTangentVsGlobalPcaDeg": 3.983192576105688,
+        "localTangentVsGlobalPcaDeg": 3.983192576,
         "referenceOffset": 38.35784419642307,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -37557,7 +37557,7 @@
          "vertexCount": 340
         },
         "localTangentAzimuthDeg": -148.78910277953443,
-        "localTangentVsGlobalPcaDeg": 0.11235294510525061,
+        "localTangentVsGlobalPcaDeg": 0.112352945,
         "referenceOffset": 132.85208261402803,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -37690,7 +37690,7 @@
          "vertexCount": 321
         },
         "localTangentAzimuthDeg": 35.21139541722112,
-        "localTangentVsGlobalPcaDeg": 3.979454823255408,
+        "localTangentVsGlobalPcaDeg": 3.979454823,
         "referenceOffset": 38.04630022686375,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -37823,7 +37823,7 @@
          "vertexCount": 290
         },
         "localTangentAzimuthDeg": -149.14357562157778,
-        "localTangentVsGlobalPcaDeg": 0.4462083858750721,
+        "localTangentVsGlobalPcaDeg": 0.446208386,
         "referenceOffset": 131.95405996289654,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -37956,7 +37956,7 @@
          "vertexCount": 232
         },
         "localTangentAzimuthDeg": 34.03150215829271,
-        "localTangentVsGlobalPcaDeg": 2.5921634528996855,
+        "localTangentVsGlobalPcaDeg": 2.592163453,
         "referenceOffset": 40.6349899995598,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -38467,7 +38467,7 @@
          "vertexCount": 120
         },
         "localTangentAzimuthDeg": 26.028492408145716,
-        "localTangentVsGlobalPcaDeg": 1.2201663515248835,
+        "localTangentVsGlobalPcaDeg": 1.220166352,
         "referenceOffset": 38.65934194192546,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -38600,7 +38600,7 @@
          "vertexCount": 279
         },
         "localTangentAzimuthDeg": -152.84507574539649,
-        "localTangentVsGlobalPcaDeg": 1.7921297096234372,
+        "localTangentVsGlobalPcaDeg": 1.79212971,
         "referenceOffset": 78.96012888737864,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -38734,7 +38734,7 @@
          "vertexCount": 316
         },
         "localTangentAzimuthDeg": 28.14369581262523,
-        "localTangentVsGlobalPcaDeg": 1.4724586889442708,
+        "localTangentVsGlobalPcaDeg": 1.472458689,
         "referenceOffset": 38.16980728275626,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -38868,7 +38868,7 @@
          "vertexCount": 338
         },
         "localTangentAzimuthDeg": -151.58198573691507,
-        "localTangentVsGlobalPcaDeg": 1.6108785613523218,
+        "localTangentVsGlobalPcaDeg": 1.610878561,
         "referenceOffset": 80.35765039923143,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -39002,7 +39002,7 @@
          "vertexCount": 350
         },
         "localTangentAzimuthDeg": 30.541646739641294,
-        "localTangentVsGlobalPcaDeg": 0.27213363462178547,
+        "localTangentVsGlobalPcaDeg": 0.272133635,
         "referenceOffset": 38.485601671132734,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -39136,7 +39136,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -149.22639549253486,
-        "localTangentVsGlobalPcaDeg": 0.28072752285572294,
+        "localTangentVsGlobalPcaDeg": 0.280727523,
         "referenceOffset": 82.32698094876908,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -39269,7 +39269,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": 32.88521014649398,
-        "localTangentVsGlobalPcaDeg": 2.265807567796935,
+        "localTangentVsGlobalPcaDeg": 2.265807568,
         "referenceOffset": 42.03273508450256,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -39402,7 +39402,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -147.2354612898994,
-        "localTangentVsGlobalPcaDeg": 2.011306871808775,
+        "localTangentVsGlobalPcaDeg": 2.011306872,
         "referenceOffset": 88.29746004418645,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -39535,7 +39535,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": 34.65139579536613,
-        "localTangentVsGlobalPcaDeg": 3.806442099533642,
+        "localTangentVsGlobalPcaDeg": 3.8064421,
         "referenceOffset": 47.36483125584951,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -39668,7 +39668,7 @@
          "vertexCount": 352
         },
         "localTangentAzimuthDeg": 33.75525939929433,
-        "localTangentVsGlobalPcaDeg": 2.780059477104735,
+        "localTangentVsGlobalPcaDeg": 2.780059477,
         "referenceOffset": 91.01977795452234,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -39802,7 +39802,7 @@
          "vertexCount": 340
         },
         "localTangentAzimuthDeg": 35.27825381981356,
-        "localTangentVsGlobalPcaDeg": 4.179709544453165,
+        "localTangentVsGlobalPcaDeg": 4.179709544,
         "referenceOffset": 48.78594337726838,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -39936,7 +39936,7 @@
          "vertexCount": 321
         },
         "localTangentAzimuthDeg": 35.042869130020215,
-        "localTangentVsGlobalPcaDeg": 3.8109285360546097,
+        "localTangentVsGlobalPcaDeg": 3.810928536,
         "referenceOffset": 91.29850171030776,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -40069,7 +40069,7 @@
          "vertexCount": 290
         },
         "localTangentAzimuthDeg": 34.654406601713895,
-        "localTangentVsGlobalPcaDeg": 3.351773837415634,
+        "localTangentVsGlobalPcaDeg": 3.351773837,
         "referenceOffset": 45.174343183264284,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -40202,7 +40202,7 @@
          "vertexCount": 232
         },
         "localTangentAzimuthDeg": 32.70032653091436,
-        "localTangentVsGlobalPcaDeg": 1.260987825521168,
+        "localTangentVsGlobalPcaDeg": 1.260987826,
         "referenceOffset": 88.56611532509942,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -40714,7 +40714,7 @@
          "vertexCount": 120
         },
         "localTangentAzimuthDeg": 25.624833884922566,
-        "localTangentVsGlobalPcaDeg": 1.6238248747477948,
+        "localTangentVsGlobalPcaDeg": 1.623824875,
         "referenceOffset": 121.933501991007,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -40846,7 +40846,7 @@
          "vertexCount": 279
         },
         "localTangentAzimuthDeg": -153.15757350499493,
-        "localTangentVsGlobalPcaDeg": 2.104627469221567,
+        "localTangentVsGlobalPcaDeg": 2.104627469,
         "referenceOffset": 50.06994714603671,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -40980,7 +40980,7 @@
          "vertexCount": 316
         },
         "localTangentAzimuthDeg": -152.1667471182212,
-        "localTangentVsGlobalPcaDeg": 1.782901619790819,
+        "localTangentVsGlobalPcaDeg": 1.78290162,
         "referenceOffset": 119.15901162639915,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -41113,7 +41113,7 @@
          "vertexCount": 338
         },
         "localTangentAzimuthDeg": -153.57062059402455,
-        "localTangentVsGlobalPcaDeg": 3.599513418461722,
+        "localTangentVsGlobalPcaDeg": 3.599513418,
         "referenceOffset": 50.65031821143316,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -41246,7 +41246,7 @@
          "vertexCount": 350
         },
         "localTangentAzimuthDeg": -150.0832464525318,
-        "localTangentVsGlobalPcaDeg": 0.35275955755177735,
+        "localTangentVsGlobalPcaDeg": 0.352759558,
         "referenceOffset": 119.03561441681983,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -41379,7 +41379,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -153.62632301899035,
-        "localTangentVsGlobalPcaDeg": 4.119200003599218,
+        "localTangentVsGlobalPcaDeg": 4.119200004,
         "referenceOffset": 51.47743974647335,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -41512,7 +41512,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -148.00617173014305,
-        "localTangentVsGlobalPcaDeg": 1.374425691160023,
+        "localTangentVsGlobalPcaDeg": 1.374425691,
         "referenceOffset": 118.42959771858014,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -41645,7 +41645,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -153.48905436429473,
-        "localTangentVsGlobalPcaDeg": 4.242286202586422,
+        "localTangentVsGlobalPcaDeg": 4.242286203,
         "referenceOffset": 51.6378483370093,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -41779,7 +41779,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": 34.65139579536613,
-        "localTangentVsGlobalPcaDeg": 3.806442099533642,
+        "localTangentVsGlobalPcaDeg": 3.8064421,
         "referenceOffset": 116.89118674760907,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -41912,7 +41912,7 @@
          "vertexCount": 352
         },
         "localTangentAzimuthDeg": -152.16120944575906,
-        "localTangentVsGlobalPcaDeg": 3.1364093679483247,
+        "localTangentVsGlobalPcaDeg": 3.136409368,
         "referenceOffset": 51.00655776673955,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -42046,7 +42046,7 @@
          "vertexCount": 340
         },
         "localTangentAzimuthDeg": 36.34448038138545,
-        "localTangentVsGlobalPcaDeg": 5.245936106025007,
+        "localTangentVsGlobalPcaDeg": 5.245936106,
         "referenceOffset": 115.14557986595142,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -42179,7 +42179,7 @@
          "vertexCount": 321
         },
         "localTangentAzimuthDeg": -151.9680389300193,
-        "localTangentVsGlobalPcaDeg": 3.1999795239850743,
+        "localTangentVsGlobalPcaDeg": 3.199979524,
         "referenceOffset": 50.677124812798745,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -42312,7 +42312,7 @@
          "vertexCount": 290
         },
         "localTangentAzimuthDeg": 35.79142411815776,
-        "localTangentVsGlobalPcaDeg": 4.488791353859628,
+        "localTangentVsGlobalPcaDeg": 4.488791354,
         "referenceOffset": 114.16896946810583,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -42445,7 +42445,7 @@
          "vertexCount": 232
         },
         "localTangentAzimuthDeg": -151.70488693270897,
-        "localTangentVsGlobalPcaDeg": 3.1442256381019633,
+        "localTangentVsGlobalPcaDeg": 3.144225638,
         "referenceOffset": 54.81430207766987,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -42957,7 +42957,7 @@
          "vertexCount": 120
         },
         "localTangentAzimuthDeg": -152.29804508041153,
-        "localTangentVsGlobalPcaDeg": 0.45329615991739713,
+        "localTangentVsGlobalPcaDeg": 0.45329616,
         "referenceOffset": 99.67731949596846,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -43090,7 +43090,7 @@
          "vertexCount": 279
         },
         "localTangentAzimuthDeg": -152.8058372331887,
-        "localTangentVsGlobalPcaDeg": 1.7528911974157013,
+        "localTangentVsGlobalPcaDeg": 1.752891197,
         "referenceOffset": 86.71399307982367,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -43223,7 +43223,7 @@
          "vertexCount": 316
         },
         "localTangentAzimuthDeg": -153.42133376624503,
-        "localTangentVsGlobalPcaDeg": 3.037488267814814,
+        "localTangentVsGlobalPcaDeg": 3.037488268,
         "referenceOffset": 98.66584175424727,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -43356,7 +43356,7 @@
          "vertexCount": 338
         },
         "localTangentAzimuthDeg": -151.03205937983668,
-        "localTangentVsGlobalPcaDeg": 1.0609522042736568,
+        "localTangentVsGlobalPcaDeg": 1.060952204,
         "referenceOffset": 87.69977728193881,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -43489,7 +43489,7 @@
          "vertexCount": 350
         },
         "localTangentAzimuthDeg": -154.53435742010006,
-        "localTangentVsGlobalPcaDeg": 4.8038705251203115,
+        "localTangentVsGlobalPcaDeg": 4.803870525,
         "referenceOffset": 99.63525080422167,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -43623,7 +43623,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": 31.82970629417818,
-        "localTangentVsGlobalPcaDeg": 1.3368293095688584,
+        "localTangentVsGlobalPcaDeg": 1.33682931,
         "referenceOffset": 87.15720644964759,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -43756,7 +43756,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": -155.5768426437724,
-        "localTangentVsGlobalPcaDeg": 6.196245222469411,
+        "localTangentVsGlobalPcaDeg": 6.196245222,
         "referenceOffset": 100.27381280946676,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -43890,7 +43890,7 @@
          "vertexCount": 361
         },
         "localTangentAzimuthDeg": 34.77722843844512,
-        "localTangentVsGlobalPcaDeg": 4.023996600153361,
+        "localTangentVsGlobalPcaDeg": 4.0239966,
         "referenceOffset": 85.62936162527929,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -44023,7 +44023,7 @@
          "vertexCount": 358
         },
         "localTangentAzimuthDeg": -155.94121927610058,
-        "localTangentVsGlobalPcaDeg": 6.786172971933021,
+        "localTangentVsGlobalPcaDeg": 6.786172972,
         "referenceOffset": 100.99261423411251,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -44156,7 +44156,7 @@
          "vertexCount": 352
         },
         "localTangentAzimuthDeg": 36.6233332669294,
-        "localTangentVsGlobalPcaDeg": 5.648133344739967,
+        "localTangentVsGlobalPcaDeg": 5.648133345,
         "referenceOffset": 84.32889025224584,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -44289,7 +44289,7 @@
          "vertexCount": 340
         },
         "localTangentAzimuthDeg": -155.25339223856977,
-        "localTangentVsGlobalPcaDeg": 6.351936513930194,
+        "localTangentVsGlobalPcaDeg": 6.351936514,
         "referenceOffset": 101.38701682957522,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -44422,7 +44422,7 @@
          "vertexCount": 321
         },
         "localTangentAzimuthDeg": 36.77581568313371,
-        "localTangentVsGlobalPcaDeg": 5.5438750891680435,
+        "localTangentVsGlobalPcaDeg": 5.543875089,
         "referenceOffset": 82.75127057987243,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -44555,7 +44555,7 @@
          "vertexCount": 290
         },
         "localTangentAzimuthDeg": -154.1381915926113,
-        "localTangentVsGlobalPcaDeg": 5.4408243569092,
+        "localTangentVsGlobalPcaDeg": 5.440824357,
         "referenceOffset": 100.44097822749475,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -44689,7 +44689,7 @@
          "vertexCount": 232
         },
         "localTangentAzimuthDeg": 35.64462714387779,
-        "localTangentVsGlobalPcaDeg": 4.205288438484828,
+        "localTangentVsGlobalPcaDeg": 4.205288438,
         "referenceOffset": 84.51667044807844,
         "traceDiagnostics": {
          "constructionStandoff": 26.341160607684138,
@@ -45788,7 +45788,7 @@
     "candidates[].accessScreen.levels.L03.rejectionCounts.INSUFFICIENT_RAMP_TO_ENTRY_SEPARATION"
    ],
    "keyPathsSha256": "1a73ab9781c6afb042f7bddfe3a79fdd6eb5f10d746e07ade9681b28bc91bad3",
-   "sha256": "1c77dbcc63145781ac91a77935064572b7b3d1e49333b08e40499a763489f733"
+   "sha256": "fa474534cf74e5d2f969a6207d127175593ccf329ece9313329a06ddee3797fc"
   },
   "header": {
    "accessReach": 60.0,

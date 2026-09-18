@@ -62,19 +62,25 @@ identical C1–C5 — that reading is part of the net, not a reason to loosen it
 
 from __future__ import annotations
 
+import copy
+import math
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from minegen.core.models import Scenario
+from minegen.layout import access
 from minegen.layout.search import LayoutSearchResult, LayoutV2Search
 from minegen.regression.layout_v2 import case_by_key
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 from tests.characterization_support import (
     BASELINE_GIT_SHA,
     CASE_KEYS,
+    PLATFORM_SENSITIVE_LEAVES,
     SECTIONS,
     WALL_CLOCK_KEYS,
+    canonicalize_platform_sensitive,
     key_path_shape,
     key_paths,
     load_baseline,
@@ -182,9 +188,60 @@ def test_wall_clock_mask_matches_the_established_rule() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _explain(case_key: str, section: str, expected: Any, actual: Any) -> str:
+def _differing_leaves(expected: Any, actual: Any, path: str = "") -> list[str]:
+    """Every differing LEAF path, not just the first.
+
+    Diagnostic only — the comparison itself is unchanged. One difference names
+    a candidate; a hundred differences under ONE leaf name is the signature of
+    a platform-sensitive scalar (see ``PLATFORM_SENSITIVE_LEAVES``), and
+    differences under MANY names are the signature of a real behaviour change.
+    Knowing which, from one failing run, is what this buys.
+    """
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        out: list[str] = []
+        for k in expected:
+            if k not in actual:
+                out.append(f"{path}.{k} (MISSING)")
+            elif expected[k] != actual[k]:
+                out.extend(_differing_leaves(expected[k], actual[k], f"{path}.{k}"))
+        out.extend(f"{path}.{k} (ADDED)" for k in actual if k not in expected)
+        return out
+    if isinstance(expected, list) and isinstance(actual, list) and len(expected) == len(actual):
+        out = []
+        for i, (e, a) in enumerate(zip(expected, actual, strict=True)):
+            if e != a:
+                out.extend(_differing_leaves(e, a, f"{path}[{i}]"))
+        return out
+    return [path or "<root>"]
+
+
+def _leaf_name_census(paths: list[str]) -> str:
+    """``count x leafName`` per distinct final path segment, largest first."""
+    counts: dict[str, int] = {}
+    for p in paths:
+        counts[p.rsplit(".", 1)[-1]] = counts.get(p.rsplit(".", 1)[-1], 0) + 1
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return ", ".join(f"{n}x {name}" for name, n in ordered[:8]) + (
+        f" (+{len(ordered) - 8} more names)" if len(ordered) > 8 else ""
+    )
+
+
+def _explain(
+    case_key: str,
+    section: str,
+    expected: Any,
+    actual: Any,
+    all_differences: list[str] | None = None,
+) -> str:
+    census = ""
+    if all_differences:
+        census = (
+            f"  differing leaves in this section: {len(all_differences)} — "
+            f"{_leaf_name_census(all_differences)}\n"
+        )
     return (
         f"LAYOUT-V2 BEHAVIOUR CHANGED — {case_key} / {section}\n"
+        f"{census}"
         f"  the committed characterization baseline was generated at git SHA "
         f"{BASELINE_GIT_SHA} and records what the search DID there.\n"
         f"  expected (baseline): {_clip(expected)}\n"
@@ -237,8 +294,17 @@ def test_search_matches_the_frozen_characterization(
         if exp == got:
             continue
         # narrow the report to the first difference so the failure names the
-        # candidate / key that moved instead of dumping the whole section
-        pytest.fail(_explain(case_key, section, *_first_difference(exp, got)))
+        # candidate / key that moved instead of dumping the whole section, and
+        # add the leaf-name census so ONE failing run distinguishes a
+        # platform-sensitive scalar from a real behaviour change
+        pytest.fail(
+            _explain(
+                case_key,
+                section,
+                *_first_difference(exp, got),
+                all_differences=_differing_leaves(exp, got),
+            )
+        )
 
 
 def _first_difference(expected: Any, actual: Any, path: str = "") -> tuple[Any, Any]:
@@ -315,3 +381,151 @@ def test_shortlisted_candidates_passed_the_cheap_stage_clean(
             f"{case_key}/{c['candidateId']}: shortlisted with no cheap proxy — "
             "the stage-3 ordering key would have sorted it last"
         )
+
+
+# --------------------------------------------------------------------------- #
+# platform sensitivity: ONE enumerated leaf, and proof the net is unchanged
+# elsewhere (AC-01G correction, Park review blocker 1)
+# --------------------------------------------------------------------------- #
+
+
+def test_the_platform_sensitivity_registry_is_one_enumerated_measured_leaf() -> None:
+    """The registry is a closed, declared list — not a policy that can grow.
+
+    Adding an entry means editing this literal in a reviewed change, exactly
+    like moving ``BASELINE_GIT_SHA``.
+    """
+    assert PLATFORM_SENSITIVE_LEAVES == {"localTangentVsGlobalPcaDeg": 9}
+
+    # the two REAL values measured for this leaf on the SAME source: this
+    # container (numpy 2.5.2 / CPython 3.12.3) and the GitHub runner
+    # (numpy 2.5.3 / CPython 3.12.14, run 35303979826 on probe branch
+    # ac-01g-probe-base-platform, which carries ZERO backend/src changes
+    # against the freeze SHA — so the difference is the platform, not a
+    # refactor).
+    container, runner = 1.4886559404747177, 1.488655940474473
+    assert container != runner, "the measured platform pair must really differ"
+    assert abs(container - runner) < 1e-12, "the measured drift is 2.4e-13 deg"
+    assert round(container, 9) == round(runner, 9), (
+        "the declared precision must actually absorb the MEASURED drift"
+    )
+    # and it is still 10 orders of magnitude tighter than the only engineering
+    # use of the number (tests/test_footwall_trace.py's > 25.0 threshold)
+    assert 10.0 ** -PLATFORM_SENSITIVE_LEAVES["localTangentVsGlobalPcaDeg"] < 25.0 * 1e-9
+
+
+def test_canonicalization_touches_only_the_enumerated_leaf() -> None:
+    """Narrowness, directly: by NAME, only floats, nothing else in the tree."""
+    full = 1.4886559404747177
+    probe: dict[str, Any] = {
+        "localTangentVsGlobalPcaDeg": full,
+        "notEnumerated": full,
+        "localTangentVsGlobalPcaDegSuffixed": full,
+        "nested": [{"localTangentVsGlobalPcaDeg": full, "alsoNotEnumerated": full}],
+        "stringValued": {"localTangentVsGlobalPcaDeg": repr(full)},
+        "nullValued": {"localTangentVsGlobalPcaDeg": None},
+        "intValued": {"localTangentVsGlobalPcaDeg": 3},
+    }
+    out = canonicalize_platform_sensitive(probe)
+
+    assert out["localTangentVsGlobalPcaDeg"] == round(full, 9)
+    assert out["nested"][0]["localTangentVsGlobalPcaDeg"] == round(full, 9)
+    # every non-enumerated float survives BIT-identically — this is not a
+    # blanket float rounding
+    assert out["notEnumerated"] == full
+    assert out["localTangentVsGlobalPcaDegSuffixed"] == full
+    assert out["nested"][0]["alsoNotEnumerated"] == full
+    # a non-float under the enumerated name is passed through untouched
+    assert out["stringValued"]["localTangentVsGlobalPcaDeg"] == repr(full)
+    assert out["nullValued"]["localTangentVsGlobalPcaDeg"] is None
+    assert out["intValued"]["localTangentVsGlobalPcaDeg"] == 3
+    assert isinstance(out["intValued"]["localTangentVsGlobalPcaDeg"], int)
+    # a payload with NO enumerated leaf is returned unchanged
+    plain = {"a": [full, {"b": full}], "c": "x"}
+    assert canonicalize_platform_sensitive(plain) == plain
+
+
+#: engineering leaves that must stay BIT-exact. Deliberately one per family
+#: Park named: clearance, cost/validation, access geometry, score component.
+_PROTECTED_LEAVES = (
+    "conservativeMinimumClearance",
+    "requiredClearance",
+    "fieldCost",
+    "length3d",
+    "equivalentHalfTurns",
+)
+
+
+def _perturb_first_float(obj: Any, key: str) -> bool:
+    """Move the FIRST float stored under ``key`` by one ulp. True if found."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == key and isinstance(v, float) and not isinstance(v, bool):
+                obj[k] = math.nextafter(v, math.inf)
+                return True
+        for v in obj.values():
+            if _perturb_first_float(v, key):
+                return True
+    elif isinstance(obj, list):
+        for v in obj:
+            if _perturb_first_float(v, key):
+                return True
+    return False
+
+
+@pytest.mark.parametrize("leaf", _PROTECTED_LEAVES)
+def test_one_ulp_change_to_a_protected_leaf_still_fails(
+    leaf: str, tabular_reference: LayoutSearchResult
+) -> None:
+    """The canonicalization did not become a tolerance: a single ulp of a
+    clearance, cost or access length is still a FAILING difference."""
+    payload = tabular_reference.to_dict()
+    clean = observations(payload)
+    mutated = copy.deepcopy(payload)
+    assert _perturb_first_float(mutated, leaf), f"no float named {leaf!r} in the payload"
+    assert observations(mutated) != clean, (
+        f"a one-ulp change to {leaf!r} did NOT fail the characterization — the "
+        "comparison has become a tolerance"
+    )
+
+
+def test_one_ulp_change_to_a_geometry_coordinate_still_fails(
+    tabular_reference: LayoutSearchResult,
+) -> None:
+    """Centerline coordinates are dropped from the READABLE C4 projection and
+    covered only by the C6 payload sha — prove that net is real."""
+    payload = tabular_reference.to_dict()
+    clean = observations(payload)["c6Payload"]["sha256"]
+    mutated = copy.deepcopy(payload)
+    # geometry is emitted for SHORTLISTED candidates only (rule 149)
+    flat = next(
+        c["centerline"]["points"]
+        for c in mutated["candidates"]
+        if c.get("centerline") and c["centerline"].get("points")
+    )
+    while isinstance(flat, list) and flat and isinstance(flat[0], list):
+        flat = flat[0]
+    assert isinstance(flat, list) and isinstance(flat[0], float)
+    flat[0] = math.nextafter(flat[0], math.inf)
+    assert observations(mutated)["c6Payload"]["sha256"] != clean, (
+        "a one-ulp change to a centerline coordinate did NOT change the C6 sha"
+    )
+
+
+def test_the_canonicalized_leaf_is_a_terminal_diagnostic() -> None:
+    """WHY the enumerated leaf may be canonicalized at all: nothing else can
+    inherit its last bit.
+
+    ``_principal_axis`` (``numpy.linalg.eigh``, the platform-sensitive step)
+    has exactly ONE production call site, its axis reaches exactly one dot
+    product, and that dot product reaches exactly one diagnostic string. This
+    is a SOURCE-level guard: wiring the PCA axis into geometry, a score, a
+    clearance or a decision breaks it, and the canonicalization must then be
+    re-justified instead of silently covering an engineering value.
+    """
+    src = Path(access.__file__).read_text(encoding="utf-8")
+    assert src.count("_principal_axis(") == 2, "one definition + one production call site"
+    assert src.count("pca_axis") == 2, "the axis is assigned once and read once"
+    assert src.count("cosang") == 2, "the dot product is assigned once and read once"
+    assert "math.degrees(math.acos(cosang))" in src
+    assert src.count("localTangentVsGlobalPcaDeg") == 1

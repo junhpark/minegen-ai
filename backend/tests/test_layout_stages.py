@@ -119,8 +119,23 @@ CANDIDATE_WRITERS: dict[tuple[str, str], frozenset[str]] = {
     ),
     ("search.py", "run"): frozenset({"failure_reasons", "failure_detail", "shortlisted", "rank"}),
 }
-#: the local names a ``CandidateResult`` is bound to inside ``layout/``
-CANDIDATE_NAMES = frozenset({"cand", "c", "candidate"})
+#: writes of a ``CandidateResult`` FIELD NAME by a receiver that is provably
+#: NOT a ``CandidateResult``. Park's review of PR #35 found the earlier proof
+#: matched only the receiver names ``{cand, c, candidate}``, so a writer bound
+#: to any other local name bypassed it entirely. The sweep below is now
+#: receiver-AGNOSTIC — it is keyed on the dataclass's OWN field names, read from
+#: ``dataclasses.fields`` so it cannot rot — and every non-candidate receiver
+#: that happens to share a field name must be declared here. The direction of
+#: the over-approximation is deliberate: an undeclared receiver becomes a test
+#: FAILURE, never a silent pass.
+NON_CANDIDATE_FIELD_WRITES: dict[tuple[str, str, str], frozenset[str]] = {
+    # LevelAccess (access.py:1507) — the access planner's own result DTO
+    ("access.py", "plan_level_accesses", "access"): frozenset({"failure_detail"}),
+    # layout.families.Path — the geometry object a candidate REFERENCES
+    ("families.py", "__init__", "self"): frozenset({"pieces", "points"}),
+    # layout.sections.SectionGeometryError — the shared section diagnostics
+    ("sections.py", "__init__", "self"): frozenset({"diagnostics"}),
+}
 #: call → the modules under ``layout/`` allowed to make it (I2)
 OWNERSHIP_ALLOWLIST: dict[str, frozenset[str]] = {
     "LevelSections": frozenset({"setup.py"}),
@@ -626,8 +641,21 @@ def test_apply_detailed_refuses_anything_but_a_cheap_feasible_record() -> None:
 
 def test_candidate_result_writers_are_the_apply_functions() -> None:
     """Exactly three functions in ``layout/`` assign a ``CandidateResult``
-    attribute, and each writes exactly the field set it is allowed to."""
+    attribute, and each writes exactly the field set it is allowed to.
+
+    Receiver-AGNOSTIC: every assignment to ANY attribute whose name is a
+    ``CandidateResult`` field is examined, whatever the receiver is called, so
+    ``result.status = ...`` or ``x.scores = ...`` cannot slip past the proof.
+    The three receivers in ``layout/`` that are NOT candidates are declared in
+    ``NON_CANDIDATE_FIELD_WRITES``.
+    """
+    fields = {f.name for f in dataclasses.fields(CandidateResult)}
+    # the allowlist may not name a field the dataclass does not have
+    declared = {a for allowed in CANDIDATE_WRITERS.values() for a in allowed}
+    assert declared <= fields, f"CANDIDATE_WRITERS names non-fields: {sorted(declared - fields)}"
+
     written: dict[tuple[str, str], set[str]] = {}
+    exempt_seen: dict[tuple[str, str, str], set[str]] = {}
     offenders: list[str] = []
     for path in _layout_modules():
         for fn in ast.walk(_tree(path)):
@@ -641,25 +669,27 @@ def test_candidate_result_writers_are_the_apply_functions() -> None:
                 else:
                     continue
                 for tgt in targets:
-                    if not (
-                        isinstance(tgt, ast.Attribute)
-                        and isinstance(tgt.value, ast.Name)
-                        and tgt.value.id in CANDIDATE_NAMES
-                    ):
+                    if not (isinstance(tgt, ast.Attribute) and tgt.attr in fields):
+                        continue
+                    receiver = tgt.value.id if isinstance(tgt.value, ast.Name) else "<expr>"
+                    exempt_key = (path.name, fn.name, receiver)
+                    if tgt.attr in NON_CANDIDATE_FIELD_WRITES.get(exempt_key, frozenset()):
+                        exempt_seen.setdefault(exempt_key, set()).add(tgt.attr)
                         continue
                     key = (path.name, fn.name)
                     allowed = CANDIDATE_WRITERS.get(key)
                     if allowed is None or tgt.attr not in allowed:
                         offenders.append(
-                            f"{path.name}:{node.lineno} {fn.name}() writes "
-                            f"{tgt.value.id}.{tgt.attr}"
+                            f"{path.name}:{node.lineno} {fn.name}() writes {receiver}.{tgt.attr}"
                         )
                     else:
                         written.setdefault(key, set()).add(tgt.attr)
     assert offenders == [], offenders
-    # and the allowlist has not rotted: every declared writer writes every
-    # field it declares, and nothing declares a field it never writes
+    # and neither table has rotted: every declared writer writes every field it
+    # declares, nothing declares a field it never writes, and every declared
+    # exemption is still a real write that still needs exempting
     assert written == {k: set(v) for k, v in CANDIDATE_WRITERS.items()}
+    assert exempt_seen == {k: set(v) for k, v in NON_CANDIDATE_FIELD_WRITES.items()}
 
 
 def test_the_stage_modules_contain_no_assert_statement() -> None:
