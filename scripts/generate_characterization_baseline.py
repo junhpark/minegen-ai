@@ -1,11 +1,20 @@
 #!/usr/bin/env python
 """Generate the AC-01G layout-v2 CHARACTERIZATION baselines under
-backend/tests/fixtures/characterization/.
+backend/tests/fixtures/characterization/ — LAYER A, the DISCRETE record.
 
 A characterization baseline records what ``LayoutV2Search`` DID at the freeze
-SHA, observation by observation (C1 enumeration … C6 payload sha + key
-paths), so a later refactor cannot change layout-v2 behaviour silently. It is
-not an engineering specification and proves no constraint correct.
+SHA, observation by observation (C1 enumeration … C6 key paths), so a later
+refactor cannot change layout-v2 behaviour silently. It is not an engineering
+specification and proves no constraint correct.
+
+Since the AC-01G review correction the committed baseline is the DISCRETE
+projection (``tests.characterization_support.discrete_observations``): every
+float leaf and numeric list is REMOVED, the declared-literal subtrees are kept
+verbatim, and the float-hashing C6 sha is dropped. Float / geometry
+equivalence is NOT committed: it is proved at test time, same runner, base
+vs HEAD (``scripts/characterization_observe.py``), because an IEEE bit
+pattern turned out not to be a property of the source tree across GitHub
+runners (PR #35 review: identical tree, FULL green, ordinary CI red).
 
 It is generated ONCE, at the freeze SHA, and is NEVER auto-rewritten (rule
 181's cached-fixture discipline, applied to a freeze):
@@ -39,8 +48,9 @@ generated from a CLEAN archive of the freeze SHA, never from a working tree:
         ../scripts/generate_characterization_baseline.py --force --source-sha $SHA
 
 The production code under test is then the archive's; only the generator and
-its projections come from the working tree. The payload shas it prints must
-equal the committed ``observations.c6Payload.sha256`` of every case.
+its projections come from the working tree. The content fingerprints it
+prints must equal the committed ``metadata.contentFingerprint`` of every case
+(the body is discrete, so this holds on any platform).
 """
 
 from __future__ import annotations
@@ -64,14 +74,15 @@ from tests.characterization_support import (  # noqa: E402
     FIXTURE_DIR,
     baseline_path,
     content_fingerprint,
-    observations,
+    discrete_observations,
 )
 
 from minegen.layout.search import LayoutV2Search  # noqa: E402
 from minegen.regression.layout_v2 import case_by_key  # noqa: E402
 from minegen.world.synthetic_world import generate_world  # noqa: E402
 
-FIXTURE_VERSION = 1
+#: 2 = LAYER A discrete record (see module docstring)
+FIXTURE_VERSION = 2
 
 #: how each case's inputs are obtained AT TEST TIME. WARPED_VEIN-301 is the
 #: session-shared ``warped_301`` / ``warped_301_search`` pair (identical
@@ -103,9 +114,7 @@ ROUTES = {
 
 def _git_sha() -> str:
     try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-        ).strip()
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     except Exception:  # pragma: no cover - git absent
         return "unknown"
 
@@ -113,9 +122,7 @@ def _git_sha() -> str:
 def _dirty() -> bool:
     try:
         return bool(
-            subprocess.check_output(
-                ["git", "status", "--porcelain"], cwd=ROOT, text=True
-            ).strip()
+            subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()
         )
     except Exception:  # pragma: no cover - git absent
         return True
@@ -137,7 +144,7 @@ def build_case(case_key: str, git_sha: str) -> dict[str, Any]:
             "orebodyType": sc.orebody.orebody_type.value,
         },
         "route": ROUTES[case_key],
-        "observations": observations(result.to_dict()),
+        "observations": discrete_observations(result.to_dict()),
     }
     meta = {
         "fixtureVersion": FIXTURE_VERSION,
@@ -147,9 +154,12 @@ def build_case(case_key: str, git_sha: str) -> dict[str, Any]:
         "generatedAt": datetime.now(UTC).isoformat(timespec="seconds"),
         "contentFingerprint": content_fingerprint(git_sha, body),
         "authority": (
-            "CHARACTERIZATION FREEZE — records observed layout-v2 behaviour at the freeze SHA. "
-            "Not an engineering specification; a difference is a signal to explain, never on "
-            "its own a defect. Never auto-rewritten."
+            "CHARACTERIZATION FREEZE, LAYER A (discrete) — records the observed layout-v2 "
+            "DECISION outputs at the freeze SHA: ids, order, status, reasons, shortlist, "
+            "ranking, winner, authority, basis, counts, key paths, declared literals. Floats "
+            "are removed, never rounded; their equivalence is proved same-runner at test "
+            "time. Not an engineering specification; a difference is a signal to explain, "
+            "never on its own a defect. Never auto-rewritten."
         ),
     }
     return {"metadata": meta, **body}
@@ -157,12 +167,8 @@ def build_case(case_key: str, git_sha: str) -> dict[str, Any]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument(
-        "--force", action="store_true", help="overwrite an existing baseline"
-    )
-    ap.add_argument(
-        "--case", action="append", choices=list(CASE_KEYS), help="restrict to a case"
-    )
+    ap.add_argument("--force", action="store_true", help="overwrite an existing baseline")
+    ap.add_argument("--case", action="append", choices=list(CASE_KEYS), help="restrict to a case")
     ap.add_argument(
         "--source-sha",
         help=(
@@ -215,7 +221,6 @@ def main() -> int:
             f"candidates={len(obs['c1Enumeration'])} "
             f"shortlist={len(obs['c3Shortlist']['shortlist'])} "
             f"winner={obs['c5Ranking']['winnerId']} "
-            f"payloadSha={obs['c6Payload']['sha256'][:12]} "
             f"keyPaths={obs['c6Payload']['keyPathCount']} "
             f"fingerprint={data['metadata']['contentFingerprint'][:12]}"
         )

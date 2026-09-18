@@ -20,6 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # full history: tests/test_layout_characterization.py runs the freeze-SHA
+          # production source (git archive <sha> backend/src) on THIS runner and
+          # fails, never skips, if the commit is not in the clone (AC-01G)
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
