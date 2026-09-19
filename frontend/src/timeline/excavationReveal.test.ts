@@ -290,6 +290,67 @@ describe('20B.3-1.3 metadata-less GLB keeps the centerline fallback', () => {
   })
 })
 
+describe('20D.1 typed junction apertures: exact per-interval offsets', () => {
+  // four intervals of 24 indices, the second and third lost one quad each
+  // (6 indices) to a junction aperture: [0, 24, 42, 60, 84]
+  const CUT: RevealMeta = {
+    ...META,
+    ringIntervalIndexOffsets: [0, 24, 42, 60, 84],
+  }
+
+  it('reads a consistent offset table and rejects an inconsistent one whole', () => {
+    expect(readRevealMeta(CUT)).toEqual(CUT)
+    expect(readRevealMeta({ ...CUT, ringIntervalIndexOffsets: [0, 24, 42, 60] })).toBeNull()
+    expect(readRevealMeta({ ...CUT, ringIntervalIndexOffsets: [1, 24, 42, 60, 84] })).toBeNull()
+    expect(readRevealMeta({ ...CUT, ringIntervalIndexOffsets: [0, 24, 18, 60, 84] })).toBeNull()
+    expect(readRevealMeta({ ...CUT, ringIntervalIndexOffsets: [0, 30, 42, 60, 84] })).toBeNull()
+    expect(readRevealMeta({ ...CUT, ringIntervalIndexOffsets: [0, 24, 42.5, 60, 84] })).toBeNull()
+    // a pre-20D.1 GLB without the table keeps the uniform stride contract
+    expect(readRevealMeta(META)).toEqual(META)
+  })
+
+  it('cuts at the exact prefix sums in both directions', () => {
+    expect(revealedIndexCount(CUT, 0.5)).toBe(42)
+    expect(revealedIndexCount(CUT, 1)).toBe(84)
+    expect(revealedIndexRange(CUT, 0.5, 1)).toEqual({ start: 0, count: 42 })
+    expect(revealedIndexRange(CUT, 0.8, 1)).toEqual({ start: 0, count: 60 })
+    // −1: the last interval (fr[3] = 0.8 ≥ 1 − 0.2) is complete → its 24 indices
+    expect(revealedIndexRange(CUT, 0.2, -1)).toEqual({ start: 60, count: 24 })
+    // two intervals from the end: indices [42, 84)
+    expect(revealedIndexRange(CUT, 0.5, -1)).toEqual({ start: 42, count: 42 })
+    expect(revealedIndexRange(CUT, 1, -1)).toEqual({ start: 0, count: 84 })
+    // the uniform contract is unchanged when no table is present
+    expect(revealedIndexRange(META, 0.5, 1)).toEqual({ start: 0, count: 48 })
+  })
+
+  it('batched groups of a cut piece use its true index count', () => {
+    const ranges: PieceRange[] = [
+      { pieceId: 'A', developmentId: 'D', indexOffset: 0, indexCount: 84, meta: CUT },
+      { pieceId: 'B', developmentId: 'D', indexOffset: 84, indexCount: 96, meta: META },
+    ]
+    const groups = planIndexGroups(
+      ranges,
+      new Map([
+        ['A', 0.5],
+        ['B', 1],
+      ]),
+    )
+    expect(groups).toEqual([
+      { start: 0, count: 42 },
+      { start: 84, count: 96 },
+    ])
+    expect(
+      planIndexGroups(
+        ranges,
+        new Map([
+          ['A', 1],
+          ['B', 1],
+        ]),
+      ),
+    ).toEqual([{ start: 0, count: 180 }])
+  })
+})
+
 describe('20C.1-V progress direction (rule 174)', () => {
   it('a −1 development reveals the index SUFFIX from the end ring', () => {
     expect(revealedIndexRange(META, 0, -1)).toEqual({ start: 0, count: 0 })

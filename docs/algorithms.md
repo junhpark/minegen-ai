@@ -1458,3 +1458,65 @@ within half an interval of their z-span and move outward cycle by cycle
 33–48 m outward; 307 SPIRAL-n1-CW-e+0-g0.100 and
 SWITCHBACK-k1-p+0-CW-s50-g0.120 hold six widths at every RL crossing they
 run alongside — a SEPARATION regression, never a success-count assertion).
+
+## Phase 20D.1 — typed junction union of the excavation meshes (`design/junctions.py`)
+
+Before 20D.1 every tube of `tunnel_mesh.glb` and `development_mesh.glb` was
+swept independently: at each junction the PARENT's wall ran straight through
+the CHILD's mouth and the child's OPEN end sat inside the parent as a visible
+inner shell (the Phase 20B limitation recorded under rule 166). 20D.1 removes
+those blocking surfaces with a typed, local union — no general boolean, BSP,
+CSG, voxel remesh or global SDF:
+
+* **Junction authority is the declared topology, never proximity.** The
+  three junction kinds are read from the artifacts the builders already
+  consume: `RAMP_ACCESS` (ramp → level access at the `RAMP_JUNCTION`, a
+  shared boundary ring of the ramp chain), `ACCESS_DRIFT` (level access →
+  drift at the `LEVEL_ENTRY`, a drift-piece breakpoint) and
+  `DRIFT_CROSSCUT` (drift → crosscut at the station breakpoint). Each
+  junction carries the MineNetwork node id the network builder mints for the
+  same weld (`ramp_junction_id`, `level_entry_id`,
+  `drift_station_junction_id`), so mesh and network name one physical point.
+* **Local containment cut on the RENDER mesh.** Inside a window of
+  `JUNCTION_WINDOW_WIDTHS` (2) tunnel widths along each centerline from the
+  junction point, rings are refined to `JUNCTION_RING_SPACING_FRACTION`
+  (0.1) × width (every refinement ring still lies on the validated polyline)
+  and whole quads (ring interval × profile edge) are omitted: child quads
+  whose four vertices are inside-or-on the parent's swept envelope (the
+  intruding tube, coincident floor and roof included — the parent keeps those
+  surfaces) and parent quads strictly inside the child's envelope (the
+  blocking wall). Containment is the signed distance to the convex profile
+  polygon at the nearest ring interval in the SAME gravity-aligned frame the
+  sweep uses, with one geometry-scaled tolerance
+  (`JUNCTION_SURFACE_TOLERANCE_FRACTION` = 0.02 × width, ≈ 0.1 m) for the
+  coincident-surface decision. The tunnel builder cuts the ramp side of
+  `RAMP_ACCESS` (`level_accesses.json` was already a fingerprint input of the
+  tunnel mesh); the development builder cuts the access side of
+  `RAMP_ACCESS` against the ramp envelope and both sides of `ACCESS_DRIFT` /
+  `DRIFT_CROSSCUT`.
+* **Engineering geometry untouched.** The logical mesh, its manifold /
+  watertight / signed-volume QA, the envelope validation, the centerlines,
+  the artifact set and the lifecycle are unchanged; `geometricallyClosed` is
+  still judged on the full sweep. The omission is a visualization /
+  traversal cut reported per junction (`report.junctions`: count, byType,
+  openedEndpointCount, removedTriangles, per-opening parent / child
+  triangles) and never persisted as geometry.
+* **Exact reveal offsets (rule 173).** A cut interval no longer holds
+  `indexStride` indices, so every SEGMENT primitive and every batched piece
+  range additionally stamps `ringIntervalIndexOffsets` (the `count + 1`
+  prefix sums) and `omittedTriangles`; the 4D reveal cuts at the offsets when
+  present and keeps the uniform stride arithmetic for pre-20D.1 GLBs (an
+  inconsistent table is rejected whole, fail closed).
+
+Measured on the TABULAR verification fixture (4 accesses, 4 levels, 20
+crosscuts; base commit vs 20D.1): tunnel mesh 28,614 → 32,538 render
+triangles (864 omitted, 753 → 879 rings, 860 KB → 998 KB, 1.26 s → 1.55 s);
+development mesh 14,058 → 36,478 triangles (2,550 omitted, 653 → 1,788
+rings, 467 KB → 1.23 MB, 0.61 s → 3.38 s) — the growth is the junction-window
+ring refinement, bounded by junctions × window. Recorded limitations: the
+aperture rim is jagged at the refined ring spacing (0.5 m); straddling quads
+are kept, so the neighbour overlaps by at most one quad at the doorway sill
+(possible thin coplanar strip); no transition patch; the tunnel builder
+sweeps the access ENVELOPE at the secondary tessellation for its containment
+query only. An all-development watertight union, exact junction CSG and the
+branch walkthrough remain Phase 20D follow-ups.
