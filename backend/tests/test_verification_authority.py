@@ -489,3 +489,289 @@ def test_aggregate_refuses_a_summary_with_no_evidence_and_ignores_a_lying_block(
     contradicted = verify.aggregate_authority([backend, dishonest])
     assert contradicted["release"] is False
     assert "COMPONENT_BLOCKED:full-frontend:MODE_NOT_FULL:fast" in contradicted["reasons"]
+
+
+# --------------------------------------------------------------------------- #
+# AC-01H: the frontend component mode, and the aggregate as THE CI verdict
+# --------------------------------------------------------------------------- #
+
+
+def _stub_runner(monkeypatch: Any, tmp_path: Path) -> list[str]:
+    """Make ``cmd_full`` cheap and observable: record which gate groups the
+    runner was asked for instead of executing tools."""
+    monkeypatch.setattr(verify, "VERIFICATION", tmp_path)
+    calls: list[str] = []
+
+    def backend_static(self: Any) -> None:
+        calls.append("backend_static")
+        for name in verify.RELEASE_BACKEND_GATES[:-1]:
+            self.steps.append(_steps([name])[0])
+
+    def pytest_(self: Any, name: str, extra: list[str], junit: str | None = None) -> Any:
+        calls.append(f"pytest:{name}")
+        step = _steps([name])[0]
+        step.update(
+            {"testsPassed": 3, "testsFailed": 0, "testsSkipped": 0, "markerExpression": None}
+        )
+        self.steps.append(step)
+        return step
+
+    def frontend_full(self: Any) -> None:
+        calls.append("frontend_full")
+        self.steps.extend(_steps(list(verify.RELEASE_FRONTEND_GATES)))
+
+    def coverage() -> dict[str, Any]:
+        calls.append("collection_coverage")
+        return {**GOOD_COVERAGE, "collectedFull": 3, "collectedAll": 3, "excludedFromFastIds": []}
+
+    monkeypatch.setattr(verify.Runner, "backend_static", backend_static)
+    monkeypatch.setattr(verify.Runner, "pytest", pytest_)
+    monkeypatch.setattr(verify.Runner, "frontend_full", frontend_full)
+    monkeypatch.setattr(verify, "collection_coverage", coverage)
+    # a clean, unchanged source so the component evidence is judged on its gates
+    monkeypatch.setattr(
+        verify, "_source_state", lambda: dict(head="c" * 40, dirty=False, digest="x")
+    )
+    monkeypatch.setattr(verify, "_head", lambda: {"gitHead": "c" * 40, "gitDirty": False})
+    return calls
+
+
+def _written(tmp_path: Path) -> dict[str, Any]:
+    data: dict[str, Any] = json.loads(
+        (tmp_path / "verification-summary.json").read_text(encoding="utf-8")
+    )
+    return data
+
+
+def test_frontend_only_runs_the_five_frontend_gates_and_nothing_backend(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """``verify.py full --frontend-only``: the frontend component. No static
+    checks, no pytest, no collection proof are even attempted; the summary
+    names itself ``full-frontend``; backend gates read NOT_RUN; and it is
+    frontend component evidence — never release."""
+    calls = _stub_runner(monkeypatch, tmp_path)
+    assert verify.main(["full", "--frontend-only"]) == 0
+    assert calls == ["frontend_full"]
+    summary = _written(tmp_path)
+    assert summary["component"] == "full-frontend"
+    assert summary["mode"] == "FULL"
+    authority = summary["authority"]
+    assert authority["release"] is False
+    assert authority["components"] == {"backendFullSuite": False, "frontendFullSuite": True}
+    assert {f"GATE_NOT_RUN:{g}" for g in verify.RELEASE_BACKEND_GATES} <= set(authority["reasons"])
+    assert "COVERAGE_PROOF_MISSING" in authority["reasons"]
+    assert authority["requiredGates"]["pytest-full"] == "NOT_RUN"
+    assert "collectionCoverage" not in summary
+    assert not any(s["name"] == "collection-coverage" for s in summary["steps"])
+
+
+def test_backend_only_names_itself_and_stays_a_component(tmp_path: Path, monkeypatch: Any) -> None:
+    calls = _stub_runner(monkeypatch, tmp_path)
+    assert verify.main(["full", "--backend-only"]) == 0
+    assert calls == ["backend_static", "pytest:pytest-full", "collection_coverage"]
+    summary = _written(tmp_path)
+    assert summary["component"] == "full-backend"
+    authority = summary["authority"]
+    assert authority["release"] is False
+    assert authority["components"] == {"backendFullSuite": True, "frontendFullSuite": False}
+    assert {f"GATE_NOT_RUN:{g}" for g in verify.RELEASE_FRONTEND_GATES} == set(authority["reasons"])
+
+
+def test_the_two_component_flags_are_mutually_exclusive() -> None:
+    with pytest.raises(SystemExit) as exc:
+        verify.main(["full", "--backend-only", "--frontend-only"])
+    assert exc.value.code == 2  # argparse usage error
+
+
+def test_the_default_full_run_is_the_whole_set_and_names_itself_full(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    calls = _stub_runner(monkeypatch, tmp_path)
+    assert verify.main(["full"]) == 0
+    assert calls == ["backend_static", "pytest:pytest-full", "frontend_full", "collection_coverage"]
+    summary = _written(tmp_path)
+    assert summary["component"] == "full"
+    assert summary["authority"]["release"] is True
+
+
+def test_the_two_real_component_summaries_aggregate_to_one_release_verdict(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """End to end through the CLI, exactly as the Release Authority job does:
+    two summaries WRITTEN BY the component modes, aggregated by ``authority``.
+    The components name themselves, so the verdict says who proved what."""
+    _stub_runner(monkeypatch, tmp_path)
+    assert verify.main(["full", "--backend-only"]) == 0
+    backend = tmp_path / "full-backend" / "verification-summary.json"
+    backend.parent.mkdir()
+    (tmp_path / "verification-summary.json").rename(backend)
+    assert verify.main(["full", "--frontend-only"]) == 0
+    frontend = tmp_path / "full-frontend" / "verification-summary.json"
+    frontend.parent.mkdir()
+    (tmp_path / "verification-summary.json").rename(frontend)
+
+    assert verify.main(["authority", str(backend), str(frontend)]) == 0
+    verdict = json.loads((tmp_path / "release-authority.json").read_text(encoding="utf-8"))
+    assert verdict["release"] is True
+    assert verdict["reasons"] == []
+    assert verdict["certifiedSha"] == "c" * 40
+    # every required gate is sourced from the component that ran it — the
+    # label comes from the summary's own ``component``, not the identical
+    # file names
+    assert {verdict["gateSource"][g] for g in verify.RELEASE_BACKEND_GATES} == {"full-backend"}
+    assert {verdict["gateSource"][g] for g in verify.RELEASE_FRONTEND_GATES} == {"full-frontend"}
+
+
+def test_a_missing_component_file_is_a_withheld_verdict_not_a_smaller_aggregate(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """AC-01H §14 / M5 / M6: the authority job passes both paths whether or not
+    the artifact arrived. A path that does not exist is recorded and the
+    verdict is withheld with a typed reason — never judged on what is left."""
+    monkeypatch.setattr(verify, "VERIFICATION", tmp_path)
+    backend = tmp_path / "backend.json"
+    backend.write_text(
+        json.dumps(_summary("full-backend", list(verify.RELEASE_BACKEND_GATES))), encoding="utf-8"
+    )
+    absent = tmp_path / "full-frontend" / "verification-summary.json"
+    assert verify.main(["authority", str(backend), str(absent)]) == 1
+    verdict = json.loads((tmp_path / "release-authority.json").read_text(encoding="utf-8"))
+    assert verdict["release"] is False
+    assert verdict["missingSummaries"] == [str(absent)]
+    assert verdict["reasons"][0] == f"COMPONENT_SUMMARY_MISSING:{absent}"
+    assert "GATE_NOT_PASSED_BY_ANY_COMPONENT:fe-build" in verdict["reasons"]
+    # backend only (M5) and frontend only (M6) are the same refusal
+    frontend = tmp_path / "frontend.json"
+    frontend.write_text(
+        json.dumps(_summary("full-frontend", list(verify.RELEASE_FRONTEND_GATES), coverage=None)),
+        encoding="utf-8",
+    )
+    assert verify.main(["authority", str(frontend)]) == 1
+    assert verify.main(["authority", str(backend)]) == 1
+
+
+def test_a_torn_or_malformed_component_summary_is_a_typed_withheld_verdict(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """AC-01H Stage D (D2/D6): a component job cancelled mid-write still
+    uploads its package under ``if: always()``, so the aggregate can meet a
+    truncated, empty or non-object summary. That is evidence it cannot judge:
+    the verdict is withheld with COMPONENT_SUMMARY_INVALID and
+    release-authority.json is still written — never a traceback that leaves
+    the evidence package without a verdict."""
+    monkeypatch.setattr(verify, "VERIFICATION", tmp_path)
+    backend = tmp_path / "backend.json"
+    backend.write_text(
+        json.dumps(_summary("full-backend", list(verify.RELEASE_BACKEND_GATES))), encoding="utf-8"
+    )
+    for torn in ('{"tier": "FULL", "steps": [', "", "[1, 2, 3]", '"just a string"'):
+        frontend = tmp_path / "frontend.json"
+        frontend.write_text(torn, encoding="utf-8")
+        assert verify.main(["authority", str(backend), str(frontend)]) == 1
+        verdict = json.loads((tmp_path / "release-authority.json").read_text(encoding="utf-8"))
+        assert verdict["release"] is False
+        assert verdict["missingSummaries"] == []
+        assert verdict["invalidSummaries"] == [str(frontend)]
+        assert verdict["reasons"][0] == f"COMPONENT_SUMMARY_INVALID:{frontend}"
+        assert "GATE_NOT_PASSED_BY_ANY_COMPONENT:fe-build" in verdict["reasons"]
+        # the valid component is still judged, never dropped with the torn one
+        assert verdict["gateSource"]["pytest-full"] == "full-backend"
+
+
+def test_no_summary_at_all_is_a_withheld_verdict_with_a_written_record(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    monkeypatch.setattr(verify, "VERIFICATION", tmp_path)
+    assert verify.main(["authority"]) == 1
+    verdict = json.loads((tmp_path / "release-authority.json").read_text(encoding="utf-8"))
+    assert verdict["release"] is False
+    assert verdict["reasons"] == ["NO_COMPONENT_SUMMARIES"]
+
+
+# -- the AC-01H mutation table (§24, §48), each killed by the aggregate ----- #
+
+
+def _pair(**backend_over: Any) -> list[dict[str, Any]]:
+    backend = _summary("full-backend", list(verify.RELEASE_BACKEND_GATES), **backend_over)
+    frontend = _summary("full-frontend", list(verify.RELEASE_FRONTEND_GATES), coverage=None)
+    return [backend, frontend]
+
+
+def test_m1_a_marker_filtered_backend_pytest_is_not_release_evidence() -> None:
+    steps = _steps(list(verify.RELEASE_BACKEND_GATES))
+    for s in steps:
+        if s["name"] == "pytest-full":
+            s["command"] = 'python -m pytest -q -m "not slow"'
+            s["markerExpression"] = "not slow"
+    verdict = verify.aggregate_authority(_pair(steps=steps))
+    assert verdict["release"] is False
+    assert "COMPONENT_BLOCKED:full-backend:PYTEST_FULL_FILTERED" in verdict["reasons"]
+    assert "PYTEST_FULL_FILTERED" in verdict["reasons"]
+
+
+def test_m2_a_missing_or_failed_collection_proof_is_not_release_evidence() -> None:
+    missing = verify.aggregate_authority(_pair(coverage=None))
+    assert missing["release"] is False
+    assert "COVERAGE_PROOF_MISSING" in missing["reasons"]
+    failed = verify.aggregate_authority(
+        _pair(coverage={**GOOD_COVERAGE, "missingFromFull": ["tests/test_x.py::test_y"]})
+    )
+    assert failed["release"] is False
+    assert "COMPONENT_BLOCKED:full-backend:COVERAGE_PROOF_FAILED" in failed["reasons"]
+
+
+def test_m3_a_frontend_component_without_vitest_is_not_release_evidence() -> None:
+    backend = _summary("full-backend", list(verify.RELEASE_BACKEND_GATES))
+    no_vitest = _summary(
+        "full-frontend",
+        [g for g in verify.RELEASE_FRONTEND_GATES if g != "fe-vitest"],
+        coverage=None,
+    )
+    verdict = verify.aggregate_authority([backend, no_vitest])
+    assert verdict["release"] is False
+    assert "GATE_NOT_PASSED_BY_ANY_COMPONENT:fe-vitest" in verdict["reasons"]
+    assert verdict["gateSource"]["fe-vitest"] is None
+
+
+def test_a_component_whose_source_changed_during_its_run_is_not_release_evidence() -> None:
+    moved = verify.aggregate_authority(
+        _pair(source={**CLEAN_SOURCE, "endDigest": "moved", "unchanged": False})
+    )
+    assert moved["release"] is False
+    assert "COMPONENT_BLOCKED:full-backend:SOURCE_CHANGED_DURING_RUN" in moved["reasons"]
+
+
+def test_a_failed_component_gate_is_not_release_evidence() -> None:
+    steps = _steps(list(verify.RELEASE_BACKEND_GATES), failing={"mypy"})
+    verdict = verify.aggregate_authority(_pair(steps=steps, failed=True))
+    assert verdict["release"] is False
+    assert "GATE_NOT_PASSED_BY_ANY_COMPONENT:mypy" in verdict["reasons"]
+    assert "COMPONENT_BLOCKED:full-backend:GATE_FAILED:mypy" in verdict["reasons"]
+
+
+def test_fast_alone_is_never_release_evidence() -> None:
+    fast_only = _summary("fast", ["ruff-check", "ruff-format", "mypy", "pytest-fast"], mode="fast")
+    verdict = verify.aggregate_authority([fast_only])
+    assert verdict["release"] is False
+    assert "COMPONENT_BLOCKED:fast:MODE_NOT_FULL:fast" in verdict["reasons"]
+
+
+def test_vitest_counts_are_read_through_ansi_colour(tmp_path: Path) -> None:
+    """The AC-01H transition run recorded ``vitest: ? passed in ? files``: on
+    the runner vitest colours its summary even into the redirected log, and
+    the escape codes sat between the label and the number. The counts are the
+    frontend half of the same-revision equivalence proof, so the parser must
+    read them through the colour."""
+    dim, reset, bold, green, grey = "\x1b[2m", "\x1b[22m", "\x1b[1m", "\x1b[32m", "\x1b[90m"
+    coloured = (
+        f"{dim} Test Files {reset} {bold}{green}40 passed\x1b[39m{reset}{grey} (40)\x1b[39m\n"
+        f"{dim}      Tests {reset} {bold}{green}263 passed\x1b[39m{reset}{grey} (263)\x1b[39m\n"
+        f"{dim}   Duration {reset} 6.09s\n"
+    )
+    log = tmp_path / "full-fe-vitest.log"
+    log.write_text(coloured, encoding="utf-8")
+    assert verify._vitest_counts(log) == {"testFiles": 40, "testsPassed": 263}
+    # the plain (local, no-TTY) form still reads
+    log.write_text(" Test Files  40 passed (40)\n      Tests  263 passed (263)\n", encoding="utf-8")
+    assert verify._vitest_counts(log) == {"testFiles": 40, "testsPassed": 263}

@@ -172,10 +172,50 @@ that does. A FULL summary is release evidence only for its own
 `certifiedSha`, and `fullAuthority` values recorded in phase documents before
 AC-01A were produced under the weaker expression.
 
-## CI
+## CI (AC-01H — one release authority)
 
-`verify-fast.yml` (pull requests) and `verify-full.yml` (push to main and pull
-requests; backend `verify.py full --backend-only` + the unchanged frontend
-job) run ALONGSIDE the original `ci.yml`. The original trigger set is reduced
-only after old/new FULL equivalence on the same HEAD is proven (VA5) —
-path-based filtering is out of VA-01 scope.
+Two workflows, three roles:
+
+| workflow | trigger | jobs | role |
+|---|---|---|---|
+| `verify-fast.yml` | `pull_request` | `FAST` → `python scripts/verify.py fast`; artifact `verification-fast` | inner-loop feedback — development acceleration, never release evidence |
+| `verify-full.yml` | `pull_request` + `push: main` | `full-backend` → `verify.py full --backend-only` (ruff · format · mypy · pytest UNFILTERED · collection proof; `fetch-depth: 0` for the AC-01G LAYER B base archive); `full-frontend` → `verify.py full --frontend-only` (typecheck · lint · prettier · vitest · build); `release-authority` → downloads both component summaries and runs `verify.py authority` | the two component jobs are component EVIDENCE; **`Release Authority` is the ONE CI release verdict** |
+
+Artifacts (every upload sets `include-hidden-files: true` and
+`if-no-files-found: error`, because `.verification/` is a dotted directory and
+the pre-AC-01H uploads silently published nothing): `verification-fast`,
+`verification-full-backend`, `verification-full-frontend`,
+`verification-release-authority` (`release-authority.json` plus both
+component `verification-summary.json` files under `components/`, so an
+independent reviewer downloads the evidence rather than trusting a green
+badge).
+
+The authority job `needs` both components and runs `if: always()`: a failed
+or missing component yields a RECORDED withheld verdict — `GATE_FAILED`,
+`COMPONENT_SUMMARY_MISSING:<path>`, `COMPONENT_SUMMARY_INVALID:<path>` (a torn,
+empty or non-object summary — a job cancelled mid-write still uploads),
+`GATE_NOT_PASSED_BY_ANY_COMPONENT:<gate>`, `NO_COMPONENT_SUMMARIES` — and a
+red job, never a skipped one. The aggregate
+re-derives each component from its recorded evidence (`component_verdict`),
+so a component's own `authority.release` is a claim it never trusts, and it
+refuses two components that certify different revisions.
+
+On a `pull_request` run both components check out GitHub's synthetic merge
+commit, so the certified SHA is `PULL_REQUEST_MERGE_SIMULATION` with
+`ci.prHeadSha` recorded alongside — the verdict is for the merge simulation
+and is never relabelled as the PR head. Exact-HEAD authority for a branch
+commit is the local `python scripts/verify.py full` (`SOURCE_HEAD`).
+
+`verify.py full --backend-only` and `--frontend-only` are mutually exclusive
+component modes; each summary records its `component` (`full-backend`,
+`full-frontend`, or `full` for the whole local run) so the aggregate names
+which component proved each gate (`gateSource`). The original `ci.yml`
+(backend `pytest -q` + the frontend job) ran the same gate set a second time
+per revision. It is RETIRED (AC-01H commit 2) after same-revision equivalence
+was demonstrated on the transition revision `c9f5913a0636`: old `pytest -q`
+ran 1241 tests with 0 failures and the new unfiltered `pytest-full` executed
+1241 == collected 1241 with the coverage proof satisfied; the five
+frontend gates and the vitest counts (40 files / 263 tests) matched command for
+command; both trigger sets were `pull_request` + `push: main`. Per PR revision the
+unfiltered backend pytest now runs once instead of twice and the frontend full
+gate set once instead of twice (42.0 duplicated runner-minutes → 40.5).

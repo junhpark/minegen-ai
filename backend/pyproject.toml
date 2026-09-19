@@ -33,6 +33,11 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "types-networkx",
+    # AC-01H: tests/test_verification_workflows.py reads the GitHub workflow
+    # YAML to pin the CI trigger / gate / artifact structure semantically.
+    # Already present transitively (uvicorn[standard] → pyyaml); declared here
+    # so the tests never depend on a runtime extra's dependency tree.
+    "pyyaml>=6.0",
 ]
 
 [tool.setuptools.packages.find]
