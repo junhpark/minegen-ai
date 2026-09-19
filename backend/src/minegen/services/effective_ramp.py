@@ -39,6 +39,7 @@ from minegen.core.artifacts import (
     RAMP_SOURCE_FILE,
     RampSource,
 )
+from minegen.core.models import ApiModel
 from minegen.core.publication import publish_text
 from minegen.core.revision import file_revision
 from minegen.services.artifact_reader import ArtifactReader, ArtifactSnapshot
@@ -117,6 +118,25 @@ def legacy_adapter(smoothed_payload: dict[str, Any], revision: str | None) -> di
     }
 
 
+class RampSourceSummary(ApiModel):
+    """The closed ``GET/PUT …/design/ramp-source`` document (AC-01I typed
+    boundary). Field order IS the wire key order; every optional provenance
+    field is an explicit ``null`` when the active source has no artifact."""
+
+    active_source: RampSource
+    owning_artifact: str
+    available: bool
+    legacy_available: bool
+    layout_v2_available: bool
+    layout_v2_selected: bool
+    source_kind: str | None
+    source_revision: str | None
+    candidate_id: str | None
+    family: str | None
+    status: str | None
+    segment_count: int
+
+
 @dataclass(frozen=True)
 class EffectiveRampResolution:
     active_source: RampSource
@@ -130,22 +150,26 @@ class EffectiveRampResolution:
     def available(self) -> bool:
         return self.payload is not None
 
-    def summary(self) -> dict[str, Any]:
+    def summary_model(self) -> RampSourceSummary:
         p = self.payload
-        return {
-            "activeSource": self.active_source,
-            "owningArtifact": self.owning_artifact,
-            "available": self.available,
-            "legacyAvailable": self.legacy_available,
-            "layoutV2Available": self.layout_v2_available,
-            "layoutV2Selected": self.layout_v2_selected,
-            "sourceKind": p.get("sourceKind") if p else None,
-            "sourceRevision": p.get("sourceRevision") if p else None,
-            "candidateId": p.get("candidateId") if p else None,
-            "family": p.get("family") if p else None,
-            "status": p.get("status") if p else None,
-            "segmentCount": len(p.get("segments", [])) if p else 0,
-        }
+        return RampSourceSummary(
+            active_source=self.active_source,
+            owning_artifact=self.owning_artifact,
+            available=self.available,
+            legacy_available=self.legacy_available,
+            layout_v2_available=self.layout_v2_available,
+            layout_v2_selected=self.layout_v2_selected,
+            source_kind=p.get("sourceKind") if p else None,
+            source_revision=p.get("sourceRevision") if p else None,
+            candidate_id=p.get("candidateId") if p else None,
+            family=p.get("family") if p else None,
+            status=p.get("status") if p else None,
+            segment_count=len(p.get("segments", [])) if p else 0,
+        )
+
+    def summary(self) -> dict[str, Any]:
+        """The summary as the plain JSON document (scene slot, service)."""
+        return self.summary_model().model_dump(by_alias=True)
 
 
 def resolve_effective_ramp(

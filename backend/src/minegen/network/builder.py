@@ -60,6 +60,13 @@ from minegen.network.models import (
     SurfacePathAdvisory,
     SurfacePathEntry,
 )
+from minegen.network.node_ids import (
+    PORTAL_NODE_ID,
+    level_entry_id,
+    ramp_junction_id,
+    shaft_bottom_id,
+    shaft_collar_id,
+)
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -246,7 +253,7 @@ class MineNetworkBuilder:
         # -- nodes: PORTAL + LEVEL_ENTRY per completed level ---------------- #
         portal_pos = polylines[0][0]
         portal = NetworkNode(
-            id="PORTAL",
+            id=PORTAL_NODE_ID,
             type=NodeType.PORTAL,
             position=(float(portal_pos[0]), float(portal_pos[1]), float(portal_pos[2])),
         )
@@ -281,7 +288,7 @@ class MineNetworkBuilder:
                 junction = seg.get("rampJunction")
                 if junction is not None:
                     node = NetworkNode(
-                        id=f"{NodeType.RAMP_JUNCTION.value}:{level_id}",
+                        id=ramp_junction_id(level_id),
                         type=NodeType.RAMP_JUNCTION,
                         position=(float(end[0]), float(end[1]), float(end[2])),
                         level_id=level_id,
@@ -306,7 +313,7 @@ class MineNetworkBuilder:
                         f"{LEVEL_ACCESSES_ARTIFACT} (rule 157)",
                     )
                 node = NetworkNode(
-                    id=f"{NodeType.LEVEL_ENTRY.value}:{level_id}",
+                    id=level_entry_id(level_id),
                     type=NodeType.LEVEL_ENTRY,
                     position=(float(end[0]), float(end[1]), float(end[2])),
                     level_id=level_id,
@@ -361,7 +368,7 @@ class MineNetworkBuilder:
                 max_weld = max(max_weld, weld)
                 entry = apts[-1]
                 enode = NetworkNode(
-                    id=f"{NodeType.LEVEL_ENTRY.value}:{lvl}",
+                    id=level_entry_id(lvl),
                     type=NodeType.LEVEL_ENTRY,
                     position=(float(entry[0]), float(entry[1]), float(entry[2])),
                     level_id=lvl,
@@ -659,7 +666,7 @@ class MineNetworkBuilder:
             )
             collar = shaft["collar"]
             collar_node = NetworkNode(
-                id=f"{NodeType.SHAFT_COLLAR.value}:{sid}",
+                id=shaft_collar_id(sid),
                 type=NodeType.SHAFT_COLLAR,
                 position=(float(collar[0]), float(collar[1]), float(collar[2])),
                 elevation=float(collar[2]),
@@ -681,7 +688,7 @@ class MineNetworkBuilder:
                 chain.append(snode)
             bottom = shaft["bottom"]
             bottom_node = NetworkNode(
-                id=f"{NodeType.SHAFT_BOTTOM.value}:{sid}",
+                id=shaft_bottom_id(sid),
                 type=NodeType.SHAFT_BOTTOM,
                 position=(float(bottom[0]), float(bottom[1]), float(bottom[2])),
                 elevation=float(bottom[2]),

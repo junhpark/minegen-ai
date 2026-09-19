@@ -25,12 +25,12 @@ from typing import Any
 
 import numpy as np
 
-from minegen.core.artifacts import (
-    LEVEL_ACCESSES_ARTIFACT,
-    RAMP_OWNING_ARTIFACTS,
-    SHAFTS_ARTIFACT,
-)
 from minegen.infrastructure.models import CandidateSite, DemandPoint
+from minegen.network.geometry_refs import (
+    OWNING_ARTIFACTS_BY_EDGE_TYPE,
+    GeometryRefError,
+    resolve_owning_centerline,
+)
 
 LENGTH_SYNC_TOLERANCE = 1e-6  # m — recomputed centerline vs edge.length3d
 ENDPOINT_TOLERANCE = 1e-6  # m — centerline ends vs from/to node positions
@@ -46,14 +46,9 @@ _SUPPORTED_EDGE_TYPES = (
     "SHAFT",
     "SHAFT_STATION_ACCESS",
 )
-_OWNING_ARTIFACTS: dict[str, tuple[str, ...]] = {
-    "RAMP": RAMP_OWNING_ARTIFACTS,
-    "LEVEL_ACCESS": (LEVEL_ACCESSES_ARTIFACT,),
-    "DRIFT": ("levels.json",),
-    "CROSSCUT": ("levels.json",),
-    "SHAFT": (SHAFTS_ARTIFACT,),
-    "SHAFT_STATION_ACCESS": (SHAFTS_ARTIFACT,),
-}
+# AC-01I: the per-edge-type ownership table lives with the ONE reference
+# resolver (network/geometry_refs.py); the domain keeps the geometry half.
+_OWNING_ARTIFACTS = OWNING_ARTIFACTS_BY_EDGE_TYPE
 
 SampleRow = tuple[str, str | None, str | None, float | None, tuple[float, float, float]]
 
@@ -250,57 +245,22 @@ class InfrastructureNetworkDomain:
         accesses_payload: dict[str, Any],
         shafts_payload: dict[str, Any] | None = None,
     ) -> EdgeGeometry:
-        expected_artifacts = _OWNING_ARTIFACTS[e["type"]]
-        ref = e.get("geometryRef")
-        if not isinstance(ref, dict):
-            raise DomainValidationError(f"edge {e['id']} geometryRef is not an object")
-        artifact = ref.get("artifact")
-        if artifact not in expected_artifacts:
-            raise DomainValidationError(
-                f"edge {e['id']} of type {e['type']} must be owned by "
-                f"{' or '.join(expected_artifacts)}, geometryRef points to {artifact!r}"
-            )
-        raw_index = ref.get("segmentIndex")
-        if not isinstance(raw_index, int) or isinstance(raw_index, bool) or raw_index < 0:
-            raise DomainValidationError(
-                f"edge {e['id']} segmentIndex {raw_index!r} is not a non-negative integer"
-            )
-        is_ramp = artifact in RAMP_OWNING_ARTIFACTS
-        if is_ramp:
-            owners = smoothed_payload.get("segments")
-        elif artifact == LEVEL_ACCESSES_ARTIFACT:
-            owners = accesses_payload.get("accesses")
-        elif artifact == SHAFTS_ARTIFACT:
-            owners = (shafts_payload or {}).get("centerlines")
-        else:
-            owners = levels_payload.get("developments")
-        container = "effectiveCenterline" if is_ramp else "centerline"
-        if not isinstance(owners, list) or raw_index >= len(owners):
-            count = len(owners) if isinstance(owners, list) else 0
-            raise DomainValidationError(
-                f"edge {e['id']} segmentIndex {raw_index} is out of range for "
-                f"{artifact} ({count} entries)"
-            )
-        owner = owners[raw_index]
-        centerline = owner.get(container) if isinstance(owner, dict) else None
-        raw_points = centerline.get("points") if isinstance(centerline, dict) else None
-        # malformed owning geometry is a typed failure, never an unhandled
-        # reshape/conversion exception
-        if not isinstance(raw_points, list) or len(raw_points) < 6 or len(raw_points) % 3 != 0:
-            raise DomainValidationError(
-                f"edge {e['id']} owning centerline is missing, has < 2 points or "
-                "is not a flat multiple-of-3 coordinate list"
-            )
+        # AC-01I: the REFERENCE half (shape, per-type ownership, index range,
+        # owning point list) is the shared resolver; the reason text is the
+        # same as before, prefixed with the edge id here. The GEOMETRY half
+        # below (chainage, length sync, orientation) is unchanged.
         try:
-            pts = np.asarray(raw_points, dtype=np.float64).reshape(-1, 3)
-        except (TypeError, ValueError):
-            raise DomainValidationError(
-                f"edge {e['id']} owning centerline contains non-numeric values"
-            ) from None
-        if pts.shape[0] < 2:
-            raise DomainValidationError(f"edge {e['id']} owning centerline has < 2 points")
-        if not np.all(np.isfinite(pts)):
-            raise DomainValidationError(f"edge {e['id']} owning centerline has non-finite points")
+            resolved = resolve_owning_centerline(
+                e.get("geometryRef"),
+                edge_type=e["type"],
+                smoothed_payload=smoothed_payload,
+                levels_payload=levels_payload,
+                accesses_payload=accesses_payload,
+                shafts_payload=shafts_payload,
+            )
+        except GeometryRefError as exc:
+            raise DomainValidationError(f"edge {e['id']} {exc}") from None
+        pts = resolved.array
         geom = EdgeGeometry(pts)
         if abs(geom.length - float(e["length3d"])) > LENGTH_SYNC_TOLERANCE:
             raise DomainValidationError(

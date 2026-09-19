@@ -34,9 +34,10 @@ from minegen.capability.models import (
     EgressAdvisoryEntry,
     RequiredPathCheck,
 )
-from minegen.core.artifacts import SHAFTS_ARTIFACT
 from minegen.core.enums import Capability, EdgeType, NodeType
 from minegen.core.models import EDGE_TYPE_DEFAULT_CAPABILITIES, Scenario
+from minegen.network.geometry_refs import GeometryRefError, resolve_owning_centerline
+from minegen.network.node_ids import shaft_collar_id, shaft_station_shaft_id
 
 SURFACE_NODE_TYPES = (NodeType.PORTAL, NodeType.SHAFT_COLLAR)
 EGRESS_CRITERION = "TWO_EDGE_DISJOINT_EGRESS_ROUTES"
@@ -273,12 +274,9 @@ class CapabilityGraphBuilder:
 
         # -- shaft ownership lookup (declared capability per shaft) -------- #
         shaft_caps: dict[str, list[Capability]] = {}
-        centerline_shaft: dict[int, str] = {}
         if shafts_payload is not None:
             for sh in shafts_payload.get("shafts", []):
                 shaft_caps[str(sh["shaftId"])] = [Capability(c) for c in sh.get("capabilities", [])]
-            for i, cl in enumerate(shafts_payload.get("centerlines", [])):
-                centerline_shaft[i] = str(cl["shaftId"])
 
         # -- edge capability assignment (explicit sources only) ------------ #
         edges: list[CapabilityEdge] = []
@@ -289,13 +287,20 @@ class CapabilityGraphBuilder:
             endpoints[eid] = (str(e["fromNode"]), str(e["toNode"]))
             shaft_id: str | None = None
             if etype in SHAFT_EDGE_TYPES:
-                ref = e.get("geometryRef") or {}
-                if ref.get("artifact") != SHAFTS_ARTIFACT or shafts_payload is None:
+                # AC-01I: the ONE reference resolver decides ownership, index
+                # range and shape (a withheld shaft artifact is an out-of-range
+                # reference into 0 entries); the owning centerline names its shaft
+                try:
+                    owner = resolve_owning_centerline(
+                        e.get("geometryRef"), edge_type=etype.value, shafts_payload=shafts_payload
+                    ).owner
+                except GeometryRefError as exc:
                     return fail(
                         f"edge {eid} of type {etype.value} needs the shaft artifact that owns "
-                        "it to declare its capabilities (rule 185)"
+                        f"it to declare its capabilities (rule 185): geometryRef does not "
+                        f"resolve to a shaft — {exc}"
                     )
-                shaft_id = centerline_shaft.get(int(ref.get("segmentIndex", -1)))
+                shaft_id = str(owner.get("shaftId")) if owner.get("shaftId") is not None else None
                 if shaft_id is None or shaft_id not in shaft_caps:
                     return fail(f"edge {eid}: geometryRef does not resolve to a shaft")
                 caps, source = list(shaft_caps[shaft_id]), CapabilitySource.SHAFT_DECLARED
@@ -374,10 +379,14 @@ class CapabilityGraphBuilder:
         stations_by_shaft: dict[str, list[str]] = {}
         for n in nodes:
             if n.node_type is NodeType.SHAFT_STATION:
-                sid = n.node_id.split(":")[1] if n.node_id.count(":") >= 2 else ""
+                sid = shaft_station_shaft_id(n.node_id)
+                if sid is None:
+                    # an id outside the station grammar belongs to no declared
+                    # shaft (pre-AC-01I: grouped under "" and never evaluated)
+                    continue
                 stations_by_shaft.setdefault(sid, []).append(n.node_id)
         for sid, caps in sorted(shaft_caps.items()):
-            collar = f"{NodeType.SHAFT_COLLAR.value}:{sid}"
+            collar = shaft_collar_id(sid)
             if collar not in node_by_id:
                 continue
             for cap in (Capability.PERSONNEL_ACCESS, Capability.MATERIAL_HAULAGE):

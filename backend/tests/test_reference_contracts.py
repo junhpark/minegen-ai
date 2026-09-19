@@ -162,38 +162,15 @@ def test_b1_a_malformed_geometry_ref_is_a_typed_failure_in_every_geometry_consum
     assert tl.tasks == []
 
 
-CAPABILITY_TYPED_TODAY = {
-    "unknown-artifact",
-    "negative-index",
-    "missing-index",
-    "out-of-range",
-}
-
-
-@pytest.mark.parametrize(
-    ("label", "template"),
-    [
-        pytest.param(
-            label,
-            template,
-            id=label,
-            marks=()
-            if label in CAPABILITY_TYPED_TODAY
-            else pytest.mark.xfail(
-                strict=True,
-                reason="AC-01I: the capability builder's private shaft-reference slice is "
-                "not typed for this form yet (commit 2 routes it through the shared resolver)",
-            ),
-        )
-        for label, template in MALFORMED_REFS
-    ],
-)
+@pytest.mark.parametrize(("label", "template"), MALFORMED_REFS, ids=[m[0] for m in MALFORMED_REFS])
 def test_b1_a_malformed_shaft_reference_is_a_typed_failure_in_the_capability_graph(
     consumers: Consumers, label: str, template: Any
 ) -> None:
     """The capability graph resolves ONLY shaft references (rule 185); a
     malformed one must be a typed FAILED payload, never an exception and
-    never a lenient success."""
+    never a lenient success. Before AC-01I commit 2 the builder's private
+    slice crashed on a non-object reference and accepted a numeric string
+    (``int("0")``); it now goes through the ONE shared resolver."""
     index = consumers.edge("SHAFT")
     doc = consumers.mutated(index, _ref(consumers.network["edges"][index], template))
     graph = consumers.capability(doc)
@@ -290,3 +267,69 @@ def test_b4_ramp_source_summary_null_and_optional_contract(client: Any) -> None:
     # an unknown source is a 422 validation error, not a 500
     bad = client.put(f"{API}/{sid}/design/ramp-source", json={"activeSource": "NOPE"})
     assert bad.status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# the two AC-01I authorities directly
+# --------------------------------------------------------------------------- #
+
+
+def test_the_shared_resolver_narrows_by_edge_type_and_accepts_the_union_without_one() -> None:
+    from minegen.network.geometry_refs import (
+        OWNING_ARTIFACTS,
+        OWNING_ARTIFACTS_BY_EDGE_TYPE,
+        GeometryRefError,
+        resolve_owning_centerline,
+    )
+
+    levels = {"developments": [{"centerline": {"points": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0]}}]}
+    ref = {"artifact": LEVELS_ARTIFACT, "segmentIndex": 0}
+    # with an edge type the owner must match that type's artifacts
+    ok = resolve_owning_centerline(ref, edge_type="DRIFT", levels_payload=levels)
+    assert ok.points == [0.0, 0.0, 0.0, 1.0, 0.0, 0.0] and ok.array.shape == (2, 3)
+    assert ok.owner is levels["developments"][0]
+    with pytest.raises(GeometryRefError, match="must be owned by"):
+        resolve_owning_centerline(ref, edge_type="SHAFT", levels_payload=levels)
+    with pytest.raises(GeometryRefError, match="has no owning artifact"):
+        resolve_owning_centerline(ref, edge_type="RAISE", levels_payload=levels)
+    # without one, any owning artifact is accepted (the timeline contract)
+    assert resolve_owning_centerline(ref, levels_payload=levels).segment_index == 0
+    with pytest.raises(GeometryRefError, match="unknown owning artifact"):
+        resolve_owning_centerline({"artifact": "bogus.json", "segmentIndex": 0})
+    # a payload the caller does not hold is an out-of-range reference into 0 entries
+    with pytest.raises(GeometryRefError, match=r"out of range for shafts.json \(0 entries\)"):
+        resolve_owning_centerline({"artifact": SHAFTS_ARTIFACT, "segmentIndex": 0})
+    # malformed owning geometry is typed, never a reshape / conversion exception
+    for points in (
+        [0.0, 0.0, 0.0],
+        [0.0] * 7,
+        [0.0, 0.0, 0.0, "x", 0.0, 0.0],
+        [0.0] * 5 + [float("inf")],
+    ):
+        with pytest.raises(GeometryRefError):
+            resolve_owning_centerline(
+                ref, levels_payload={"developments": [{"centerline": {"points": points}}]}
+            )
+    assert set(OWNING_ARTIFACTS) == {
+        a for owners in OWNING_ARTIFACTS_BY_EDGE_TYPE.values() for a in owners
+    }
+
+
+def test_the_node_id_grammar_round_trips() -> None:
+    from minegen.network.node_ids import (
+        level_entry_id,
+        ramp_junction_id,
+        shaft_bottom_id,
+        shaft_collar_id,
+        shaft_station_id,
+        shaft_station_shaft_id,
+    )
+
+    assert level_entry_id("L03") == "LEVEL_ENTRY:L03"
+    assert ramp_junction_id("L03") == "RAMP_JUNCTION:L03"
+    assert shaft_collar_id("SHAFT-01") == "SHAFT_COLLAR:SHAFT-01"
+    assert shaft_bottom_id("SHAFT-01") == "SHAFT_BOTTOM:SHAFT-01"
+    assert shaft_station_id("SHAFT-01", "L03") == "SHAFT_STATION:SHAFT-01:L03"
+    assert shaft_station_shaft_id("SHAFT_STATION:SHAFT-01:L03") == "SHAFT-01"
+    for malformed in ("SHAFT_STATION:SHAFT-01", "SHAFT_COLLAR:SHAFT-01", "SHAFT_STATION::L03", "x"):
+        assert shaft_station_shaft_id(malformed) is None

@@ -30,14 +30,11 @@ from typing import Any, Literal
 
 import numpy as np
 
-from minegen.core.artifacts import (
-    LEVEL_ACCESSES_ARTIFACT,
-    RAMP_OWNING_ARTIFACTS,
-    SHAFTS_ARTIFACT,
-)
 from minegen.core.enums import ObjectState, TaskType
 from minegen.core.models import Scenario
+from minegen.network.geometry_refs import GeometryRefError, resolve_owning_centerline
 from minegen.network.models import GeometryRef
+from minegen.network.node_ids import level_entry_id
 from minegen.scheduling.models import (
     DevelopmentTimeline,
     StateTransition,
@@ -119,14 +116,6 @@ def solve_earliest_start(tasks: dict[str, TimelineTask]) -> str | None:
     return None
 
 
-_OWNING_ARTIFACTS = (
-    *RAMP_OWNING_ARTIFACTS,
-    LEVEL_ACCESSES_ARTIFACT,
-    "levels.json",
-    SHAFTS_ARTIFACT,
-)
-
-
 def _resolve_centerline(
     ref: Any,
     smoothed_payload: dict[str, Any],
@@ -136,36 +125,20 @@ def _resolve_centerline(
 ) -> tuple[list[float] | None, str | None]:
     """Safely resolve a GeometryRef to its owning centerline points
     (blocker 2): malformed references return a reason, never raise
-    KeyError / IndexError / TypeError."""
-    if not isinstance(ref, dict):
-        return None, "geometryRef is not an object"
-    artifact = ref.get("artifact")
-    if artifact not in _OWNING_ARTIFACTS:
-        return None, f"unknown owning artifact {artifact!r}"
-    raw_index = ref.get("segmentIndex")
-    if not isinstance(raw_index, int) or isinstance(raw_index, bool) or raw_index < 0:
-        return None, f"segmentIndex {raw_index!r} is not a non-negative integer"
-    if artifact in RAMP_OWNING_ARTIFACTS:
-        owners = smoothed_payload.get("segments")
-        container = "effectiveCenterline"
-    elif artifact == LEVEL_ACCESSES_ARTIFACT:
-        owners = (accesses_payload or {}).get("accesses")
-        container = "centerline"
-    elif artifact == SHAFTS_ARTIFACT:
-        owners = (shafts_payload or {}).get("centerlines")
-        container = "centerline"
-    else:
-        owners = levels_payload.get("developments")
-        container = "centerline"
-    if not isinstance(owners, list) or raw_index >= len(owners):
-        count = len(owners) if isinstance(owners, list) else 0
-        return None, (f"segmentIndex {raw_index} is out of range for {artifact} ({count} entries)")
-    owner = owners[raw_index]
-    centerline = owner.get(container) if isinstance(owner, dict) else None
-    points = centerline.get("points") if isinstance(centerline, dict) else None
-    if not isinstance(points, list) or len(points) < 6:
-        return None, f"referenced centerline in {artifact}[{raw_index}] is missing or < 2 points"
-    return points, None
+    KeyError / IndexError / TypeError. AC-01I: the ONE shared reference
+    resolver (``network/geometry_refs.py``) decides; this is its
+    reason-returning adapter for the builder's typed FAILED payloads."""
+    try:
+        resolved = resolve_owning_centerline(
+            ref,
+            smoothed_payload=smoothed_payload,
+            levels_payload=levels_payload,
+            accesses_payload=accesses_payload,
+            shafts_payload=shafts_payload,
+        )
+    except GeometryRefError as exc:
+        return None, str(exc)
+    return resolved.points, None
 
 
 def _chainage(points: list[float]) -> tuple[list[float], float]:
@@ -409,7 +382,7 @@ class MineTimelineBuilder:
             by_level.setdefault(str(level_id), []).append(e)
 
         for level_id in sorted(by_level):
-            entry_id = f"LEVEL_ENTRY:{level_id}"
+            entry_id = level_entry_id(level_id)
             if entry_id not in nodes:
                 return _failed(source_revision, f"missing LEVEL_ENTRY node for {level_id}")
             ramp_task = ramp_task_by_entry.get(entry_id)
