@@ -1057,8 +1057,11 @@ chainages, entries, access lengths / gradients / radii and typed failures;
    20D.1 (`design/junctions.py`, `docs/algorithms.md` "typed junction
    union") opens the three declared junction kinds (RAMP → LEVEL_ACCESS,
    LEVEL_ACCESS → DRIFT, DRIFT → CROSSCUT) by omitting the blocking quads of
-   the RENDER meshes locally; the logical mesh, QA, artifacts and lifecycle
-   are unchanged, and a general boolean / CSG union stays out of scope.
+   the RENDER meshes locally; centerlines, profile, artifacts and lifecycle
+   are unchanged, the logical mesh keeps its QA semantics on a junction-
+   locally refined tessellation, `geometricallyClosed` describes the emitted
+   mesh (with `baseSweepGeometricallyClosed` for the pre-aperture weld QA),
+   and a general boolean / CSG union stays out of scope.
 5. **UX hierarchy** (`LayoutPanel`, `DesignPanel`, `LegacyDeclinePanel`,
    `LayerPanel`): Layout v2 is the primary workflow and names the current
    design; the mine-development chain (levels → excavation meshes →

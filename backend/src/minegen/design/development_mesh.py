@@ -458,6 +458,7 @@ class DevelopmentMeshBuilder:
                 primitives=[],
                 geometrically_closed=False,
                 render_vertex_count=0,
+                base_sweep_geometrically_closed=False,
             ),
             topology,
             envelope,
@@ -671,6 +672,12 @@ class DevelopmentMeshBuilder:
                     "ringCount": int(s.chain.centers.shape[0]),
                     "triangleCount": s.topology.triangle_count,
                     "maxLocalTurnDeg": s.chain.max_local_turn_deg,
+                    # Phase 20D.1: triangles the typed junction apertures removed
+                    # from this development's RENDER tube; ``topology`` below is
+                    # the QA of the LOGICAL mesh before those apertures
+                    "renderOmittedTriangles": (
+                        int(2 * s.quad_mask.sum()) if s.quad_mask is not None else 0
+                    ),
                     "topology": {
                         "policy": s.topology.policy,
                         "finite": s.topology.finite,
@@ -695,6 +702,11 @@ class DevelopmentMeshBuilder:
                 for s in swept
             ],
             "booleanUnion": "TYPED_JUNCTION_UNION",  # Phase 20D.1 (typed, local)
+            # ``developments[].topology`` (watertight / boundary edges / signed
+            # volume) is the QA of the LOGICAL mesh; the emitted RENDER tubes
+            # additionally carry the typed junction apertures counted in
+            # ``developments[].renderOmittedTriangles`` and ``junctions``
+            "topologyContract": "LOGICAL_MESH_BEFORE_JUNCTION_APERTURES",
         }
 
 
@@ -770,6 +782,7 @@ def batch_render(swept: list[_Swept]) -> RenderMesh:
         primitives=prims,
         geometrically_closed=False,
         render_vertex_count=int(pos.shape[0]),
+        base_sweep_geometrically_closed=False,
     )
 
 

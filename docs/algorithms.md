@@ -1494,26 +1494,46 @@ CSG, voxel remesh or global SDF:
   tunnel mesh); the development builder cuts the access side of
   `RAMP_ACCESS` against the ramp envelope and both sides of `ACCESS_DRIFT` /
   `DRIFT_CROSSCUT`.
-* **Engineering geometry untouched.** The logical mesh, its manifold /
-  watertight / signed-volume QA, the envelope validation, the centerlines,
-  the artifact set and the lifecycle are unchanged; `geometricallyClosed` is
-  still judged on the full sweep. The omission is a visualization /
-  traversal cut reported per junction (`report.junctions`: count, byType,
-  openedEndpointCount, removedTriangles, per-opening parent / child
-  triangles) and never persisted as geometry.
+* **Engineering semantics unchanged; tessellation locally refined.** The
+  centerlines, the profile, the artifact set and the lifecycle are
+  unchanged, and the logical mesh keeps its topology semantics and its
+  manifold / watertight / signed-volume QA (`watertight`, `manifold`,
+  `developments[].topology`) — but it IS rebuilt on the junction-refined
+  ring chain, so ring and triangle counts change near junctions (the
+  measured 653 → 1,788 development rings are this refinement). The
+  refinement is junction-local: only the coarse sub-intervals within the
+  window are split finer, so fine rings reach at most one `ringMaxSpacing`
+  interval beyond the window. Public closedness contract (review
+  correction): `geometricallyClosed` describes the EMITTED render mesh and
+  is therefore `false` once any aperture exists; the additive
+  `baseSweepGeometricallyClosed` is the weld QA of the sweep before the
+  cut. The tunnel builder succeeds only when the base sweep is closed AND
+  the emitted closedness agrees with the apertures actually cut
+  (`junctions.removedTriangles`); the development report declares
+  `topologyContract = LOGICAL_MESH_BEFORE_JUNCTION_APERTURES` and counts
+  `renderOmittedTriangles` per development. The UI shows a tube that is
+  open only at its typed apertures as "junction-connected", never as
+  "watertight". The omission is a visualization / traversal cut reported
+  per junction (`report.junctions`: count, byType, openedEndpointCount,
+  removedTriangles, per-opening parent / child triangles) and never
+  persisted as geometry.
 * **Exact reveal offsets (rule 173).** A cut interval no longer holds
   `indexStride` indices, so every SEGMENT primitive and every batched piece
   range additionally stamps `ringIntervalIndexOffsets` (the `count + 1`
   prefix sums) and `omittedTriangles`; the 4D reveal cuts at the offsets when
   present and keeps the uniform stride arithmetic for pre-20D.1 GLBs (an
-  inconsistent table is rejected whole, fail closed).
+  inconsistent table — wrong length, non-integer, decreasing, more than one
+  stride per interval, or a last offset that does not equal the primitive's
+  / range's actual index count — is rejected whole, fail closed).
 
 Measured on the TABULAR verification fixture (4 accesses, 4 levels, 20
 crosscuts; base commit vs 20D.1): tunnel mesh 28,614 → 32,538 render
 triangles (864 omitted, 753 → 879 rings, 860 KB → 998 KB, 1.26 s → 1.55 s);
 development mesh 14,058 → 36,478 triangles (2,550 omitted, 653 → 1,788
-rings, 467 KB → 1.23 MB, 0.61 s → 3.38 s) — the growth is the junction-window
-ring refinement, bounded by junctions × window. Recorded limitations: the
+rings, 467 KB → 1.23 MB, 0.61 s → 3.38 s; re-measured after the junction-local
+refinement correction: see the review-correction figures in the PR) — the
+growth is the junction-window ring refinement, bounded by junctions × (window
++ one coarse interval) per touched tube. Recorded limitations: the
 aperture rim is jagged at the refined ring spacing (0.5 m); straddling quads
 are kept, so the neighbour overlaps by at most one quad at the doorway sill
 (possible thin coplanar strip); no transition patch; the tunnel builder

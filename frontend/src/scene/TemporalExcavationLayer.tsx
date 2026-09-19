@@ -85,7 +85,8 @@ function prepareRamp(scene: Object3D): { root: Object3D; prims: RampPrimitive[] 
       mesh,
       role,
       segmentId,
-      meta: role === 'SEGMENT' ? readRevealMeta(geometry.userData) : null,
+      meta:
+        role === 'SEGMENT' ? readRevealMeta(geometry.userData, geometry.index?.count ?? 0) : null,
       indexCount: geometry.index?.count ?? 0,
     })
   })
@@ -110,10 +111,9 @@ function prepareDevelopment(scene: Object3D): { root: Object3D; prims: Developme
     if (role === 'DEVELOPMENT') {
       // groups need an array material; the SHARED material object is reused
       mesh.material = [TUNNEL_MATERIAL]
-      const ranges = readPieceRanges(geometry.userData, () => null).map((r) => ({
-        ...r,
-        meta: rangeMeta(geometry.userData, r.pieceId),
-      }))
+      const ranges = readPieceRanges(geometry.userData, (pieceId, indexCount) =>
+        rangeMeta(geometry.userData, pieceId, indexCount),
+      )
       prims.push({ mesh, kind, role: 'DEVELOPMENT', ranges })
     } else {
       mesh.material = CAP_MATERIAL
@@ -123,14 +123,14 @@ function prepareDevelopment(scene: Object3D): { root: Object3D; prims: Developme
   return { root, prims }
 }
 
-function rangeMeta(extras: unknown, pieceId: string): RevealMeta | null {
+function rangeMeta(extras: unknown, pieceId: string, indexCount: number): RevealMeta | null {
   const raw: unknown = (extras as { ranges?: unknown }).ranges
   if (!Array.isArray(raw)) return null
   const list: unknown[] = raw
   const r = list.find(
     (x) => x !== null && typeof x === 'object' && (x as { pieceId?: unknown }).pieceId === pieceId,
   )
-  return r === undefined ? null : readRevealMeta(r)
+  return r === undefined ? null : readRevealMeta(r, indexCount)
 }
 
 export function TemporalExcavationLayer({

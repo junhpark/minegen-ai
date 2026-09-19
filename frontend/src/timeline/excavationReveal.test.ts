@@ -309,6 +309,15 @@ describe('20D.1 typed junction apertures: exact per-interval offsets', () => {
     expect(readRevealMeta(META)).toEqual(META)
   })
 
+  it('rejects a table (or a uniform stride) that does not account for every index', () => {
+    // review: the last offset must equal the primitive / range index count
+    expect(readRevealMeta(CUT, 84)).toEqual(CUT)
+    expect(readRevealMeta(CUT, 96)).toBeNull()
+    expect(readRevealMeta({ ...CUT, ringIntervalIndexOffsets: [0, 24, 42, 60, 60] }, 84)).toBeNull()
+    expect(readRevealMeta(META, 96)).toEqual(META)
+    expect(readRevealMeta(META, 90)).toBeNull()
+  })
+
   it('cuts at the exact prefix sums in both directions', () => {
     expect(revealedIndexCount(CUT, 0.5)).toBe(42)
     expect(revealedIndexCount(CUT, 1)).toBe(84)

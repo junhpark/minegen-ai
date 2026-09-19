@@ -52,8 +52,12 @@ export function intervalPrefixCount(meta: RevealMeta, m: number): number {
 }
 
 /** Read and validate the reveal metadata from a primitive's extras
- * (three.js GLTFLoader puts primitive extras on geometry.userData). */
-export function readRevealMeta(extras: unknown): RevealMeta | null {
+ * (three.js GLTFLoader puts primitive extras on geometry.userData).
+ * `indexCount`, when known (the primitive's index count or the batched
+ * range's `indexCount`), must equal the total the table describes —
+ * `offsets[count]` or `ringIntervalCount × indexStride` — otherwise the
+ * metadata is rejected whole (fail closed, the edge keeps its centerline). */
+export function readRevealMeta(extras: unknown, indexCount?: number): RevealMeta | null {
   if (!extras || typeof extras !== 'object') return null
   const e = extras as Record<string, unknown>
   const stride = e.indexStride
@@ -70,6 +74,9 @@ export function readRevealMeta(extras: unknown): RevealMeta | null {
   if (fr[0] !== 0 || fr[fr.length - 1] !== 1) return null
   const offsets = e.ringIntervalIndexOffsets
   if (offsets === undefined) {
+    if (indexCount !== undefined && (count as number) * (stride as number) !== indexCount) {
+      return null
+    }
     return {
       indexStride: stride as number,
       ringIntervalCount: count as number,
@@ -89,6 +96,8 @@ export function readRevealMeta(extras: unknown): RevealMeta | null {
     if (i > 0 && ((v as number) < last || (v as number) - last > (stride as number))) return null
     last = v as number
   }
+  // the table must account for every emitted index (20D.1 review)
+  if (indexCount !== undefined && last !== indexCount) return null
   return {
     indexStride: stride as number,
     ringIntervalCount: count as number,
@@ -279,7 +288,7 @@ export function planIndexGroups(
 /** Read the batched primitive `ranges` extras (development mesh GLB). */
 export function readPieceRanges(
   extras: unknown,
-  meta: (pieceId: string) => RevealMeta | null,
+  meta: (pieceId: string, indexCount: number) => RevealMeta | null,
 ): PieceRange[] {
   if (!extras || typeof extras !== 'object') return []
   const raw = (extras as { ranges?: unknown }).ranges
@@ -303,7 +312,7 @@ export function readPieceRanges(
       developmentId: o.developmentId,
       indexOffset: o.indexOffset as number,
       indexCount: o.indexCount as number,
-      meta: meta(o.pieceId),
+      meta: meta(o.pieceId, o.indexCount as number),
     })
   }
   return out

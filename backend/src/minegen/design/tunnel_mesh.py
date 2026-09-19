@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from itertools import pairwise
 from typing import Any
 
 import numpy as np
@@ -64,28 +65,56 @@ class RingChain:
     max_local_turn_deg: float
 
 
-def _refined_spacing(
+def _within(a: FloatArray, b: FloatArray, points: FloatArray, radius: float) -> bool:
+    """True when segment a→b passes within ``radius`` of any of ``points``."""
+    ab = b - a
+    ab2 = float(np.dot(ab, ab))
+    if ab2 <= 1e-24:
+        return bool(np.min(np.linalg.norm(points - a[None, :], axis=1)) <= radius)
+    t = np.clip(((points - a[None, :]) @ ab) / ab2, 0.0, 1.0)
+    foot = a[None, :] + t[:, None] * ab[None, :]
+    return bool(np.min(np.linalg.norm(points - foot, axis=1)) <= radius)
+
+
+def _edge_subdivision(
     a: FloatArray,
     b: FloatArray,
     max_spacing: float,
     refine_near: FloatArray | None,
     refine_radius: float,
     refine_spacing: float | None,
-) -> float:
-    """Subdivision spacing of polyline edge a→b: the finer ``refine_spacing``
-    when the edge passes within ``refine_radius`` of any refinement point
-    (Phase 20D.1: the declared junction points), else ``max_spacing``."""
-    if refine_near is None or refine_spacing is None or refine_near.shape[0] == 0:
-        return max_spacing
-    ab = b - a
-    ab2 = float(np.dot(ab, ab))
-    if ab2 <= 1e-24:
-        return max_spacing
-    t = np.clip(((refine_near - a[None, :]) @ ab) / ab2, 0.0, 1.0)
-    foot = a[None, :] + t[:, None] * ab[None, :]
-    if float(np.min(np.linalg.norm(refine_near - foot, axis=1))) <= refine_radius:
-        return min(max_spacing, refine_spacing)
-    return max_spacing
+) -> list[float]:
+    """Interior subdivision fractions of polyline edge a→b (rule 65: linear
+    on the polyline). The edge is first split at ``max_spacing``; then ONLY
+    the coarse sub-intervals passing within ``refine_radius`` of a
+    ``refine_near`` point (Phase 20D.1: the declared junction points) are
+    split again at ``refine_spacing``. Fine rings therefore never extend
+    farther than one coarse interval (≤ ``max_spacing``) beyond the window —
+    the refinement is local to the junction, not to the polyline edge."""
+    length = float(np.linalg.norm(b - a))
+    n_coarse = max(1, math.ceil(length / max_spacing))  # unchanged pre-20D.1 split
+    coarse = [i / n_coarse for i in range(n_coarse + 1)]
+    refine = (
+        refine_near is not None
+        and refine_spacing is not None
+        and refine_spacing < max_spacing
+        and refine_near.shape[0] > 0
+    )
+    out: list[float] = []
+    for f0, f1 in pairwise(coarse):
+        if f0 > 0.0:
+            out.append(f0)
+        if not refine:
+            continue
+        assert refine_near is not None and refine_spacing is not None
+        p0 = a + f0 * (b - a)
+        p1 = a + f1 * (b - a)
+        if not _within(p0, p1, refine_near, refine_radius):
+            continue
+        # ceil with a guard so 2.0000000001 / 0.5 is 4 fine pieces, not 5
+        n_fine = max(1, math.ceil(length * (f1 - f0) / refine_spacing - 1e-9))
+        out.extend(f0 + (f1 - f0) * (m / n_fine) for m in range(1, n_fine))
+    return out
 
 
 def build_ring_chain(
@@ -103,10 +132,11 @@ def build_ring_chain(
     directions; subdivision rings use the chord direction. All ring centers
     lie EXACTLY on the validated polyline (rule 65).
 
-    Phase 20D.1: edges passing within ``refine_radius`` of a ``refine_near``
-    point are subdivided at ``refine_spacing`` instead — a purely local
-    resolution change (still linear on the polyline) so junction apertures
-    are resolved at a fraction of the tunnel width."""
+    Phase 20D.1: the coarse sub-intervals passing within ``refine_radius``
+    of a ``refine_near`` point are subdivided again at ``refine_spacing`` —
+    a junction-local resolution change (still linear on the polyline; fine
+    rings reach at most one ``max_spacing`` interval beyond the window) so
+    junction apertures are resolved at a fraction of the tunnel width."""
     centers: list[FloatArray] = []
     tangents: list[FloatArray] = []
     seg_of_interval: list[int] = []
@@ -130,12 +160,9 @@ def build_ring_chain(
             seg_centers.append(pts[j])
             seg_tangents.append(tan)
             # linear subdivision of the edge (rule 65: on the polyline exactly)
-            spacing = _refined_spacing(
+            for f in _edge_subdivision(
                 pts[j], pts[j + 1], max_spacing, refine_near, refine_radius, refine_spacing
-            )
-            n_sub = max(1, math.ceil(lens[j] / spacing))
-            for k in range(1, n_sub):
-                f = k / n_sub
+            ):
                 seg_centers.append(pts[j] * (1.0 - f) + pts[j + 1] * f)
                 seg_tangents.append(dirs[j])
         seg_centers.append(pts[-1])
@@ -376,8 +403,13 @@ class RenderMesh:
     normals: npt.NDArray[np.float32]  # (N, 3)
     uvs: npt.NDArray[np.float32]  # (N, 2)
     primitives: list[RenderPrimitive]
+    #: closedness of the EMITTED primitives (what the GLB contains): false
+    #: whenever a typed junction aperture (Phase 20D.1) removed a quad
     geometrically_closed: bool
     render_vertex_count: int
+    #: closedness of the sweep BEFORE the apertures (the weld QA of the
+    #: base tube); equals ``geometrically_closed`` when nothing was omitted
+    base_sweep_geometrically_closed: bool = True
 
 
 def _profile_groups(
@@ -428,11 +460,14 @@ def build_render_mesh(
 
     Phase 20D.1 ``quad_mask`` ((R−1, K) booleans, True = omit) drops whole
     tube quads at declared junctions. Omitted quads still contribute to the
-    vertex normals and to ``geometrically_closed`` (the closedness of the
-    SWEEP; a declared aperture is not a weld defect), and the per-interval
-    emission order is unchanged, so every SEGMENT primitive carries the exact
-    ``ringIntervalIndexOffsets`` a viewer needs to cut the tube at a ring
-    when intervals no longer share one index count."""
+    vertex normals. ``geometrically_closed`` describes the EMITTED
+    primitives — open wherever an aperture was cut — while
+    ``base_sweep_geometrically_closed`` is the weld QA of the sweep before
+    the cut (a declared aperture is not a weld defect, but it is not
+    "closed" either). The per-interval emission order is unchanged, so every
+    SEGMENT primitive carries the exact ``ringIntervalIndexOffsets`` a viewer
+    needs to cut the tube at a ring when intervals no longer share one index
+    count."""
     r, k = mesh.ring_count, mesh.k
     if quad_mask is not None and quad_mask.shape != (r - 1, k):
         raise ValueError(f"quad_mask shape {quad_mask.shape} != {(r - 1, k)}")
@@ -574,8 +609,10 @@ def build_render_mesh(
         )
     prims += cap_prims
 
-    # closedness of the SWEEP: judged on the full tube (declared junction
-    # apertures are visualization cuts, never a weld defect)
+    # closedness of the EMITTED mesh (the public contract: what the GLB holds)
+    closed = all(caps) and _geometrically_closed(positions[:cursor], prims)
+    # weld QA of the base sweep: the full tube before the declared junction
+    # apertures were cut (a visualization cut is not a weld defect)
     if quad_mask is not None and omitted_tris:
         full_prims = [
             RenderPrimitive(
@@ -583,9 +620,9 @@ def build_render_mesh(
             ),
             *cap_prims,
         ]
-        closed = all(caps) and _geometrically_closed(positions[:cursor], full_prims)
+        base_closed = all(caps) and _geometrically_closed(positions[:cursor], full_prims)
     else:
-        closed = all(caps) and _geometrically_closed(positions[:cursor], prims)
+        base_closed = closed
     return RenderMesh(
         positions=positions[:cursor].astype(np.float32),
         normals=normals[:cursor].astype(np.float32),
@@ -593,6 +630,7 @@ def build_render_mesh(
         primitives=prims,
         geometrically_closed=closed,
         render_vertex_count=cursor,
+        base_sweep_geometrically_closed=base_closed,
     )
 
 
@@ -761,6 +799,7 @@ class TunnelMeshBuilder:
             "watertight": topo.watertight,
             "manifold": topo.manifold,
             "geometricallyClosed": False,
+            "baseSweepGeometricallyClosed": False,
             "degenerateTriangles": topo.degenerate_triangles,
             "outwardOrientation": topo.outward_orientation,
             "junctionGapMax": junction_gap,
@@ -827,10 +866,24 @@ class TunnelMeshBuilder:
         )
         report["junctions"] = junction_report(junctions, cuts)
         report["renderVertexCount"] = render.render_vertex_count
+        # public contract: geometricallyClosed describes the EMITTED render
+        # mesh (open once a typed junction aperture exists);
+        # baseSweepGeometricallyClosed is the weld QA of the sweep before the
+        # apertures. Success = the base sweep is closed AND the emitted
+        # closedness agrees with the apertures actually cut.
         report["geometricallyClosed"] = render.geometrically_closed
-        if not render.geometrically_closed:
+        report["baseSweepGeometricallyClosed"] = render.base_sweep_geometrically_closed
+        removed = int(report["junctions"]["removedTriangles"])
+        if not render.base_sweep_geometrically_closed:
             report["status"] = "FAILED"
-            report["failureReason"] = "render mesh is not geometrically closed after weld"
+            report["failureReason"] = "base sweep is not geometrically closed after weld"
+            return TunnelMeshResult(status="FAILED", report=report, glb=None)
+        if render.geometrically_closed != (removed == 0):
+            report["status"] = "FAILED"
+            report["failureReason"] = (
+                "render mesh closedness disagrees with the typed junction apertures "
+                f"(geometricallyClosed={render.geometrically_closed}, removedTriangles={removed})"
+            )
             return TunnelMeshResult(status="FAILED", report=report, glb=None)
         glb = write_glb(render)
         report["status"] = "SUCCESS"

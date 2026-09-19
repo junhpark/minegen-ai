@@ -123,6 +123,7 @@ def tabular_meshes(tabular_levels: tuple[Any, Any, dict[str, Any]]) -> dict[str,
     assert json.dumps([ramp, accesses, levels], sort_keys=True) == before
     return {
         "sc": sc,
+        "evaluator": ev,
         "ramp": ramp,
         "accesses": accesses,
         "levels": levels,
@@ -366,6 +367,33 @@ def test_t6_tabular_topology_and_counts_are_unchanged(tabular_meshes: dict[str, 
     assert all(d["envelope"]["hardViolations"] == 0 for d in rep["developments"])
     # the ramp's engineering (logical) solid stays the closed, watertight tube
     assert m["tunnel"].report["watertight"] and m["tunnel"].report["manifold"]
+    # Phase 20D.1 review (public QA contract): the EMITTED render mesh is open
+    # exactly because the typed apertures removed triangles, while the base
+    # sweep before the cut is still closed
+    trep = m["tunnel"].report
+    assert trep["junctions"]["removedTriangles"] > 0
+    assert trep["geometricallyClosed"] is False
+    assert trep["baseSweepGeometricallyClosed"] is True
+    assert rep["topologyContract"] == "LOGICAL_MESH_BEFORE_JUNCTION_APERTURES"
+    cut_devs = [d for d in rep["developments"] if d["renderOmittedTriangles"] > 0]
+    assert cut_devs and all(d["topology"]["valid"] for d in cut_devs)
+    assert (
+        sum(d["renderOmittedTriangles"] for d in rep["developments"])
+        == (rep["junctions"]["removedTriangles"])
+    )
+
+
+def test_t6b_no_junction_build_keeps_the_closed_contract(tabular_meshes: dict[str, Any]) -> None:
+    """Without level accesses the tunnel builder cuts nothing: the emitted mesh
+    IS the closed sweep and both flags agree (pre-20D.1 semantics unchanged)."""
+    m = tabular_meshes
+    sc = m["sc"]
+    plain = TunnelMeshBuilder(m["evaluator"], sc.ramp, sc.tunnel_profile).build(m["ramp"])
+    assert plain.status == "SUCCESS"
+    assert plain.report["junctions"]["count"] == 0
+    assert plain.report["junctions"]["removedTriangles"] == 0
+    assert plain.report["geometricallyClosed"] is True
+    assert plain.report["baseSweepGeometricallyClosed"] is True
 
 
 # --------------------------------------------------------------------------- #

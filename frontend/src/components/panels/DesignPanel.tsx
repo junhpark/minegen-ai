@@ -354,6 +354,15 @@ export function DesignPanel() {
                 {tunnel.ringCount} rings · {tunnel.triangleCount} tris ·{' '}
                 {tunnel.watertight && tunnel.manifold && tunnel.geometricallyClosed ? (
                   <span className="text-lamp">watertight</span>
+                ) : tunnel.watertight &&
+                  tunnel.manifold &&
+                  tunnel.baseSweepGeometricallyClosed &&
+                  (tunnel.junctions?.removedTriangles ?? 0) > 0 ? (
+                  // Phase 20D.1: the emitted tube is open ONLY at its typed
+                  // junction apertures — a normal, connected state, not a defect
+                  <span className="text-lamp">
+                    junction-connected · {tunnel.junctions!.openedEndpointCount} apertures
+                  </span>
                 ) : (
                   <span className="text-danger">open</span>
                 )}
