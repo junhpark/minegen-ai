@@ -641,11 +641,20 @@ def _junit_counts(xml: Path) -> dict[str, Any]:
     }
 
 
+#: ANSI SGR / CSI escape sequences. vitest colours its summary when it thinks it
+#: has a colour-capable sink — on a GitHub runner that is true even with stdout
+#: redirected to the log file — so ``Test Files \x1b[22m \x1b[1m\x1b[32m40 passed``
+#: must read as ``Test Files 40 passed`` or the frontend component records no
+#: counts (AC-01H transition run: ``vitest: ? passed in ? files``).
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
 def _vitest_counts(log: Path) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if not log.exists():
         return out
-    for ln in log.read_text(encoding="utf-8", errors="replace").splitlines():
+    text = _ANSI.sub("", log.read_text(encoding="utf-8", errors="replace"))
+    for ln in text.splitlines():
         m = re.search(r"Test Files\s+(\d+) passed", ln)
         if m:
             out["testFiles"] = int(m.group(1))

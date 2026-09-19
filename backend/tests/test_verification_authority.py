@@ -727,3 +727,23 @@ def test_fast_alone_is_never_release_evidence() -> None:
     verdict = verify.aggregate_authority([fast_only])
     assert verdict["release"] is False
     assert "COMPONENT_BLOCKED:fast:MODE_NOT_FULL:fast" in verdict["reasons"]
+
+
+def test_vitest_counts_are_read_through_ansi_colour(tmp_path: Path) -> None:
+    """The AC-01H transition run recorded ``vitest: ? passed in ? files``: on
+    the runner vitest colours its summary even into the redirected log, and
+    the escape codes sat between the label and the number. The counts are the
+    frontend half of the same-revision equivalence proof, so the parser must
+    read them through the colour."""
+    dim, reset, bold, green, grey = "\x1b[2m", "\x1b[22m", "\x1b[1m", "\x1b[32m", "\x1b[90m"
+    coloured = (
+        f"{dim} Test Files {reset} {bold}{green}40 passed\x1b[39m{reset}{grey} (40)\x1b[39m\n"
+        f"{dim}      Tests {reset} {bold}{green}263 passed\x1b[39m{reset}{grey} (263)\x1b[39m\n"
+        f"{dim}   Duration {reset} 6.09s\n"
+    )
+    log = tmp_path / "full-fe-vitest.log"
+    log.write_text(coloured, encoding="utf-8")
+    assert verify._vitest_counts(log) == {"testFiles": 40, "testsPassed": 263}
+    # the plain (local, no-TTY) form still reads
+    log.write_text(" Test Files  40 passed (40)\n      Tests  263 passed (263)\n", encoding="utf-8")
+    assert verify._vitest_counts(log) == {"testFiles": 40, "testsPassed": 263}
