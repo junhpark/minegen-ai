@@ -221,7 +221,11 @@ def test_every_development_receives_a_mesh_with_the_declared_endpoint_policy(
     # metadata (ring-interval index stride + ring chainage fractions) and the
     # ranges tile the primitive's index buffer contiguously
     for r in ranges:
-        assert r["indexCount"] == r["ringIntervalCount"] * r["indexStride"]
+        # Phase 20D.1: a piece cut by a typed junction aperture no longer has
+        # one index count per interval — the exact prefix sums say how many
+        offsets = r["ringIntervalIndexOffsets"]
+        assert len(offsets) == r["ringIntervalCount"] + 1 and offsets[0] == 0
+        assert r["indexCount"] == offsets[-1] <= r["ringIntervalCount"] * r["indexStride"]
         fr = r["ringChainageFractions"]
         assert len(fr) == r["ringIntervalCount"] + 1 and fr[0] == 0.0 and fr[-1] == 1.0
         assert all(b > a for a, b in pairwise(fr))

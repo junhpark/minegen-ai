@@ -1053,8 +1053,15 @@ chainages, entries, access lengths / gradients / radii and typed failures;
    context), then batched per kind (`batch_render`: one tube + one cap
    primitive per kind, `ranges` extras → development / piece ids) into one
    GLB. The frontend `DevelopmentMeshLayer` assigns the shared tunnel
-   materials by role; centerline overlays stay independent layers. Boolean
-   junctions are Phase 20D.
+   materials by role; centerline overlays stay independent layers. Phase
+   20D.1 (`design/junctions.py`, `docs/algorithms.md` "typed junction
+   union") opens the three declared junction kinds (RAMP → LEVEL_ACCESS,
+   LEVEL_ACCESS → DRIFT, DRIFT → CROSSCUT) by omitting the blocking quads of
+   the RENDER meshes locally; centerlines, profile, artifacts and lifecycle
+   are unchanged, the logical mesh keeps its QA semantics on a junction-
+   locally refined tessellation, `geometricallyClosed` describes the emitted
+   mesh (with `baseSweepGeometricallyClosed` for the pre-aperture weld QA),
+   and a general boolean / CSG union stays out of scope.
 5. **UX hierarchy** (`LayoutPanel`, `DesignPanel`, `LegacyDeclinePanel`,
    `LayerPanel`): Layout v2 is the primary workflow and names the current
    design; the mine-development chain (levels → excavation meshes →
