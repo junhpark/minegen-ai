@@ -1484,10 +1484,25 @@ CSG, voxel remesh or global SDF:
   and whole quads (ring interval × profile edge) are omitted: child quads
   whose four vertices are inside-or-on the parent's swept envelope (the
   intruding tube, coincident floor and roof included — the parent keeps those
-  surfaces) and parent quads strictly inside the child's envelope (the
-  blocking wall). Containment is the signed distance to the convex profile
-  polygon at the nearest ring interval in the SAME gravity-aligned frame the
-  sweep uses, with one geometry-scaled tolerance
+  surfaces) and parent NON-FLOOR quads whose surface the child excavation
+  occupies over a meaningful area (Phase 20D.1.1: at least
+  `PARENT_QUAD_OVERLAP_MIN` = 6 of the 3 × 3 deterministic bilinear surface
+  samples at `PARENT_QUAD_SAMPLE_FRACTIONS` = (1/6, 1/2, 5/6) lie strictly
+  inside the child — two of three rows / columns, i.e. two thirds of the
+  quad). The parent FLOOR edge (identified from the profile geometry by
+  `profile.floor_edge_index`, never a hard-coded index) is never a
+  parent-side cut: it is the doorway's supporting floor. The original
+  "all four VERTICES strictly inside" parent rule could never remove a
+  vertical wall quad — its bottom edge lies on the parent floor and the
+  child floor is welded at (T-junction) or above (turnout) that height — so
+  every declared mouth was an arch window over an intact 2.5 m wall; the
+  traversal contract is now pinned by tests that require the parent's wall
+  edges to open and its floor edge to stay at EVERY declared junction
+  (TABULAR and WARPED-301), on either side of the parent, with the report
+  fields `parentWallTriangles` / `parentFloorTriangles` per opening.
+  Containment is the signed distance to the convex profile polygon at the
+  nearest ring interval in the SAME gravity-aligned frame the sweep uses,
+  with one geometry-scaled tolerance
   (`JUNCTION_SURFACE_TOLERANCE_FRACTION` = 0.02 × width, ≈ 0.1 m) for the
   coincident-surface decision. The tunnel builder cuts the ramp side of
   `RAMP_ACCESS` (`level_accesses.json` was already a fingerprint input of the

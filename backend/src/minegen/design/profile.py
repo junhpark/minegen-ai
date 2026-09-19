@@ -51,6 +51,29 @@ class ProfileShape:
         return (self.mesh_area - self.analytic_area) / self.analytic_area * 100.0
 
 
+def floor_edge_index(shape: ProfileShape) -> int:
+    """Index of the profile EDGE that is the floor, read from the polygon
+    geometry (edge ``j`` joins points ``j`` and ``j + 1 mod K``): the unique
+    edge whose both endpoints lie on the floor line (local up = 0, the floor
+    centerline datum). Never a hard-coded index — the horseshoe's vertex
+    order is an implementation detail this helper isolates (Phase 20D.1.1)."""
+    y = shape.points[:, 1]
+    on_floor = np.isclose(y, 0.0, atol=1e-9)
+    both = on_floor & np.roll(on_floor, -1)
+    idx = np.flatnonzero(both)
+    if idx.size != 1:
+        raise ValueError(f"profile has {idx.size} floor edges, expected exactly one")
+    return int(idx[0])
+
+
+def wall_edge_indices(shape: ProfileShape) -> tuple[int, int]:
+    """The two vertical WALL edges: the edges sharing exactly one vertex with
+    the floor edge (the edge before it and the edge after it)."""
+    f = floor_edge_index(shape)
+    k = shape.k
+    return ((f - 1) % k, (f + 1) % k)
+
+
 #: secondary-development RENDER tessellation relative to the main ramp
 #: (Phase 20B closeout v3 §4.F): arch segments halved (floor ≥ 4),
 #: subdivision spacing doubled. The engineering polyline vertices are always
