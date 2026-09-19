@@ -446,3 +446,262 @@ def test_t7_warped_junctions_generate_on_the_curved_drift(warped_meshes: dict[st
         "DRIFT_CROSSCUT": len(crosscuts),
     }
     assert all(o["removedTriangles"] > 0 for o in rep["junctions"]["openings"])
+
+
+# --------------------------------------------------------------------------- #
+# 20D.1.1 — traversable mouth contract (hotfix). removedTriangles > 0 proved
+# nothing about walkability: 20D.1's parent rule ("all four quad vertices
+# strictly inside the child") never removed a VERTICAL wall quad, because a
+# wall quad's bottom edge lies on the parent floor and the child floor is
+# welded at (or above) that height — so every declared mouth was an arch
+# window over an intact 2.5 m wall. These tests pin the real contract: the
+# parent's blocking wall opens where the child passes through it, the
+# parent FLOOR is never removed (it is the doorway's supporting floor), on
+# EITHER side of the parent, and nothing outside the junction window moves.
+# --------------------------------------------------------------------------- #
+from minegen.core.models import RampConstraints, TunnelProfile  # noqa: E402
+from minegen.design import development_mesh as dev_mod  # noqa: E402
+from minegen.design import junctions as junction_mod  # noqa: E402
+from minegen.design.junctions import Junction, JunctionCut, TubeEnvelope, cut_tube  # noqa: E402
+from minegen.design.profile import ProfileShape, secondary_profile  # noqa: E402
+from minegen.design.tunnel_mesh import (  # noqa: E402
+    _envelope_segment,
+    build_logical_mesh,
+    build_profile,
+    build_ring_chain,
+)
+
+
+def _edge_roles(shape: ProfileShape) -> tuple[int, tuple[int, int]]:
+    """(floor edge, the two vertical wall edges) of a horseshoe profile, read
+    from the polygon geometry: the floor edge is the unique edge whose both
+    endpoints lie on the floor line (local up = 0); the walls are the two
+    edges sharing exactly one floor vertex."""
+    y = shape.points[:, 1]
+    k = shape.k
+    on_floor = np.isclose(y, 0.0, atol=1e-9)
+    floor = [j for j in range(k) if on_floor[j] and on_floor[(j + 1) % k]]
+    assert len(floor) == 1, floor
+    f = floor[0]
+    return f, ((f - 1) % k, (f + 1) % k)
+
+
+def _wall_edge_on_side(shape: ProfileShape, sign: float) -> int:
+    """The vertical wall edge whose floor vertex lies on the +right (sign > 0)
+    or −right (sign < 0) side of the profile."""
+    _, walls = _edge_roles(shape)
+    for j in walls:
+        xs = shape.points[[j, (j + 1) % shape.k], 0]
+        if np.all(xs * sign > 0):
+            return j
+    raise AssertionError("no wall edge on that side")
+
+
+def _parent_mouth(cut: JunctionCut, shape: ProfileShape) -> tuple[int, int, int]:
+    """(wall quads removed, floor quads removed, quads removed) of a PARENT cut."""
+    f, walls = _edge_roles(shape)
+    return int(cut.mask[:, list(walls)].sum()), int(cut.mask[:, f].sum()), cut.removed_quads
+
+
+def _capture(run: Any) -> list[JunctionCut]:
+    """Run a builder with ``cut_tube`` spied on (both import sites) and return
+    every JunctionCut it produced, in call order."""
+    cuts: list[JunctionCut] = []
+    orig = junction_mod.cut_tube
+
+    def spy(*a: Any, **k: Any) -> JunctionCut:
+        c = orig(*a, **k)
+        cuts.append(c)
+        return c
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(junction_mod, "cut_tube", spy)
+        mp.setattr(dev_mod, "cut_tube", spy)
+        run()
+    return cuts
+
+
+@pytest.fixture(scope="module")
+def tabular_cuts(tabular_levels: tuple[Any, Any, dict[str, Any]]) -> dict[str, Any]:  # noqa: F811
+    sc, world, levels = tabular_levels
+    fx = load_fixture("tabular_small_selected")
+    ramp, accesses = fx["effectiveRamp"], fx["levelAccesses"]
+    ev = DesignCostEvaluator(world, sc.design)
+    cross = DesignCostEvaluator(world, sc.design, DesignContext.crosscut(sc.design))
+    tunnel_cuts = _capture(
+        lambda: TunnelMeshBuilder(ev, sc.ramp, sc.tunnel_profile).build(
+            ramp, accesses_payload=accesses
+        )
+    )
+    dev_cuts = _capture(
+        lambda: DevelopmentMeshBuilder(ev, cross, sc.ramp, sc.tunnel_profile).build(
+            accesses, levels, ramp_payload=ramp
+        )
+    )
+    return {
+        "sc": sc,
+        "accesses": accesses,
+        "levels": levels,
+        "tunnel_cuts": tunnel_cuts,
+        "dev_cuts": dev_cuts,
+        "main_shape": build_profile(sc.ramp, sc.tunnel_profile),
+        "dev_shape": build_profile(sc.ramp, secondary_profile(sc.tunnel_profile)),
+    }
+
+
+def _parent_cuts(cuts: list[JunctionCut], jtype: str) -> list[JunctionCut]:
+    return [c for c in cuts if c.junction.type == jtype and c.side == "PARENT"]
+
+
+def test_t1b_every_ramp_access_opens_the_ramp_wall_and_keeps_the_ramp_floor(
+    tabular_cuts: dict[str, Any],
+) -> None:
+    m = tabular_cuts
+    cuts = _parent_cuts(m["tunnel_cuts"], "RAMP_ACCESS")
+    n_ok = sum(1 for a in m["accesses"]["accesses"] if a["status"] == "OK")
+    assert len(cuts) == n_ok > 0
+    for c in cuts:
+        wall, floor, total = _parent_mouth(c, m["main_shape"])
+        assert total > 0, c.junction.node_id
+        assert wall > 0, f"{c.junction.node_id}: ramp wall still blocks the access mouth"
+        assert floor == 0, f"{c.junction.node_id}: ramp floor removed ({floor} quads)"
+
+
+def test_t2b_every_access_drift_opens_the_drift_wall_and_keeps_the_drift_floor(
+    tabular_cuts: dict[str, Any],
+) -> None:
+    m = tabular_cuts
+    cuts = _parent_cuts(m["dev_cuts"], "ACCESS_DRIFT")
+    n_ok = sum(1 for a in m["accesses"]["accesses"] if a["status"] == "OK")
+    assert len(cuts) == n_ok > 0
+    for c in cuts:
+        wall, floor, _ = _parent_mouth(c, m["dev_shape"])
+        assert wall > 0, f"{c.junction.node_id}: drift wall still blocks the access mouth"
+        assert floor == 0, f"{c.junction.node_id}: drift floor removed ({floor} quads)"
+
+
+def test_t3b_every_drift_crosscut_opens_the_drift_wall_and_keeps_the_drift_floor(
+    tabular_cuts: dict[str, Any],
+) -> None:
+    m = tabular_cuts
+    cuts = _parent_cuts(m["dev_cuts"], "DRIFT_CROSSCUT")
+    n_cc = sum(1 for d in m["levels"]["developments"] if d["kind"] == "CROSSCUT")
+    assert len(cuts) == n_cc > 0
+    for c in cuts:
+        wall, floor, _ = _parent_mouth(c, m["dev_shape"])
+        assert wall > 0, f"{c.junction.node_id}: drift wall still blocks the crosscut mouth"
+        assert floor == 0, f"{c.junction.node_id}: drift floor removed ({floor} quads)"
+
+
+def test_child_side_semantics_unchanged(tabular_cuts: dict[str, Any]) -> None:
+    """The child still loses its intruding shell INCLUDING its floor and both
+    walls inside the parent (inside-or-on rule); the hotfix touches the
+    parent side only."""
+    m = tabular_cuts
+    f, walls = _edge_roles(m["dev_shape"])
+    for c in [x for x in m["dev_cuts"] if x.side == "CHILD" and x.junction.type == "RAMP_ACCESS"]:
+        assert c.mask[:, f].any(), c.junction.node_id
+        assert c.mask[:, list(walls)].any(), c.junction.node_id
+
+
+def _straight_tube(
+    p0: tuple[float, float, float], p1: tuple[float, float, float], shape: ProfileShape
+) -> tuple[TubeEnvelope, np.ndarray, Any]:
+    chain = build_ring_chain([_envelope_segment([*p0, *p1])], 0.5)
+    mesh = build_logical_mesh(chain, shape)
+    rings = mesh.positions[: mesh.ring_count * mesh.k].reshape(mesh.ring_count, mesh.k, 3)
+    return TubeEnvelope.build(chain.centers, chain.tangents, shape), rings, chain
+
+
+@pytest.mark.parametrize(
+    ("side_sign", "floor_lift", "expect_open"),
+    [
+        (+1.0, 0.0, True),  # T-junction, coincident floors, child to the right
+        (-1.0, 0.0, True),  # …and to the left (no hard-coded wall edge)
+        (+1.0, 0.3, True),  # child floor a sill above the parent floor (turnout case)
+        (-1.0, 0.6, True),  # bottom sample row below the child floor: 2/3 of the wall still inside
+        (+1.0, 2.0, False),  # child floor at chest height: no meaningful wall overlap → wall kept
+    ],
+)
+def test_synthetic_parent_wall_opens_on_the_child_side_floor_stays(
+    side_sign: float, floor_lift: float, expect_open: bool
+) -> None:
+    shape = build_profile(RampConstraints(), TunnelProfile())
+    width = float(RampConstraints().tunnel_width)
+    parent_env, parent_rings, chain = _straight_tube((0.0, -30.0, 0.0), (0.0, 30.0, 0.0), shape)
+    child_env, _, _ = _straight_tube(
+        (0.0, 0.0, floor_lift), (side_sign * 30.0, 0.0, floor_lift), shape
+    )
+    j = Junction(
+        type="DRIFT_CROSSCUT",
+        node_id="JUNCTION:L:S+00",
+        parent_id="DRIFT:L",
+        child_id="CROSSCUT:L:S+00",
+        point=np.array([0.0, 0.0, floor_lift]),
+        child_end="start",
+        level_id="L",
+    )
+    cut = cut_tube(parent_env, parent_rings, child_env, j, "PARENT", width)
+    f, _ = _edge_roles(shape)
+    near = _wall_edge_on_side(shape, side_sign)
+    far = _wall_edge_on_side(shape, -side_sign)
+    assert bool(cut.mask[:, near].any()) is expect_open
+    assert not cut.mask[:, far].any()  # the opposite wall is never touched
+    assert not cut.mask[:, f].any()  # the parent floor is never removed
+    # locality (M5): only intervals under the child's footprint (± one ring)
+    rows = np.where(cut.mask.any(axis=1))[0]
+    ys = chain.centers[:, 1]
+    if rows.size:
+        assert np.all(np.abs(ys[rows]) <= width / 2 + 1.0)
+        assert rows.min() >= cut.window_rings[0] and rows.max() < cut.window_rings[1]
+
+
+@pytest.fixture(scope="module")
+def warped_cuts(warped, warped_levels) -> dict[str, Any]:  # type: ignore[no-untyped-def] # noqa: F811
+    sc, world = warped
+    payload, ramp, accesses = warped_levels
+    assert payload.status == "SUCCESS", payload.failure_reason
+    levels = payload.model_dump(mode="json", by_alias=True)
+    from minegen.design.cost_field import clearance_policy_for
+
+    policy = clearance_policy_for(world.orebody)
+    ev = DesignCostEvaluator(world, sc.design, clearance=policy)
+    cross = DesignCostEvaluator(
+        world, sc.design, DesignContext.crosscut(sc.design), clearance=policy
+    )
+    tunnel_cuts = _capture(
+        lambda: TunnelMeshBuilder(ev, sc.ramp, sc.tunnel_profile).build(
+            ramp, accesses_payload=accesses
+        )
+    )
+    dev_cuts = _capture(
+        lambda: DevelopmentMeshBuilder(ev, cross, sc.ramp, sc.tunnel_profile).build(
+            accesses, levels, ramp_payload=ramp
+        )
+    )
+    return {
+        "tunnel_cuts": tunnel_cuts,
+        "dev_cuts": dev_cuts,
+        "main_shape": build_profile(sc.ramp, sc.tunnel_profile),
+        "dev_shape": build_profile(sc.ramp, secondary_profile(sc.tunnel_profile)),
+    }
+
+
+def test_t7c_warped_every_parent_wall_opens_and_every_parent_floor_stays(
+    warped_cuts: dict[str, Any],
+) -> None:
+    """The mouth contract is not a TABULAR special case: on the curved
+    WARPED-301 development every declared junction of every type opens the
+    parent's vertical wall and keeps the parent floor."""
+    m = warped_cuts
+    ramp_cuts = _parent_cuts(m["tunnel_cuts"], "RAMP_ACCESS")
+    assert ramp_cuts
+    for c in ramp_cuts:
+        wall, floor, _ = _parent_mouth(c, m["main_shape"])
+        assert wall > 0 and floor == 0, (c.junction.node_id, wall, floor)
+    for jtype in ("ACCESS_DRIFT", "DRIFT_CROSSCUT"):
+        cuts = _parent_cuts(m["dev_cuts"], jtype)
+        assert cuts, jtype
+        for c in cuts:
+            wall, floor, _ = _parent_mouth(c, m["dev_shape"])
+            assert wall > 0 and floor == 0, (jtype, c.junction.node_id, wall, floor)

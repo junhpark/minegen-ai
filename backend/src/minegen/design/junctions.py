@@ -24,8 +24,16 @@ typed and local — no general boolean, no BSP, no voxel remesh:
     - child quads whose four vertices are inside-or-on the parent's swept
       envelope (the child's intruding tube, including its coincident floor
       and roof — the parent keeps those surfaces), and
-    - parent quads whose four vertices are strictly inside the child's
-      envelope (the blocking wall);
+    - parent NON-FLOOR quads whose SURFACE the child excavation occupies
+      over a meaningful area — at least ``PARENT_QUAD_OVERLAP_MIN`` of the
+      ``PARENT_QUAD_SAMPLE_FRACTIONS``² deterministic surface samples lie
+      strictly inside the child's envelope (Phase 20D.1.1). The original
+      "all four VERTICES strictly inside" test could never remove a
+      vertical wall quad: a wall quad's bottom edge lies on the parent
+      floor, and the child floor is welded at (T-junction) or above
+      (turnout) that height, so every declared mouth stayed an arch window
+      over an intact full-height wall. The parent FLOOR edge is never a
+      parent-side cut: it is the doorway's supporting floor;
 * rings are refined to ``JUNCTION_RING_SPACING_FRACTION × width`` inside the
   window so the aperture rim is resolved at a fraction of the tunnel width
   (every refinement ring still lies ON the validated polyline, rule 65).
@@ -50,7 +58,12 @@ from typing import Any, Literal
 import numpy as np
 import numpy.typing as npt
 
-from minegen.design.profile import ProfileShape, gravity_frames
+from minegen.design.profile import (
+    ProfileShape,
+    floor_edge_index,
+    gravity_frames,
+    wall_edge_indices,
+)
 from minegen.network.node_ids import (
     drift_station_junction_id,
     level_entry_id,
@@ -77,11 +90,24 @@ JUNCTION_RING_SPACING_FRACTION = 0.1
 #: The ONE surface tolerance of the union, as a fraction of the tunnel
 #: width: a child vertex within this band of the parent's envelope counts
 #: as ON it (coincident floors / roofs are removed from the child, kept on
-#: the parent); a parent vertex must be inside the child's envelope by MORE
-#: than this band to count as blocked. 0.02 × 5 m = 0.1 m absorbs the
-#: secondary profile's coarser tessellation (≤ 1 % inscribed bias) and the
-#: gradient / frame differences of two tangent tubes.
+#: the parent); a parent surface sample must be inside the child's envelope
+#: by MORE than this band to count as blocked. 0.02 × 5 m = 0.1 m absorbs
+#: the secondary profile's coarser tessellation (≤ 1 % inscribed bias) and
+#: the gradient / frame differences of two tangent tubes.
 JUNCTION_SURFACE_TOLERANCE_FRACTION = 0.02
+#: Phase 20D.1.1 parent-side surface test. A parent quad is judged on a
+#: deterministic bilinear grid of INTERIOR surface samples (these fractions
+#: along the ring interval × along the profile edge — never the corners,
+#: which sit on the parent floor / shared boundaries), and is removed when
+#: at least ``PARENT_QUAD_OVERLAP_MIN`` of them lie strictly inside the
+#: child: two of the three sample rows / columns, i.e. the child occupies
+#: at least two thirds of the quad's surface. For a 2.5 m wall this opens
+#: the wall while the child floor sits up to ≈ 1.15 m above the parent
+#: floor (sill), and keeps it once the child floor is higher than that —
+#: an area rule of the intersection, not a doorway size, a player height
+#: or a hard-coded edge. Not stochastic, not a mesh distance, window-local.
+PARENT_QUAD_SAMPLE_FRACTIONS: tuple[float, ...] = (1.0 / 6.0, 0.5, 5.0 / 6.0)
+PARENT_QUAD_OVERLAP_MIN = 6
 
 
 @dataclass(frozen=True)
@@ -294,10 +320,35 @@ class JunctionCut:
     side: Literal["PARENT", "CHILD"]
     mask: BoolArray  # (R-1, K) True = omit
     window_rings: tuple[int, int]
+    #: this tube's floor edge and two vertical wall edges (profile geometry)
+    floor_edge: int = -1
+    wall_edges: tuple[int, int] = (-1, -1)
 
     @property
     def removed_quads(self) -> int:
         return int(self.mask.sum())
+
+    @property
+    def removed_wall_quads(self) -> int:
+        return int(self.mask[:, list(self.wall_edges)].sum()) if self.floor_edge >= 0 else 0
+
+    @property
+    def removed_floor_quads(self) -> int:
+        return int(self.mask[:, self.floor_edge].sum()) if self.floor_edge >= 0 else 0
+
+
+def _quad_surface_samples(corners: FloatArray) -> FloatArray:
+    """Deterministic interior surface samples of quads given as (…, 4, 3)
+    corners [ring i vtx j, ring i vtx j+1, ring i+1 vtx j, ring i+1 vtx j+1]:
+    the bilinear grid ``PARENT_QUAD_SAMPLE_FRACTIONS`` (along the interval)
+    × ``PARENT_QUAD_SAMPLE_FRACTIONS`` (along the edge) → (…, S, 3)."""
+    fr = np.asarray(PARENT_QUAD_SAMPLE_FRACTIONS, dtype=np.float64)
+    grid_a, grid_b = np.meshgrid(fr, fr, indexing="ij")
+    a: FloatArray = grid_a.ravel()
+    b: FloatArray = grid_b.ravel()
+    w = np.stack([(1 - a) * (1 - b), (1 - a) * b, a * (1 - b), a * b], axis=0)  # (4, S)
+    out: FloatArray = np.einsum("...cx,cs->...sx", corners, w)
+    return out
 
 
 def cut_tube(
@@ -309,18 +360,22 @@ def cut_tube(
     width: float,
 ) -> JunctionCut:
     """Mask of this tube's quads to omit at ``junction`` against the OTHER
-    tube's envelope. PARENT side: quads strictly inside the child (blocking
-    wall). CHILD side: quads inside-or-on the parent (intruding shell,
+    tube's envelope. PARENT side (Phase 20D.1.1): non-floor quads whose
+    surface the child occupies over a meaningful area (the blocking wall
+    and the roof above the mouth); the floor edge is never cut. CHILD side:
+    quads whose four vertices are inside-or-on the parent (intruding shell,
     coincident floor / roof). Only quads whose rings lie inside the window
     are examined; everything else is untouched by construction."""
     radius = JUNCTION_WINDOW_WIDTHS * width
     tol = JUNCTION_SURFACE_TOLERANCE_FRACTION * width
     r, k, _ = own_rings.shape
     mask = np.zeros((r - 1, k), dtype=bool)
+    floor_edge = floor_edge_index(own.shape)
+    walls = wall_edge_indices(own.shape)
     lo, hi = own.ring_window(junction.point, radius)
     other_window = other.ring_window(junction.point, radius + width)
     if hi - lo < 2:
-        return JunctionCut(junction, side, mask, (lo, hi))
+        return JunctionCut(junction, side, mask, (lo, hi), floor_edge, walls)
     # all quad vertices of the windowed intervals in one query
     intervals = np.arange(lo, hi - 1)
     v = np.stack(
@@ -332,10 +387,18 @@ def cut_tube(
         ],
         axis=2,
     )  # (I, K, 4, 3)
-    sd = other.signed_distance(v.reshape(-1, 3), other_window).reshape(len(intervals), k, 4)
-    omit = np.all(sd < -tol, axis=2) if side == "PARENT" else np.all(sd <= tol, axis=2)
+    if side == "PARENT":
+        samples = _quad_surface_samples(v)  # (I, K, S, 3)
+        n_samples = samples.shape[2]
+        sd = other.signed_distance(samples.reshape(-1, 3), other_window)
+        inside = (sd.reshape(len(intervals), k, n_samples) < -tol).sum(axis=2)
+        omit = inside >= PARENT_QUAD_OVERLAP_MIN
+        omit[:, floor_edge] = False  # the parent floor supports the doorway
+    else:
+        sd = other.signed_distance(v.reshape(-1, 3), other_window).reshape(len(intervals), k, 4)
+        omit = np.all(sd <= tol, axis=2)
     mask[intervals] = omit
-    return JunctionCut(junction, side, mask, (lo, hi))
+    return JunctionCut(junction, side, mask, (lo, hi), floor_edge, walls)
 
 
 def junction_report(junctions: list[Junction], cuts: list[JunctionCut]) -> dict[str, Any]:
@@ -347,12 +410,18 @@ def junction_report(junctions: list[Junction], cuts: list[JunctionCut]) -> dict[
         by_type[j.type] = by_type.get(j.type, 0) + 1
     openings: list[dict[str, Any]] = []
     for j in junctions:
-        parent = sum(2 * c.removed_quads for c in cuts if c.junction is j and c.side == "PARENT")
+        parent_cuts = [c for c in cuts if c.junction is j and c.side == "PARENT"]
+        parent = sum(2 * c.removed_quads for c in parent_cuts)
         child = sum(2 * c.removed_quads for c in cuts if c.junction is j and c.side == "CHILD")
         openings.append(
             {
                 **j.to_dict(),
                 "parentRemovedTriangles": int(parent),
+                # Phase 20D.1.1 mouth contract: the parent's vertical wall must
+                # open (> 0 where this builder owns the parent) and its floor
+                # must stay (always 0)
+                "parentWallTriangles": int(sum(2 * c.removed_wall_quads for c in parent_cuts)),
+                "parentFloorTriangles": int(sum(2 * c.removed_floor_quads for c in parent_cuts)),
                 "childRemovedTriangles": int(child),
                 "removedTriangles": int(parent + child),
             }
@@ -371,6 +440,8 @@ __all__ = [
     "JUNCTION_SURFACE_TOLERANCE_FRACTION",
     "JUNCTION_TYPES",
     "JUNCTION_WINDOW_WIDTHS",
+    "PARENT_QUAD_OVERLAP_MIN",
+    "PARENT_QUAD_SAMPLE_FRACTIONS",
     "RAMP_TUBE_ID",
     "Junction",
     "JunctionCut",
