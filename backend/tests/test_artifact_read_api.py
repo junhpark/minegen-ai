@@ -1782,3 +1782,75 @@ def test_every_derived_read_route_answers_world_not_generated_without_a_world(
     assert sum(1 for _, head in Q_WORLD_GUARD if head.startswith(("200", "404"))) == 4
     for route, head_answer in Q_WORLD_GUARD:
         assert no_world.get(route) == (409, "WORLD_NOT_GENERATED"), (route, head_answer)
+
+
+# --------------------------------------------------------------------------- #
+# AC-01I — B5 coordinate contract and the activate wrapper (typed-boundary
+# guard): the effective ramp is the on-disk selection served RAW plus its
+# provenance keys, and the activate response is the two-key wrapper.
+# --------------------------------------------------------------------------- #
+
+RAMP_SOURCE_SUMMARY_KEYS = (
+    "activeSource",
+    "owningArtifact",
+    "available",
+    "legacyAvailable",
+    "layoutV2Available",
+    "layoutV2Selected",
+    "sourceKind",
+    "sourceRevision",
+    "candidateId",
+    "family",
+    "status",
+    "segmentCount",
+)
+
+
+def test_the_effective_ramp_is_the_selection_served_raw_plus_provenance(
+    layout_v2: Stack,
+) -> None:
+    """B5: every key of ``layout_v2_selected.json`` — portal, segments with
+    their flat ``[x, y, z, …]`` point lists, junctions, totals — reaches the
+    wire byte-for-byte equal (no re-projection, no re-serialization through a
+    model), and the effective ramp adds exactly ``activeSource`` on top;
+    ``GET …/layout-v2/selected`` is the raw document."""
+    disk = json.loads((layout_v2.derived / LAYOUT_V2_SELECTED_ARTIFACT).read_text("utf-8"))
+    selected = layout_v2.client.get(f"{API}/{layout_v2.sid}/design/layout-v2/selected").json()
+    assert selected == disk
+    ramp = layout_v2.client.get(f"{API}/{layout_v2.sid}/design/ramp").json()
+    # the selection already carries owningArtifact (written with it); the
+    # effective ramp adds exactly the active source on top of the raw document
+    assert set(ramp) - set(disk) == {"activeSource"}
+    assert ramp["owningArtifact"] == disk["owningArtifact"] == LAYOUT_V2_SELECTED_ARTIFACT
+    assert ramp["activeSource"] == "LAYOUT_V2"
+    for key, value in disk.items():
+        assert ramp[key] == value, key
+    # the coordinate projection: flat float triples, first segment starts at the portal
+    first = ramp["segments"][0]["effectiveCenterline"]["points"]
+    assert len(first) % 3 == 0 and all(isinstance(v, float) for v in first[:3])
+    assert first[:3] == list(ramp["portal"])
+
+
+def test_activate_answers_the_two_key_wrapper_of_the_two_read_routes(layout_v2: Stack) -> None:
+    winner = json.loads((layout_v2.derived / LAYOUT_V2_SELECTED_ARTIFACT).read_text("utf-8"))[
+        "candidateId"
+    ]
+    response = layout_v2.client.post(
+        f"{API}/{layout_v2.sid}/design/layout-v2/activate", json={"candidateId": winner}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert tuple(body.keys()) == ("rampSource", "selected")
+    assert tuple(body["rampSource"].keys()) == RAMP_SOURCE_SUMMARY_KEYS
+    assert (
+        body["rampSource"]
+        == layout_v2.client.get(f"{API}/{layout_v2.sid}/design/ramp-source").json()
+    )
+    assert body["rampSource"]["activeSource"] == "LAYOUT_V2"
+    assert body["rampSource"]["candidateId"] == winner
+    assert body["rampSource"]["available"] is True
+    assert body["rampSource"]["segmentCount"] == len(body["selected"]["segments"])
+    assert (
+        body["selected"]
+        == layout_v2.client.get(f"{API}/{layout_v2.sid}/design/layout-v2/selected").json()
+    )

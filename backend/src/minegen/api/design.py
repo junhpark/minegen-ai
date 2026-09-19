@@ -22,6 +22,7 @@ from minegen.services.design_service import (
     LevelsNotGeneratedError,
     StaleInputsError,
 )
+from minegen.services.effective_ramp import RampSourceSummary
 from minegen.services.job_service import JobAlreadyRunningError, JobService
 from minegen.shafts.models import ShaftsPayload
 
@@ -41,6 +42,15 @@ class LayoutCandidateRequest(ApiModel):
 
 class RampSourceRequest(ApiModel):
     active_source: Literal["LEGACY", "LAYOUT_V2"]
+
+
+class LayoutActivateResponse(ApiModel):
+    """``POST …/layout-v2/activate``: the ramp-source summary after the
+    switch plus the materialized selection (the raw persisted document —
+    served as written, never re-shaped through a model)."""
+
+    ramp_source: RampSourceSummary
+    selected: dict[str, Any]
 
 
 def _error(status_code: int, code: str, message: str) -> HTTPException:
@@ -165,7 +175,7 @@ def get_level_accesses(scenario_id: str, svc: Service) -> dict[str, Any]:
         raise _fail(scenario_id, exc) from exc
 
 
-@router.post("/layout-v2/activate")
+@router.post("/layout-v2/activate", response_model=LayoutActivateResponse)
 def activate_layout_candidate(
     scenario_id: str, body: LayoutCandidateRequest, svc: Service
 ) -> dict[str, Any]:
@@ -177,7 +187,7 @@ def activate_layout_candidate(
         raise _fail(scenario_id, exc) from exc
 
 
-@router.get("/ramp-source")
+@router.get("/ramp-source", response_model=RampSourceSummary)
 def get_ramp_source(scenario_id: str, svc: Service) -> dict[str, Any]:
     try:
         return svc.ramp_source(scenario_id)
@@ -185,7 +195,7 @@ def get_ramp_source(scenario_id: str, svc: Service) -> dict[str, Any]:
         raise _fail(scenario_id, exc) from exc
 
 
-@router.put("/ramp-source")
+@router.put("/ramp-source", response_model=RampSourceSummary)
 def set_ramp_source(scenario_id: str, body: RampSourceRequest, svc: Service) -> dict[str, Any]:
     """Explicit active-source switch (LEGACY | LAYOUT_V2). LAYOUT_V2 needs a
     persisted selection (409 ``LAYOUT_V2_NOT_SELECTED`` otherwise)."""

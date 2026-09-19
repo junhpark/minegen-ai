@@ -26,6 +26,7 @@ from minegen.design.cost_field import DesignCostEvaluator
 from minegen.layout.certification import CandidateCertification
 from minegen.layout.geometry import Crossing, analyze_centerline, insert_vertices, split_at
 from minegen.layout.results import CandidateResult, CandidateStatus, LayoutSearchResult
+from minegen.network.node_ids import ramp_junction_id
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -82,7 +83,7 @@ def materialize_effective_ramp(
     tail = pts[idx[-1] :].copy() if idx and idx[-1] < pts.shape[0] - 1 else None
     labels: list[tuple[str, str | None, dict[str, Any] | None]] = [
         (
-            f"RAMP_JUNCTION:{j.level_id}",
+            ramp_junction_id(j.level_id),
             j.level_id,
             {"levelId": j.level_id, "chainage": j.chainage, "position": [float(v) for v in pts[i]]},
         )

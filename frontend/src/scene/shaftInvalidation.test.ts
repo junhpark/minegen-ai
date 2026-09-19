@@ -78,4 +78,18 @@ describe('shaft / capability invalidation mirrors', () => {
     expect(up.shafts).toBeNull()
     expect(up.capabilityGraph).toBeNull()
   })
+
+  it('an upstream root clears the tunnel mesh like every backend upstream closure (AC-01I)', () => {
+    // core/artifact_registry.py: targets / decline / smoothing / ramp-source
+    // all delete tunnel_mesh.json; the mirror must not keep a stale ramp tunnel
+    const up = afterUpstreamRegen(scene())
+    expect(up.tunnelMesh).toBeNull()
+    expect(up.levels).toBeNull()
+    expect(up.developmentMesh).toBeNull()
+    expect(up.network).toBeNull()
+    expect(up.stopes).toBeNull()
+    expect(up.timeline).toBeNull()
+    expect(up.communication).toBeNull()
+    expect(up.sensors).toBeNull()
+  })
 })

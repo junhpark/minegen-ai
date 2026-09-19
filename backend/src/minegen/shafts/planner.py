@@ -40,6 +40,7 @@ from minegen.core.models import Scenario, ShaftSpec
 from minegen.design.constraints import RejectionReason
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.design.profile import boundary_points, build_profile
+from minegen.network.node_ids import shaft_station_id
 from minegen.shafts.models import (
     Centerline,
     ConnectionTarget,
@@ -671,7 +672,7 @@ class ShaftPlanner:
         point: FloatArray,
         centerlines: list[ShaftCenterline],
     ) -> ShaftStation:
-        station_id = f"SHAFT_STATION:{spec.shaft_id}:{level_id}"
+        station_id = shaft_station_id(spec.shaft_id, level_id)
         end = np.asarray(target.position, dtype=np.float64)
         d = end - point
         horizontal = float(np.linalg.norm(d[:2]))
