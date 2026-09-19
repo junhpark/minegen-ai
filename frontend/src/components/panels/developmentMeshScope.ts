@@ -12,10 +12,11 @@ import type { DevelopmentMeshReport, LevelsPayload } from '@/types/scene'
  * "the level meshes are missing".
  *
  * This is NOT a staleness signal and there is no stale state to model:
- * regenerating levels deletes `development_mesh.{json,glb}` in
- * `DesignService._delete_levels_artifact` / `generate_levels`, and
- * `afterLevelsRegen` nulls `scene.developmentMesh` in the same step, so a
- * report can never describe a superseded levels artifact.
+ * regenerating levels deletes `development_mesh.{json,glb}` through the
+ * backend artifact registry cascade (`core/artifact_registry.py`, AC-01E),
+ * and `afterLevelsRegen` (`scene/invalidation.ts`, the frontend mirror)
+ * nulls `scene.developmentMesh` in the same step, so a report can never
+ * describe a superseded levels artifact.
  */
 export interface DevelopmentMeshScope {
   /** the sweep carried level accesses only — no drift / crosscut geometry */

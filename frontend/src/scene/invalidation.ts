@@ -22,13 +22,23 @@ import type {
  * reload. Communication and timeline are SIBLINGS: stopes/timeline
  * regeneration preserves communication, and communication regeneration
  * touches nothing else.
+ *
+ * AC-01I: this module is the ONE frontend authority for that mapping and
+ * mirrors `backend/src/minegen/core/artifact_registry.py` (the declared
+ * invalidation cascade). It is a UX / cache-freshness mirror ONLY — never a
+ * correctness authority: a missed clear here can leave a stale payload on
+ * screen until the next scene reload, but the backend never serves a stale
+ * artifact (rules 40/46/151/162; `services/artifact_reader.py`).
  */
 
 /** Upstream geometry (targets/decline/smoothed) regenerated: every
- * downstream design artifact is stale. */
+ * downstream design artifact is stale. Registry closure of every upstream
+ * root: tunnel mesh, levels, development mesh, shafts, stopes, timeline,
+ * communication, sensors, network, capability graph. */
 export function afterUpstreamRegen(scene: WorldScene): WorldScene {
   return {
     ...scene,
+    tunnelMesh: null,
     levels: null,
     developmentMesh: null,
     shafts: null,
@@ -135,9 +145,10 @@ export function afterSensorsRegen(scene: WorldScene, payload: SensorPayload): Wo
 // manifest consistent until the next scene reload.
 // --------------------------------------------------------------------------- //
 
-/** Everything derived from the ACTIVE effective ramp is stale. */
+/** Everything derived from the ACTIVE effective ramp is stale — the same
+ * closure as any upstream root (one mapping, not a second list). */
 function afterRampChange(scene: WorldScene): WorldScene {
-  return { ...afterUpstreamRegen(scene), tunnelMesh: null }
+  return afterUpstreamRegen(scene)
 }
 
 /** Legacy Phase 05 artifact (re)generated. With LEGACY active it IS the
