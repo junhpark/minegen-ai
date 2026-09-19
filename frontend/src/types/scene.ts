@@ -1213,6 +1213,13 @@ export interface NetworkPayload {
   }[]
 }
 
+export interface TunnelJunctionSummary {
+  count: number
+  byType: Record<string, number>
+  openedEndpointCount: number
+  removedTriangles: number
+}
+
 export interface TunnelMeshReport {
   status: 'SUCCESS' | 'FAILED'
   failureReason: string | null
@@ -1233,7 +1240,13 @@ export interface TunnelMeshReport {
   triangleCount?: number
   watertight?: boolean
   manifold?: boolean
+  /** closedness of the EMITTED render mesh (false once a typed junction
+   * aperture exists — Phase 20D.1) */
   geometricallyClosed?: boolean
+  /** weld QA of the sweep before the junction apertures (Phase 20D.1) */
+  baseSweepGeometricallyClosed?: boolean
+  /** Phase 20D.1 typed junction apertures cut into the ramp tube */
+  junctions?: TunnelJunctionSummary
   degenerateTriangles?: number
   outwardOrientation?: boolean
   junctionGapMax?: number

@@ -51,6 +51,29 @@ class ProfileShape:
         return (self.mesh_area - self.analytic_area) / self.analytic_area * 100.0
 
 
+#: secondary-development RENDER tessellation relative to the main ramp
+#: (Phase 20B closeout v3 §4.F): arch segments halved (floor ≥ 4),
+#: subdivision spacing doubled. The engineering polyline vertices are always
+#: rings — nothing is dropped. Lives here (not in development_mesh) so the
+#: ramp sweep can build a child access's envelope without importing it.
+SECONDARY_ARCH_DIVISOR = 2
+SECONDARY_ARCH_MIN = 4
+SECONDARY_SPACING_FACTOR = 2.0
+
+
+def secondary_profile(profile: TunnelProfile) -> TunnelProfile:
+    """Coarser RENDER tessellation for secondary developments (§4.F); the
+    engineering dimensions (from ``RampConstraints``) are untouched."""
+    return profile.model_copy(
+        update={
+            "arch_segments": max(
+                SECONDARY_ARCH_MIN, profile.arch_segments // SECONDARY_ARCH_DIVISOR
+            ),
+            "ring_max_spacing": profile.ring_max_spacing * SECONDARY_SPACING_FACTOR,
+        }
+    )
+
+
 def build_profile(ramp: RampConstraints, profile: TunnelProfile) -> ProfileShape:
     width = ramp.tunnel_width
     height = ramp.tunnel_height

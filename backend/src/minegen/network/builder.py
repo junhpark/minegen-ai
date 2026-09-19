@@ -62,6 +62,7 @@ from minegen.network.models import (
 )
 from minegen.network.node_ids import (
     PORTAL_NODE_ID,
+    drift_station_junction_id,
     level_entry_id,
     ramp_junction_id,
     shaft_bottom_id,
@@ -436,7 +437,7 @@ class MineNetworkBuilder:
                         k = idx_k
                         break
                 node_id = (
-                    f"{NodeType.JUNCTION.value}:{level_id}:S{k:+03d}"
+                    drift_station_junction_id(level_id, k)
                     if k is not None
                     else f"{NodeType.JUNCTION.value}:{level_id}:U{u:+08.1f}"
                 )

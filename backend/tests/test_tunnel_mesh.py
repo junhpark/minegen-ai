@@ -186,6 +186,58 @@ def test_topology_volumes_and_removable_caps() -> None:
 
     tube_only = [p for p in render.primitives if p.extras.get("role") == "SEGMENT"]
     assert not _geometrically_closed(render.positions.astype(np.float64), tube_only)
+    # no aperture: the emitted mesh and the base sweep agree
+    assert render.base_sweep_geometrically_closed
+    # Phase 20D.1 review: a typed aperture (one omitted interior quad) makes
+    # the EMITTED mesh open while the base sweep stays closed — the public
+    # geometricallyClosed must describe what the GLB contains
+    mask = np.zeros((mesh.ring_count - 1, mesh.k), dtype=bool)
+    mask[mesh.ring_count // 2, 1] = True
+    cut = build_render_mesh(
+        mesh,
+        chain,
+        shape,
+        profile.crease_angle_deg,
+        [{"levelId": "L01", "effectiveSource": "SMOOTHED"}],
+        quad_mask=mask,
+    )
+    assert not cut.geometrically_closed
+    assert cut.base_sweep_geometrically_closed
+    seg = cut.primitives[0]
+    assert seg.extras["omittedTriangles"] == 2
+    assert seg.extras["ringIntervalIndexOffsets"][-1] == int(seg.indices.shape[0])
+    assert int(seg.indices.shape[0]) == int(render.primitives[0].indices.shape[0]) - 6
+
+
+def test_junction_refinement_is_local_to_the_window() -> None:
+    """Phase 20D.1 review: fine rings exist only inside the refinement window
+    (plus at most one coarse interval), never along the whole polyline edge."""
+    from minegen.design.tunnel_mesh import _envelope_segment
+
+    seg = _envelope_segment([0.0, 0.0, 0.0, 100.0, 0.0, 0.0])  # one 100 m edge
+    plain = build_ring_chain([seg], 2.0)
+    assert plain.centers.shape[0] == 51
+    chain = build_ring_chain(
+        [seg],
+        2.0,
+        refine_near=np.array([[50.0, 0.0, 0.0]]),
+        refine_radius=10.0,
+        refine_spacing=0.5,
+    )
+    x = chain.centers[:, 0]
+    steps = np.diff(x)
+    fine = steps < 2.0 - 1e-9
+    assert fine.any()
+    # every fine step lies inside [50 − 10 − 2, 50 + 10 + 2]
+    assert np.all(x[:-1][fine] >= 38.0 - 1e-9) and np.all(x[1:][fine] <= 62.0 + 1e-9)
+    # inside the window every step is the fine spacing
+    inside = (x[:-1] >= 40.0 - 1e-9) & (x[1:] <= 60.0 + 1e-9)
+    assert np.allclose(steps[inside], 0.5)
+    # outside the window (beyond one coarse interval) the coarse spacing holds
+    outside = (x[1:] <= 38.0 + 1e-9) | (x[:-1] >= 62.0 - 1e-9)
+    assert np.allclose(steps[outside], 2.0)
+    # rings stay on the polyline and the chain is monotonic
+    assert np.allclose(chain.centers[:, 1:], 0.0) and np.all(steps > 0)
 
 
 # -- 9/10. excavation envelope + burial transition (rule 66) -------------------

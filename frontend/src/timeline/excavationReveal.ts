@@ -34,11 +34,30 @@ export interface RevealMeta {
   indexStride: number
   ringIntervalCount: number
   ringChainageFractions: number[]
+  /**
+   * Phase 20D.1: exact index prefix sums per ring interval
+   * (`ringIntervalCount + 1` entries, `[0, …, total]`). A typed junction
+   * aperture omits quads from some intervals, so `m × indexStride` is no
+   * longer the index count of the first `m` intervals; the backend stamps
+   * the true offsets and the viewer cuts at them. Absent on pre-20D.1 GLBs,
+   * whose intervals are uniform — the stride arithmetic stays exact there.
+   */
+  ringIntervalIndexOffsets?: number[]
+}
+
+/** Index count of the first `m` ring intervals (offset table or stride). */
+export function intervalPrefixCount(meta: RevealMeta, m: number): number {
+  const offsets = meta.ringIntervalIndexOffsets
+  return offsets ? offsets[m]! : m * meta.indexStride
 }
 
 /** Read and validate the reveal metadata from a primitive's extras
- * (three.js GLTFLoader puts primitive extras on geometry.userData). */
-export function readRevealMeta(extras: unknown): RevealMeta | null {
+ * (three.js GLTFLoader puts primitive extras on geometry.userData).
+ * `indexCount`, when known (the primitive's index count or the batched
+ * range's `indexCount`), must equal the total the table describes —
+ * `offsets[count]` or `ringIntervalCount × indexStride` — otherwise the
+ * metadata is rejected whole (fail closed, the edge keeps its centerline). */
+export function readRevealMeta(extras: unknown, indexCount?: number): RevealMeta | null {
   if (!extras || typeof extras !== 'object') return null
   const e = extras as Record<string, unknown>
   const stride = e.indexStride
@@ -53,10 +72,37 @@ export function readRevealMeta(extras: unknown): RevealMeta | null {
     prev = v
   }
   if (fr[0] !== 0 || fr[fr.length - 1] !== 1) return null
+  const offsets = e.ringIntervalIndexOffsets
+  if (offsets === undefined) {
+    if (indexCount !== undefined && (count as number) * (stride as number) !== indexCount) {
+      return null
+    }
+    return {
+      indexStride: stride as number,
+      ringIntervalCount: count as number,
+      ringChainageFractions: fr as number[],
+    }
+  }
+  // 20D.1 offsets, when present, must be a consistent prefix-sum table:
+  // integers, starting at 0, non-decreasing, never more than one stride per
+  // interval — anything else is rejected whole (fail closed, 20B.3-1.3)
+  if (!Array.isArray(offsets) || offsets.length !== (count as number) + 1) return null
+  const table: unknown[] = offsets
+  let last = 0
+  for (let i = 0; i < table.length; i += 1) {
+    const v: unknown = table[i]
+    if (!Number.isInteger(v) || (v as number) < 0) return null
+    if (i === 0 && v !== 0) return null
+    if (i > 0 && ((v as number) < last || (v as number) - last > (stride as number))) return null
+    last = v as number
+  }
+  // the table must account for every emitted index (20D.1 review)
+  if (indexCount !== undefined && last !== indexCount) return null
   return {
     indexStride: stride as number,
     ringIntervalCount: count as number,
     ringChainageFractions: fr as number[],
+    ringIntervalIndexOffsets: offsets as number[],
   }
 }
 
@@ -65,11 +111,11 @@ export function readRevealMeta(extras: unknown): RevealMeta | null {
  * (conservative — never a vertex beyond the excavated chainage). */
 export function revealedIndexCount(meta: RevealMeta, progress: number): number {
   if (!(progress > 0)) return 0
-  if (progress >= 1) return meta.ringIntervalCount * meta.indexStride
+  if (progress >= 1) return intervalPrefixCount(meta, meta.ringIntervalCount)
   let m = 0
   const fr = meta.ringChainageFractions
   while (m < meta.ringIntervalCount && fr[m + 1]! <= progress) m += 1
-  return m * meta.indexStride
+  return intervalPrefixCount(meta, m)
 }
 
 export type RevealTarget =
@@ -95,20 +141,23 @@ export function revealedIndexRange(
   progress: number,
   direction: 1 | -1,
 ): { start: number; count: number } {
-  const total = meta.ringIntervalCount * meta.indexStride
+  const n = meta.ringIntervalCount
+  const total = intervalPrefixCount(meta, n)
   if (!(progress > 0)) return { start: 0, count: 0 }
   if (progress >= 1) return { start: 0, count: total }
   const fr = meta.ringChainageFractions
   if (direction === 1) {
     let m = 0
-    while (m < meta.ringIntervalCount && fr[m + 1]! <= progress) m += 1
-    return { start: 0, count: m * meta.indexStride }
+    while (m < n && fr[m + 1]! <= progress) m += 1
+    return { start: 0, count: intervalPrefixCount(meta, m) }
   }
   // interval i spans [fr[i], fr[i+1]]; from the end, interval i is complete
-  // once fr[i] >= 1 − progress
+  // once fr[i] >= 1 − progress; the suffix starts at the prefix sum of the
+  // first n − m intervals (exact under a 20D.1 offset table)
   let m = 0
-  while (m < meta.ringIntervalCount && fr[meta.ringIntervalCount - 1 - m]! >= 1 - progress) m += 1
-  return { start: total - m * meta.indexStride, count: m * meta.indexStride }
+  while (m < n && fr[n - 1 - m]! >= 1 - progress) m += 1
+  const start = intervalPrefixCount(meta, n - m)
+  return { start, count: total - start }
 }
 
 export interface ExcavationRevealPlan {
@@ -239,7 +288,7 @@ export function planIndexGroups(
 /** Read the batched primitive `ranges` extras (development mesh GLB). */
 export function readPieceRanges(
   extras: unknown,
-  meta: (pieceId: string) => RevealMeta | null,
+  meta: (pieceId: string, indexCount: number) => RevealMeta | null,
 ): PieceRange[] {
   if (!extras || typeof extras !== 'object') return []
   const raw = (extras as { ranges?: unknown }).ranges
@@ -263,7 +312,7 @@ export function readPieceRanges(
       developmentId: o.developmentId,
       indexOffset: o.indexOffset as number,
       indexCount: o.indexCount as number,
-      meta: meta(o.pieceId),
+      meta: meta(o.pieceId, o.indexCount as number),
     })
   }
   return out

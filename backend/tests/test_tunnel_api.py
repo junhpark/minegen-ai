@@ -160,10 +160,10 @@ def test_stale_mesh_job_never_persists(
     started, proceed = threading.Event(), threading.Event()
     real_build = TunnelMeshBuilder.build
 
-    def slow_build(self, payload, on_progress=None):  # type: ignore[no-untyped-def]
+    def slow_build(self, payload, on_progress=None, **kwargs):  # type: ignore[no-untyped-def]
         started.set()
         assert proceed.wait(timeout=30), "test did not release the paused job"
-        return real_build(self, payload, on_progress=on_progress)
+        return real_build(self, payload, on_progress=on_progress, **kwargs)
 
     monkeypatch.setattr(TunnelMeshBuilder, "build", slow_build)
     r = client.post(f"/api/v1/scenarios/{sid}/design/tunnel")
