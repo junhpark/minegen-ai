@@ -20,7 +20,7 @@ import numpy.typing as npt
 from minegen.layout.access import AnchorFailure, LevelAccessPlan, LevelDevelopmentAnchor
 from minegen.layout.certification import ClearanceReport
 from minegen.layout.families import CandidateParams
-from minegen.layout.geometry import CenterlineDiagnostics, Crossing
+from minegen.layout.geometry import CenterlineDiagnostics
 from minegen.layout.levels import RequiredLevel
 
 FloatArray = npt.NDArray[np.float64]
@@ -108,7 +108,6 @@ class CandidateResult:
     derived: dict[str, Any] = field(default_factory=dict)
     pieces: list[dict[str, Any]] = field(default_factory=list)
     points: FloatArray | None = None
-    crossings: list[Crossing | None] = field(default_factory=list)
     shortlisted: bool = False
     cheap_proxy: float | None = None
     #: Phase 20C.1-Q geometric access screen (evaluator-free stage-4 gates,

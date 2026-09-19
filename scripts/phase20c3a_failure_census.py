@@ -30,6 +30,7 @@ import numpy as np  # noqa: E402
 
 from minegen.core.enums import ScenarioPreset  # noqa: E402
 from minegen.core.models import Scenario  # noqa: E402
+from minegen.layout.geometry import find_crossing  # noqa: E402
 from minegen.layout.search import LayoutV2Search, chainage_of  # noqa: E402
 from minegen.layout.validation import validate_delivered_centerline  # noqa: E402
 from minegen.services.scenario_realizer import realize_scenario  # noqa: E402
@@ -122,9 +123,14 @@ for seed in SEEDS:
         rec["screenAuthority"] = c.screen_authority
         rec["withinReachLevels"] = c.screened_count
         rec["accessibleLevels"] = c.accessible_count
-        rec["crossingChainages"] = [
-            round(float(x.chainage), 1) for x in c.crossings if x is not None
-        ]
+        # AC-01G: ``CandidateResult.crossings`` was write-only state on the
+        # record and was removed with the stage refactor. The RL crossings are
+        # recomputed here exactly as ``layout.stages.level_service`` computes
+        # them — ``find_crossing(points, elevation)`` over the serviceable
+        # levels, in the same order — so this census reproduces
+        # backend/golden/phase20c3a_failure_census.json unchanged.
+        xings = [find_crossing(pts, lv.elevation) for lv in res.serviceable_levels]
+        rec["crossingChainages"] = [round(float(x.chainage), 1) for x in xings if x is not None]
         if c.status == "FEASIBLE":
             rec["class"] = "FEASIBLE"
             rows.append(rec)

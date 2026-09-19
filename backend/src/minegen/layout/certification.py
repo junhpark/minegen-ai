@@ -213,6 +213,65 @@ def build_candidate_policy(
     return evaluator, refined, refinement
 
 
+@dataclass(frozen=True)
+class CandidateClearance:
+    """The stage-4 clearance certification of ONE candidate as one value: the
+    evaluator and policy ``build_candidate_policy`` produced, its refinement
+    provenance, and the offset-trace cache token that names the clearance
+    field the policy measures (rule 172, census O10).
+
+    The token is decided HERE, inside the recipe, against the recipe's own
+    ``world_policy`` argument — never by a caller comparing against a search
+    attribute. ``build_candidate_policy`` returns the very ``world_policy``
+    object on every non-refined branch (identity is its documented contract),
+    so ``trace_token == "WORLD"`` exactly when no refined window was applied
+    and the candidate reads the cached WORLD traces the construction
+    ``ServiceReference`` already filled."""
+
+    evaluator: DesignCostEvaluator
+    policy: ClearancePolicy
+    refinement: dict[str, Any]
+    trace_token: str
+
+
+def certify_candidate(
+    world: SyntheticWorld,
+    scenario: Scenario,
+    cfg: LayoutV2Config,
+    *,
+    world_policy: ClearancePolicy,
+    world_evaluator: DesignCostEvaluator,
+    points: FloatArray,
+    levels: list[RequiredLevel],
+    sections: LevelSections,
+    track: FootwallTrack,
+    required_clearance: float,
+    candidate_id: str,
+) -> CandidateClearance:
+    """``build_candidate_policy`` (unchanged) plus the offset-trace cache
+    token of its result, as ONE value. This is the stage-4 certification
+    path: the detailed stage and the post-run ``candidate_policy`` facade
+    both go through it, so they can never disagree about the token."""
+    evaluator, policy, refinement = build_candidate_policy(
+        world,
+        scenario,
+        cfg,
+        world_policy=world_policy,
+        world_evaluator=world_evaluator,
+        points=points,
+        levels=levels,
+        sections=sections,
+        track=track,
+        required_clearance=required_clearance,
+    )
+    # trace cache identity: the shared world policy, or this candidate's own
+    # stage-4 refined policy (deterministic token)
+    token = "WORLD" if policy is world_policy else candidate_id
+    return CandidateClearance(
+        evaluator=evaluator, policy=policy, refinement=refinement, trace_token=token
+    )
+
+
 def _candidate_id_of(payload: Any, source: str) -> str:
     """The ``candidateId`` of a persisted certification document, or the
     typed error when the document has no usable one."""

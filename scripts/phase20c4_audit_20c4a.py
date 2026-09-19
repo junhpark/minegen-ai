@@ -32,6 +32,7 @@ from minegen.layout.access import (
     turnout_heading_change_deg,
 )
 from minegen.layout.families import rotate
+from minegen.layout.geometry import find_crossing
 from minegen.layout.search import LayoutV2Search, chainage_of
 from minegen.services.scenario_realizer import realize_scenario
 from minegen.world.synthetic_world import generate_world
@@ -139,7 +140,7 @@ def audit_level_access(seed, cand, res, search, world, sc, role):
         q = np.asarray(anc.position)
         qxy = q[:2]
         corridor_ref = fe + n_hat * res.standoff
-        xing = cand.crossings[i] if i < len(cand.crossings) else None
+        xing = find_crossing(pts, lv.elevation)
         xp = np.asarray(xing.point) if xing is not None else None
         zsel = (pts[:, 2] <= z + cfg.junction_window_above) & (
             pts[:, 2] >= z - cfg.junction_window_below
@@ -273,7 +274,7 @@ def audit_level_access(seed, cand, res, search, world, sc, role):
     moved = []
     for i, lv in enumerate(levels):
         anc = cand.anchors[i] if i < len(cand.anchors) else None
-        xing = cand.crossings[i] if i < len(cand.crossings) else None
+        xing = find_crossing(pts, lv.elevation)
         if isinstance(anc, LevelDevelopmentAnchor) and xing is not None:
             xp = np.asarray(xing.point)[:2]
             q = np.asarray(anc.position)
@@ -298,7 +299,7 @@ def audit_level_access(seed, cand, res, search, world, sc, role):
     vecs = []
     for i, lv in enumerate(levels):
         anc = cand.anchors[i] if i < len(cand.anchors) else None
-        xing = cand.crossings[i] if i < len(cand.crossings) else None
+        xing = find_crossing(pts, lv.elevation)
         if isinstance(anc, LevelDevelopmentAnchor) and xing is not None:
             xp = np.asarray(xing.point)[:2]
             q = np.asarray(anc.position)[:2]

@@ -75,6 +75,16 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     # fresh services; ≈ 1–2 s of interpreter start-up per child, ~25 children
     # plus a committed world + targets per test.
     "test_world_publication_processes": ("slow", "e2e"),
+    # AC-01G: the layout-v2 characterization freeze. TABULAR-REFERENCE is a
+    # clean module-scoped search (≈ 18 s) and WARPED_VEIN-301 rides the shared
+    # session search (≈ 55 s, already paid by the other slow consumers), so
+    # the module is `slow` → FULL only, never FAST. NOT added to
+    # CANARY_NODEID_SUFFIXES: a canary is a representative-scenario detector
+    # the FEATURE tier runs clean, and the freeze is a refactor net whose
+    # authority tier is FULL; adding it would put ≈ 75 s into every FEATURE
+    # run. Marked at module level so the baseline-integrity tests travel with
+    # the comparison tests.
+    "test_layout_characterization": ("slow",),
 }
 #: test function name (any module) → markers
 TEST_MARKERS: dict[str, tuple[str, ...]] = {
@@ -129,6 +139,13 @@ TEST_MARKERS: dict[str, tuple[str, ...]] = {
     "test_conservative_screen_is_a_heuristic_and_carries_no_subset_contract": ("slow",),
     "test_candidate_policy_reconstruction_is_deterministic": ("slow",),
     "test_warped_vein_is_accepted_by_layout_v2_but_not_by_the_legacy_pipeline": ("slow",),
+    # AC-01G: the stage-boundary proofs that pay for a clean WARPED-301 run.
+    # The offset-trace build COUNT (risk R1) needs its own spied search, and
+    # the sectionGeometry variant of the performance key order rides the
+    # shared session search. The rest of test_layout_stages.py is static AST
+    # + a small TABULAR search and stays in FAST.
+    "test_offset_trace_build_count_matches_head": ("slow",),
+    "test_performance_key_order_with_section_geometry": ("slow",),
     # Phase 20C.4 service reference on a fresh WARPED-307 world + search
     "test_reference_delta_is_positive_on_the_failing_307_spiral": ("slow",),
     "test_307_failing_candidates_now_hold_the_separation_at_every_rl_crossing": ("slow",),

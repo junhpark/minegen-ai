@@ -17,9 +17,12 @@ instead, which leaked publication provenance into the public projection and
 forced BOTH of those comparison contracts to be widened — the review rejected
 it, and this sidecar is the corrective.
 
-The sidecar is published LAST, after the report (and, on the FAILED path,
-after the stale GLB is unlinked), so its publication is the COMMIT POINT of a
-mesh generation, exactly as ``derived/world.json`` is for a world. It is
+The sidecar is published LAST, after the report, so its publication is the
+COMMIT POINT of a mesh generation, exactly as ``derived/world.json`` is for a
+world. On the FAILED path it is published BEFORE the stale GLB is unlinked: a
+FAILED report has no GLB contract (the binary routes refuse a non-SUCCESS
+report), so the generation is committed by report + sidecar and the unlink is
+housekeeping no reader depends on. It is
 UNREGISTERED — in no fingerprint and in no cascade — because it is publication
 provenance, not dependency authority (AC-01F A12); a leftover sidecar beside a
 cascade-deleted report is inert, since the artifact is then ABSENT and the

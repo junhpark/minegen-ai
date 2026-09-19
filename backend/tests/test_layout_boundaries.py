@@ -15,12 +15,13 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from typing import Any
 
 import pytest
 
 from minegen.core.models import Scenario
 from minegen.design import profile as design_profile
-from minegen.layout import certification, materialize, results, search
+from minegen.layout import certification, materialize, provider, results, search, stages
 from minegen.layout.certification import (
     CandidateCertification,
     ClearancePolicyReconstructionError,
@@ -127,6 +128,30 @@ def test_certification_verify_is_the_fail_closed_provenance_check(
         ("materialize_level_accesses", materialize),
         ("chainage_of", materialize),
         ("required_clearance", design_profile),
+        # AC-01G commit 3: the stage helpers and the score coefficients moved
+        # to ``layout.stages``; ``layout.search`` re-exports the owning
+        # module's own object, so every established import path still resolves
+        # to the one definition the search itself uses
+        ("level_service", stages),
+        ("cheap_checks", stages),
+        ("level_screen_problems", stages),
+        ("cheap_proxy", stages),
+        ("score_candidate", stages),
+        ("screen_authority", stages),
+        ("DEV_ACCESS_COEF", stages),
+        ("GEO_CORE_COEF", stages),
+        ("GEO_DAMAGE_COEF", stages),
+        ("GEO_POOR_ROCK_COEF", stages),
+        ("GEO_CROSSING_COEF", stages),
+        ("GEOM_TURNING_COEF", stages),
+        ("GEOM_CLEARANCE_COEF", stages),
+        ("GEOM_CURVATURE_COEF", stages),
+        ("GEOM_REVERSAL_COEF", stages),
+        ("GEOM_HAIRPIN_COEF", stages),
+        ("GEOM_HALF_TURN_COEF", stages),
+        ("SCORE_TIE_TOLERANCE", stages),
+        ("RADIUS_TOLERANCE", stages),
+        ("GRADIENT_TOLERANCE", stages),
     ],
 )
 def test_search_re_exports_the_owning_module_object(name: str, owner: object) -> None:
@@ -158,16 +183,88 @@ def test_leaf_modules_never_import_the_search() -> None:
 
 def test_context_accessor_exposes_the_post_run_objects(
     tabular_small: tuple[Scenario, SyntheticWorld],
-    boundary_search: tuple[LayoutV2Search, LayoutSearchResult],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """AC-01G: identity across the ACTUAL construction and stage call sites.
+
+    ``_sections`` / ``_track`` / ``_reference`` are gone — the section
+    provider owns them — so the proof is no longer that two private fields of
+    one object alias each other (which ``run()`` made true by construction).
+    Use-site spies capture the ``SearchSetup`` the provider built, the
+    ``ServiceReference`` it returned, the ``ctx`` the FIRST family
+    construction received and the ``StageContext`` the FIRST cheap stage ran
+    under; ``context`` must expose exactly those objects."""
     sc, world = tabular_small
     with pytest.raises(RuntimeError, match="has not built a stage context"):
         _ = LayoutV2Search(sc, world).context
-    s, _ = boundary_search
+
+    seen: dict[str, Any] = {}
+    real_setup = provider.build_search_setup
+    real_reference = provider.build_service_reference
+    real_family = search.build_family
+    real_cheap = search.cheap_stage
+
+    def spy_setup(*a: Any, **k: Any) -> Any:
+        out = real_setup(*a, **k)
+        seen.setdefault("setup", out)
+        return out
+
+    def spy_reference(*a: Any, **k: Any) -> Any:
+        out = real_reference(*a, **k)
+        seen.setdefault("reference", out)
+        return out
+
+    def spy_family(params: Any, ctx: Any) -> Any:
+        seen.setdefault("family_ctx", ctx)
+        return real_family(params, ctx)
+
+    def spy_cheap(stage_ctx: Any, candidate_id: str, built: Any) -> Any:
+        # AC-01G commit 3: the stage RETURNS its outcome (``apply_cheap`` is
+        # the only writer), so the spy must pass it through
+        seen.setdefault("stage_ctx", stage_ctx)
+        return real_cheap(stage_ctx, candidate_id, built)
+
+    monkeypatch.setattr(provider, "build_search_setup", spy_setup)
+    monkeypatch.setattr(provider, "build_service_reference", spy_reference)
+    monkeypatch.setattr(search, "build_family", spy_family)
+    monkeypatch.setattr(search, "cheap_stage", spy_cheap)
+
+    s = LayoutV2Search(sc, world)
+    s.run()
+
+    assert set(seen) == {"setup", "reference", "family_ctx", "stage_ctx"}
     assert s.context is s._ctx
-    assert s.context.sections is s._sections
-    assert s.context.track is s._track
-    assert s.context.reference is s._reference
+    # the construction context IS the object the families were built against
+    assert s.context is seen["family_ctx"]
+    # and it carries the setup's / provider's objects, not copies
+    assert s.context.sections is seen["setup"].sections
+    assert s.context.track is seen["setup"].track
+    assert s.context.reference is seen["reference"]
+    # the stage saw the same context and the same section geometry
+    stage_ctx = seen["stage_ctx"]
+    assert stage_ctx.ctx is s.context
+    assert stage_ctx.provider.sections is s.context.sections
+    assert stage_ctx.provider.track is s.context.track
+    assert stage_ctx.provider.reference is s.context.reference
+    assert stage_ctx.provider.serviceable is s.context.levels
+    # AC-01G Stage D (D5): the clearance-policy identity the offset-trace cache
+    # token is decided by (``policy is world_policy``) reaches the stage as the
+    # search's own constructor objects, not a rebuilt equal-looking pair
+    assert stage_ctx.world_policy is s.policy
+    assert stage_ctx.world_evaluator is s.evaluator
+    # AC-01G: `_ctx` is the ONLY run state left on the search object
+    # the COMPLETE instance dict, not just its private half (AC-01G Stage D,
+    # D1: a public ``self.sections`` would have passed the old filter)
+    assert set(vars(s)) == {
+        "scenario",
+        "world",
+        "cfg",
+        "policy",
+        "evaluator",
+        "shape",
+        "station_merge_bound",
+        "_ctx",
+    }, sorted(vars(s))
 
 
 def test_lifted_anchor_standoff_equals_the_search_method(
