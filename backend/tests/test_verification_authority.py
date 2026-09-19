@@ -651,6 +651,34 @@ def test_a_missing_component_file_is_a_withheld_verdict_not_a_smaller_aggregate(
     assert verify.main(["authority", str(backend)]) == 1
 
 
+def test_a_torn_or_malformed_component_summary_is_a_typed_withheld_verdict(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """AC-01H Stage D (D2/D6): a component job cancelled mid-write still
+    uploads its package under ``if: always()``, so the aggregate can meet a
+    truncated, empty or non-object summary. That is evidence it cannot judge:
+    the verdict is withheld with COMPONENT_SUMMARY_INVALID and
+    release-authority.json is still written — never a traceback that leaves
+    the evidence package without a verdict."""
+    monkeypatch.setattr(verify, "VERIFICATION", tmp_path)
+    backend = tmp_path / "backend.json"
+    backend.write_text(
+        json.dumps(_summary("full-backend", list(verify.RELEASE_BACKEND_GATES))), encoding="utf-8"
+    )
+    for torn in ('{"tier": "FULL", "steps": [', "", "[1, 2, 3]", '"just a string"'):
+        frontend = tmp_path / "frontend.json"
+        frontend.write_text(torn, encoding="utf-8")
+        assert verify.main(["authority", str(backend), str(frontend)]) == 1
+        verdict = json.loads((tmp_path / "release-authority.json").read_text(encoding="utf-8"))
+        assert verdict["release"] is False
+        assert verdict["missingSummaries"] == []
+        assert verdict["invalidSummaries"] == [str(frontend)]
+        assert verdict["reasons"][0] == f"COMPONENT_SUMMARY_INVALID:{frontend}"
+        assert "GATE_NOT_PASSED_BY_ANY_COMPONENT:fe-build" in verdict["reasons"]
+        # the valid component is still judged, never dropped with the torn one
+        assert verdict["gateSource"]["pytest-full"] == "full-backend"
+
+
 def test_no_summary_at_all_is_a_withheld_verdict_with_a_written_record(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

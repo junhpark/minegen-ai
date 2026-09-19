@@ -192,8 +192,10 @@ badge).
 
 The authority job `needs` both components and runs `if: always()`: a failed
 or missing component yields a RECORDED withheld verdict — `GATE_FAILED`,
-`COMPONENT_SUMMARY_MISSING:<path>`, `GATE_NOT_PASSED_BY_ANY_COMPONENT:<gate>`,
-`NO_COMPONENT_SUMMARIES` — and a red job, never a skipped one. The aggregate
+`COMPONENT_SUMMARY_MISSING:<path>`, `COMPONENT_SUMMARY_INVALID:<path>` (a torn,
+empty or non-object summary — a job cancelled mid-write still uploads),
+`GATE_NOT_PASSED_BY_ANY_COMPONENT:<gate>`, `NO_COMPONENT_SUMMARIES` — and a
+red job, never a skipped one. The aggregate
 re-derives each component from its recorded evidence (`component_verdict`),
 so a component's own `authority.release` is a claim it never trusts, and it
 refuses two components that certify different revisions.

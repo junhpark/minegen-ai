@@ -731,6 +731,7 @@ def cmd_authority(args: argparse.Namespace) -> int:
     """
     summaries: list[dict[str, Any]] = []
     missing: list[str] = []
+    invalid: list[str] = []
     for raw in args.summaries:
         path = Path(raw)
         if not path.exists():
@@ -739,18 +740,32 @@ def cmd_authority(args: argparse.Namespace) -> int:
             # typed reason instead of judging a smaller set (AC-01H §14)
             missing.append(str(raw))
             continue
-        data = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            loaded = None
+        if not isinstance(loaded, dict):
+            # a summary that arrived torn (a job cancelled mid-write still
+            # uploads under ``if: always()``), empty or as the wrong shape is
+            # evidence that cannot be judged: recorded and withheld with a
+            # typed reason, never a traceback without a written verdict
+            invalid.append(str(raw))
+            continue
+        data: dict[str, Any] = loaded
         # the component names itself (``component`` written by ``verify.py
         # full --backend-only|--frontend-only``); a bare summary falls back
         # to its file stem
         data.setdefault("label", data.get("component") or path.stem)
         summaries.append(data)
     verdict = aggregate_authority(summaries)
-    if missing:
+    if missing or invalid:
         verdict["missingSummaries"] = missing
-        verdict["reasons"] = [f"COMPONENT_SUMMARY_MISSING:{m}" for m in missing] + verdict[
-            "reasons"
-        ]
+        verdict["invalidSummaries"] = invalid
+        verdict["reasons"] = (
+            [f"COMPONENT_SUMMARY_MISSING:{m}" for m in missing]
+            + [f"COMPONENT_SUMMARY_INVALID:{m}" for m in invalid]
+            + verdict["reasons"]
+        )
         verdict["release"] = False
     VERIFICATION.mkdir(parents=True, exist_ok=True)
     out = VERIFICATION / "release-authority.json"
