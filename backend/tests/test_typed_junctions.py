@@ -16,9 +16,8 @@ omitted ONLY inside the junction window, unrelated endpoints keep their
 CAP / OPEN contract, every emitted primitive stays a valid oriented
 triangle set, and the TABULAR / WARPED planners' outputs are untouched.
 
-Commit 1 of the phase carries the junction-aware assertions as STRICT
-xfails (the contract the geometry commit turns green); the endpoint,
-validity and regression contracts already hold and are plain tests.
+Commit 1 of the phase carried the junction-aware assertions as STRICT
+xfails; commit 2 (the typed junction geometry) turned them green.
 """
 
 from __future__ import annotations
@@ -39,16 +38,7 @@ from tests.test_curved_levels import warped, warped_levels, warped_search  # noq
 from tests.test_shafts import tabular_levels  # noqa: F401
 from tests.verification_support import load_fixture
 
-# Junction-aware build arguments (commit 2 introduces them; commit 1 builds
-# the pre-20D.1 independent sweeps so the endpoint / validity / regression
-# contracts are pinned on the SAME fixture the geometry commit is judged on).
-TUNNEL_JUNCTION_KW: dict[str, Any] = {}
-DEVELOPMENT_JUNCTION_KW: dict[str, Any] = {}
-
 JUNCTION_TYPES = ("RAMP_ACCESS", "ACCESS_DRIFT", "DRIFT_CROSSCUT")
-NOT_YET = pytest.mark.xfail(
-    strict=True, reason="Phase 20D.1 commit 2: typed junction geometry not implemented yet"
-)
 
 
 # --------------------------------------------------------------------------- #
@@ -121,9 +111,11 @@ def tabular_meshes(tabular_levels: tuple[Any, Any, dict[str, Any]]) -> dict[str,
     before = json.dumps([ramp, accesses, levels], sort_keys=True)
     ev = DesignCostEvaluator(world, sc.design)
     cross = DesignCostEvaluator(world, sc.design, DesignContext.crosscut(sc.design))
-    tunnel = TunnelMeshBuilder(ev, sc.ramp, sc.tunnel_profile).build(ramp, **TUNNEL_JUNCTION_KW)
+    tunnel = TunnelMeshBuilder(ev, sc.ramp, sc.tunnel_profile).build(
+        ramp, accesses_payload=accesses
+    )
     dev = DevelopmentMeshBuilder(ev, cross, sc.ramp, sc.tunnel_profile).build(
-        accesses, levels, **DEVELOPMENT_JUNCTION_KW
+        accesses, levels, ramp_payload=ramp
     )
     assert tunnel.status == "SUCCESS", tunnel.report.get("failureReason")
     assert dev.status == "SUCCESS", dev.report.get("failureReason")
@@ -158,7 +150,8 @@ def _interval_counts(entry: dict[str, Any]) -> list[int]:
     """Indices per ring interval of a SEGMENT primitive / batched range."""
     offsets = entry["ringIntervalIndexOffsets"]
     assert len(offsets) == entry["ringIntervalCount"] + 1 and offsets[0] == 0
-    assert offsets[-1] == entry["indexCount"]
+    if "indexCount" in entry:  # batched ranges carry it; SEGMENT extras do not
+        assert offsets[-1] == entry["indexCount"]
     return [int(b - a) for a, b in pairwise(offsets)]
 
 
@@ -181,7 +174,6 @@ def _piece_length(points: list[float]) -> float:
 # --------------------------------------------------------------------------- #
 
 
-@NOT_YET
 def test_t1_ramp_to_access_junction_opens_the_turnout(tabular_meshes: dict[str, Any]) -> None:
     m = tabular_meshes
     accesses = _ok_accesses(m)
@@ -202,6 +194,13 @@ def test_t1_ramp_to_access_junction_opens_the_turnout(tabular_meshes: dict[str, 
         for s in segments
         if s["rampJunction"]
     }
+    # cumulative ramp chainage at which each segment starts (junction
+    # chainages are measured along the whole ramp)
+    start_of: dict[str, float] = {}
+    running = 0.0
+    for s in segments:
+        start_of[s["segmentId"]] = running
+        running += _piece_length(s["effectiveCenterline"]["points"])
     cut_segments = 0
     for p in prims:
         if p["extras"].get("role") != "SEGMENT":
@@ -216,7 +215,7 @@ def test_t1_ramp_to_access_junction_opens_the_turnout(tabular_meshes: dict[str, 
         # every cut interval lies within the window of a declared junction
         length = _piece_length(seg["effectiveCenterline"]["points"])
         fr = p["extras"]["ringChainageFractions"]
-        start_chainage = float(seg.get("startChainage", 0.0))
+        start_chainage = start_of[seg["segmentId"]]
         for i in cut:
             s = start_chainage + 0.5 * (fr[i] + fr[i + 1]) * length
             assert any(abs(s - sj) <= 3.0 * m["width"] for sj in junction_chainage.values()), (
@@ -235,7 +234,6 @@ def test_t1_ramp_to_access_junction_opens_the_turnout(tabular_meshes: dict[str, 
 # --------------------------------------------------------------------------- #
 
 
-@NOT_YET
 def test_t2_access_to_drift_junction_opens_the_entry(tabular_meshes: dict[str, Any]) -> None:
     m = tabular_meshes
     accesses = _ok_accesses(m)
@@ -281,7 +279,6 @@ def test_t2_access_to_drift_junction_opens_the_entry(tabular_meshes: dict[str, A
 # --------------------------------------------------------------------------- #
 
 
-@NOT_YET
 def test_t3_drift_to_crosscut_junction_opens_the_station(tabular_meshes: dict[str, Any]) -> None:
     m = tabular_meshes
     crosscuts = _crosscuts(m)
@@ -389,9 +386,11 @@ def warped_meshes(warped, warped_levels) -> dict[str, Any]:  # type: ignore[no-u
     cross = DesignCostEvaluator(
         world, sc.design, DesignContext.crosscut(sc.design), clearance=policy
     )
-    tunnel = TunnelMeshBuilder(ev, sc.ramp, sc.tunnel_profile).build(ramp, **TUNNEL_JUNCTION_KW)
+    tunnel = TunnelMeshBuilder(ev, sc.ramp, sc.tunnel_profile).build(
+        ramp, accesses_payload=accesses
+    )
     dev = DevelopmentMeshBuilder(ev, cross, sc.ramp, sc.tunnel_profile).build(
-        accesses, levels, **DEVELOPMENT_JUNCTION_KW
+        accesses, levels, ramp_payload=ramp
     )
     return {"tunnel": tunnel, "dev": dev, "accesses": accesses, "levels": levels}
 
@@ -409,7 +408,6 @@ def test_t7_warped_levels_and_meshes_still_succeed(warped_meshes: dict[str, Any]
             _assert_valid_triangle_set(positions, p["indices"], f"warped {label}:{p['name']}")
 
 
-@NOT_YET
 def test_t7_warped_junctions_generate_on_the_curved_drift(warped_meshes: dict[str, Any]) -> None:
     rep = warped_meshes["dev"].report
     accesses = [a for a in warped_meshes["accesses"]["accesses"] if a["status"] == "OK"]

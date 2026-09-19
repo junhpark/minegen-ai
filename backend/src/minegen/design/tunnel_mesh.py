@@ -64,13 +64,49 @@ class RingChain:
     max_local_turn_deg: float
 
 
-def build_ring_chain(segments: list[dict[str, Any]], max_spacing: float) -> RingChain:
+def _refined_spacing(
+    a: FloatArray,
+    b: FloatArray,
+    max_spacing: float,
+    refine_near: FloatArray | None,
+    refine_radius: float,
+    refine_spacing: float | None,
+) -> float:
+    """Subdivision spacing of polyline edge a→b: the finer ``refine_spacing``
+    when the edge passes within ``refine_radius`` of any refinement point
+    (Phase 20D.1: the declared junction points), else ``max_spacing``."""
+    if refine_near is None or refine_spacing is None or refine_near.shape[0] == 0:
+        return max_spacing
+    ab = b - a
+    ab2 = float(np.dot(ab, ab))
+    if ab2 <= 1e-24:
+        return max_spacing
+    t = np.clip(((refine_near - a[None, :]) @ ab) / ab2, 0.0, 1.0)
+    foot = a[None, :] + t[:, None] * ab[None, :]
+    if float(np.min(np.linalg.norm(refine_near - foot, axis=1))) <= refine_radius:
+        return min(max_spacing, refine_spacing)
+    return max_spacing
+
+
+def build_ring_chain(
+    segments: list[dict[str, Any]],
+    max_spacing: float,
+    *,
+    refine_near: FloatArray | None = None,
+    refine_radius: float = 0.0,
+    refine_spacing: float | None = None,
+) -> RingChain:
     """Rings on the effective centerlines: every polyline vertex is a ring and
     long edges are split linearly. Consecutive segments share their boundary
     ring. Tangents: boundary rings use the persisted shared boundary tangent;
     interior polyline vertices use the normalized mean of adjacent chord
     directions; subdivision rings use the chord direction. All ring centers
-    lie EXACTLY on the validated polyline (rule 65)."""
+    lie EXACTLY on the validated polyline (rule 65).
+
+    Phase 20D.1: edges passing within ``refine_radius`` of a ``refine_near``
+    point are subdivided at ``refine_spacing`` instead — a purely local
+    resolution change (still linear on the polyline) so junction apertures
+    are resolved at a fraction of the tunnel width."""
     centers: list[FloatArray] = []
     tangents: list[FloatArray] = []
     seg_of_interval: list[int] = []
@@ -94,7 +130,10 @@ def build_ring_chain(segments: list[dict[str, Any]], max_spacing: float) -> Ring
             seg_centers.append(pts[j])
             seg_tangents.append(tan)
             # linear subdivision of the edge (rule 65: on the polyline exactly)
-            n_sub = max(1, math.ceil(lens[j] / max_spacing))
+            spacing = _refined_spacing(
+                pts[j], pts[j + 1], max_spacing, refine_near, refine_radius, refine_spacing
+            )
+            n_sub = max(1, math.ceil(lens[j] / spacing))
             for k in range(1, n_sub):
                 f = k / n_sub
                 seg_centers.append(pts[j] * (1.0 - f) + pts[j + 1] * f)
@@ -375,6 +414,7 @@ def build_render_mesh(
     segments_meta: list[dict[str, Any]],
     *,
     caps: tuple[bool, bool] = (True, True),
+    quad_mask: npt.NDArray[np.bool_] | None = None,
 ) -> RenderMesh:
     """Render-vertex split of the logical tube + caps. ``caps`` selects which
     end caps are emitted ((portal, terminal); the Phase 06 ramp keeps both, an
@@ -384,8 +424,18 @@ def build_render_mesh(
     angle-weighted into each render vertex, so curved sweeps get true surface
     normals; crease splits keep the floor/wall (and any non-tangent
     wall–crown) edges hard. UV: u = perimeter fraction, v = 3D chainage in
-    meters."""
+    meters.
+
+    Phase 20D.1 ``quad_mask`` ((R−1, K) booleans, True = omit) drops whole
+    tube quads at declared junctions. Omitted quads still contribute to the
+    vertex normals and to ``geometrically_closed`` (the closedness of the
+    SWEEP; a declared aperture is not a weld defect), and the per-interval
+    emission order is unchanged, so every SEGMENT primitive carries the exact
+    ``ringIntervalIndexOffsets`` a viewer needs to cut the tube at a ring
+    when intervals no longer share one index count."""
     r, k = mesh.ring_count, mesh.k
+    if quad_mask is not None and quad_mask.shape != (r - 1, k):
+        raise ValueError(f"quad_mask shape {quad_mask.shape} != {(r - 1, k)}")
     ring_pos = mesh.positions[: r * k].reshape(r, k, 3)
     _edge_group, crease = _profile_groups(shape, crease_angle_deg)
 
@@ -418,9 +468,14 @@ def build_render_mesh(
                 uvs[cursor] = (shape.perimeter_u[j], v)
                 cursor += 1
 
-    # tube triangles per segment, normals accumulated angle-weighted
+    # tube triangles per segment, normals accumulated angle-weighted (over
+    # the FULL sweep — an omitted junction quad still shapes its neighbours'
+    # normals, so the aperture rim shades like the surface it was cut from)
     normals = np.zeros_like(positions)
     seg_tris: list[list[tuple[int, int, int]]] = [[] for _ in segments_meta]
+    all_tris: list[tuple[int, int, int]] = []
+    interval_counts = np.zeros(r - 1, dtype=np.int64)
+    omitted_tris = 0
     for i in range(r - 1):
         seg = int(chain.segment_of_interval[i])
         for j in range(k):
@@ -429,11 +484,15 @@ def build_render_mesh(
             b = vid_b[i, jn]
             c = vid_a[i + 1, j]
             d = vid_b[i + 1, jn]
-            seg_tris[seg].append((a, c, b))
-            seg_tris[seg].append((b, c, d))
-    for tris in seg_tris:
-        for t in tris:
-            _accumulate_normal(positions, normals, t)
+            quad = ((a, c, b), (b, c, d))
+            all_tris.extend(quad)
+            if quad_mask is not None and quad_mask[i, j]:
+                omitted_tris += 2
+                continue
+            seg_tris[seg].extend(quad)
+            interval_counts[i] += 6
+    for t in all_tris:
+        _accumulate_normal(positions, normals, t)
 
     # caps: own flat-shaded vertices (removable primitives, rule 66)
     cap_prims: list[RenderPrimitive] = []
@@ -493,7 +552,10 @@ def build_render_mesh(
             else np.linspace(0.0, 1.0, b1 - b0 + 1)
         )
         indices = np.asarray(seg_tris[s], dtype=np.uint32).ravel()
-        assert indices.shape[0] == (b1 - b0) * stride
+        # exact per-interval prefix sums (Phase 20D.1): equal to m × stride
+        # for an uncut segment; a junction aperture shortens its intervals
+        offsets = np.concatenate([[0], np.cumsum(interval_counts[b0:b1])])
+        assert indices.shape[0] == int(offsets[-1]) <= (b1 - b0) * stride
         prims.append(
             RenderPrimitive(
                 name=str(meta.get("segmentId") or meta.get("levelId")),
@@ -504,13 +566,26 @@ def build_render_mesh(
                     "indexStride": stride,
                     "ringIntervalCount": b1 - b0,
                     "ringChainageFractions": [round(float(f), 6) for f in fractions],
+                    "ringIntervalIndexOffsets": [int(v) for v in offsets],
+                    "omittedTriangles": int(sum(6 * k - c for c in interval_counts[b0:b1]) // 3),
                 },
                 indices=indices,
             )
         )
     prims += cap_prims
 
-    closed = all(caps) and _geometrically_closed(positions[:cursor], prims)
+    # closedness of the SWEEP: judged on the full tube (declared junction
+    # apertures are visualization cuts, never a weld defect)
+    if quad_mask is not None and omitted_tris:
+        full_prims = [
+            RenderPrimitive(
+                name="_full", extras={}, indices=np.asarray(all_tris, dtype=np.uint32).ravel()
+            ),
+            *cap_prims,
+        ]
+        closed = all(caps) and _geometrically_closed(positions[:cursor], full_prims)
+    else:
+        closed = all(caps) and _geometrically_closed(positions[:cursor], prims)
     return RenderMesh(
         positions=positions[:cursor].astype(np.float32),
         normals=normals[:cursor].astype(np.float32),
@@ -571,7 +646,12 @@ class TunnelMeshResult:
 
 
 class TunnelMeshBuilder:
-    """Builds the excavation mesh from the Phase 05 artifact ONLY (rule 64/65)."""
+    """Builds the excavation mesh from the Phase 05 artifact (rule 64/65).
+
+    Phase 20D.1: given the level-access artifact the ramp is co-published
+    with, the RAMP_ACCESS turnouts are opened in the ramp's RENDER mesh (the
+    parent side of the typed junction union, ``design/junctions.py``); the
+    logical mesh, its QA and the centerline stay exactly as before."""
 
     def __init__(
         self,
@@ -583,8 +663,23 @@ class TunnelMeshBuilder:
         self.ramp = ramp
         self.profile = profile
 
-    def build(self, smoothed_payload: dict[str, Any], on_progress: Any = None) -> TunnelMeshResult:
+    def build(
+        self,
+        smoothed_payload: dict[str, Any],
+        on_progress: Any = None,
+        *,
+        accesses_payload: dict[str, Any] | None = None,
+    ) -> TunnelMeshResult:
         from minegen.design.glb_writer import write_glb
+        from minegen.design.junctions import (
+            JUNCTION_RING_SPACING_FRACTION,
+            JUNCTION_WINDOW_WIDTHS,
+            TubeEnvelope,
+            cut_tube,
+            find_junctions,
+            junction_report,
+        )
+        from minegen.design.profile import secondary_profile
 
         def progress(i: int, n: int, label: str, stage: str) -> None:
             if on_progress is not None:
@@ -597,7 +692,16 @@ class TunnelMeshBuilder:
             return self._failed("Phase 05 artifact has no segments", {})
         shape = build_profile(self.ramp, self.profile)
         progress(0, len(segments), "", "SEGMENT_STARTED")
-        chain = build_ring_chain(segments, self.profile.ring_max_spacing)
+        width = float(self.ramp.tunnel_width)
+        junctions = find_junctions(smoothed_payload, accesses_payload, None)
+        refine = np.asarray([j.point for j in junctions], dtype=np.float64) if junctions else None
+        chain = build_ring_chain(
+            segments,
+            self.profile.ring_max_spacing,
+            refine_near=refine,
+            refine_radius=JUNCTION_WINDOW_WIDTHS * width,
+            refine_spacing=JUNCTION_RING_SPACING_FRACTION * width,
+        )
         if chain.max_local_turn_deg > self.profile.ring_max_turn_deg + 1e-9:
             return self._failed(
                 f"local turn {chain.max_local_turn_deg:.2f}° exceeds "
@@ -680,7 +784,48 @@ class TunnelMeshBuilder:
             progress(len(segments), len(segments), "", "MESH_COMPLETED")
             return TunnelMeshResult(status="FAILED", report=report, glb=None)
 
-        render = build_render_mesh(mesh, chain, shape, self.profile.crease_angle_deg, segments_meta)
+        # Phase 20D.1: open the turnouts — the ramp is the PARENT of every
+        # level access; each access is swept as an envelope only (its own
+        # mesh lives in the development artifact) at the secondary
+        # tessellation it is rendered with
+        quad_mask = np.zeros((mesh.ring_count - 1, mesh.k), dtype=bool)
+        cuts = []
+        if junctions:
+            child_shape = build_profile(self.ramp, secondary_profile(self.profile))
+            ramp_env = TubeEnvelope.build(chain.centers, chain.tangents, shape)
+            ramp_rings = mesh.positions[: mesh.ring_count * mesh.k].reshape(
+                mesh.ring_count, mesh.k, 3
+            )
+            assert accesses_payload is not None
+            by_level = {
+                str(a["levelId"]): a
+                for a in accesses_payload.get("accesses", [])
+                if a.get("status") == "OK" and a.get("centerline")
+            }
+            for j in junctions:
+                access = by_level[j.level_id]
+                child_chain = build_ring_chain(
+                    [_envelope_segment(access["centerline"]["points"])],
+                    secondary_profile(self.profile).ring_max_spacing,
+                    refine_near=refine,
+                    refine_radius=JUNCTION_WINDOW_WIDTHS * width,
+                    refine_spacing=JUNCTION_RING_SPACING_FRACTION * width,
+                )
+                child_env = TubeEnvelope.build(
+                    child_chain.centers, child_chain.tangents, child_shape
+                )
+                cut = cut_tube(ramp_env, ramp_rings, child_env, j, "PARENT", width)
+                quad_mask |= cut.mask
+                cuts.append(cut)
+        render = build_render_mesh(
+            mesh,
+            chain,
+            shape,
+            self.profile.crease_angle_deg,
+            segments_meta,
+            quad_mask=quad_mask if junctions else None,
+        )
+        report["junctions"] = junction_report(junctions, cuts)
         report["renderVertexCount"] = render.render_vertex_count
         report["geometricallyClosed"] = render.geometrically_closed
         if not render.geometrically_closed:
@@ -696,3 +841,17 @@ class TunnelMeshBuilder:
     def _failed(self, reason: str, extra: dict[str, Any]) -> TunnelMeshResult:
         report = {"status": "FAILED", "failureReason": reason, **extra}
         return TunnelMeshResult(status="FAILED", report=report, glb=None)
+
+
+def _envelope_segment(points: list[float]) -> dict[str, Any]:
+    """A single Phase 06 segment dict for an ENVELOPE-only sweep of a child
+    centerline (tangents from its own chords; no artifact is re-shaped)."""
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    d0 = pts[1] - pts[0]
+    d1 = pts[-1] - pts[-2]
+    d0 = d0 / max(float(np.linalg.norm(d0)), 1e-12)
+    d1 = d1 / max(float(np.linalg.norm(d1)), 1e-12)
+    return {
+        "effectiveCenterline": {"points": pts.ravel().tolist(), "pointCount": int(pts.shape[0])},
+        "boundaryTangents": {"start": d0.tolist(), "end": d1.tolist()},
+    }

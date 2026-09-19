@@ -19,8 +19,12 @@ closed-solid contract; OPEN tubes are validated as manifolds WITH boundary
 (finite, valid indices, non-degenerate, orientation-consistent, the expected
 open boundary edge count, ring/centerline correspondence, envelope).
 
-Out of scope (§4.D, Phase 20D "Unified Development Mesh"): boolean wall
-openings, exact junction CSG, an all-development watertight union.
+Phase 20D.1 (typed junctions, ``design/junctions.py``): the three declared
+junction types are opened in the RENDER meshes as a typed local union — the
+parent's blocking quads and the child's intruding quads are omitted inside
+the junction window; the logical meshes, their QA and every centerline are
+untouched. Still out of scope: exact junction CSG, an all-development
+watertight union.
 """
 
 from __future__ import annotations
@@ -34,7 +38,25 @@ import numpy.typing as npt
 from minegen.core.artifacts import LEVEL_ACCESSES_ARTIFACT
 from minegen.core.models import RampConstraints, TunnelProfile
 from minegen.design.cost_field import DesignCostEvaluator
-from minegen.design.profile import ProfileShape, build_profile
+from minegen.design.junctions import (
+    JUNCTION_RING_SPACING_FRACTION,
+    JUNCTION_WINDOW_WIDTHS,
+    RAMP_TUBE_ID,
+    Junction,
+    JunctionCut,
+    TubeEnvelope,
+    cut_tube,
+    find_junctions,
+    junction_report,
+)
+from minegen.design.profile import (
+    SECONDARY_ARCH_DIVISOR,
+    SECONDARY_ARCH_MIN,
+    SECONDARY_SPACING_FACTOR,
+    ProfileShape,
+    build_profile,
+    secondary_profile,
+)
 from minegen.design.tunnel_mesh import (
     LogicalMesh,
     RenderMesh,
@@ -53,12 +75,6 @@ DevelopmentMeshKind = Literal["LEVEL_ACCESS", "DRIFT", "CROSSCUT"]
 KIND_ORDER: tuple[DevelopmentMeshKind, ...] = ("LEVEL_ACCESS", "DRIFT", "CROSSCUT")
 LEVELS_ARTIFACT = "levels.json"
 
-#: secondary-development RENDER tessellation relative to the main ramp
-#: (§4.F): arch segments halved (floor ≥ 4), subdivision spacing doubled.
-#: The engineering polyline vertices are always rings — nothing is dropped.
-SECONDARY_ARCH_DIVISOR = 2
-SECONDARY_ARCH_MIN = 4
-SECONDARY_SPACING_FACTOR = 2.0
 RING_ON_POLYLINE_TOLERANCE = 1e-6  # m
 
 
@@ -192,19 +208,6 @@ def chain_segments(spec: DevelopmentSpec) -> list[dict[str, Any]]:
             }
         )
     return segs
-
-
-def secondary_profile(profile: TunnelProfile) -> TunnelProfile:
-    """Coarser RENDER tessellation for secondary developments (§4.F); the
-    engineering dimensions (from ``RampConstraints``) are untouched."""
-    return profile.model_copy(
-        update={
-            "arch_segments": max(
-                SECONDARY_ARCH_MIN, profile.arch_segments // SECONDARY_ARCH_DIVISOR
-            ),
-            "ring_max_spacing": profile.ring_max_spacing * SECONDARY_SPACING_FACTOR,
-        }
-    )
 
 
 # --------------------------------------------------------------------------- #
@@ -387,6 +390,11 @@ class _Swept:
     envelope: DevelopmentEnvelopeReport
     length3d: float
     nominal_volume: float
+    #: Phase 20D.1: the closed logical mesh and its swept rings, kept until
+    #: every junction cut of this tube is known (the render mesh is built last)
+    closed: LogicalMesh | None = None
+    rings: FloatArray | None = None
+    quad_mask: npt.NDArray[np.bool_] | None = None
 
 
 class DevelopmentMeshBuilder:
@@ -411,9 +419,25 @@ class DevelopmentMeshBuilder:
     def _evaluator_for(self, kind: DevelopmentMeshKind) -> DesignCostEvaluator:
         return self.crosscut_ev if kind == "CROSSCUT" else self.drift_ev
 
-    def sweep(self, spec: DevelopmentSpec, shape: ProfileShape) -> _Swept:
+    def sweep(
+        self,
+        spec: DevelopmentSpec,
+        shape: ProfileShape,
+        refine_near: FloatArray | None = None,
+    ) -> _Swept:
+        """Sweep one development: ring chain (refined near ``refine_near``
+        junction points), closed logical mesh, OPEN-aware QA and envelope.
+        The RENDER mesh is built by ``render`` once every junction cut of
+        this tube is known; ``sweep`` alone builds the uncut render mesh."""
         segs = chain_segments(spec)
-        chain = build_ring_chain(segs, self.profile.ring_max_spacing)
+        width = float(self.ramp.tunnel_width)
+        chain = build_ring_chain(
+            segs,
+            self.profile.ring_max_spacing,
+            refine_near=refine_near,
+            refine_radius=JUNCTION_WINDOW_WIDTHS * width,
+            refine_spacing=JUNCTION_RING_SPACING_FRACTION * width,
+        )
         if chain.max_local_turn_deg > self.profile.ring_max_turn_deg + 1e-9:
             raise ValueError(
                 f"{spec.development_id}: local turn {chain.max_local_turn_deg:.2f}° exceeds "
@@ -423,30 +447,69 @@ class DevelopmentMeshBuilder:
         logical = strip_caps(closed, spec.start, spec.end)
         topology = validate_development_topology(logical, chain, spec)
         envelope = validate_development_envelope(self._evaluator_for(spec.kind), logical)
-        meta = [
-            {"segmentId": s["segmentId"], "levelId": spec.level_id, "effectiveSource": spec.kind}
-            for s in segs
-        ]
-        render = build_render_mesh(
-            closed,
+        length = float(chain.chainage[-1])
+        sw = _Swept(
+            spec,
             chain,
+            RenderMesh(
+                positions=np.zeros((0, 3), dtype=np.float32),
+                normals=np.zeros((0, 3), dtype=np.float32),
+                uvs=np.zeros((0, 2), dtype=np.float32),
+                primitives=[],
+                geometrically_closed=False,
+                render_vertex_count=0,
+            ),
+            topology,
+            envelope,
+            length,
+            shape.analytic_area * length,
+            closed=closed,
+            rings=closed.positions[: closed.ring_count * closed.k].reshape(
+                closed.ring_count, closed.k, 3
+            ),
+            quad_mask=np.zeros((closed.ring_count - 1, closed.k), dtype=bool),
+        )
+        self.render(sw, shape)
+        return sw
+
+    def render(self, sw: _Swept, shape: ProfileShape) -> None:
+        """(Re)build the render mesh of a swept development with its current
+        junction quad mask (None when no quad is omitted)."""
+        assert sw.closed is not None and sw.quad_mask is not None
+        spec = sw.spec
+        meta = [
+            {"segmentId": pid, "levelId": spec.level_id, "effectiveSource": spec.kind}
+            for pid, _ in spec.pieces
+        ]
+        sw.render = build_render_mesh(
+            sw.closed,
+            sw.chain,
             shape,
             self.profile.crease_angle_deg,
             meta,
             caps=(spec.start == "CAP", spec.end == "CAP"),
+            quad_mask=sw.quad_mask if bool(sw.quad_mask.any()) else None,
         )
-        length = float(chain.chainage[-1])
-        return _Swept(spec, chain, render, topology, envelope, length, shape.analytic_area * length)
 
     def build(
         self,
         accesses_payload: dict[str, Any] | None,
         levels_payload: dict[str, Any] | None,
         on_progress: Any = None,
+        *,
+        ramp_payload: dict[str, Any] | None = None,
     ) -> DevelopmentMeshResult:
+        """Phase 20D.1: ``ramp_payload`` (the Effective Ramp the accesses are
+        co-published with) lets the RAMP_ACCESS junction open the access's
+        own mouth; without it the access start stays an untouched OPEN ring."""
         from minegen.design.glb_writer import write_glb
 
         specs = specs_from_artifacts(accesses_payload, levels_payload)
+        junctions = find_junctions(ramp_payload, accesses_payload, levels_payload)
+        junction_points: dict[str, list[FloatArray]] = {}
+        for j in junctions:
+            junction_points.setdefault(j.parent_id, []).append(j.point)
+            junction_points.setdefault(j.child_id, []).append(j.point)
         if not specs:
             return DevelopmentMeshResult(
                 "FAILED",
@@ -466,8 +529,9 @@ class DevelopmentMeshBuilder:
         for i, spec in enumerate(specs):
             if on_progress is not None:
                 on_progress(i, n, spec.development_id, "SEGMENT_STARTED")
+            near = junction_points.get(spec.development_id)
             try:
-                sw = self.sweep(spec, shape)
+                sw = self.sweep(spec, shape, np.asarray(near, dtype=np.float64) if near else None)
             except ValueError as exc:
                 problems.append(str(exc))
                 continue
@@ -479,7 +543,9 @@ class DevelopmentMeshBuilder:
                     f"{sw.envelope.above_terrain} above terrain"
                 )
             swept.append(sw)
+        cuts = self._open_junctions(junctions, swept, shape, ramp_payload)
         report = self._report(swept, shape)
+        report["junctions"] = junction_report(junctions, cuts)
         if problems:
             report["status"] = "FAILED"
             report["failureReason"] = "; ".join(problems[:20]) + (
@@ -504,6 +570,64 @@ class DevelopmentMeshBuilder:
         if on_progress is not None:
             on_progress(n, n, "", "MESH_COMPLETED")
         return DevelopmentMeshResult("SUCCESS", report, glb)
+
+    def _open_junctions(
+        self,
+        junctions: list[Junction],
+        swept: list[_Swept],
+        shape: ProfileShape,
+        ramp_payload: dict[str, Any] | None,
+    ) -> list[JunctionCut]:
+        """Apply every declared junction to the tubes this builder owns:
+        the child side of RAMP_ACCESS (the parent ramp is cut by the tunnel
+        builder), both sides of ACCESS_DRIFT and DRIFT_CROSSCUT. Envelopes
+        are built once per tube; the ramp's from its centerline at the main
+        tessellation. Render meshes are rebuilt only for cut tubes."""
+        if not junctions:
+            return []
+        width = float(self.ramp.tunnel_width)
+        by_id = {s.spec.development_id: s for s in swept}
+        envelopes: dict[str, TubeEnvelope] = {
+            s.spec.development_id: TubeEnvelope.build(s.chain.centers, s.chain.tangents, shape)
+            for s in swept
+        }
+        if ramp_payload is not None and ramp_payload.get("status") == "SUCCESS":
+            main_shape = build_profile(self.ramp, self.main_profile)
+            points = np.asarray(
+                [j.point for j in junctions if j.parent_id == RAMP_TUBE_ID], dtype=np.float64
+            )
+            ramp_chain = build_ring_chain(
+                ramp_payload["segments"],
+                self.main_profile.ring_max_spacing,
+                refine_near=points if points.shape[0] else None,
+                refine_radius=JUNCTION_WINDOW_WIDTHS * width,
+                refine_spacing=JUNCTION_RING_SPACING_FRACTION * width,
+            )
+            envelopes[RAMP_TUBE_ID] = TubeEnvelope.build(
+                ramp_chain.centers, ramp_chain.tangents, main_shape
+            )
+        cuts: list[JunctionCut] = []
+        touched: set[str] = set()
+        for j in junctions:
+            parent_env = envelopes.get(j.parent_id)
+            child_env = envelopes.get(j.child_id)
+            if parent_env is None or child_env is None:
+                continue  # a side this builder does not sweep (or that failed)
+            parent = by_id.get(j.parent_id)
+            child = by_id.get(j.child_id)
+            if parent is not None and parent.rings is not None and parent.quad_mask is not None:
+                cut = cut_tube(parent_env, parent.rings, child_env, j, "PARENT", width)
+                parent.quad_mask |= cut.mask
+                touched.add(j.parent_id)
+                cuts.append(cut)
+            if child is not None and child.rings is not None and child.quad_mask is not None:
+                cut = cut_tube(child_env, child.rings, parent_env, j, "CHILD", width)
+                child.quad_mask |= cut.mask
+                touched.add(j.child_id)
+                cuts.append(cut)
+        for dev_id in sorted(touched):
+            self.render(by_id[dev_id], shape)
+        return cuts
 
     def _report(self, swept: list[_Swept], shape: ProfileShape) -> dict[str, Any]:
         per_kind: dict[str, dict[str, Any]] = {}
@@ -570,7 +694,7 @@ class DevelopmentMeshBuilder:
                 }
                 for s in swept
             ],
-            "booleanUnion": "NOT_IMPLEMENTED",  # Phase 20D scope (§4.D)
+            "booleanUnion": "TYPED_JUNCTION_UNION",  # Phase 20D.1 (typed, local)
         }
 
 
@@ -609,6 +733,10 @@ def batch_render(swept: list[_Swept]) -> RenderMesh:
                         "indexStride": prim.extras["indexStride"],
                         "ringIntervalCount": prim.extras["ringIntervalCount"],
                         "ringChainageFractions": prim.extras["ringChainageFractions"],
+                        # Phase 20D.1: exact per-interval prefix sums (a cut
+                        # piece no longer has one index count per interval)
+                        "ringIntervalIndexOffsets": prim.extras["ringIntervalIndexOffsets"],
+                        "omittedTriangles": prim.extras["omittedTriangles"],
                     }
                 )
                 tube_idx[kind].append(idx)
@@ -646,6 +774,9 @@ def batch_render(swept: list[_Swept]) -> RenderMesh:
 
 
 __all__ = [
+    "SECONDARY_ARCH_DIVISOR",
+    "SECONDARY_ARCH_MIN",
+    "SECONDARY_SPACING_FACTOR",
     "DevelopmentMeshBuilder",
     "DevelopmentMeshResult",
     "DevelopmentSpec",

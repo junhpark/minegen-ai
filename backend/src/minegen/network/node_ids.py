@@ -32,6 +32,12 @@ def ramp_junction_id(level_id: str) -> str:
     return f"{NodeType.RAMP_JUNCTION.value}:{level_id}"
 
 
+def drift_station_junction_id(level_id: str, station_index: int) -> str:
+    """The JUNCTION node where crosscut station ``k`` leaves the level drift
+    (``JUNCTION:<level>:S±kk``; the drift pieces are split there too)."""
+    return f"{NodeType.JUNCTION.value}:{level_id}:S{station_index:+03d}"
+
+
 def shaft_collar_id(shaft_id: str) -> str:
     return f"{NodeType.SHAFT_COLLAR.value}:{shaft_id}"
 

@@ -1392,7 +1392,14 @@ class DesignService:
                 )
             )
 
-        result = builder.build(smoothed_payload, on_progress=progress)
+        # Phase 20D.1: the level accesses the ACTIVE ramp is co-published
+        # with (already a fingerprint input of the tunnel mesh) declare the
+        # RAMP_ACCESS turnouts the ramp render mesh opens; LEGACY has none
+        result = builder.build(
+            smoothed_payload,
+            on_progress=progress,
+            accesses_payload=self.active_level_accesses(scenario_id),
+        )
         payload = dict(result.report)
         if result.glb is not None:
             revision = hashlib.sha256(result.glb).hexdigest()
@@ -1516,7 +1523,14 @@ class DesignService:
             )
 
         t0 = time.perf_counter()
-        result = builder.build(accesses_payload, levels_payload, on_progress=progress)
+        # Phase 20D.1: the active Effective Ramp (a fingerprint input already)
+        # is the PARENT of every level access at its turnout
+        result = builder.build(
+            accesses_payload,
+            levels_payload,
+            on_progress=progress,
+            ramp_payload=self.effective_ramp(scenario_id) if accesses_payload is not None else None,
+        )
         payload = dict(result.report)
         payload["generationSeconds"] = time.perf_counter() - t0
         # which owning artifacts actually CONTRIBUTED geometry: a persisted
