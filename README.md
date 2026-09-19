@@ -64,10 +64,14 @@ Or both with Docker: `docker compose up`.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs the full backend gate (ruff check, ruff
-format --check, mypy strict, pytest) and frontend gate (typecheck, eslint,
-prettier --check, vitest, build) on every push to `main` and every pull
-request.
+`.github/workflows/verify-full.yml` is the one CI release authority: a
+backend component job (ruff check, ruff format --check, mypy strict,
+unfiltered pytest with the collection proof) and a frontend component job
+(typecheck, eslint, prettier --check, vitest, build) each publish their
+`verification-summary.json`, and the `Release Authority` job aggregates them
+with `scripts/verify.py authority` into one fail-closed verdict, on every push
+to `main` and every pull request. `verify-fast.yml` is the fast feedback tier
+and never certifies a release. See `docs/verification.md`.
 
 ## Quality gates
 

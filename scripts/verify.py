@@ -825,7 +825,7 @@ def cmd_full(args: argparse.Namespace) -> int:
         # reports a partial run. It never claims release on its own.
         r.frontend_full()
         return r.finish(extra)
-    # the exact gate list of the old CI (.github/workflows/ci.yml), unfiltered
+    # the exact gate list of the retired ci.yml (AC-01H), unfiltered
     r.backend_static()
     r.pytest("pytest-full", [])
     if not backend_only:

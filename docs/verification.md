@@ -209,6 +209,11 @@ component modes; each summary records its `component` (`full-backend`,
 `full-frontend`, or `full` for the whole local run) so the aggregate names
 which component proved each gate (`gateSource`). The original `ci.yml`
 (backend `pytest -q` + the frontend job) ran the same gate set a second time
-per revision; it is retired once same-revision old/new equivalence is
-demonstrated on the AC-01H transition commit (see
-`docs/consolidation-baseline.md`, F08).
+per revision. It is RETIRED (AC-01H commit 2) after same-revision equivalence
+was demonstrated on the transition revision `c9f5913a0636`: old `pytest -q`
+ran 1241 tests with 0 failures and the new unfiltered `pytest-full` executed
+1241 == collected 1241 with the coverage proof satisfied; the five
+frontend gates and the vitest counts (40 files / 263 tests) matched command for
+command; both trigger sets were `pull_request` + `push: main`. Per PR revision the
+unfiltered backend pytest now runs once instead of twice and the frontend full
+gate set once instead of twice (42.0 duplicated runner-minutes → 40.5).

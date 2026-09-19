@@ -1,6 +1,6 @@
 # VA-01 FULL tier → AC-01H: the ONE CI release authority.
 #
-# Two COMPONENT jobs run the exact gate list of the old ci.yml through
+# Two COMPONENT jobs run the exact gate list of the retired ci.yml through
 # scripts/verify.py — backend (ruff · format · mypy · pytest UNFILTERED ·
 # collection proof) and frontend (typecheck · lint · prettier · vitest ·
 # build) — and each publishes its machine-readable verification-summary.json.

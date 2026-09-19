@@ -1226,5 +1226,7 @@ teardown fingerprint check. Cached verification fixtures
 `scripts/generate_verification_fixtures.py`) carry a content fingerprint that
 FULL re-derives cleanly — a mismatch is an explicit STALE VERIFICATION
 FIXTURE failure. Outputs: `backend/.verification/verification-summary.json`
-plus per-step logs (git-ignored). CI: `verify-fast.yml` / `verify-full.yml`
-run alongside the original `ci.yml` until same-HEAD equivalence is proven.
+plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
+`verify-full.yml` (backend + frontend component jobs aggregated by the
+`Release Authority` job — the ONE CI release verdict, AC-01H); the original
+`ci.yml` was retired after same-revision equivalence was proven.
