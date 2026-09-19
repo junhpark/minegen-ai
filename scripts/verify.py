@@ -7,6 +7,8 @@ mypy, npm scripts) — no new test framework:
     python scripts/verify.py fast        # inner loop: static + unmarked tests + cached canaries
     python scripts/verify.py feature     # fast + clean canaries (TABULAR / WARPED-301 / 307)
     python scripts/verify.py full        # authoritative: every gate the old CI ran, unfiltered
+    python scripts/verify.py full --backend-only    # CI component: static, unfiltered pytest, proof
+    python scripts/verify.py full --frontend-only   # CI component: the five frontend gates (AC-01H)
     python scripts/verify.py full --closeout   # + golden / legacy / survey / screen-audit summaries
     python scripts/verify.py benchmark   # runtime observation only (never a correctness gate)
     python scripts/verify.py collect-full      # invariant: collected(FULL) == collected(all)
@@ -33,7 +35,13 @@ between. A partial run (``--backend-only``, a non-FULL tier) yields a
 COMPONENT authority only; ``authority`` records the typed reasons a run is
 not release evidence, and ``verify.py authority`` combines component
 summaries of the same revision into one verdict, re-judging each from its own
-recorded evidence. On a pull-request CI run the checked-out commit is
+recorded evidence. Since AC-01H that aggregate IS the CI release verdict: the
+``Verify FULL`` workflow runs ``--backend-only`` and ``--frontend-only`` as
+two component jobs and one ``release-authority`` job that downloads both
+summaries and runs ``verify.py authority`` — a component job being green is
+component evidence, never the verdict, and a missing component is a typed
+withheld verdict (``NO_COMPONENT_SUMMARIES`` / ``GATE_NOT_PASSED_BY_ANY_
+COMPONENT``), never a skipped job. On a pull-request CI run the checked-out commit is
 GitHub's synthetic merge commit, so the summary records both it and the PR
 head SHA (``ci.prHeadSha``) and labels which one the run certifies
 (``certifiedShaKind``).
@@ -713,20 +721,36 @@ def cmd_authority(args: argparse.Namespace) -> int:
     withheld, so it can later serve as a single CI release gate.
     """
     summaries: list[dict[str, Any]] = []
+    missing: list[str] = []
     for raw in args.summaries:
         path = Path(raw)
+        if not path.exists():
+            # a component whose evidence never arrived is recorded, never
+            # silently dropped: the aggregate then withholds authority with a
+            # typed reason instead of judging a smaller set (AC-01H §14)
+            missing.append(str(raw))
+            continue
         data = json.loads(path.read_text(encoding="utf-8"))
-        data.setdefault("label", path.stem)
+        # the component names itself (``component`` written by ``verify.py
+        # full --backend-only|--frontend-only``); a bare summary falls back
+        # to its file stem
+        data.setdefault("label", data.get("component") or path.stem)
         summaries.append(data)
     verdict = aggregate_authority(summaries)
+    if missing:
+        verdict["missingSummaries"] = missing
+        verdict["reasons"] = [f"COMPONENT_SUMMARY_MISSING:{m}" for m in missing] + verdict[
+            "reasons"
+        ]
+        verdict["release"] = False
     VERIFICATION.mkdir(parents=True, exist_ok=True)
     out = VERIFICATION / "release-authority.json"
     out.write_text(json.dumps(verdict, indent=1, sort_keys=True), encoding="utf-8")
     print(
         f"release authority: {verdict['release']} "
-        f"for {verdict['certifiedSha']} ({', '.join(verdict['certifiedShaKinds'])})"
+        f"for {verdict.get('certifiedSha')} ({', '.join(verdict.get('certifiedShaKinds', []))})"
     )
-    for gate, owner in verdict["gateSource"].items():
+    for gate, owner in verdict.get("gateSource", {}).items():
         print(f"  {'PASS   ' if owner else 'MISSING'} {gate}{' ← ' + owner if owner else ''}")
     for reason in verdict["reasons"]:
         print(f"  BLOCKED {reason}")
@@ -776,12 +800,27 @@ def cmd_feature(args: argparse.Namespace) -> int:
 
 def cmd_full(args: argparse.Namespace) -> int:
     r = Runner("full")
+    frontend_only = bool(getattr(args, "frontend_only", False))
+    backend_only = bool(getattr(args, "backend_only", False))
+    if frontend_only and backend_only:  # argparse already refuses this; belt and braces
+        raise SystemExit("--backend-only and --frontend-only are mutually exclusive")
+    # the component this run IS, recorded in the summary so the aggregate can
+    # name who proved what without trusting a file name (AC-01H)
+    component = "full-frontend" if frontend_only else "full-backend" if backend_only else "full"
+    extra: dict[str, Any] = {"tier": "FULL", "pytestExpression": None, "component": component}
+    if frontend_only:
+        # the five frontend gates and NOTHING backend: no static checks, no
+        # pytest, no collection proof. The summary then carries
+        # frontendFullSuite evidence only; backend gates read NOT_RUN and the
+        # proof reads COVERAGE_PROOF_MISSING, exactly as evaluate_authority
+        # reports a partial run. It never claims release on its own.
+        r.frontend_full()
+        return r.finish(extra)
     # the exact gate list of the old CI (.github/workflows/ci.yml), unfiltered
     r.backend_static()
     r.pytest("pytest-full", [])
-    if not args.backend_only:
+    if not backend_only:
         r.frontend_full()
-    extra: dict[str, Any] = {"tier": "FULL", "pytestExpression": None}
     cov = collection_coverage()
     # what the unfiltered run actually EXECUTED (the collected-vs-collected
     # comparison is true by construction; this one is not)
@@ -1104,14 +1143,28 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="with --closeout: also the 22-case legacy regression (hours)",
     )
-    full.add_argument("--backend-only", action="store_true")
+    component = full.add_mutually_exclusive_group()
+    component.add_argument(
+        "--backend-only",
+        action="store_true",
+        help="CI component: backend static + unfiltered pytest + collection proof; no frontend",
+    )
+    component.add_argument(
+        "--frontend-only",
+        action="store_true",
+        help="CI component: the five frontend gates; no backend static, pytest or coverage proof",
+    )
     sub.add_parser("benchmark")
     sub.add_parser("collect-full")
     auth = sub.add_parser("authority")
     auth.add_argument(
         "summaries",
-        nargs="+",
-        help="verification-summary.json files of the components to aggregate",
+        nargs="*",
+        help=(
+            "verification-summary.json files of the components to aggregate; a path that "
+            "does not exist, or no path at all, is a WITHHELD verdict (fail closed), never a "
+            "smaller aggregate"
+        ),
     )
     args = ap.parse_args(argv)
     if args.mode == "collect-full":

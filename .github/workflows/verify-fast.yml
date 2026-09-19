@@ -1,6 +1,6 @@
-# VA-01 FAST tier (additive — the original ci.yml stays untouched until the
-# same-HEAD old/new FULL equivalence is proven, §34). Inner-loop feedback on
-# pull requests: static checks + unmarked tests + cached canaries.
+# VA-01 FAST tier. Inner-loop feedback on pull requests: static checks +
+# unmarked tests + cached canaries. Development acceleration only — the CI
+# release verdict is the Release Authority job of verify-full.yml (AC-01H).
 name: Verify FAST
 
 on:
@@ -32,4 +32,8 @@ jobs:
         with:
           name: verification-fast
           path: backend/.verification/
+          # .verification is a dotted directory: without this the upload finds
+          # nothing (the pre-AC-01H runs published 0 artifacts)
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 7
