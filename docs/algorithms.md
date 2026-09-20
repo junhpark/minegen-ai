@@ -1481,17 +1481,56 @@ CSG, voxel remesh or global SDF:
   `JUNCTION_WINDOW_WIDTHS` (2) tunnel widths along each centerline from the
   junction point, rings are refined to `JUNCTION_RING_SPACING_FRACTION`
   (0.1) × width (every refinement ring still lies on the validated polyline)
-  and whole quads (ring interval × profile edge) are omitted: child quads
-  whose four vertices are inside-or-on the parent's swept envelope (the
-  intruding tube, coincident floor and roof included — the parent keeps those
-  surfaces) and parent NON-FLOOR quads whose surface the child excavation
-  occupies over a meaningful area (Phase 20D.1.1: at least
-  `PARENT_QUAD_OVERLAP_MIN` = 6 of the 3 × 3 deterministic bilinear surface
-  samples at `PARENT_QUAD_SAMPLE_FRACTIONS` = (1/6, 1/2, 5/6) lie strictly
-  inside the child — two of three rows / columns, i.e. two thirds of the
-  quad). The parent FLOOR edge (identified from the profile geometry by
-  `profile.floor_edge_index`, never a hard-coded index) is never a
-  parent-side cut: it is the doorway's supporting floor. The original
+  and quads (ring interval × profile edge) are decided by three typed rules:
+  - **PARENT** (Phase 20D.1.1): a NON-FLOOR quad whose surface the child
+    excavation occupies over a meaningful area is omitted whole — at least
+    `PARENT_QUAD_OVERLAP_MIN` = 6 of the 3 × 3 deterministic bilinear surface
+    samples at `PARENT_QUAD_SAMPLE_FRACTIONS` = (1/6, 1/2, 5/6) lie strictly
+    inside the child (a sample-count threshold, not a measured area
+    fraction). The parent FLOOR edge (identified from the profile geometry by
+    `profile.floor_edge_index`, never a hard-coded index) is never a
+    parent-side cut: it is the doorway's supporting floor.
+  - **CHILD non-floor**: the 20D.1 containment rule — a quad whose four
+    vertices are inside-or-on the parent's swept envelope (the intruding tube
+    and the coincident roof; the parent keeps those surfaces) is omitted
+    whole.
+  - **CHILD floor** (Phase 20D.1.2, typed local child-floor boundary
+    clipping): a floor quad fully inside-or-on the parent is omitted; fully
+    outside it is emitted unchanged; STRADDLING the parent boundary it is
+    clipped — the inside-or-on portion is removed and only the outside
+    remainder is emitted. The child profile floor is ONE edge across the
+    tunnel width, so at a shallow `RAMP_ACCESS` turnout a floor quad reaches
+    from inside the parent to outside it: the whole-quad rule kept every
+    such quad and left a false floating floor slab across the ramp
+    (measured on the emitted GLBs: TABULAR L01 0.71 m, L02 1.63 m and
+    WARPED-301 L03 / L04 1.00 m above the descending ramp floor at the
+    slab's far edge, blocking the ramp uphill and hiding it downhill), while
+    deleting the whole quad would open a hole in the legitimate child floor
+    outside the parent. The boundary is the SAME tolerance surface the
+    vertex rule uses (`sd == tol`), located by `CLIP_BISECTION_ITERATIONS`
+    (40) deterministic bisection steps on the quad's own edges — no player
+    radius, step height, doorway size or mesh-proximity heuristic; the
+    remainder (a convex polygon: a quad cut by one chord, or two corner
+    triangles in the diagonal case decided by the quad centre) is
+    fan-triangulated in the quad's own orientation into NEW render vertices
+    at the quad's place in the interval order (`FloorClip`,
+    `build_render_mesh(floor_clips=…)`, absent by default so every earlier
+    caller is bit-identical). Reveal metadata stays exact:
+    `ringIntervalIndexOffsets` are the authority, `indexStride` is raised to
+    the segment's actual maximum interval count where a clipped interval
+    exceeds the nominal 6 × K (the additive `nominalIndexStride` keeps the
+    uncut count), `omittedTriangles` keeps its meaning (original sweep
+    triangles not emitted as-is, whole omissions and clipped originals) and
+    the additive `clippedQuads` / `replacementTriangles` (ranges and SEGMENT
+    extras), `childClippedFloorQuads` / `childClippedFloorTriangles` /
+    `childReplacementTriangles` (junction openings) and
+    `renderClippedFloorQuads` / `renderReplacementTriangles` (developments)
+    account for the remainder geometry. Two junctions clipping the same
+    quad is an explicit `JUNCTION_CLIP_CONFLICT` failure, never an
+    approximation. This is not a general CSG: the child interior shell no
+    longer occludes the parent travel surface, but the excavation union is
+    still a typed local cut of two swept tubes.
+  The original
   "all four VERTICES strictly inside" parent rule could never remove a
   vertical wall quad — its bottom edge lies on the parent floor and the
   child floor is welded at (T-junction) or above (turnout) that height — so
