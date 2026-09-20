@@ -255,7 +255,12 @@ def test_every_serviceable_level_has_exactly_one_welded_validated_access(
         d = analyze_centerline(a.points)
         assert d.max_abs_gradient <= sc.ramp.max_gradient + 1e-9
         assert d.min_plan_radius is None or d.min_plan_radius >= sc.ramp.min_turn_radius - 0.05
-        assert d.monotonic_descent or a.points[0, 2] <= a.points[-1, 2]  # bounded vertical
+        # bounded vertical (rule 188): the branch descends with the ramp floor
+        # through the overlap, then a monotone vertical curve + constant tail
+        # reach the entry — at most ONE direction change, never an oscillation
+        dz_sign = np.sign(np.diff(a.points[:, 2]))
+        dz_sign = dz_sign[dz_sign != 0]
+        assert int(np.sum(dz_sign[1:] != dz_sign[:-1])) <= 1
         assert np.all(np.abs(a.points[:, 0]) <= sc.world.size_x / 2)
         assert np.all(np.abs(a.points[:, 1]) <= sc.world.size_y / 2)
         assert a.validation["envelopeHardViolations"] == 0
@@ -1177,3 +1182,338 @@ def test_stage3_survivors_keep_shortlisted_candidates_that_stage_four_rejected()
     old_list = reconstruct_shortlist(res, 3, survivors=survivors_without_failed_detailed(res))
     assert new_list == [ids[0], ids[1], ids[2]]
     assert old_list == [ids[0], ids[2]] and new_list != old_list
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20B.x — RAMP_ACCESS vertical continuity (ramp-floor follow)
+# --------------------------------------------------------------------------- #
+
+
+def _straight_ramp(grade: float = -0.12, length: float = 240.0, spacing: float = 2.0) -> np.ndarray:
+    """Straight main ramp heading north (compass 0) that descends at ``grade``."""
+    n = round(length / spacing) + 1
+    y = np.arange(n, dtype=np.float64) * spacing
+    return np.column_stack([np.zeros(n), y, grade * y])
+
+
+def d_max_turn(pts: np.ndarray) -> float:
+    """Maximum 3-D turn (deg) between consecutive delivered chords — what the
+    Phase 06 sweep facets rings on (``ringMaxTurnDeg`` = 7°)."""
+    d = np.diff(pts, axis=0)
+    d = d / np.linalg.norm(d, axis=1, keepdims=True)
+    cosang = np.clip(np.einsum("ij,ij->i", d[:-1], d[1:]), -1.0, 1.0)
+    return float(np.degrees(np.arccos(cosang)).max())
+
+
+def _profile_checks(conn, floor, g_max: float, jch: float = 100.0) -> dict[str, float]:  # type: ignore[no-untyped-def]
+    """The V1–V2 contract on one connector: (a) every ramp-floor-following
+    station sits EXACTLY on the ramp floor beneath it, (b) the follow run is
+    the contiguous plan-overlap prefix, (c) the tail is ONE constant gradient
+    to the exact entry, (d) the delivered maximum edge gradient is the gate
+    quantity and bounded, (e) no oscillation: the vertical profile changes
+    direction at most once (down the ramp, then toward the entry)."""
+    from minegen.layout.access import VERTICAL_CURVE_K, ramp_follow_vertical
+
+    pts = conn.points
+    chord = np.linalg.norm(np.diff(pts[:, :2], axis=0), axis=1)
+    cum = np.concatenate([[0.0], np.cumsum(chord)])
+    dist, z_floor, beyond = floor.floor_elevation(pts[:, :2], jch)
+    h = conn.handoff_index
+    assert 1 <= h <= pts.shape[0] - 2
+    # (b) contiguous overlap prefix, never the last station
+    assert np.all(dist[1 : h + 1] < floor.width) and not np.any(beyond[1 : h + 1])
+    assert h == pts.shape[0] - 2 or dist[h + 1] >= floor.width or bool(beyond[h + 1])
+    # (a) V1 — elevation continuity with the ramp floor on every follow station
+    np.testing.assert_allclose(pts[1 : h + 1, 2], z_floor[1 : h + 1], atol=1e-9, rtol=0.0)
+    assert conn.ramp_follow_length == pytest.approx(cum[h], abs=1e-12)
+    # (c) vertical curve + constant tail, exact entry, reported tail gradient
+    _tail_contract(pts, chord, cum, h, conn.gradient, conn.vertical_curve_length, VERTICAL_CURVE_K)
+    # (d) the gate quantity is the steepest delivered edge
+    edge = np.abs(np.diff(pts[:, 2])) / chord
+    assert conn.max_gradient == pytest.approx(float(edge.max()), abs=1e-12)
+    assert conn.max_gradient <= g_max + 1e-9
+    # (e) at most one direction change of the vertical profile
+    sign = np.sign(np.diff(pts[:, 2]))
+    sign = sign[sign != 0]
+    assert int(np.sum(sign[1:] != sign[:-1])) <= 1
+    # the identical profile is reproduced by the public helper (determinism)
+    z2, h2, f2, t2, c2 = ramp_follow_vertical(pts[:, :2], chord, pts[0, 2], pts[-1, 2], floor, jch)
+    assert h2 == h and f2 == conn.ramp_follow_length and t2 == conn.gradient
+    assert c2 == conn.vertical_curve_length
+    np.testing.assert_array_equal(z2, pts[:, 2])
+    return {"handoff": float(cum[h]), "tail": float(conn.gradient), "max": float(conn.max_gradient)}
+
+
+def _tail_contract(pts, chord, cum, h, tail_gradient, curve, k) -> None:  # type: ignore[no-untyped-def]
+    """From the hand-off station: the grade changes monotonically by at most
+    ``spacing / k`` per edge over the vertical curve, is the constant
+    ``tail_gradient`` afterwards, and the entry is exact. The curve length
+    is ``k × |Δg|`` unless the whole tail had to become the parabola."""
+    g = np.diff(pts[h:, 2]) / chord[h:]
+    g_h = (pts[h, 2] - pts[h - 1, 2]) / chord[h - 1]
+    dg = np.diff(np.concatenate([[g_h], g]))
+    # monotone: no sign change of the grade increments
+    signs = np.sign(dg[np.abs(dg) > 1e-12])
+    assert signs.size == 0 or np.all(signs == signs[0])
+    # rate bound per edge (parabola: Δg per edge = spacing / k, the last curve
+    # edge may be partial); beyond the curve the grade is the constant tail
+    u_start = cum[h:-1] - cum[h]
+    after = u_start >= curve - 1e-9  # edges entirely on the constant tail
+    # a parabola's chord-gradient increment is (chord_prev + chord_next) / (2k)
+    adjacent = 0.5 * (chord[h - 1 : -1] + chord[h:])
+    assert np.all(np.abs(dg[~after]) <= adjacent[~after] / k + 1e-9)
+    np.testing.assert_allclose(g[after], tail_gradient, atol=1e-9, rtol=0.0)
+    assert g[-1] == pytest.approx(tail_gradient, abs=1e-9)
+    assert 0.0 <= curve <= float(cum[-1] - cum[h]) + 1e-9
+    if curve < float(cum[-1] - cum[h]) - 1e-9:
+        assert curve == pytest.approx(k * abs(tail_gradient - g_h), abs=1e-9)
+
+
+@pytest.mark.parametrize(
+    ("kind", "end", "label"),
+    [
+        ("R", np.array([42.0, 150.0, -12.0 + 0.35]), "climbing chord (+0.5 %)"),
+        ("R", np.array([38.0, 160.0, -12.0 - 4.4]), "descending chord (-7 %)"),
+        ("L", np.array([-40.0, 148.0, -12.0 - 1.6]), "left turnout (-3 %)"),
+    ],
+)
+def test_v1_v2_branch_follows_the_ramp_floor_then_one_constant_tail(
+    kind: str, end: np.ndarray, label: str
+) -> None:
+    """V1/V2 (Phase 20B.x): on a straight 12 % ramp the branch's stations
+    inside the plan overlap (closer than one tunnel width to the ramp
+    centerline) sit on the ramp floor beneath them, and from the hand-off
+    station one constant gradient reaches the entry exactly."""
+    from minegen.layout.access import RampFloorReference
+
+    ramp = _straight_ramp()
+    floor = RampFloorReference.from_ramp(ramp, 5.0, 60.0)
+    start = np.array([0.0, 100.0, -12.0])  # junction on the ramp centerline
+    conn = build_connector(start, 0.0, end, 18.0, 2.0, kind, floor, 100.0)
+    assert conn is not None, label
+    np.testing.assert_array_equal(conn.points[0], start)
+    np.testing.assert_allclose(conn.points[-1], end, atol=1e-9)
+    checks = _profile_checks(conn, floor, 0.12)
+    # the overlap on a 5 m tunnel with R = 18 m covers ≈ 10–14 m of branch
+    assert 6.0 <= checks["handoff"] <= 16.0
+    # the hand-off grade change is spread by the vertical curve: the 3-D chord
+    # turn stays inside the sweep's 7° contract even on the R = 18 m arc (a
+    # kinked profile measured 9.64° on the fixture and failed the sweep)
+    assert d_max_turn(conn.points) <= 7.0
+    # inside the overlap the branch descends with the ramp (12 % × cos φ ≤ 12 %)
+    assert checks["max"] <= 0.12 + 1e-9
+
+
+def test_v6_chord_only_profile_is_the_measured_seam_step_and_must_fail_v1() -> None:
+    """V6 mutation kill: a revert to the legacy chord-exact profile (no
+    ramp-floor reference) leaves the branch ABOVE the ramp floor at the
+    hand-off — the measured +0.3 … +1.1 m step of the 20D.1.2 STOP — so the
+    V1 elevation-continuity assertion fails on it. The legacy path itself
+    is preserved bit for bit when no reference is given."""
+    from minegen.layout.access import RampFloorReference
+
+    ramp = _straight_ramp()
+    floor = RampFloorReference.from_ramp(ramp, 5.0, 60.0)
+    start = np.array([0.0, 100.0, -12.0])
+    end = np.array([42.0, 150.0, -12.0 + 0.35])
+    new = build_connector(start, 0.0, end, 18.0, 2.0, "R", floor, 100.0)
+    legacy = build_connector(start, 0.0, end, 18.0, 2.0, "R", None)
+    assert new is not None and legacy is not None
+    # legacy: whole branch one chord gradient — the pre-20B.x formula, exactly
+    chord = np.linalg.norm(np.diff(legacy.points[:, :2], axis=0), axis=1)
+    cum = np.concatenate([[0.0], np.cumsum(chord)])
+    expect = float(start[2]) + (float(end[2] - start[2]) / float(cum[-1])) * cum
+    expect[-1] = float(end[2])
+    np.testing.assert_array_equal(legacy.points[:, 2], expect)
+    assert legacy.handoff_index == 0 and legacy.ramp_follow_length == 0.0
+    assert legacy.max_gradient == pytest.approx(abs(legacy.gradient), abs=1e-12)
+    # the seam step the chord-only profile leaves at the hand-off station
+    h = new.handoff_index
+    _, z_floor, _ = floor.floor_elevation(legacy.points[:, :2], 100.0)
+    step = float(legacy.points[h, 2] - z_floor[h])
+    assert step > 0.3, step  # the class of defect measured on the fixtures
+    with pytest.raises(AssertionError):
+        np.testing.assert_allclose(legacy.points[1 : h + 1, 2], z_floor[1 : h + 1], atol=1e-3)
+    # and the corrected profile removes it entirely at the same station
+    assert abs(float(new.points[h, 2] - z_floor[h])) <= 1e-9
+
+
+def test_v4_vertical_profile_never_changes_plan_geometry_or_endpoints() -> None:
+    """V4 topology invariant at the connector: the ramp-floor profile changes
+    z of interior stations ONLY — plan samples, word, pieces, terminal
+    heading, horizontal length and both endpoints are identical to the
+    chord-only connector, so junctions, entries and every derived node /
+    edge are unchanged."""
+    from minegen.layout.access import RampFloorReference
+
+    ramp = _straight_ramp()
+    floor = RampFloorReference.from_ramp(ramp, 5.0, 60.0)
+    start = np.array([0.0, 100.0, -12.0])
+    for kind, end in (
+        ("R", np.array([42.0, 150.0, -11.65])),
+        ("L", np.array([-40.0, 148.0, -13.6])),
+    ):
+        new = build_connector(start, 0.0, end, 18.0, 2.0, kind, floor, 100.0)
+        old = build_connector(start, 0.0, end, 18.0, 2.0, kind, None)
+        assert new is not None and old is not None
+        np.testing.assert_array_equal(new.points[:, :2], old.points[:, :2])
+        np.testing.assert_array_equal(new.points[0], old.points[0])
+        np.testing.assert_array_equal(new.points[-1], old.points[-1])
+        assert new.word == old.word and new.pieces == old.pieces
+        assert new.terminal_heading == old.terminal_heading
+        assert new.horizontal_length == old.horizontal_length
+        assert new.sense == old.sense and new.sense_rank == old.sense_rank
+
+
+def test_ramp_floor_reference_stops_at_the_ramp_terminal() -> None:
+    """A branch whose junction sits a few metres before the ramp end (the
+    fixture's L04) follows the floor only while its projection is interior
+    to the ramp; beyond the terminal vertex there is no ramp floor, so the
+    constant tail starts there — never a flat continuation of the last z."""
+    from minegen.layout.access import RampFloorReference
+
+    ramp = _straight_ramp(length=104.0)  # ends 4 m after the junction
+    floor = RampFloorReference.from_ramp(ramp, 5.0, 60.0)
+    start = np.array([0.0, 100.0, -12.0])
+    end = np.array([42.0, 150.0, -12.0 - 0.5])
+    conn = build_connector(start, 0.0, end, 18.0, 2.0, "R", floor, 100.0)
+    assert conn is not None
+    _, _, beyond = floor.floor_elevation(conn.points[:, :2], 100.0)
+    h = conn.handoff_index
+    assert 1 <= h <= 3 and bool(beyond[h + 1]) and not bool(beyond[h])
+    _profile_checks(conn, floor, 0.12)
+
+
+def _plan_vertical_contract(  # type: ignore[no-untyped-def]
+    ramp_points: np.ndarray, accesses, width: float, g_max: float, reach: float
+) -> list[dict[str, float]]:
+    """V1/V2/V3/V5 on a real plan: every OK access follows the ramp floor
+    through its plan overlap, hands off to one constant tail, ends exactly
+    at its anchor, reports the profile, and the ramp it was planned on is
+    untouched by the planner."""
+    from minegen.layout.access import VERTICAL_CURVE_K, VERTICAL_PROFILE, RampFloorReference
+
+    floor = RampFloorReference.from_ramp(ramp_points, width, reach)
+    rows = []
+    for a in accesses:
+        assert a.ok and a.points is not None and a.anchor is not None
+        pts = a.points
+        assert a.junction_chainage is not None
+        dist, z_floor, beyond = floor.floor_elevation(pts[:, :2], float(a.junction_chainage))
+        assert a.ramp_floor_follow_length is not None and a.tail_gradient is not None
+        chord = np.linalg.norm(np.diff(pts[:, :2], axis=0), axis=1)
+        cum = np.concatenate([[0.0], np.cumsum(chord)])
+        h = int(np.searchsorted(cum, a.ramp_floor_follow_length - 1e-9))
+        assert cum[h] == pytest.approx(a.ramp_floor_follow_length, abs=1e-9)
+        assert 1 <= h <= pts.shape[0] - 2, (a.level_id, h)
+        # V1: on the ramp floor through the overlap (geometry tolerance)
+        np.testing.assert_allclose(pts[1 : h + 1, 2], z_floor[1 : h + 1], atol=1e-9, rtol=0.0)
+        assert np.all(dist[1 : h + 1] < width) and not np.any(beyond[1 : h + 1])
+        # V2: exact entry, vertical curve then constant tail
+        np.testing.assert_allclose(pts[-1], a.anchor.position, atol=1e-6)
+        assert pts[-1, 2] == a.elevation
+        assert a.vertical_curve_length is not None
+        _tail_contract(
+            pts, chord, cum, h, a.tail_gradient, a.vertical_curve_length, VERTICAL_CURVE_K
+        )
+        assert d_max_turn(pts) <= 7.0  # the sweep's ring faceting contract (rule 65)
+        # gate quantity + bound, and the persisted profile fields
+        edge = np.abs(np.diff(pts[:, 2])) / chord
+        assert a.max_gradient == pytest.approx(float(edge.max()), abs=1e-12)
+        assert a.max_gradient <= g_max + 1e-9
+        d = a.to_dict(include_points=False)
+        assert d["verticalProfile"] == VERTICAL_PROFILE
+        assert d["rampFloorFollowLength"] == a.ramp_floor_follow_length
+        assert d["verticalCurveLength"] == a.vertical_curve_length
+        assert d["tailGradient"] == a.tail_gradient
+        # the design-side seam step at the hand-off station is zero
+        rows.append(
+            {
+                "handoff": float(cum[h]),
+                "step": float(pts[h, 2] - z_floor[h]),
+                "tail": float(a.tail_gradient),
+            }
+        )
+    assert all(abs(r["step"]) <= 1e-9 for r in rows)
+    assert all(r["handoff"] > 0.0 for r in rows)
+    return rows
+
+
+def test_v5_tabular_plan_follows_the_ramp_floor_and_leaves_the_ramp_untouched(
+    tabular: tuple[Scenario, SyntheticWorld], search: tuple[LayoutV2Search, LayoutSearchResult]
+) -> None:
+    sc, world = tabular
+    s, res = search
+    w = _winner(s, res)
+    before = np.array(w.points, copy=True)
+    _, plan = _plan(sc, world, s, res)
+    assert plan.feasible
+    # V3: the planner never changes the ramp centerline
+    np.testing.assert_array_equal(w.points, before)
+    assert plan.gate_taper_arc_m is not None
+    reach = 2.0 * plan.gate_taper_arc_m + sc.ramp.tunnel_width
+    rows = _plan_vertical_contract(
+        w.points, plan.accesses, sc.ramp.tunnel_width, plan.max_gradient_limit, reach
+    )
+    assert len(rows) == len(plan.accesses) >= 1
+
+
+def test_v5_warped_plan_follows_the_ramp_floor(
+    warped_301_search: tuple[LayoutV2Search, LayoutSearchResult],
+) -> None:
+    """V5 (slow, WARPED-301 shared read-only fixture): the same rule, the
+    same contract, on the implicit body's SPIRAL winner — no orebody-type
+    branch exists in the vertical profile."""
+    s, res = warped_301_search
+    w = _winner(s, res)
+    assert w.access_plan is not None
+    plan = w.access_plan
+    assert plan.gate_taper_arc_m is not None
+    width = s.scenario.ramp.tunnel_width
+    rows = _plan_vertical_contract(
+        w.points, plan.accesses, width, plan.max_gradient_limit, 2.0 * plan.gate_taper_arc_m + width
+    )
+    # the helix stacks its turns on one plan circle: every followed station
+    # must sit within a fraction of the pitch of its OWN junction elevation
+    for a in plan.accesses:
+        assert a.points is not None and a.junction_position is not None
+        assert float(np.max(np.abs(a.points[:, 2] - a.junction_position[2]))) < 15.0
+    assert len(rows) >= 2
+
+
+def test_ramp_floor_reference_window_picks_the_junction_turn_of_a_stacked_helix() -> None:
+    """A SPIRAL ramp stacks its turns on ONE plan circle. The reference must
+    read the floor of the junction's own turn — the unwindowed plan nearest
+    point could pick the turn one pitch above or below (measured: 25 / 50 /
+    125 m 'lips' on the WARPED-301 spiral before the window existed)."""
+    from minegen.layout.access import RampFloorReference
+
+    r, g, spacing = 30.0, 0.12, 2.0
+    n_turns = 4
+    s = np.arange(0.0, 2 * math.pi * r * n_turns, spacing)
+    ramp = np.column_stack([r * np.cos(s / r), r * np.sin(s / r), -g * s])
+    floor = RampFloorReference.from_ramp(ramp, 5.0, 60.0)
+    ch = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(ramp, axis=0), axis=1))])
+    # junction on the THIRD turn, heading along the helix (CCW → tangent)
+    k = int(np.searchsorted(ch, 2.5 * 2 * math.pi * r))
+    start = ramp[k]
+    tangent = ramp[k + 1] - ramp[k]
+    heading = math.atan2(tangent[0], tangent[1]) % (2 * math.pi)
+    # entry ~45 m outward, one level down
+    out = np.array([start[0], start[1], 0.0]) / r
+    end = start + 45.0 * out + np.array([0.0, 0.0, -3.0])
+    seen = 0
+    for kind in ("L", "R"):
+        conn = build_connector(start, heading, end, 18.0, 2.0, kind, floor, float(ch[k]))
+        if conn is None:
+            continue
+        seen += 1
+        h = conn.handoff_index
+        assert h >= 1
+        # the followed stations sit on the junction's own turn, never a pitch away
+        pitch = 2 * math.pi * r * g
+        assert float(np.max(np.abs(conn.points[: h + 1, 2] - start[2]))) < 0.5 * pitch
+        lo, hi = floor.window(float(ch[k]))
+        assert lo > 0 and ch[lo] >= ch[k] - 5.0 - spacing and ch[hi - 1] <= ch[k] + 60.0 + spacing
+        assert conn.max_gradient <= 0.12 + 1e-9
+    assert seen >= 1

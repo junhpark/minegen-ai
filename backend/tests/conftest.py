@@ -137,6 +137,8 @@ TEST_MARKERS: dict[str, tuple[str, ...]] = {
     "test_simplification_is_lossless": ("slow",),
     "test_cut_and_fill_generic_backbone_is_independent_of_longhole_parameters": ("slow",),
     "test_conservative_screen_is_a_heuristic_and_carries_no_subset_contract": ("slow",),
+    # Phase 20B.x: the ramp-floor vertical profile on the WARPED-301 winner plan
+    "test_v5_warped_plan_follows_the_ramp_floor": ("slow",),
     "test_candidate_policy_reconstruction_is_deterministic": ("slow",),
     "test_warped_vein_is_accepted_by_layout_v2_but_not_by_the_legacy_pipeline": ("slow",),
     # AC-01G: the stage-boundary proofs that pay for a clean WARPED-301 run.

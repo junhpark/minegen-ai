@@ -719,10 +719,12 @@ heading, the weld at the level entry is position-only and
 is reported per access (never gated). Per-access observability adds
 `turnoutArcLength`, `straightLength` and `pathToChordRatio =
 horizontalLength / junctionToEntryPlanSep` (a diagnostic — a ratio of 1
-is NOT an acceptance criterion). z is linear in delivered chord length
-(constant edge gradient `Δz / Σchord`).
+is NOT an acceptance criterion). z follows the Phase 20B.x ramp-floor
+profile below (before 20B.x it was linear in delivered chord length, one
+constant edge gradient `Δz / Σchord`).
 
-Acceptance on the delivered branch: `|g| ≤ g_max + 1e-9`, circumradius
+Acceptance on the delivered branch: `max |Δz / chord| ≤ g_max + 1e-9` over
+every delivered edge (20B.x; before it the single chord gradient), circumradius
 ≥ R_min − 0.05 m, 15 m ≤ L ≤ 300 m, `evaluate_and_validate` with cover
 established (world, terrain, cover, restricted, orebody buffer under the
 policy), clearance ≥ required, profile boundary points through
@@ -769,6 +771,129 @@ pillar gate evaluates every surviving connector against the full ramp
 polyline). WARPED-301: winner `SPIRAL-n1-CCW-e+0-g0.120`, 14/14 accesses,
 pillar 10.1–13.8 m, turnout 81–91° (a gentle helix passes the 100° gate by
 design), branch 48–97 m.
+
+### Phase 20B.x — RAMP_ACCESS vertical continuity (`ramp_follow_vertical`, rule 188)
+
+Why. With the 20D.1.2 child-floor clipping in place the emitted geometry
+at every RAMP→LEVEL_ACCESS junction was correct (retained child floor
+inside the parent 0.00 m², ramp-corridor probes 0), and the physics
+acceptance then exposed the DESIGN itself: the branch started at the
+junction elevation with one chord gradient (−7.3 % / +0.7 % / −6.8 % on
+the TABULAR fixture, −2.4 … −3.2 % on WARPED-301) while the ramp kept
+descending at 12 % under the shared corridor, so where the walking surface
+hands off from the ramp floor to the access floor (s ≈ 8–10 m along the
+branch) the access floor sat ABOVE the ramp floor by a vertical step:
+TABULAR L01 +0.30 m, L02 +1.10 m, L03 +0.35 m; WARPED-301 L03 +0.50 m,
+L04 +0.52 m, L05–L16 +0.51 … +0.67 m (first LEVEL_ACCESS floor hit minus
+the last ramp-floor hit, rays down the emitted GLB at 1 m stations of the
+access centerline). A 0.3 m dynamic capsule without autostep does not
+climb that.
+
+Rule. The connector keeps its plan geometry (one-turn CS, 2 m stations)
+and assigns z in two regimes from the junction outward:
+
+* RAMP-FLOOR FOLLOW: station `k ≥ 1` takes the ramp floor elevation
+  beneath it — `z_ramp` interpolated at the nearest point of the PLAN-
+  projected ramp polyline (`RampFloorReference.floor_elevation`; the
+  gravity-aligned ramp floor is horizontal across its width, so the
+  nearest-centerline elevation IS the floor under the branch) — for the
+  contiguous run of stations whose plan distance to the ramp centerline is
+  `< tunnel_width` and whose projection is interior to the ramp (a
+  projection clamped at the window's terminal vertex has no ramp floor
+  beneath it: the fixture's L04 junction sits 4.5 m before the ramp end).
+  The last station never follows, so the tail always has one edge.
+* VERTICAL CURVE + CONSTANT TAIL: from the hand-off station `h` a parabolic
+  vertical curve of `L_v = K·|g_t − g_h|` metres (`VERTICAL_CURVE_K` = 100 m
+  per unit algebraic grade difference — at most 1 % grade change per metre,
+  0.02 per 2 m station = 1.15°, which keeps the 3-D ring turn of a
+  minimum-radius turnout, 2 m / 18 m = 6.37°, inside the sweep's 7°
+  `ringMaxTurnDeg` contract; the first, kinked implementation measured
+  9.64° / 8.89° on the TABULAR fixture's L02 / L04 and the development-mesh
+  sweep refused it) carries the grade from the last following edge `g_h` to
+  the tail gradient `g_t`, and the constant `g_t` then reaches the entry
+  EXACTLY. `g_t` is closed form (`vertical_curve_tail`): with
+  `Δ = g_t − g_h` and remaining length `L_r`,
+  `dz = g_h·L_r + Δ·L_r − (K/2)·Δ·|Δ|`, the smaller root so `L_v ≤ L_r`;
+  when even the whole tail is shorter than that curve the entire tail is the
+  parabola (`g_t = 2·dz/L_r − g_h`, reported `verticalCurveLength = L_r`) and
+  the hard gradient gate judges the result. The grade profile is monotone
+  after the hand-off, so the delivered maximum edge gradient is
+  `max(|g_h|, |g_t|)` and a branch has at most one vertical direction change.
+
+Without a reference (`floor=None`, unit tests) the profile is the legacy
+chord-exact one bit for bit. The hard gate judges `max |Δz / chord|` over
+every delivered edge; the access reports `maxGradient` (that maximum),
+`tailGradient`, `rampFloorFollowLength` (hand-off chainage),
+`verticalCurveLength` and
+`verticalProfile = RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL`. The
+ramp-floor query is restricted to the junction's own ramp run
+(`RampFloorReference.window`: chainage `[junction − width, junction +
+2·taper + width]`, ≈ 55 m ≪ half a minimum-radius helix turn): a SPIRAL
+stacks its turns on ONE plan circle, and the first, unwindowed plan
+nearest point read the turn one pitch above or below the junction on
+WARPED-301 (measured 25 / 50 / 125 m 'lips', the helix pitch multiples).
+Junction, entry,
+plan samples, connector word / pieces / terminal heading, the ramp
+centerline and every downstream topology are unchanged (V4: plan samples
+and endpoints are bit-identical to the chord-only connector); the same
+code path serves the geometric screen and stage 4, TABULAR and WARPED.
+
+What the rule proves and what it does not. Along the traffic centerline
+the branch floor lies ON the ramp floor through the overlap, so the
+design-side seam step at the hand-off is 0 (tested to 1e-9) and the
+per-edge gradient there is `g_ramp · cos φ` (φ = departure angle), never
+more than the ramp's. An un-banked (rule 26) branch cross-section can
+coincide with the inclined ramp floor only along ONE curve, so the retained
+child floor beyond the ramp wall sits above the ramp floor by
+`g·(λ − w/2)·tan φ` at the wall crossing of its floor cross-line (λ = plan
+offset of the branch centerline): 0 where the centerline itself crosses
+the wall, growing to `g·(w/2)·sin φ_h ≈ 0.20 m` at the far end of the
+opening (`λ_h = (w/2)(1 + cos φ_h)`, 12 % ramp, R = 18 m, w = 5 m). An exact
+wall-line match would require a branch gradient of
+`g·(sec φ + (λ − w/2)/(R cos² φ))`, which exceeds `g_max` beyond φ ≈ 20°
+(1.14 g at the centerline crossing, 1.5 g at the far end) — the hard gate
+forbids it by construction, and a g_max-limited variant that tracks the
+wall crossing was evaluated analytically (far-end residual ≈ 0.17 m, i.e.
+no material gain for a rule that couples the branch design to `g_max`).
+The far-end residual is the recorded limitation; a banked junction floor
+belongs to the Phase 20D unified development mesh. The 20D.1.2 clipping is
+unchanged: with the branch on the ramp floor the child floor is at or
+below the ramp floor inside the ramp footprint (clipped at the ≤ tol
+boundary or retained SUNK under the ramp floor, never above it), so the
+retained-inside-area / ramp-corridor-probe evidence keeps its zeros.
+
+Golden consequence (layout-v2 suite, `phase20c4_layout_v2.json` baseline):
+TABULAR-REFERENCE, CUT_AND_FILL, WARPED_VEIN-301/307, IRREGULAR and
+ACCESS-INFEASIBLE keep their winners and level counts; access lengths move
+by ≈ +0.02 m and `winnerMaxAccessGradient` rises from the old chord value
+to the ramp-follow value (the branch now carries the ramp's grade through
+the overlap). GEOMETRY-STRESS (15 m sublevels, R = 20 m, 10 % ramp, access
+`g_max` 0.12) loses its SWITCHBACK winner: 9 of its 21 levels (L01, L03, …
+L17) were served by 21–27 m accesses climbing at ≈ 10.2 % straight out of
+the junction elevation — the unphysical floor step itself — and once the
+branch starts ON the descending ramp floor the same entry cannot be reached
+inside 12 %: typed GRADE_LIMIT (25–27 connectors per level), while every
+gradient-passing alternative — a 90–160 m descending branch from a junction
+above the level — runs alongside the switchback legs and fails the B-2 rock
+pillar (17–20 per level); the B-5 diagnostic re-run ignoring junction
+spacing finds 0 valid candidates, so greedy starvation is excluded. No
+candidate is feasible. This is a HARD CONTRACT change of that stress case
+and is reported as such (rule 132); it is not hidden, the rule is not
+tuned to keep the old winner (rule 164 precedent), and the committed
+baseline is NOT regenerated by this phase — the layout-v2 golden smoke
+(`tests/test_layout_v2_golden_smoke.py`, FULL tier) therefore fails on
+GEOMETRY-STRESS until the intentional change is accepted and
+`python -m minegen.regression layout-v2 --suite full --label phase20bx_layout_v2 --out golden`
+re-baselines it. WARPED_VEIN-307 keeps its winner, score and 9/9 levels;
+three shortlist slots swap (stage-3 order moves with the screen's new
+gradient outcomes), a contract-field change with no winner change.
+
+Residual measured on the regenerated acceptance fixtures: WARPED-301 L16
+(the junction 8.8 m before the ramp's terminal ring) keeps one child-floor
+sliver 0.05 m above the ramp floor at 0.8 m before the terminal plane,
+lateral 2.0 m — inside the 20D.1.2 tolerance surface (max intrusion
+0.060 m ≤ 0.1 m) and counted by the ramp-corridor probe as 1 non-ramp first
+hit of 55; every other RAMP_ACCESS junction probes 0.
 
 ## Phase 20B.1 — stand-off / clearance semantics audit (S1) and local refinement
 

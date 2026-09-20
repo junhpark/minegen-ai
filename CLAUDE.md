@@ -1160,7 +1160,9 @@ code, the code and the rule win and the map is corrected.
      R = minTurnRadius tangent to the ramp heading, then one straight to
      the anchor POINT; no terminal arc, no ARC+STRAIGHT+ARC, sweep ≤ π so
      loops are structurally impossible; a target inside the turning circle
-     is CONNECTOR_UNAVAILABLE) with a chord-exact constant gradient. The
+     is CONNECTOR_UNAVAILABLE) with the rule-188 vertical profile
+     (ramp-floor follow through the plan overlap, then one constant
+     chord gradient to the entry). The
      anchor heading stays the drift direction; the access's
      `terminalHeading` is the ACTUAL final-straight heading and the weld at
      the level entry is position-only (`terminalHeadingMismatchDeg` is
@@ -1709,3 +1711,44 @@ code, the code and the rule win and the map is corrected.
      `performance.serviceReference`. Ramp ↔ level-drift proximity is
      measured by no gate (Gate C step 0 observation); a separation
      DIAGNOSTIC, never a gate, is a follow-up.
+
+188. RAMP_ACCESS vertical continuity (Phase 20B.x; 187 is reserved for the
+     in-flight Phase 20D.2 walkthrough rule). A level-access branch leaves
+     the main ramp INSIDE the ramp's own floor, so its vertical profile is
+     assigned on the delivered stations in two regimes, one geometric rule
+     for every orebody type and family
+     (`layout/access.py::ramp_follow_vertical`): RAMP-FLOOR FOLLOW — while
+     the branch centerline is closer than one tunnel width (plan) to the
+     ramp centerline and its projection is interior to the ramp, each
+     station takes the ramp floor elevation beneath it (the nearest ramp
+     centerline point's elevation; the gravity-aligned ramp floor is
+     horizontal across its width; the nearest-point query is restricted
+     to the junction's own ramp run, `[junction − width, junction +
+     2·taper + width]`, because a SPIRAL stacks its turns on one plan
+     circle) — then a parabolic VERTICAL CURVE of `VERTICAL_CURVE_K × |Δg|`
+     metres (K = 100 m per unit grade difference: at most 1 % grade change
+     per metre, so the 3-D ring turn of a minimum-radius turnout stays
+     inside the sweep's 7° faceting contract; closed form
+     `vertical_curve_tail`, whole-tail parabola when the tail is shorter)
+     and a CONSTANT TAIL to the EXACT entry. The junction, the entry, every plan
+     sample, the ramp centerline and the level / drift / crosscut topology
+     are unchanged (only interior z moves); the hard gradient gate judges
+     the MAXIMUM delivered edge gradient and nothing is clamped or relaxed:
+     a level whose access can no longer reach the entry inside `g_max`
+     once the branch starts ON the ramp floor is a typed GRADE_LIMIT (the
+     old feasibility of such a level was the unphysical floor step itself
+     — measured on the GEOMETRY-STRESS golden, whose old winner served 9
+     such levels; its gradient-passing alternatives fail the rock pillar).
+     No level-id, family or orebody-type branch, and no
+     `max(ramp_z, access_z)` render patch: the persisted branch IS the
+     surface. Honesty bound: an un-banked branch profile can coincide with
+     the inclined ramp floor only along ONE curve — it is matched along the
+     traffic centerline (seam step 0 at the hand-off), while the retained
+     child floor beyond the ramp wall sits above the ramp floor by
+     `g·(λ − w/2)·tan φ` (0 where the centerline crosses the wall, ≈ 0.2 m
+     at the far end of the opening for a 12 % ramp, R = 18 m, w = 5 m);
+     an exact wall-line match needs `g·(sec φ + (λ − w/2)/(R cos² φ))`,
+     above `g_max` past φ ≈ 20°, so the gradient gate forbids it by
+     construction. A banked junction floor is Phase 20D (unified
+     development mesh) scope; the 20D.1.2 child-floor clipping is neither
+     relaxed nor replaced by this rule.
