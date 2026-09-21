@@ -20,10 +20,10 @@
  "metadata": {
   "authority": "CHARACTERIZATION FREEZE, LAYER A (discrete) \u2014 records the observed layout-v2 DECISION outputs at the freeze SHA: ids, order, status, reasons, shortlist, ranking, winner, authority, basis, counts, key paths, declared literals. Floats are removed, never rounded; their equivalence is proved same-runner at test time. Not an engineering specification; a difference is a signal to explain, never on its own a defect. Never auto-rewritten.",
   "caseKey": "ACCESS-INFEASIBLE",
-  "contentFingerprint": "3a748b912983f727169dcdf6ebe8a6c39abce41f6702cdb19d30d2cd8fe47ae7",
+  "contentFingerprint": "04a3939b1f50a93d59238296cd2d0e536353fc04cd31a3ac573b51aafbcf7435",
   "fixtureVersion": 2,
-  "generatedAt": "2026-09-18T14:42:11+00:00",
-  "generatedFromGitSha": "3951d98d91235facb6b95e9d646f0dc62b7c9835",
+  "generatedAt": "2026-09-21T01:34:04+00:00",
+  "generatedFromGitSha": "b13319cfe0a18c4229377ac5319413e9c4468784",
   "schemaVersion": 2
  },
  "observations": {
@@ -13066,6 +13066,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13076,11 +13077,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13117,6 +13121,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13127,11 +13132,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13168,6 +13176,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13178,11 +13187,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13219,6 +13231,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13229,11 +13242,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13270,6 +13286,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13280,11 +13297,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13321,6 +13341,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13331,11 +13352,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13372,6 +13396,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13382,11 +13407,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13423,6 +13451,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13433,11 +13462,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13474,6 +13506,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13484,11 +13517,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13525,6 +13561,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13535,11 +13572,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13576,6 +13616,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13586,11 +13627,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13627,6 +13671,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13637,11 +13682,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13679,6 +13727,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13687,11 +13736,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -13826,6 +13878,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13834,11 +13887,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13876,6 +13932,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13884,11 +13941,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13926,6 +13986,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13934,11 +13995,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -13976,6 +14040,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -13984,11 +14049,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14026,6 +14094,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14034,11 +14103,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14076,6 +14148,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14084,11 +14157,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14126,6 +14202,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14134,11 +14211,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14176,6 +14256,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14184,11 +14265,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14226,6 +14310,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14234,11 +14319,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14276,6 +14364,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14284,11 +14373,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14326,6 +14418,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14334,11 +14427,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14376,6 +14472,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14384,11 +14481,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14426,6 +14526,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14434,11 +14535,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -14573,6 +14677,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14581,11 +14686,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14623,6 +14731,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14631,11 +14740,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14673,6 +14785,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14681,11 +14794,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14723,6 +14839,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14731,11 +14848,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14773,6 +14893,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14781,11 +14902,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14823,6 +14947,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14831,11 +14956,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14873,6 +15001,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14881,11 +15010,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14923,6 +15055,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14931,11 +15064,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -14973,6 +15109,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -14981,11 +15118,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15023,6 +15163,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15031,11 +15172,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15073,6 +15217,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15081,11 +15226,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15123,6 +15271,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15131,11 +15280,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15173,6 +15325,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15181,11 +15334,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -15319,6 +15475,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15329,11 +15486,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15370,6 +15530,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15380,11 +15541,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15421,6 +15585,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15431,11 +15596,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15472,6 +15640,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15482,11 +15651,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15523,6 +15695,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15533,11 +15706,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15574,6 +15750,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15584,11 +15761,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15625,6 +15805,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15635,11 +15816,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15676,6 +15860,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15686,11 +15871,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15727,6 +15915,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15737,11 +15926,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15778,6 +15970,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15788,11 +15981,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15829,6 +16025,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15839,11 +16036,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15880,6 +16080,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15890,11 +16091,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -15931,6 +16135,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -15941,11 +16146,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -16079,6 +16287,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16089,11 +16298,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16130,6 +16342,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16140,11 +16353,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16181,6 +16397,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16191,11 +16408,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16232,6 +16452,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16242,11 +16463,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16283,6 +16507,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16293,11 +16518,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16334,6 +16562,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16344,11 +16573,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16385,6 +16617,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16395,11 +16628,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16436,6 +16672,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16446,11 +16683,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16487,6 +16727,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16497,11 +16738,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16538,6 +16782,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16548,11 +16793,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16589,6 +16837,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16599,11 +16848,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16640,6 +16892,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16650,11 +16903,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16691,6 +16947,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16701,11 +16958,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -16840,6 +17100,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16848,11 +17109,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16890,6 +17154,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16898,11 +17163,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16940,6 +17208,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16948,11 +17217,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -16990,6 +17262,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -16998,11 +17271,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17040,6 +17316,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17048,11 +17325,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17090,6 +17370,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17098,11 +17379,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17140,6 +17424,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17148,11 +17433,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17190,6 +17478,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17198,11 +17487,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17240,6 +17532,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17248,11 +17541,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17290,6 +17586,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17298,11 +17595,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17340,6 +17640,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17348,11 +17649,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17390,6 +17694,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17398,11 +17703,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17440,6 +17748,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17448,11 +17757,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -17586,6 +17898,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17596,11 +17909,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17637,6 +17953,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17647,11 +17964,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17688,6 +18008,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17698,11 +18019,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17739,6 +18063,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17749,11 +18074,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17790,6 +18118,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17800,11 +18129,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17841,6 +18173,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17851,11 +18184,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17892,6 +18228,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17902,11 +18239,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17943,6 +18283,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -17953,11 +18294,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -17994,6 +18338,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18004,11 +18349,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18045,6 +18393,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18055,11 +18404,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18096,6 +18448,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18106,11 +18459,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18147,6 +18503,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18157,11 +18514,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18199,6 +18559,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18207,11 +18568,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -18346,6 +18710,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18356,11 +18721,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18398,6 +18766,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18406,11 +18775,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18447,6 +18819,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18457,11 +18830,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18499,6 +18875,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18507,11 +18884,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18548,6 +18928,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18558,11 +18939,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18600,6 +18984,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18608,11 +18993,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18649,6 +19037,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18659,11 +19048,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18701,6 +19093,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18709,11 +19102,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18750,6 +19146,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18760,11 +19157,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18802,6 +19202,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18810,11 +19211,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18852,6 +19256,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18860,11 +19265,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18902,6 +19310,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18910,11 +19319,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -18951,6 +19363,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -18961,11 +19374,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -19101,6 +19517,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19109,11 +19526,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19151,6 +19571,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19159,11 +19580,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19201,6 +19625,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19209,11 +19634,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19251,6 +19679,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19259,11 +19688,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19301,6 +19733,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19309,11 +19742,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19351,6 +19787,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19359,11 +19796,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19401,6 +19841,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19409,11 +19850,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19451,6 +19895,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19459,11 +19904,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19501,6 +19949,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19509,11 +19958,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19551,6 +20003,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19559,11 +20012,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19601,6 +20057,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19609,11 +20066,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19651,6 +20111,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19659,11 +20120,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19701,6 +20165,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19709,11 +20174,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -19849,6 +20317,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19857,11 +20326,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19899,6 +20371,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19907,11 +20380,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19949,6 +20425,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -19957,11 +20434,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -19999,6 +20479,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20007,11 +20488,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20049,6 +20533,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20057,11 +20542,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20099,6 +20587,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20107,11 +20596,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20149,6 +20641,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20157,11 +20650,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20199,6 +20695,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20207,11 +20704,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20249,6 +20749,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20257,11 +20758,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20299,6 +20803,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20307,11 +20812,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20349,6 +20857,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20357,11 +20866,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20399,6 +20911,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20407,11 +20920,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20449,6 +20965,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20457,11 +20974,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -20597,6 +21117,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20605,11 +21126,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20647,6 +21171,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20655,11 +21180,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20697,6 +21225,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20705,11 +21234,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20747,6 +21279,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20755,11 +21288,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20797,6 +21333,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20805,11 +21342,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20847,6 +21387,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20855,11 +21396,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20897,6 +21441,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20905,11 +21450,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20947,6 +21495,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -20955,11 +21504,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -20997,6 +21549,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21005,11 +21558,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21047,6 +21603,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21055,11 +21612,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21097,6 +21657,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21105,11 +21666,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21147,6 +21711,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21155,11 +21720,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21197,6 +21765,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21205,11 +21774,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -21344,6 +21916,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21354,11 +21927,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21396,6 +21972,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21404,11 +21981,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21446,6 +22026,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21454,11 +22035,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21496,6 +22080,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21504,11 +22089,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21546,6 +22134,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21554,11 +22143,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21596,6 +22188,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21604,11 +22197,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21646,6 +22242,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21654,11 +22251,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21696,6 +22296,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21704,11 +22305,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21746,6 +22350,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21754,11 +22359,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21796,6 +22404,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21804,11 +22413,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21846,6 +22458,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21854,11 +22467,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21896,6 +22512,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21904,11 +22521,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      },
      {
       "anchor": {
@@ -21946,6 +22566,7 @@
       "minPlanRadius": null,
       "pathToChordRatio": null,
       "rampCenterlineDistance": null,
+      "rampFloorFollowLength": null,
       "rampJunction": null,
       "rampJunctionChainage": null,
       "rampJunctionEdgeIndex": null,
@@ -21954,11 +22575,14 @@
       "selectionCost": null,
       "status": "INFEASIBLE",
       "straightLength": null,
+      "tailGradient": null,
       "terminalHeadingDeg": null,
       "terminalHeadingMismatchDeg": null,
       "turnoutArcLength": null,
       "turnoutHeadingChangeDeg": null,
-      "validation": {}
+      "validation": {},
+      "verticalCurveLength": null,
+      "verticalProfile": "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
      }
     ],
     "scores": {
@@ -22349,7 +22973,7 @@
    "winnerId": null
   },
   "c6Payload": {
-   "keyPathCount": 34758,
+   "keyPathCount": 35382,
    "keyPathShape": [
     "layoutVersion",
     "status",
@@ -22581,6 +23205,10 @@
     "candidates[].levelAccesses[].length3d",
     "candidates[].levelAccesses[].horizontalLength",
     "candidates[].levelAccesses[].maxGradient",
+    "candidates[].levelAccesses[].verticalProfile",
+    "candidates[].levelAccesses[].rampFloorFollowLength",
+    "candidates[].levelAccesses[].verticalCurveLength",
+    "candidates[].levelAccesses[].tailGradient",
     "candidates[].levelAccesses[].minPlanRadius",
     "candidates[].levelAccesses[].fieldCost",
     "candidates[].levelAccesses[].validation",
@@ -22788,7 +23416,7 @@
     "candidates[].derived.stationLength",
     "candidates[].derived.legSpacing"
    ],
-   "keyPathsSha256": "83f3f2401d011cf22bdb8a946b88056d14638a6c569c7df24ad885920d537a5f"
+   "keyPathsSha256": "7788230b65a3599091d22d657272cf5a19e23d09073feeed348669b4ccb3ef56"
   },
   "header": {
    "candidateCount": 92,

@@ -19,14 +19,56 @@ and this module plans it deterministically:
   CS connector (Phase 20B.2-A: one arc of R = R_min, left or right, then a
   straight — or a pure straight when the junction already faces the entry)
   from the junction pose to the anchor POINT with a free terminal heading,
-  chord-exact constant vertical gradient, and hard validation of the
-  DELIVERED polyline (gradient, plan circumradius, world, cover, restricted
-  zones, orebody clearance under the evaluator's policy, excavation
-  envelope, plan separation, direction-aware pillar). Junction spacing is a
-  hard rule. Every failure is a typed reason; nothing is clamped. The old
-  Dubins CSC (arc–straight–arc, G1 to the drift heading) is gone: a level
-  access meets the footwall drift at a T/Y junction and the drift absorbs
-  the direction change, so the second arc only ever added a loop.
+  a RAMP-FLOOR-FOLLOWING vertical profile (Phase 20B.x, below), and hard
+  validation of the DELIVERED polyline (gradient, plan circumradius, world,
+  cover, restricted zones, orebody clearance under the evaluator's policy,
+  excavation envelope, plan separation, direction-aware pillar). Junction
+  spacing is a hard rule. Every failure is a typed reason; nothing is
+  clamped. The old Dubins CSC (arc–straight–arc, G1 to the drift heading)
+  is gone: a level access meets the footwall drift at a T/Y junction and
+  the drift absorbs the direction change, so the second arc only ever
+  added a loop.
+
+  Vertical profile (Phase 20B.x RAMP_ACCESS vertical continuity). A branch
+  leaves the main ramp INSIDE the ramp's own floor: for the first metres
+  the two floors overlap in plan, so a branch that starts at the junction
+  elevation with its own constant gradient rises out of the descending
+  ramp floor (measured +0.3 … +1.1 m at the surface hand-off). The
+  connector therefore assigns z in two regimes on the delivered stations,
+  from the junction outward:
+
+  * RAMP-FLOOR FOLLOW — while the branch centerline is closer than one
+    tunnel width (in plan) to the ramp centerline and its plan projection
+    is interior to the junction's own ramp run (the chainage window
+    ``[junction − width, junction + reach]``; a spiral stacks its turns on
+    one plan circle, so the query is never global), the station takes the ramp floor
+    elevation beneath it (the elevation of the nearest ramp centerline
+    point; the gravity-aligned ramp floor is horizontal across its width,
+    so this IS the floor under the branch). The branch centerline lies on
+    the ramp floor through the traffic seam; the per-edge gradient there is
+    the ramp gradient times the cosine of the departure angle, never more.
+  * VERTICAL CURVE + CONSTANT TAIL — from the last following station (the
+    hand-off) a parabolic vertical curve of ``VERTICAL_CURVE_K × |Δg|``
+    metres carries the grade from the ramp-follow value to the tail
+    gradient (at most 1 % grade change per metre, so the 3-D ring turn of a
+    minimum-radius turnout stays inside the sweep's faceting contract), and
+    one constant gradient in delivered chord length then reaches the entry
+    EXACTLY (closed form, ``vertical_curve_tail``).
+
+  It is one geometric rule for every orebody type (no level id, no family
+  branch, no ``max(ramp_z, access_z)``), the ramp centerline and the
+  junction / entry points are untouched, and the hard gradient gate judges
+  the MAXIMUM delivered edge gradient. What the rule does NOT claim: with a
+  gravity-aligned (un-banked) branch profile the child floor can coincide
+  with the inclined ramp floor only along ONE curve; it is matched along
+  the traffic centerline, and the retained child floor beyond the ramp wall
+  sits above the ramp floor by ``g · (λ − w/2) · tan φ`` (λ = plan offset,
+  φ = departure angle), i.e. 0 where the centerline crosses the wall and
+  ≈ 0.2 m at the far end of the opening (12 % ramp, R = 18 m, w = 5 m). A
+  banked junction floor is the Phase 20D unified-development-mesh scope. An
+  exact wall-line match would need a branch gradient of
+  ``g · (sec φ + (λ − w/2) / (R cos² φ))`` — above the gradient limit past
+  φ ≈ 20°, so the hard gate makes it impossible by construction.
 
   Among the candidates that pass EVERY hard check, selection minimizes
   ``(access_length_cost(L, P), L, junction chainage, connector sense)`` with
@@ -67,6 +109,7 @@ from minegen.levels.builder import GENERIC_BACKBONE_END_CLEARANCE
 from minegen.world.orebody import Orebody, TabularOrebody
 
 FloatArray = npt.NDArray[np.float64]
+BoolArray = npt.NDArray[np.bool_]
 
 RADIUS_TOLERANCE = 0.05  # m, floating-point noise on the delivered circumradius
 GRADIENT_TOLERANCE = 1e-9
@@ -82,6 +125,18 @@ MIN_CONNECTOR_LENGTH = 1.0
 MAX_TURNOUT_SWEEP = math.pi
 #: deterministic connector-sense order of the selection key (last element)
 CONNECTOR_SENSE_ORDER: tuple[str, ...] = ("S", "LS", "RS")
+#: Phase 20B.x: the level-access vertical profile persisted with every access
+#: (ramp-floor follow through the plan overlap, a parabolic vertical curve at
+#: the hand-off, then one constant tail)
+VERTICAL_PROFILE = "RAMP_FLOOR_FOLLOW_VERTICAL_CURVE_CONSTANT_TAIL"
+#: Phase 20B.x vertical-curve rate (m of curve per unit algebraic grade
+#: difference): the hand-off grade change is spread over ``K × |Δg|`` metres
+#: as a parabola, i.e. the grade changes by at most 1 % per metre. With 2 m
+#: stations that is 0.02 per station (1.15°), which keeps the 3-D ring turn of
+#: a minimum-radius turnout (2 m / 18 m = 6.37°) inside the sweep's 7° faceting
+#: contract. A planning default, never statutory; the resulting grades are
+#: still judged by the hard gradient gate.
+VERTICAL_CURVE_K = 100.0
 #: default PREFERRED access length = this factor × tunnel width (planning
 #: default, closeout v3 §2: usable turnout development, room for future sump /
 #: services / ore-pass connections — never a statutory value)
@@ -596,6 +651,158 @@ def _cs_solution(
     return kind + "S", (t, ell / radius), theta0 + sgn * t
 
 
+@dataclass(frozen=True)
+class RampFloorReference:
+    """The main ramp as the vertical reference of a level-access connector
+    (Phase 20B.x): the ramp centerline, its plan projection (z = 0), its
+    chainage, the tunnel width that bounds the floor overlap and the ramp
+    chainage ``reach`` past a junction inside which a branch can still
+    overlap the ramp floor. The nearest-point query is restricted to the
+    chainage window ``[junction − width, junction + reach]`` of the
+    junction's OWN ramp run: the plan projection of a SPIRAL stacks its
+    turns on one circle (and a SWITCHBACK stacks its legs), so an
+    unrestricted plan nearest point could pick a turn one pitch above or
+    below the junction. Built once per plan context; never modified."""
+
+    points: FloatArray  # (M, 3) main-ramp centerline
+    plan: FloatArray  # (M, 3) same vertices with z = 0
+    chainage: FloatArray  # (M,) 3-D chainage of the vertices
+    width: float  # m — floors overlap while the branch centerline is closer than this
+    reach: float  # m — ramp chainage past the junction a branch can still overlap
+
+    @classmethod
+    def from_ramp(cls, ramp_points: FloatArray, width: float, reach: float) -> RampFloorReference:
+        pts = np.asarray(ramp_points, dtype=np.float64).reshape(-1, 3)
+        plan = pts.copy()
+        plan[:, 2] = 0.0
+        return cls(pts, plan, chainage(pts), float(width), float(reach))
+
+    def window(self, junction_chainage: float) -> tuple[int, int]:
+        """Vertex slice ``[lo, hi)`` (≥ 2 vertices) of the ramp run around
+        ``junction_chainage``: from the last vertex at or before
+        ``junction − width`` to the first vertex at or after
+        ``junction + reach``."""
+        ch = self.chainage
+        lo = int(np.searchsorted(ch, junction_chainage - self.width, side="right")) - 1
+        hi = int(np.searchsorted(ch, junction_chainage + self.reach, side="left")) + 1
+        lo = min(max(lo, 0), ch.shape[0] - 2)
+        hi = max(min(hi, ch.shape[0]), lo + 2)
+        return lo, hi
+
+    def floor_elevation(
+        self, xy: FloatArray, junction_chainage: float
+    ) -> tuple[FloatArray, FloatArray, BoolArray]:
+        """Per plan point: (plan distance to the windowed ramp centerline,
+        ramp floor elevation beneath it, projection clamped at the window's
+        terminal vertex). The elevation is interpolated along the nearest
+        ramp edge of the junction's window; a point whose nearest point is
+        the window's last vertex has no ramp floor beneath it — either the
+        ramp tube ends there or the branch has left the reach — and the
+        follow stops."""
+        lo, hi = self.window(junction_chainage)
+        plan = self.plan[lo:hi]
+        q = np.column_stack([np.asarray(xy, dtype=np.float64)[:, :2], np.zeros(len(xy))])
+        dist, closest, seg = nearest_on_polyline(q, plan)
+        a = plan[seg]
+        ab = plan[seg + 1] - a
+        denom = np.einsum("nd,nd->n", ab, ab)
+        safe = denom > 1e-24
+        proj = np.einsum("nd,nd->n", closest - a, ab)
+        t = np.where(safe, proj / np.where(safe, denom, 1.0), 0.0)
+        z_lo = self.points[lo + seg, 2]
+        z = z_lo + t * (self.points[lo + seg + 1, 2] - z_lo)
+        beyond = (seg == plan.shape[0] - 2) & (t >= 1.0 - 1e-9)
+        return dist, z, beyond
+
+
+def ramp_follow_vertical(
+    xy: FloatArray,
+    chord: FloatArray,
+    start_z: float,
+    end_z: float,
+    floor: RampFloorReference | None,
+    junction_chainage: float = 0.0,
+) -> tuple[FloatArray, int, float, float, float]:
+    """Vertical profile of a connector on its delivered plan stations
+    (Phase 20B.x): ``(z, handoff_index, follow_length, tail_gradient)``.
+
+    Stations ``1 … handoff_index`` FOLLOW the ramp floor (the contiguous run
+    from the junction whose plan distance to the ramp centerline is below
+    the tunnel width and whose projection is interior to the junction's
+    ramp window (``RampFloorReference.window(junction_chainage)``) — never
+    the last station, so the tail always has one edge); from the hand-off
+    station a parabolic VERTICAL CURVE of ``VERTICAL_CURVE_K × |Δg|`` metres
+    carries the grade from the last following edge to the tail gradient,
+    and the constant tail then reaches ``end_z`` exactly
+    (``vertical_curve_tail``). Returns ``(z, handoff_index, follow_length,
+    tail_gradient, curve_length)``. Station 0 is the junction weld
+    (``start_z``). Without a reference (``floor is None``) the whole branch
+    is the constant tail — the legacy chord-exact profile, bit for bit."""
+    n = int(xy.shape[0])
+    cum = np.concatenate([[0.0], np.cumsum(chord)])
+    z = np.empty(n, dtype=np.float64)
+    z[0] = float(start_z)
+    h = 0
+    if floor is not None and n > 2:
+        dist, z_floor, beyond = floor.floor_elevation(xy, junction_chainage)
+        k = 1
+        while k <= n - 2 and dist[k] < floor.width and not bool(beyond[k]):
+            z[k] = float(z_floor[k])
+            k += 1
+        h = k - 1
+    rem = float(cum[-1] - cum[h])
+    dz = float(end_z) - float(z[h])
+    if h == 0 or rem <= 1e-12:
+        # legacy chord-exact profile (no reference / degenerate tail)
+        tail = dz / rem if rem > 1e-12 else 0.0
+        z[h + 1 :] = z[h] + tail * (cum[h + 1 :] - cum[h])
+        z[-1] = float(end_z)
+        return z, h, float(cum[h]), tail, 0.0
+    # hand-off grade = the last ramp-floor-following edge
+    g_h = float(z[h] - z[h - 1]) / float(chord[h - 1])
+    tail, curve = vertical_curve_tail(g_h, dz, rem, VERTICAL_CURVE_K)
+    u = cum[h + 1 :] - cum[h]
+    delta = tail - g_h
+    if curve > 1e-12:
+        on_curve = np.minimum(u, curve)
+        z_curve = z[h] + g_h * on_curve + (delta / (2.0 * curve)) * on_curve * on_curve
+        z[h + 1 :] = z_curve + tail * np.maximum(u - curve, 0.0)
+    else:
+        z[h + 1 :] = z[h] + tail * u
+    z[-1] = float(end_z)
+    return z, h, float(cum[h]), tail, curve
+
+
+def vertical_curve_tail(g_h: float, dz: float, length: float, k: float) -> tuple[float, float]:
+    """Constant tail gradient ``g_t`` and parabolic vertical-curve length
+    ``L_v = k·|g_t − g_h|`` such that a curve from ``g_h`` to ``g_t`` followed
+    by the constant ``g_t`` covers exactly ``dz`` over ``length``::
+
+        dz = L_v·(g_h + g_t)/2 + (length − L_v)·g_t
+           = g_h·length + Δ·length − (k/2)·Δ·|Δ|,   Δ = g_t − g_h
+
+    solved in closed form (the smaller root, so ``L_v ≤ length``). When even
+    the whole tail is too short for that rate the entire tail becomes the
+    parabola (``L_v = length``, ``g_t = 2·dz/length − g_h``) — the grade
+    then changes faster than ``1/k`` and the hard gradient gate judges the
+    result; nothing is clamped."""
+    d = dz - g_h * length
+    if abs(d) <= 1e-15:
+        return g_h, 0.0
+    if d > 0.0:
+        disc = length * length - 2.0 * k * d
+        if disc >= 0.0:
+            delta = (length - math.sqrt(disc)) / k
+            return g_h + delta, k * delta
+    else:
+        disc = length * length + 2.0 * k * d
+        if disc >= 0.0:
+            delta = (-length + math.sqrt(disc)) / k
+            return g_h + delta, -k * delta
+    g_t = 2.0 * dz / length - g_h
+    return g_t, length
+
+
 @dataclass
 class Connector:
     word: str  # S | LS | RS
@@ -603,7 +810,19 @@ class Connector:
     pieces: list[dict[str, Any]]
     horizontal_length: float
     length3d: float
-    gradient: float  # signed Δz / chord length (constant along the branch)
+    #: signed Δz / chord length of the CONSTANT TAIL (Phase 20B.x: from the
+    #: hand-off station to the entry; the whole branch when no ramp-floor
+    #: reference was given)
+    gradient: float
+    #: maximum |Δz / chord| over the delivered edges — the hard-gate quantity
+    max_gradient: float
+    #: chainage (m) of the hand-off station: the branch follows the ramp
+    #: floor up to here (0 without a reference)
+    ramp_follow_length: float
+    #: index of the hand-off station in ``points``
+    handoff_index: int
+    #: length (m) of the parabolic vertical curve after the hand-off
+    vertical_curve_length: float
     #: compass heading (rad, clockwise from +Y) of the final straight — the
     #: access's ACTUAL terminal heading, free of the drift direction
     terminal_heading: float
@@ -622,12 +841,18 @@ def build_connector(
     radius: float,
     spacing: float,
     kind: str = "L",
+    floor: RampFloorReference | None = None,
+    junction_chainage: float = 0.0,
 ) -> Connector | None:
     """One-turn CS connector of sense ``kind`` (L = CCW, R = CW) from
     ``start`` heading ``start_heading`` (compass) to the POINT ``end``; the
-    terminal heading is free. z is assigned linearly in delivered CHORD
-    length so every edge carries the same gradient. Endpoints are exact.
-    ``None`` when no tangent exists for that sense (target inside the turning
+    terminal heading is free. z follows ``ramp_follow_vertical``: with a
+    ``floor`` reference the stations inside the ramp-floor overlap take the
+    ramp floor elevation beneath them, a bounded parabolic vertical curve
+    carries the grade to the tail value and one constant chord gradient then
+    reaches the entry; without one the whole branch is that constant
+    gradient (legacy chord-exact profile). Endpoints are exact. ``None``
+    when no tangent exists for that sense (target inside the turning
     circle, sweep past a U-turn, or a degenerate coincident pose)."""
     dxy = np.asarray(end[:2], dtype=np.float64) - np.asarray(start[:2], dtype=np.float64)
     if float(np.linalg.norm(dxy)) < MIN_CONNECTOR_LENGTH:
@@ -643,12 +868,12 @@ def build_connector(
     total = float(np.sum(chord))
     if total < MIN_CONNECTOR_LENGTH:
         return None
-    dz = float(end[2] - start[2])
-    grad = dz / total
-    z = float(start[2]) + grad * np.concatenate([[0.0], np.cumsum(chord)])
-    z[-1] = float(end[2])
+    z, handoff, follow_len, grad, curve = ramp_follow_vertical(
+        xy, chord, float(start[2]), float(end[2]), floor, junction_chainage
+    )
     pts = np.column_stack([xy, z])
     length3d = float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
+    max_grad = float(np.max(np.abs(np.diff(z)) / np.maximum(chord, 1e-12)))
     arc_len = sum(p["angleDeg"] / 180.0 * math.pi * radius for p in pieces if p["kind"] == "ARC")
     straight = sum(float(p["length"]) for p in pieces if p["kind"] == "STRAIGHT")
     sense = None if word == "S" else ("CCW" if word[0] == "L" else "CW")
@@ -659,6 +884,10 @@ def build_connector(
         total,
         length3d,
         grad,
+        max_gradient=max_grad,
+        ramp_follow_length=follow_len,
+        handoff_index=int(handoff),
+        vertical_curve_length=float(curve),
         terminal_heading=_mod2pi(math.pi / 2.0 - th_end),
         sense=sense,
         sense_rank=CONNECTOR_SENSE_ORDER.index(word),
@@ -668,15 +897,25 @@ def build_connector(
 
 
 def build_cs_connectors(
-    start: FloatArray, start_heading: float, end: FloatArray, radius: float, spacing: float
+    start: FloatArray,
+    start_heading: float,
+    end: FloatArray,
+    radius: float,
+    spacing: float,
+    floor: RampFloorReference | None = None,
+    junction_chainage: float = 0.0,
 ) -> list[Connector]:
     """Every distinct one-turn CS connector from the junction pose to the
     entry point, in deterministic sense order (L then R; a pure straight is
     reported once). Both senses are always evaluated — the planner judges
-    each on its delivered polyline and picks by the selection key."""
+    each on its delivered polyline and picks by the selection key. ``floor``
+    is the ramp-floor vertical reference (Phase 20B.x) and
+    ``junction_chainage`` the ramp chainage of ``start``, forwarded verbatim."""
     out: list[Connector] = []
     for kind in ("L", "R"):
-        conn = build_connector(start, start_heading, end, radius, spacing, kind)
+        conn = build_connector(
+            start, start_heading, end, radius, spacing, kind, floor, junction_chainage
+        )
         if conn is None:
             continue
         if conn.word == "S" and any(c.word == "S" for c in out):
@@ -721,6 +960,11 @@ class LevelAccess:
     length3d: float = 0.0
     horizontal_length: float = 0.0
     max_gradient: float = 0.0
+    #: Phase 20B.x vertical profile: chainage (m) up to which the branch
+    #: follows the ramp floor, and the signed constant gradient of the tail
+    ramp_floor_follow_length: float | None = None
+    vertical_curve_length: float | None = None
+    tail_gradient: float | None = None
     min_plan_radius: float | None = None
     field_cost: float | None = None
     validation: dict[str, Any] = field(default_factory=dict)
@@ -781,6 +1025,10 @@ class LevelAccess:
             "length3d": self.length3d,
             "horizontalLength": self.horizontal_length,
             "maxGradient": self.max_gradient,
+            "verticalProfile": VERTICAL_PROFILE,
+            "rampFloorFollowLength": self.ramp_floor_follow_length,
+            "verticalCurveLength": self.vertical_curve_length,
+            "tailGradient": self.tail_gradient,
             "minPlanRadius": self.min_plan_radius,
             "fieldCost": self.field_cost,
             "validation": self.validation,
@@ -1178,6 +1426,8 @@ class _PlanContext:
     plan_sep_min: float
     exc_sep_min: float
     taper_arc: float
+    #: Phase 20B.x: the main ramp as the connector's vertical reference
+    floor: RampFloorReference
 
 
 def _search_level(
@@ -1226,7 +1476,13 @@ def _search_level(
             reject(AccessFailure.INSUFFICIENT_RAMP_TO_ENTRY_SEPARATION)
             continue
         conns = build_cs_connectors(
-            cand.position, cand.heading, anchor.position, ctx.r_min, cfg.access_sampling_spacing
+            cand.position,
+            cand.heading,
+            anchor.position,
+            ctx.r_min,
+            cfg.access_sampling_spacing,
+            ctx.floor,
+            cand.chainage,
         )
         if not conns:
             tried += 1
@@ -1234,7 +1490,10 @@ def _search_level(
             continue
         for conn in conns:
             tried += 1
-            if abs(conn.gradient) > ctx.g_max + GRADIENT_TOLERANCE:
+            # hard gradient gate on the MAXIMUM delivered edge gradient
+            # (Phase 20B.x: the ramp-floor follow and the constant tail
+            # are both judged; nothing is clamped)
+            if conn.max_gradient > ctx.g_max + GRADIENT_TOLERANCE:
                 reject(AccessFailure.GRADE_LIMIT)
                 continue
             if conn.length3d > cfg.maximum_access_length:
@@ -1313,7 +1572,10 @@ def _search_level(
                     points=pts,
                     length3d=conn.length3d,
                     horizontal_length=conn.horizontal_length,
-                    max_gradient=abs(conn.gradient),
+                    max_gradient=conn.max_gradient,
+                    ramp_floor_follow_length=conn.ramp_follow_length,
+                    vertical_curve_length=conn.vertical_curve_length,
+                    tail_gradient=conn.gradient,
                     min_plan_radius=r_min_delivered,
                     field_cost=field_cost,
                     preferred_length=ctx.preferred,
@@ -1348,6 +1610,7 @@ def _plan_context(
     preferred, _ = effective_preferred_access_length(cfg, ramp)
     plan_sep_min = effective_plan_separation(cfg, ramp)
     exc_sep_min = effective_excavation_separation(cfg, ramp)
+    taper = gate_taper_arc(r_min, exc_sep_min + ramp.tunnel_width)
     return _PlanContext(
         ramp_points=ramp_points,
         ramp_ch=chainage(ramp_points),
@@ -1364,7 +1627,17 @@ def _plan_context(
         long_access_coef=long_access_coef,
         plan_sep_min=plan_sep_min,
         exc_sep_min=exc_sep_min,
-        taper_arc=gate_taper_arc(r_min, exc_sep_min + ramp.tunnel_width),
+        taper_arc=taper,
+        # Phase 20B.x: a VALID branch is ≥ 2 widths clear of the ramp beyond
+        # the taper (B-2), so its floor overlap ends inside the taper; the
+        # reach is twice the taper plus one width so an inward turnout on
+        # a minimum-radius ramp (projection advancing up to R/(R − w) per
+        # metre of branch) stays inside it, and it is far below half a
+        # minimum-radius helix turn (π·R_min ≈ 57 m), so the window never
+        # reaches the stacked turn above or below the junction
+        floor=RampFloorReference.from_ramp(
+            ramp_points, ramp.tunnel_width, 2.0 * taper + ramp.tunnel_width
+        ),
     )
 
 

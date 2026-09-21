@@ -42,7 +42,9 @@ from minegen.design.junctions import (
     JUNCTION_RING_SPACING_FRACTION,
     JUNCTION_WINDOW_WIDTHS,
     RAMP_TUBE_ID,
+    FloorClip,
     Junction,
+    JunctionClipTopologyError,
     JunctionCut,
     TubeEnvelope,
     cut_tube,
@@ -395,6 +397,16 @@ class _Swept:
     closed: LogicalMesh | None = None
     rings: FloatArray | None = None
     quad_mask: npt.NDArray[np.bool_] | None = None
+    #: Phase 20D.1.2: straddling child floor quads clipped at a parent
+    #: boundary ((interval, edge) → clip), applied by ``render``
+    floor_clips: dict[tuple[int, int], FloorClip] = field(default_factory=dict)
+
+
+class JunctionClipConflictError(ValueError):
+    """Two typed junctions ask to clip the SAME child floor quad (their
+    windows overlap on one tube). The union cannot represent the
+    intersection of two remainders without a general Boolean, so the build
+    fails explicitly instead of approximating (Phase 20D.1.2)."""
 
 
 class DevelopmentMeshBuilder:
@@ -490,6 +502,7 @@ class DevelopmentMeshBuilder:
             meta,
             caps=(spec.start == "CAP", spec.end == "CAP"),
             quad_mask=sw.quad_mask if bool(sw.quad_mask.any()) else None,
+            floor_clips=sw.floor_clips if sw.floor_clips else None,
         )
 
     def build(
@@ -544,7 +557,14 @@ class DevelopmentMeshBuilder:
                     f"{sw.envelope.above_terrain} above terrain"
                 )
             swept.append(sw)
-        cuts = self._open_junctions(junctions, swept, shape, ramp_payload)
+        try:
+            cuts = self._open_junctions(junctions, swept, shape, ramp_payload)
+        except JunctionClipConflictError as exc:
+            problems.append(f"JUNCTION_CLIP_CONFLICT: {exc}")
+            cuts = []
+        except JunctionClipTopologyError as exc:
+            problems.append(f"JUNCTION_CLIP_TOPOLOGY: {exc}")
+            cuts = []
         report = self._report(swept, shape)
         report["junctions"] = junction_report(junctions, cuts)
         if problems:
@@ -624,6 +644,20 @@ class DevelopmentMeshBuilder:
             if child is not None and child.rings is not None and child.quad_mask is not None:
                 cut = cut_tube(child_env, child.rings, parent_env, j, "CHILD", width)
                 child.quad_mask |= cut.mask
+                # Phase 20D.1.2: a whole omission (by any junction) is a
+                # superset of a clip; two clips on one quad are unsupported
+                for clip in cut.floor_clips:
+                    key = (clip.interval, clip.edge)
+                    if child.quad_mask[key]:
+                        continue
+                    if key in child.floor_clips:
+                        raise JunctionClipConflictError(
+                            f"{j.child_id}: floor quad {key} clipped by both "
+                            f"{child.floor_clips[key].junction_node_id} and {j.node_id}"
+                        )
+                    child.floor_clips[key] = clip
+                for key in [key for key in child.floor_clips if child.quad_mask[key]]:
+                    del child.floor_clips[key]
                 touched.add(j.child_id)
                 cuts.append(cut)
         for dev_id in sorted(touched):
@@ -676,7 +710,15 @@ class DevelopmentMeshBuilder:
                     # from this development's RENDER tube; ``topology`` below is
                     # the QA of the LOGICAL mesh before those apertures
                     "renderOmittedTriangles": (
-                        int(2 * s.quad_mask.sum()) if s.quad_mask is not None else 0
+                        int(2 * s.quad_mask.sum()) + 2 * len(s.floor_clips)
+                        if s.quad_mask is not None
+                        else 0
+                    ),
+                    # Phase 20D.1.2 (additive): straddling floor quads clipped at
+                    # the parent boundary and the remainder triangles emitted
+                    "renderClippedFloorQuads": len(s.floor_clips),
+                    "renderReplacementTriangles": int(
+                        sum(c.replacement_triangles for c in s.floor_clips.values())
                     ),
                     "topology": {
                         "policy": s.topology.policy,
@@ -743,12 +785,18 @@ def batch_render(swept: list[_Swept]) -> RenderMesh:
                         # fractions) survives batching so a viewer can cut the
                         # piece at its last completed ring (visualization only)
                         "indexStride": prim.extras["indexStride"],
+                        "nominalIndexStride": prim.extras.get(
+                            "nominalIndexStride", prim.extras["indexStride"]
+                        ),
                         "ringIntervalCount": prim.extras["ringIntervalCount"],
                         "ringChainageFractions": prim.extras["ringChainageFractions"],
                         # Phase 20D.1: exact per-interval prefix sums (a cut
                         # piece no longer has one index count per interval)
                         "ringIntervalIndexOffsets": prim.extras["ringIntervalIndexOffsets"],
                         "omittedTriangles": prim.extras["omittedTriangles"],
+                        # Phase 20D.1.2 (additive)
+                        "clippedQuads": prim.extras.get("clippedQuads", 0),
+                        "replacementTriangles": prim.extras.get("replacementTriangles", 0),
                     }
                 )
                 tube_idx[kind].append(idx)

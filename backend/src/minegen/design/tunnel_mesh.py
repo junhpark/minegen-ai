@@ -18,9 +18,10 @@ geometry is never persisted silently.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from itertools import pairwise
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -29,6 +30,9 @@ from minegen.core.coordinates import gravity_aligned_frame
 from minegen.core.models import RampConstraints, TunnelProfile
 from minegen.design.constraints import RejectionReason
 from minegen.design.cost_field import DesignCostEvaluator
+
+if TYPE_CHECKING:
+    from minegen.design.junctions import FloorClip
 from minegen.design.profile import (
     ProfileShape,
     boundary_points,
@@ -410,6 +414,10 @@ class RenderMesh:
     #: closedness of the sweep BEFORE the apertures (the weld QA of the
     #: base tube); equals ``geometrically_closed`` when nothing was omitted
     base_sweep_geometrically_closed: bool = True
+    #: Phase 20D.1.2 (additive): straddling child floor quads clipped at the
+    #: parent boundary and the replacement triangles emitted for them
+    clipped_floor_quads: int = 0
+    replacement_triangles: int = 0
 
 
 def _profile_groups(
@@ -447,6 +455,7 @@ def build_render_mesh(
     *,
     caps: tuple[bool, bool] = (True, True),
     quad_mask: npt.NDArray[np.bool_] | None = None,
+    floor_clips: Mapping[tuple[int, int], FloorClip] | None = None,
 ) -> RenderMesh:
     """Render-vertex split of the logical tube + caps. ``caps`` selects which
     end caps are emitted ((portal, terminal); the Phase 06 ramp keeps both, an
@@ -467,10 +476,35 @@ def build_render_mesh(
     "closed" either). The per-interval emission order is unchanged, so every
     SEGMENT primitive carries the exact ``ringIntervalIndexOffsets`` a viewer
     needs to cut the tube at a ring when intervals no longer share one index
-    count."""
+    count.
+
+    Phase 20D.1.2 ``floor_clips`` ((interval, edge) → ``FloorClip``) replaces
+    a straddling CHILD floor quad's two triangles by the fan-triangulated
+    outside-parent remainder, emitted at the quad's place in the interval
+    order with NEW render vertices (UV / chainage from the clip's bilinear
+    parameters; normals from the replacement triangles). Absent by default:
+    every pre-existing caller is bit-for-bit unaffected. A clipped interval
+    may emit more indices than the nominal ``6 × K``, so ``indexStride`` is
+    raised to the segment's actual maximum interval count — still a valid
+    upper bound, while ``ringIntervalIndexOffsets`` stay the exact authority.
+    ``omittedTriangles`` keeps its meaning (original sweep triangles not
+    emitted as-is: whole omissions AND clipped originals); the additive
+    ``clippedQuads`` / ``replacementTriangles`` extras account for the
+    remainder geometry."""
     r, k = mesh.ring_count, mesh.k
     if quad_mask is not None and quad_mask.shape != (r - 1, k):
         raise ValueError(f"quad_mask shape {quad_mask.shape} != {(r - 1, k)}")
+    clips: dict[tuple[int, int], FloorClip] = dict(floor_clips) if floor_clips else {}
+    for (ci, cj), entry in clips.items():
+        if not (0 <= ci < r - 1 and 0 <= cj < k):
+            raise ValueError(f"floor clip ({ci}, {cj}) outside the quad grid {(r - 1, k)}")
+        if quad_mask is not None and quad_mask[ci, cj]:
+            raise ValueError(f"floor clip ({ci}, {cj}) on an omitted quad")
+        if entry.interval != ci or entry.edge != cj:
+            raise ValueError(
+                f"floor clip key ({ci}, {cj}) != clip ({entry.interval}, {entry.edge})"
+            )
+    n_clip_vertices = int(sum(int(p.shape[0]) for c in clips.values() for p in c.polygons))
     ring_pos = mesh.positions[: r * k].reshape(r, k, 3)
     _edge_group, crease = _profile_groups(shape, crease_angle_deg)
 
@@ -480,7 +514,9 @@ def build_render_mesh(
     per_ring = k + n_split  # each crease adds one duplicate
     vid_a = np.zeros((r, k), dtype=np.int64)
     vid_b = np.zeros((r, k), dtype=np.int64)
-    positions = np.zeros((r * per_ring + (int(caps[0]) + int(caps[1])) * (k + 1), 3))
+    positions = np.zeros(
+        (r * per_ring + n_clip_vertices + (int(caps[0]) + int(caps[1])) * (k + 1), 3)
+    )
     uvs = np.zeros((positions.shape[0], 2))
     cursor = 0
     for i in range(r):
@@ -509,7 +545,11 @@ def build_render_mesh(
     normals = np.zeros_like(positions)
     seg_tris: list[list[tuple[int, int, int]]] = [[] for _ in segments_meta]
     all_tris: list[tuple[int, int, int]] = []
+    replacement_tris: list[tuple[int, int, int]] = []
     interval_counts = np.zeros(r - 1, dtype=np.int64)
+    interval_omitted = np.zeros(r - 1, dtype=np.int64)  # original triangles not emitted
+    interval_clipped = np.zeros(r - 1, dtype=np.int64)  # clipped floor quads
+    interval_replacement = np.zeros(r - 1, dtype=np.int64)  # replacement triangles
     omitted_tris = 0
     for i in range(r - 1):
         seg = int(chain.segment_of_interval[i])
@@ -523,10 +563,40 @@ def build_render_mesh(
             all_tris.extend(quad)
             if quad_mask is not None and quad_mask[i, j]:
                 omitted_tris += 2
+                interval_omitted[i] += 2
+                continue
+            clip = clips.get((i, j))
+            if clip is not None:
+                # Phase 20D.1.2: the quad's outside-parent remainder, in the
+                # quad's own orientation, at the quad's place in the order
+                omitted_tris += 2
+                interval_omitted[i] += 2
+                interval_clipped[i] += 1
+                u0 = float(shape.perimeter_u[j])
+                u1 = float(shape.perimeter_u[k] if jn == 0 else shape.perimeter_u[jn])
+                v0 = float(chain.chainage[i])
+                v1 = float(chain.chainage[i + 1])
+                for poly, par in zip(clip.polygons, clip.params, strict=True):
+                    base = cursor
+                    for q in range(int(poly.shape[0])):
+                        positions[cursor] = poly[q]
+                        uvs[cursor] = (
+                            u0 + float(par[q, 1]) * (u1 - u0),
+                            v0 + float(par[q, 0]) * (v1 - v0),
+                        )
+                        cursor += 1
+                    for fan in range(1, int(poly.shape[0]) - 1):
+                        tri = (base, base + fan, base + fan + 1)
+                        seg_tris[seg].append(tri)
+                        replacement_tris.append(tri)
+                        interval_counts[i] += 3
+                        interval_replacement[i] += 1
                 continue
             seg_tris[seg].extend(quad)
             interval_counts[i] += 6
     for t in all_tris:
+        _accumulate_normal(positions, normals, t)
+    for t in replacement_tris:
         _accumulate_normal(positions, normals, t)
 
     # caps: own flat-shaded vertices (removable primitives, rule 66)
@@ -576,10 +646,13 @@ def build_render_mesh(
     # (one per ring, 0 → 1 along the segment's 3-D chainage) lets a viewer cut
     # the excavation at the last COMPLETED ring for a chainage progress
     # fraction without touching geometry (rule 31 partial DEVELOPING render).
-    stride = 6 * k  # 2 triangles × 3 indices per profile edge per interval
+    nominal_stride = 6 * k  # 2 triangles × 3 indices per profile edge per interval
     prims = []
     for s, meta in enumerate(segments_meta):
         b0, b1 = int(chain.boundary_rings[s]), int(chain.boundary_rings[s + 1])
+        # Phase 20D.1.2: a clipped interval may exceed the nominal count; the
+        # stride stays a valid upper bound of every interval delta
+        stride = max(nominal_stride, int(interval_counts[b0:b1].max()) if b1 > b0 else 0)
         span = float(chain.chainage[b1] - chain.chainage[b0])
         fractions = (
             (chain.chainage[b0 : b1 + 1] - chain.chainage[b0]) / span
@@ -599,10 +672,18 @@ def build_render_mesh(
                     "segmentId": (meta.get("segmentId") or meta.get("levelId")),
                     "effectiveSource": meta["effectiveSource"],
                     "indexStride": stride,
+                    # Phase 20D.1.2 (additive): the uncut per-interval count
+                    # (6 × K); ``indexStride`` may exceed it once a clipped
+                    # interval emits replacement triangles
+                    "nominalIndexStride": nominal_stride,
                     "ringIntervalCount": b1 - b0,
                     "ringChainageFractions": [round(float(f), 6) for f in fractions],
                     "ringIntervalIndexOffsets": [int(v) for v in offsets],
-                    "omittedTriangles": int(sum(6 * k - c for c in interval_counts[b0:b1]) // 3),
+                    "omittedTriangles": int(interval_omitted[b0:b1].sum()),
+                    # Phase 20D.1.2 (additive): straddling child floor quads
+                    # re-emitted as their outside-parent remainder
+                    "clippedQuads": int(interval_clipped[b0:b1].sum()),
+                    "replacementTriangles": int(interval_replacement[b0:b1].sum()),
                 },
                 indices=indices,
             )
@@ -631,6 +712,8 @@ def build_render_mesh(
         geometrically_closed=closed,
         render_vertex_count=cursor,
         base_sweep_geometrically_closed=base_closed,
+        clipped_floor_quads=int(interval_clipped.sum()),
+        replacement_triangles=int(interval_replacement.sum()),
     )
 
 

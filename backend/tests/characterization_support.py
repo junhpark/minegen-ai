@@ -57,9 +57,14 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures" / "characterization"
 #: the float-bearing full observation set; it is not readable any more.
 CHARACTERIZATION_SCHEMA_VERSION = 2
 
-#: the git SHA the committed baselines were generated at (AC-01G freeze) —
-#: ALSO the base side of the LAYER B same-runner comparison
-BASELINE_GIT_SHA = "3951d98d91235facb6b95e9d646f0dc62b7c9835"
+#: the git SHA the committed baselines were generated at — ALSO the base side
+#: of the LAYER B same-runner comparison. History: AC-01G freeze at
+#: 3951d98d91235facb6b95e9d646f0dc62b7c9835; moved ONCE by Phase 20B.x
+#: (rule 188 — the level-access branch follows the ramp floor through the
+#: turnout, so the delivered access gradients, the stage-3 access screen,
+#: the stage-4 access records and the GEOMETRY-STRESS winner all changed
+#: deliberately; see docs/algorithms.md "Phase 20B.x").
+BASELINE_GIT_SHA = "b13319cfe0a18c4229377ac5319413e9c4468784"
 
 #: the frozen cases (minegen.regression.layout_v2.FULL_SUITE keys)
 CASE_KEYS: tuple[str, ...] = (

@@ -160,9 +160,16 @@ def _cut_chainages(entry: dict[str, Any], length: float) -> list[float]:
     """Chainage (m from the piece start) of every ring interval that lost quads."""
     counts = _interval_counts(entry)
     fr = entry["ringChainageFractions"]
-    return [
-        0.5 * (fr[i] + fr[i + 1]) * length for i, c in enumerate(counts) if c < entry["indexStride"]
-    ]
+    nominal = _nominal_stride(entry)
+    return [0.5 * (fr[i] + fr[i + 1]) * length for i, c in enumerate(counts) if c != nominal]
+
+
+def _nominal_stride(entry: dict[str, Any]) -> int:
+    """Indices of an UNCUT ring interval (6 × K). Phase 20D.1.2 raises
+    ``indexStride`` above it when a clipped interval emits replacement
+    triangles, so the nominal count — not the stride — identifies cut
+    intervals."""
+    return int(entry.get("nominalIndexStride", entry["indexStride"]))
 
 
 def _piece_length(points: list[float]) -> float:
@@ -209,7 +216,7 @@ def test_t1_ramp_to_access_junction_opens_the_turnout(tabular_meshes: dict[str, 
         seg = by_seg[p["extras"]["segmentId"]]
         counts = _interval_counts(p["extras"])
         assert sum(counts) == p["indices"].size
-        cut = [i for i, c in enumerate(counts) if c < p["extras"]["indexStride"]]
+        cut = [i for i, c in enumerate(counts) if c != _nominal_stride(p["extras"])]
         if not cut:
             continue
         cut_segments += 1
@@ -227,7 +234,7 @@ def test_t1_ramp_to_access_junction_opens_the_turnout(tabular_meshes: dict[str, 
     # child end open: the access's own start intervals lost their intruding quads
     for r in _ranges(m, "LEVEL_ACCESS"):
         counts = _interval_counts(r)
-        assert counts[0] < r["indexStride"], r["pieceId"]
+        assert counts[0] < _nominal_stride(r), r["pieceId"]
 
 
 # --------------------------------------------------------------------------- #
@@ -246,7 +253,7 @@ def test_t2_access_to_drift_junction_opens_the_entry(tabular_meshes: dict[str, A
     # the access's END intervals are open (its tube inside the drift is gone)
     for r in _ranges(m, "LEVEL_ACCESS"):
         counts = _interval_counts(r)
-        assert counts[-1] < r["indexStride"], r["pieceId"]
+        assert counts[-1] < _nominal_stride(r), r["pieceId"]
     # the drift lost quads only next to the entry
     entries = {a["levelId"]: np.asarray(a["levelEntry"], dtype=np.float64) for a in accesses}
     drift_pieces = {d["id"]: d for d in m["levels"]["developments"] if d["kind"] == "DRIFT"}
@@ -291,8 +298,9 @@ def test_t3_drift_to_crosscut_junction_opens_the_station(tabular_meshes: dict[st
     # every crosscut START is open into the drift; its FACE stays a cap (T4)
     for r in _ranges(m, "CROSSCUT"):
         counts = _interval_counts(r)
-        assert counts[0] < r["indexStride"], r["pieceId"]
-        assert counts[-1] == r["indexStride"], r["pieceId"]
+        assert counts[0] < _nominal_stride(r), r["pieceId"]
+        assert counts[-1] == _nominal_stride(r), r["pieceId"]
+        assert max(counts) <= r["indexStride"], r["pieceId"]
 
 
 # --------------------------------------------------------------------------- #
@@ -420,7 +428,14 @@ def warped_meshes(warped, warped_levels) -> dict[str, Any]:  # type: ignore[no-u
     dev = DevelopmentMeshBuilder(ev, cross, sc.ramp, sc.tunnel_profile).build(
         accesses, levels, ramp_payload=ramp
     )
-    return {"tunnel": tunnel, "dev": dev, "accesses": accesses, "levels": levels}
+    return {
+        "sc": sc,
+        "ramp": ramp,
+        "tunnel": tunnel,
+        "dev": dev,
+        "accesses": accesses,
+        "levels": levels,
+    }
 
 
 def test_t7_warped_levels_and_meshes_still_succeed(warped_meshes: dict[str, Any]) -> None:
@@ -705,3 +720,485 @@ def test_t7c_warped_every_parent_wall_opens_and_every_parent_floor_stays(
         for c in cuts:
             wall, floor, _ = _parent_mouth(c, m["dev_shape"])
             assert wall > 0 and floor == 0, (jtype, c.junction.node_id, wall, floor)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20D.1.2 — child-floor boundary clipping (contracts A–D)
+# --------------------------------------------------------------------------- #
+#
+# The 20D.1 CHILD rule decided every quad whole (four vertices inside-or-on
+# the parent → omit, else keep). The child profile floor is ONE edge across
+# the tunnel width, so at a shallow RAMP_ACCESS turnout a floor quad that
+# straddles the parent wall was kept whole and its inside part formed a
+# floating slab across the ramp (0.7–1.6 m above the descending floor at
+# its far edge). These contracts inspect the EMITTED geometry, never the mask.
+
+from minegen.design.development_mesh import (  # noqa: E402
+    chain_segments,
+    specs_from_artifacts,
+)
+from minegen.design.junctions import (  # noqa: E402
+    JUNCTION_RING_SPACING_FRACTION,
+    JUNCTION_SURFACE_TOLERANCE_FRACTION,
+    JUNCTION_WINDOW_WIDTHS,
+    find_junctions,
+)
+from minegen.design.tunnel_mesh import build_render_mesh  # noqa: E402
+
+FLOOR_NORMAL_Z_MAX = -0.9  # outward normal of a floor triangle points down
+
+
+def _tri_geometry(
+    positions: np.ndarray, tris: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(centroids (T,3), areas (T,), unit normals (T,3)) of triangle rows."""
+    v0, v1, v2 = positions[tris[:, 0]], positions[tris[:, 1]], positions[tris[:, 2]]
+    n = np.cross(v1 - v0, v2 - v0)
+    area = 0.5 * np.linalg.norm(n, axis=1)
+    unit = n / np.maximum(2.0 * area[:, None], 1e-18)
+    return (v0 + v1 + v2) / 3.0, area, unit
+
+
+def _builder_envelopes(m: dict[str, Any]) -> tuple[dict[str, TubeEnvelope], list[Junction]]:
+    """The SAME envelopes the development builder judges against (its own
+    construction: refined ring chains near the declared junction points, main
+    profile for the ramp, secondary profile for developments)."""
+    sc = m["sc"]
+    width = float(sc.ramp.tunnel_width)
+    junctions = find_junctions(m["ramp"], m["accesses"], m["levels"])
+    near: dict[str, list[np.ndarray]] = {}
+    for j in junctions:
+        near.setdefault(j.parent_id, []).append(j.point)
+        near.setdefault(j.child_id, []).append(j.point)
+    dev_profile = secondary_profile(sc.tunnel_profile)
+    dev_shape = build_profile(sc.ramp, dev_profile)
+    envs: dict[str, TubeEnvelope] = {}
+    for spec in specs_from_artifacts(m["accesses"], m["levels"]):
+        pts = near.get(spec.development_id)
+        chain = build_ring_chain(
+            chain_segments(spec),
+            dev_profile.ring_max_spacing,
+            refine_near=np.asarray(pts, dtype=np.float64) if pts else None,
+            refine_radius=JUNCTION_WINDOW_WIDTHS * width,
+            refine_spacing=JUNCTION_RING_SPACING_FRACTION * width,
+        )
+        envs[spec.development_id] = TubeEnvelope.build(chain.centers, chain.tangents, dev_shape)
+    main_shape = build_profile(sc.ramp, sc.tunnel_profile)
+    pts = near.get("RAMP")
+    ramp_chain = build_ring_chain(
+        m["ramp"]["segments"],
+        sc.tunnel_profile.ring_max_spacing,
+        refine_near=np.asarray(pts, dtype=np.float64) if pts else None,
+        refine_radius=JUNCTION_WINDOW_WIDTHS * width,
+        refine_spacing=JUNCTION_RING_SPACING_FRACTION * width,
+    )
+    envs["RAMP"] = TubeEnvelope.build(ramp_chain.centers, ramp_chain.tangents, main_shape)
+    return envs, junctions
+
+
+def _child_floor_tris(m: dict[str, Any], child_id: str) -> tuple[np.ndarray, np.ndarray]:
+    """(positions, floor triangle rows) of ONE development in the emitted GLB."""
+    positions, _, prims = _glb(m["dev"].glb)
+    kind = child_id.split(":")[0]
+    prim = next(p for p in prims if p["name"] == kind)
+    rows = []
+    for r in prim["extras"]["ranges"]:
+        if r["developmentId"] != child_id:
+            continue
+        a = int(r["indexOffset"]) // 3
+        b = (int(r["indexOffset"]) + int(r["indexCount"])) // 3
+        rows.append(prim["indices"][a:b])
+    tris = np.concatenate(rows)
+    _, _, normal = _tri_geometry(positions, tris)
+    return positions, tris[normal[:, 2] < FLOOR_NORMAL_Z_MAX]
+
+
+def tol_of(m: dict[str, Any]) -> float:
+    return JUNCTION_SURFACE_TOLERANCE_FRACTION * float(m["sc"].ramp.tunnel_width)
+
+
+def _child_floor_audit(
+    m: dict[str, Any], j: Junction, envs: dict[str, TubeEnvelope]
+) -> dict[str, float]:
+    """Contract A metric on the EMITTED child floor near one junction: the
+    area of child floor triangles whose centroid lies strictly inside the
+    parent envelope (beyond the union tolerance), the deepest such vertex,
+    and the retained floor area outside the parent, all within the window."""
+    width = float(m["sc"].ramp.tunnel_width)
+    tol = JUNCTION_SURFACE_TOLERANCE_FRACTION * width
+    radius = JUNCTION_WINDOW_WIDTHS * width
+    parent = envs[j.parent_id]
+    window = parent.ring_window(j.point, radius + width)
+    positions, floor = _child_floor_tris(m, j.child_id)
+    centroids, areas, _ = _tri_geometry(positions, floor)
+    local = np.linalg.norm(centroids - j.point[None, :], axis=1) <= radius + width
+    centroids, areas, floor = centroids[local], areas[local], floor[local]
+    sd = parent.signed_distance(centroids, window)
+    inside = sd < -tol
+    # depth of the emitted SURFACE: interior samples (centroid + edge midpoints)
+    # — polygon vertices legitimately sit ON the boundary (the tolerance
+    # surface, or the parent's terminal plane where its rings end)
+    v = positions[floor].astype(np.float64)  # (T, 3, 3)
+    mids = [0.5 * (v[:, a] + v[:, b]) for a, b in ((0, 1), (1, 2), (2, 0))]
+    # strictly interior: edge midpoints pulled 10 % toward the centroid, so a
+    # sample never lies ON a boundary edge of the triangle
+    interior = np.concatenate([centroids, *[0.9 * mid + 0.1 * centroids for mid in mids]])
+    sdi = parent.signed_distance(interior, window) if interior.size else np.zeros(0)
+    return {
+        "insideArea": float(areas[inside].sum()),
+        "insideTriangles": int(inside.sum()),
+        "maxDepth": float(max(0.0, -sdi.min())) if sdi.size else 0.0,
+        "outsideArea": float(areas[sd > tol].sum()),
+        "localTriangles": int(floor.shape[0]),
+    }
+
+
+@pytest.fixture(scope="module")
+def tabular_envelopes(
+    tabular_meshes: dict[str, Any],
+) -> tuple[dict[str, TubeEnvelope], list[Junction]]:
+    return _builder_envelopes(tabular_meshes)
+
+
+def test_p20d12_a_no_child_floor_remains_inside_the_parent_tabular(
+    tabular_meshes: dict[str, Any],
+    tabular_envelopes: tuple[dict[str, TubeEnvelope], list[Junction]],
+) -> None:
+    """Contract A (RED on the 20D.1.1 base): at every declared junction of
+    every type, the emitted CHILD floor keeps no surface strictly inside the
+    parent excavation — the false slab is gone — while the floor OUTSIDE the
+    parent is still present (M2 / M6 kill: deleting the whole straddling quad
+    would empty the outside area at the mouth)."""
+    m = tabular_meshes
+    envs, junctions = tabular_envelopes
+    assert junctions
+    seen_types: set[str] = set()
+    for j in junctions:
+        audit = _child_floor_audit(m, j, envs)
+        seen_types.add(j.type)
+        assert audit["insideArea"] == 0.0, (j.type, j.node_id, audit)
+        assert audit["maxDepth"] <= tol_of(m), (j.type, j.node_id, audit)
+        if j.type == "RAMP_ACCESS":
+            assert audit["outsideArea"] > 0.0, (j.node_id, audit)
+    assert seen_types == set(JUNCTION_TYPES)
+
+
+def test_p20d12_a_report_and_reveal_accounting_tabular(tabular_meshes: dict[str, Any]) -> None:
+    """Every RAMP_ACCESS junction clips at least one child floor quad; the
+    parent floor is never removed; per-range reveal metadata stays exact
+    (offsets sum to the emitted count, every delta ≤ indexStride,
+    indexStride ≥ the nominal 6 × K) and the omitted / replacement
+    accounting balances the emitted index counts (M8)."""
+    m = tabular_meshes
+    rep = m["dev"].report
+    ramp_openings = [o for o in rep["junctions"]["openings"] if o["type"] == "RAMP_ACCESS"]
+    assert ramp_openings
+    for o in ramp_openings:
+        assert o["childClippedFloorQuads"] > 0, o["nodeId"]
+        assert o["childReplacementTriangles"] > 0, o["nodeId"]
+        assert o["childClippedFloorTriangles"] == 2 * o["childClippedFloorQuads"]
+    for o in rep["junctions"]["openings"]:
+        assert o["parentFloorTriangles"] == 0, o["nodeId"]
+    clipped_devs = [d for d in rep["developments"] if d["renderClippedFloorQuads"] > 0]
+    assert clipped_devs
+    for d in rep["developments"]:
+        assert d["renderOmittedTriangles"] >= 2 * d["renderClippedFloorQuads"]
+    for kind in ("LEVEL_ACCESS", "DRIFT", "CROSSCUT"):
+        for r in _ranges(m, kind):
+            counts = _interval_counts(r)
+            nominal = _nominal_stride(r)
+            assert r["indexStride"] >= nominal
+            assert max(counts) <= r["indexStride"], r["pieceId"]
+            assert sum(nominal - c for c in counts) == 3 * (
+                r["omittedTriangles"] - r["replacementTriangles"]
+            ), r["pieceId"]
+            if r["clippedQuads"]:
+                assert r["replacementTriangles"] >= r["clippedQuads"]
+
+
+def _raycast_first(
+    tris: np.ndarray, labels: np.ndarray, origin: np.ndarray, direction: np.ndarray, far: float
+) -> tuple[float, str] | None:
+    """Nearest Möller–Trumbore hit of a ray against (T,3,3) triangles."""
+    v0, v1, v2 = tris[:, 0], tris[:, 1], tris[:, 2]
+    e1, e2 = v1 - v0, v2 - v0
+    p = np.cross(direction, e2)
+    det = np.einsum("ij,ij->i", e1, p)
+    ok = np.abs(det) > 1e-12
+    inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+    tv = origin - v0
+    u = np.einsum("ij,ij->i", tv, p) * inv
+    q = np.cross(tv, e1)
+    v = np.einsum("j,ij->i", direction, q) * inv
+    t = np.einsum("ij,ij->i", e2, q) * inv
+    hit = ok & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1 + 1e-9) & (t > 1e-6) & (t < far)
+    if not hit.any():
+        return None
+    k = int(np.flatnonzero(hit)[np.argmin(t[hit])])
+    return float(t[k]), str(labels[k])
+
+
+def _emitted_triangles(m: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+    """All emitted triangles (T,3,3) of the tunnel + development GLBs with a
+    provenance label per triangle (SEGMENT / DEVELOPMENT:<kind> / caps)."""
+    tri_sets: list[np.ndarray] = []
+    labels: list[np.ndarray] = []
+    for result in (m["tunnel"], m["dev"]):
+        positions, _, prims = _glb(result.glb)
+        for p in prims:
+            role = p["extras"].get("role")
+            label = f"{role}:{p['extras'].get('kind') or p['extras'].get('segmentId') or ''}"
+            tri_sets.append(positions[p["indices"]].astype(np.float64))
+            labels.append(np.full(p["indices"].shape[0], label))
+    return np.concatenate(tri_sets), np.concatenate(labels)
+
+
+def _ramp_corridor_probe(m: dict[str, Any], level_id: str) -> list[dict[str, Any]]:
+    """Contract C: downward rays along the parent ramp travel surface through
+    and beyond the RAMP_ACCESS turnout (−2 … +16 m from the junction along
+    the ramp centerline, at five lateral offsets inside the ramp). Returns
+    the first-hit provenance of every probe."""
+    tris, labels = _emitted_triangles(m)
+    width = float(m["sc"].ramp.tunnel_width)
+    access = next(a for a in _ok_accesses(m) if a["levelId"] == level_id)
+    junction = np.asarray(access["rampJunction"], dtype=np.float64)
+    rp: list[np.ndarray] = []
+    for seg in m["ramp"]["segments"]:
+        pts = np.asarray(seg["effectiveCenterline"]["points"], dtype=np.float64).reshape(-1, 3)
+        rp.extend(pts if not rp else pts[1:])
+    ramp = np.asarray(rp)
+    seg_len = np.linalg.norm(np.diff(ramp, axis=0), axis=1)
+    chainage = np.concatenate([[0.0], np.cumsum(seg_len)])
+    i_j = int(np.argmin(np.linalg.norm(ramp - junction[None, :], axis=1)))
+    out: list[dict[str, Any]] = []
+    for s in np.arange(-2.0, 16.01, 1.0):
+        target = chainage[i_j] + s
+        i = int(np.clip(np.searchsorted(chainage, target), 1, len(ramp) - 1))
+        t = (target - chainage[i - 1]) / max(chainage[i] - chainage[i - 1], 1e-9)
+        center = ramp[i - 1] + t * (ramp[i] - ramp[i - 1])
+        d = ramp[i] - ramp[i - 1]
+        d[2] = 0.0
+        d /= np.linalg.norm(d)
+        left = np.array([-d[1], d[0], 0.0])
+        for lat in (-0.4 * width, -0.2 * width, 0.0, 0.2 * width, 0.4 * width):
+            origin = center + lat * left + np.array([0.0, 0.0, 2.5])
+            hit = _raycast_first(tris, labels, origin, np.array([0.0, 0.0, -1.0]), 10.0)
+            out.append(
+                {
+                    "chainageFromJunction": float(s),
+                    "lateral": float(lat),
+                    "hit": hit[1] if hit else None,
+                    "floorZ": float(origin[2] - hit[0]) if hit else None,
+                    "rampZ": float(center[2]),
+                }
+            )
+    return out
+
+
+@pytest.mark.parametrize("level_id", ["L01", "L02"])
+def test_p20d12_c_parent_ramp_travel_surface_is_never_a_child_floor_tabular(
+    tabular_meshes: dict[str, Any], level_id: str
+) -> None:
+    """Contract C (RED on the base): along the ramp corridor through and past
+    the turnout, the first surface under every probe is the RAMP's own floor
+    — never a retained LEVEL_ACCESS floor (the slab), never nothing."""
+    probes = _ramp_corridor_probe(tabular_meshes, level_id)
+    assert probes
+    bad = [p for p in probes if p["hit"] is None or not p["hit"].startswith("SEGMENT:")]
+    assert not bad, bad[:6]
+
+
+def _straight_tube_mesh(
+    p0: tuple[float, float, float],
+    p1: tuple[float, float, float],
+    shape: ProfileShape,
+    spacing: float = 0.5,
+) -> tuple[TubeEnvelope, np.ndarray, Any, Any]:
+    chain = build_ring_chain([_envelope_segment([*p0, *p1])], spacing)
+    mesh = build_logical_mesh(chain, shape)
+    rings = mesh.positions[: mesh.ring_count * mesh.k].reshape(mesh.ring_count, mesh.k, 3)
+    return TubeEnvelope.build(chain.centers, chain.tangents, shape), rings, chain, mesh
+
+
+def _polygon_area(poly: np.ndarray) -> float:
+    c = poly.mean(axis=0)
+    n = np.zeros(3)
+    for a, b in zip(poly, np.roll(poly, -1, axis=0), strict=True):
+        n += np.cross(a - c, b - c)
+    return 0.5 * float(np.linalg.norm(n))
+
+
+@pytest.mark.parametrize(
+    ("side_sign", "floor_lift"),
+    [(+1.0, 0.0), (-1.0, 0.0), (+1.0, 0.3), (-1.0, 0.45)],
+)
+def test_p20d12_b_straddling_child_floor_quad_is_clipped_not_decided_whole(
+    side_sign: float, floor_lift: float
+) -> None:
+    """Contract B: a child (along ±X, rings at |x| = 0.2 + 0.5 n) crosses the
+    parent wall (|x| = w/2) so the floor quad between |x| = 2.2 and 2.7
+    straddles the tolerance boundary |x| = w/2 + tol = 2.6. Required: the
+    inside portion is absent and ONLY the outside remainder (0.1 m × w) is
+    emitted — M1 (keep whole → a slab inside) and M2 (drop whole → a hole
+    outside) both fail this test; the far side and the window bounds are
+    untouched (M4 / M5)."""
+    shape = build_profile(RampConstraints(), TunnelProfile())
+    width = float(RampConstraints().tunnel_width)
+    tol = JUNCTION_SURFACE_TOLERANCE_FRACTION * width
+    parent_env, _, _, _ = _straight_tube_mesh((0.0, -30.0, 0.0), (0.0, 30.0, 0.0), shape)
+    child_env, child_rings, child_chain, child_mesh = _straight_tube_mesh(
+        (side_sign * 0.2, 0.0, floor_lift), (side_sign * 30.2, 0.0, floor_lift), shape
+    )
+    j = Junction(
+        type="DRIFT_CROSSCUT",
+        node_id="JUNCTION:L:S+00",
+        parent_id="DRIFT:L",
+        child_id="CROSSCUT:L:S+00",
+        point=np.array([side_sign * 0.2, 0.0, floor_lift]),
+        child_end="start",
+        level_id="L",
+    )
+    cut = cut_tube(child_env, child_rings, parent_env, j, "CHILD", width)
+    f, _ = _edge_roles(shape)
+    boundary = width / 2 + tol  # |x| of the tolerance surface
+    xs = np.abs(child_chain.centers[:, 0])
+    # both ends inside-or-on: omitted; both ends outside: kept; straddling: clipped
+    for i in range(child_rings.shape[0] - 1):
+        lo, hi = xs[i], xs[i + 1]
+        if hi <= boundary + 1e-9:
+            assert cut.mask[i, f], (i, lo, hi)
+        elif lo >= boundary - 1e-9:
+            assert not cut.mask[i, f], (i, lo, hi)
+    straddle = [c for c in cut.floor_clips if c.edge == f]
+    assert len(straddle) == 1, [(c.interval, c.edge) for c in cut.floor_clips]
+    clip = straddle[0]
+    assert xs[clip.interval] < boundary < xs[clip.interval + 1]
+    assert not cut.mask[clip.interval, f]
+    assert len(clip.polygons) == 1
+    poly = clip.polygons[0]
+    window = parent_env.ring_window(j.point, JUNCTION_WINDOW_WIDTHS * width + width)
+    sd = parent_env.signed_distance(poly, window)
+    assert np.all(sd >= tol - 1e-6), sd  # nothing of the remainder inside the parent
+    expected = (xs[clip.interval + 1] - boundary) * width
+    assert abs(_polygon_area(poly) - expected) < 1e-3, (_polygon_area(poly), expected)
+    # the remainder is emitted: replacement triangles, exact reveal offsets,
+    # no degenerate triangle, orientation consistent with the tube
+    render = build_render_mesh(
+        child_mesh,
+        child_chain,
+        shape,
+        TunnelProfile().crease_angle_deg,
+        [{"segmentId": "CROSSCUT:L:S+00", "effectiveSource": "CROSSCUT"}],
+        caps=(False, True),
+        quad_mask=cut.mask,
+        floor_clips={(c.interval, c.edge): c for c in cut.floor_clips},
+    )
+    seg = render.primitives[0]
+    assert seg.extras["clippedQuads"] == 1 and seg.extras["replacementTriangles"] >= 1
+    assert seg.extras["omittedTriangles"] == 2 * int(cut.mask.sum()) + 2
+    counts = [b - a for a, b in pairwise(seg.extras["ringIntervalIndexOffsets"])]
+    assert sum(counts) == seg.indices.size
+    assert max(counts) <= seg.extras["indexStride"]
+    assert seg.extras["indexStride"] >= seg.extras["nominalIndexStride"] == 6 * shape.k
+    tris = seg.indices.reshape(-1, 3)
+    _assert_valid_triangle_set(render.positions.astype(np.float64), tris, "clipped child")
+    centroids, areas, normal = _tri_geometry(render.positions.astype(np.float64), tris)
+    floor = normal[:, 2] < FLOOR_NORMAL_Z_MAX
+    sd_c = parent_env.signed_distance(centroids[floor], window)
+    assert not np.any(sd_c < -tol), "child floor emitted inside the parent"
+    # legitimate child floor outside the parent: whole outside quads + the remainder
+    outside_expected = (
+        sum(
+            (xs[i + 1] - xs[i]) * width
+            for i in range(child_rings.shape[0] - 1)
+            if xs[i] >= boundary - 1e-9
+        )
+        + expected
+    )
+    assert abs(float(areas[floor][sd_c > tol].sum()) - outside_expected) < 1e-2
+
+
+def test_p20d12_b_uncut_render_is_bit_identical_without_clips() -> None:
+    """``floor_clips`` absent (None or empty) leaves every pre-existing caller
+    bit-for-bit unaffected."""
+    shape = build_profile(RampConstraints(), TunnelProfile())
+    _, _, chain, mesh = _straight_tube_mesh((0.0, 0.0, 0.0), (12.0, 0.0, 0.0), shape)
+    meta = [{"segmentId": "S", "effectiveSource": "DRIFT"}]
+    a = build_render_mesh(mesh, chain, shape, 30.0, meta)
+    b = build_render_mesh(mesh, chain, shape, 30.0, meta, floor_clips={})
+    assert np.array_equal(a.positions, b.positions)
+    assert all(
+        np.array_equal(x.indices, y.indices) and x.extras == y.extras
+        for x, y in zip(a.primitives, b.primitives, strict=True)
+    )
+    assert a.primitives[0].extras["indexStride"] == a.primitives[0].extras["nominalIndexStride"]
+    assert a.primitives[0].extras["clippedQuads"] == 0
+
+
+def test_p20d12_clip_never_leaves_the_window_or_touches_non_floor_edges_tabular(
+    tabular_cuts: dict[str, Any],
+) -> None:
+    """M5 / scope: clips exist only on the floor edge; inside the junction
+    window or on the contiguous floor pass beyond it on the junction's away
+    side (never on the far end of the child, never on a non-floor edge);
+    every clip's polygons are finite loops of ≥ 3 vertices with positive
+    area; PARENT cuts never clip."""
+    m = tabular_cuts
+    f, _ = _edge_roles(m["dev_shape"])
+    child_cuts = [c for c in m["dev_cuts"] if c.side == "CHILD"]
+    assert any(c.floor_clips for c in child_cuts)
+    for c in child_cuts:
+        lo, hi = c.window_rings
+        rows = c.mask.shape[0]
+        for clip in c.floor_clips:
+            assert clip.edge == f
+            assert 0 <= clip.interval < rows
+            if not (lo <= clip.interval < hi - 1):
+                # beyond the window only in the direction the child continues
+                if c.junction.child_end == "start":
+                    assert clip.interval >= hi - 1, (
+                        c.junction.node_id,
+                        clip.interval,
+                        c.window_rings,
+                    )
+                else:
+                    assert clip.interval < lo, (c.junction.node_id, clip.interval, c.window_rings)
+            assert not c.mask[clip.interval, clip.edge]
+            for poly in clip.polygons:
+                assert poly.shape[0] >= 3 and np.all(np.isfinite(poly))
+                assert _polygon_area(poly) > 1e-9
+        # non-floor edges are never touched outside the window
+        outside = np.ones(rows, dtype=bool)
+        outside[lo : max(hi - 1, lo)] = False
+        assert not c.mask[outside][:, [e for e in range(c.mask.shape[1]) if e != f]].any()
+    for c in [x for x in m["dev_cuts"] if x.side == "PARENT"]:
+        assert not c.floor_clips
+
+
+@pytest.fixture(scope="module")
+def warped_meshes_env(
+    warped_meshes: dict[str, Any],
+) -> tuple[dict[str, TubeEnvelope], list[Junction]]:
+    return _builder_envelopes(warped_meshes)
+
+
+def test_p20d12_d_warped_child_floor_and_ramp_corridor(
+    warped_meshes: dict[str, Any],
+    warped_meshes_env: tuple[dict[str, TubeEnvelope], list[Junction]],
+) -> None:
+    """Contract D: the same child-floor and ramp-corridor contracts on the
+    curved WARPED-301 development (RAMP_ACCESS L03 / L04 included)."""
+    m = warped_meshes
+    envs, junctions = warped_meshes_env
+    ramp_levels = {j.level_id for j in junctions if j.type == "RAMP_ACCESS"}
+    assert {"L03", "L04"} <= ramp_levels
+    for j in junctions:
+        audit = _child_floor_audit(m, j, envs)
+        assert audit["insideArea"] == 0.0, (j.type, j.node_id, audit)
+        assert audit["maxDepth"] <= tol_of(m), (j.type, j.node_id, audit)
+        if j.type == "RAMP_ACCESS":
+            assert audit["outsideArea"] > 0.0, (j.node_id, audit)
+    for level_id in ("L03", "L04"):
+        probes = _ramp_corridor_probe(m, level_id)
+        bad = [p for p in probes if p["hit"] is None or not p["hit"].startswith("SEGMENT:")]
+        assert not bad, (level_id, bad[:6])
