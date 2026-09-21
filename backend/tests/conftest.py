@@ -49,6 +49,8 @@ from minegen.world.synthetic_world import SyntheticWorld, generate_world
 #: module → markers (every test in the module)
 MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     "test_layout_v2_golden_smoke": ("golden",),
+    # Phase 20B.x: the GEOMETRY-STRESS feasibility oracle (one full layout-v2 search)
+    "test_geometry_stress_oracle": ("slow",),
     "test_warped_vein_golden_smoke": ("golden",),
     "test_layout_v2_api": ("e2e",),
     # AC-01F commit 2: the read contract through the real API. Both stacks are
