@@ -906,6 +906,31 @@ their slots and stage 4 validates them at 9/9 — the departing ones are
 NOT_VALIDATED, never refuted. `phase20c4_layout_v2.json` retired to its
 CSV under the retention policy.
 
+The AC-01G characterization freeze (`tests/test_layout_characterization.py`,
+LAYER A discrete record + LAYER B same-runner base-vs-HEAD proof) is a second,
+independent behaviour pin and moved in a SEPARATE commit, exactly as its own
+failure text prescribes (explain, then `scripts/generate_characterization_baseline.py
+--force --source-sha <sha>` from a clean `git archive` of the new freeze SHA and
+move `BASELINE_GIT_SHA`). Its CI failure on the re-baselined HEAD was the
+expected signature of this change, read through the discrete record: on
+TABULAR-REFERENCE, WARPED_VEIN-301 and ACCESS-INFEASIBLE the enumeration,
+shortlist order, ranking, winner and per-candidate status census are
+UNCHANGED; every differing leaf is either a stage-3 access-screen rejection
+count (`GRADE_LIMIT` rises — e.g. TABULAR L01 19 → 28 — because a junction
+whose branch must first descend with the ramp floor before climbing to the
+entry now fails the gradient gate that the chord-only profile admitted;
+`INSUFFICIENT_RAMP_PILLAR` falls correspondingly because the gradient gate
+runs first and the same junctions no longer reach the pillar gate), the
+matching stage-4 `candidatesValid` / rejection counts, or one of the four
+additive per-access keys (`verticalProfile`, `rampFloorFollowLength`,
+`verticalCurveLength`, `tailGradient`; `keyPathShape` +4, nothing removed).
+GEOMETRY-STRESS records the hard-contract change the oracle test pins
+(`winnerId` → None, `feasibleCount` 1 → 0, status NO_FEASIBLE_CANDIDATE, the
+shortlist re-ordered by the now-blocked levels). The freeze SHA moved from
+`3951d98d` to `b13319cf` (the HEAD whose `backend/src` carries rule 188;
+the re-freeze commit itself touches no production source, so LAYER B's
+archive-vs-HEAD comparison is a same-source identity by construction).
+
 Residual measured on the regenerated acceptance fixtures: WARPED-301 L16
 (the junction 8.8 m before the ramp's terminal ring) keeps one child-floor
 sliver 0.05 m above the ramp floor at 0.8 m before the terminal plane,

@@ -36,7 +36,7 @@ REPRODUCING the committed baselines (AC-01G Stage D, D4). A freeze must be
 falsifiable from inside the repository, so the committed baselines are
 generated from a CLEAN archive of the freeze SHA, never from a working tree:
 
-    SHA=3951d98d91235facb6b95e9d646f0dc62b7c9835
+    SHA=b13319cfe0a18c4229377ac5319413e9c4468784   # BASELINE_GIT_SHA (Phase 20B.x re-freeze)
     P=$(mktemp -d)
     mkdir -p "$P/scripts"
     git archive $SHA backend/src | tar -x -C "$P"
@@ -99,8 +99,9 @@ ROUTES = {
     ),
     # AC-01G Stage D (D4): the two behaviours the first pair could not reach —
     # the NO_FEASIBLE_CANDIDATE terminal branch with winnerId None, and a
-    # SWITCHBACK-with-hairpin-station winner over a FamilyInfeasible-dominated
-    # population. Both are clean module-scoped searches, ≈ 6 s and ≈ 30 s.
+    # FamilyInfeasible-dominated population (a SWITCHBACK-with-hairpin-station
+    # winner at the AC-01G freeze; no feasible candidate since the Phase 20B.x
+    # rule-188 re-freeze). Both are clean module-scoped searches, ≈ 6 s and ≈ 30 s.
     "ACCESS-INFEASIBLE": (
         "minegen.regression.layout_v2.case_by_key('ACCESS-INFEASIBLE').realize() "
         "→ generate_world → LayoutV2Search.run() (module-scoped; no shared fixture exists)"

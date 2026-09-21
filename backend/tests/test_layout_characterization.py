@@ -2,13 +2,17 @@
 
 The safety net for the AC-01G search/stage-boundary refactor: the observable
 behaviour of ``LayoutV2Search`` on four golden cases is pinned against the
-freeze SHA ``3951d98d91235facb6b95e9d646f0dc62b7c9835``.
+freeze SHA ``BASELINE_GIT_SHA`` (``tests/characterization_support.py``;
+AC-01G froze ``3951d98d``, Phase 20B.x re-froze at ``b13319cf`` after the
+rule-188 vertical-profile change — a reviewed move of baseline AND SHA).
 
     TABULAR-REFERENCE   EXACT clearance contract
     WARPED_VEIN-301     CONSERVATIVE clearance contract
     ACCESS-INFEASIBLE   NO_FEASIBLE_CANDIDATE terminal branch, winnerId None
-    GEOMETRY-STRESS     station-hairpin SWITCHBACK winner, FamilyInfeasible-
-                        dominated population
+    GEOMETRY-STRESS     FamilyInfeasible-dominated population; a station-hairpin
+                        SWITCHBACK winner at the AC-01G freeze, NO feasible
+                        candidate (winnerId None) since Phase 20B.x — proven
+                        hard-gate in tests/test_geometry_stress_oracle.py
 
 WHY TWO LAYERS (Park review of PR #35). The first freeze compared every float
 of a committed baseline bit for bit. On one commit (tree ``75b67c6``) the
@@ -160,9 +164,12 @@ def access_infeasible_reference() -> LayoutSearchResult:
 
 @pytest.fixture(scope="module")
 def geometry_stress_reference() -> LayoutSearchResult:
-    """AC-01G Stage D (D4): a SWITCHBACK winner WITH a hairpin station over a
-    FamilyInfeasible-dominated population (60 CONSTRUCT / 20 CHEAP / 12
-    DETAILED), against 18 / 62 / 12 in both original cases."""
+    """AC-01G Stage D (D4): a FamilyInfeasible-dominated population (60
+    CONSTRUCT / 20 CHEAP / 12 DETAILED, against 18 / 62 / 12 in both original
+    cases). At the AC-01G freeze it had a SWITCHBACK winner WITH a hairpin
+    station; since Phase 20B.x (rule 188) every shortlisted candidate fails
+    LEVEL_ACCESS_INFEASIBLE and ``winnerId`` is None — the frozen record now
+    holds that outcome and ``test_geometry_stress_oracle.py`` proves why."""
     case = case_by_key(GEOMETRY_STRESS_KEY)
     sc = case.realize()
     return LayoutV2Search(sc, generate_world(sc)).run()
