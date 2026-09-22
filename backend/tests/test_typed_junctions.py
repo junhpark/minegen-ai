@@ -319,8 +319,19 @@ def test_t4_unrelated_endpoints_keep_their_cap_contract(tabular_meshes: dict[str
     by_name = {p["name"]: p for p in dprims}
     k_dev = int(m["dev"].report["profile"]["archSegments"]) + 3
     n_levels = len({d["levelId"] for d in m["levels"]["developments"] if d["kind"] == "DRIFT"})
-    # drift extremities: two caps per level; crosscut face: one cap each
-    assert by_name["DRIFT_CAP"]["indices"].shape[0] == 2 * n_levels * k_dev
+    # drift extremities: two caps per level; crosscut face: one cap each.
+    # Phase 20D.2: a drift cap that a declared crosscut junction occupies is
+    # cut (omitted / clipped fans + their remainders); every other cap keeps
+    # its K fan triangles, so the batched count is the K-fan total corrected
+    # by the report's cap accounting
+    devs = m["dev"].report["developments"]
+    cap_delta = sum(
+        int(d.get("renderCapReplacementTriangles", 0))
+        - int(d.get("renderCapOmittedTriangles", 0))
+        - int(d.get("renderCapClippedTriangles", 0))
+        for d in devs
+    )
+    assert by_name["DRIFT_CAP"]["indices"].shape[0] == 2 * n_levels * k_dev + cap_delta
     assert by_name["CROSSCUT_CAP"]["indices"].shape[0] == len(_crosscuts(m)) * k_dev
     assert "LEVEL_ACCESS_CAP" not in by_name
 
@@ -385,8 +396,16 @@ def test_t6_tabular_topology_and_counts_are_unchanged(tabular_meshes: dict[str, 
     assert rep["topologyContract"] == "LOGICAL_MESH_BEFORE_JUNCTION_APERTURES"
     cut_devs = [d for d in rep["developments"] if d["renderOmittedTriangles"] > 0]
     assert cut_devs and all(d["topology"]["valid"] for d in cut_devs)
+    # Phase 20D.2: ``removedTriangles`` counts every original triangle not
+    # emitted as-is — tube quads AND the end-cap fans a declared junction
+    # occupies (omitted + clipped)
     assert (
-        sum(d["renderOmittedTriangles"] for d in rep["developments"])
+        sum(
+            d["renderOmittedTriangles"]
+            + d["renderCapOmittedTriangles"]
+            + d["renderCapClippedTriangles"]
+            for d in rep["developments"]
+        )
         == (rep["junctions"]["removedTriangles"])
     )
 
@@ -1202,3 +1221,116 @@ def test_p20d12_d_warped_child_floor_and_ramp_corridor(
         probes = _ramp_corridor_probe(m, level_id)
         bad = [p for p in probes if p["hit"] is None or not p["hit"].startswith("SEGMENT:")]
         assert not bad, (level_id, bad[:6])
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20D.2 §10 — a DRIFT_CAP never stands inside a declared crosscut mouth
+# --------------------------------------------------------------------------- #
+
+
+def _extremity_crosscut_junctions(
+    m: dict[str, Any], envs: dict[str, TubeEnvelope], junctions: list[Junction]
+) -> list[Junction]:
+    """DRIFT_CROSSCUT junctions whose point lies within one tunnel width of a
+    drift END ring (the TABULAR station lattice reaches the drift ends)."""
+    width = m["width"]
+    out: list[Junction] = []
+    for j in junctions:
+        if j.type != "DRIFT_CROSSCUT":
+            continue
+        env = envs[j.parent_id]
+        d = min(
+            float(np.linalg.norm(env.centers[0] - j.point)),
+            float(np.linalg.norm(env.centers[-1] - j.point)),
+        )
+        if d <= width:
+            out.append(j)
+    return out
+
+
+def _triangle_area(tris: np.ndarray) -> float:
+    return float(
+        0.5
+        * np.linalg.norm(np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0]), axis=1).sum()
+    )
+
+
+def test_p20d2_drift_cap_never_stands_inside_a_declared_crosscut_junction_tabular(
+    tabular_meshes: dict[str, Any],
+) -> None:
+    """§10 endpoint-cap audit, pinned: at a station on the drift EXTREMITY the
+    crosscut's axis lies in the DRIFT_CAP plane, so the cap's crosscut-side
+    half stood inside the crosscut mouth (measured: every extremity station of
+    the acceptance fixtures hit DRIFT_CAP at 0.4–1.4 m on the drift↔crosscut
+    path). The emitted cap must keep the end wall OUTSIDE the crosscut and
+    nothing INSIDE it — a typed local cut at the declared junction, never a
+    blanket cap omission."""
+    m = tabular_meshes
+    envs, junctions = _builder_envelopes(m)
+    tris, labels = _emitted_triangles(m)
+    caps = tris[labels == "DRIFT_CAP:DRIFT"]
+    width, tol = m["width"], tol_of(m)
+    full_cap_area = float(m["dev"].report["profile"]["meshProfileArea"])
+    ext = _extremity_crosscut_junctions(m, envs, junctions)
+    assert ext, "the TABULAR station lattice reaches the drift ends"
+    for j in ext:
+        child = envs[j.child_id]
+        window = child.ring_window(j.point, (JUNCTION_WINDOW_WIDTHS + 1.0) * width)
+        near = caps[np.linalg.norm(caps.mean(axis=1) - j.point[None, :], axis=1) < 2.0 * width]
+        # the end wall still exists on the rock side: no blanket cap removal
+        assert _triangle_area(near) >= 0.4 * full_cap_area, j.node_id
+        # (1) no emitted cap surface inside the crosscut excavation: centroids
+        # and edge midpoints inset 5 % toward the centroid — the remainder's
+        # chord lies ON the crosscut's open start plane (a measure-zero
+        # boundary where the envelope distance is discontinuous), which is
+        # the end wall meeting the mouth, not surface inside it
+        centroid = near.mean(axis=1)
+        samples = np.concatenate(
+            [
+                centroid,
+                0.95 * 0.5 * (near[:, 0] + near[:, 1]) + 0.05 * centroid,
+                0.95 * 0.5 * (near[:, 1] + near[:, 2]) + 0.05 * centroid,
+                0.95 * 0.5 * (near[:, 2] + near[:, 0]) + 0.05 * centroid,
+            ]
+        )
+        sd = child.signed_distance(samples, window)
+        assert not np.any(sd < -tol), (
+            f"{j.node_id}: {int((sd < -tol).sum())} DRIFT_CAP samples inside the crosscut"
+        )
+        # (2) the drift → crosscut traffic line is not obstructed by the cap
+        cc = next(d for d in m["levels"]["developments"] if d["id"] == j.child_id)
+        pts = np.asarray(cc["centerline"]["points"], dtype=np.float64).reshape(-1, 3)
+        axis = pts[1] - pts[0]
+        axis[2] = 0.0
+        axis /= np.linalg.norm(axis)
+        for h in (0.4, 0.9, 1.4):
+            origin = j.point + np.array([0.0, 0.0, h]) - 0.5 * axis
+            hit = _raycast_first(tris, labels, origin, axis, width)
+            assert hit is None or not hit[1].startswith("DRIFT_CAP"), (j.node_id, h, hit)
+
+
+def test_p20d2_interior_caps_and_crosscut_faces_are_untouched_tabular(
+    tabular_meshes: dict[str, Any],
+) -> None:
+    """Only a cap that a declared junction actually occupies is cut: crosscut
+    faces (no junction ever touches a face) keep exactly K fan triangles each
+    and the development report accounts for every cap triangle."""
+    m = tabular_meshes
+    _, _, dprims = _glb(m["dev"].glb)
+    by_name = {p["name"]: p for p in dprims}
+    k_dev = int(m["dev"].report["profile"]["archSegments"]) + 3
+    assert by_name["CROSSCUT_CAP"]["indices"].shape[0] == len(_crosscuts(m)) * k_dev
+    n_levels = len({d["levelId"] for d in m["levels"]["developments"] if d["kind"] == "DRIFT"})
+    devs = m["dev"].report["developments"]
+    omitted = sum(int(d.get("renderCapOmittedTriangles", 0)) for d in devs)
+    clipped = sum(int(d.get("renderCapClippedTriangles", 0)) for d in devs)
+    replacement = sum(int(d.get("renderCapReplacementTriangles", 0)) for d in devs)
+    assert omitted > 0 and clipped > 0 and replacement > 0
+    assert by_name["DRIFT_CAP"]["indices"].shape[0] == (
+        2 * n_levels * k_dev - omitted - clipped + replacement
+    )
+    # a crosscut face is never cut
+    for d in devs:
+        if d["kind"] == "CROSSCUT":
+            assert d.get("renderCapOmittedTriangles", 0) == 0
+            assert d.get("renderCapClippedTriangles", 0) == 0

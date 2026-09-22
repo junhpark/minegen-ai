@@ -1762,3 +1762,151 @@ are kept, so the neighbour overlaps by at most one quad at the doorway sill
 sweeps the access ENVELOPE at the secondary tessellation for its containment
 query only. An all-development watertight union, exact junction CSG and the
 branch walkthrough remain Phase 20D follow-ups.
+
+## Phase 20D.2 — static branch walkthrough runtime and the typed cap cut
+
+Phase 20D.2 is a CONSUMPTION phase: the emitted ramp and development GLBs
+become the Rapier collision world of the STATIC_FINAL walkthrough (rule
+187). The frontend adds no geometry — the two authoritative changes of the
+phase are the runtime contracts below and ONE backend correction found by
+the §10 endpoint-cap audit.
+
+### Development runtime geometry (`walkthrough/developmentRuntimeGeometry.ts`)
+
+`extractDevelopmentRuntimeGeometry(scene)` maps the GLTFLoader scene of
+`development_mesh.glb` primitive by primitive (extras on
+`geometry.userData`): `role = DEVELOPMENT` tubes (one per emitted kind:
+LEVEL_ACCESS / DRIFT / CROSSCUT) and `role = <KIND>_CAP` caps (only where a
+CAP endpoint exists). Every primitive passes `readTrianglePrimitive`
+(position + index present, Float32 positions, Uint16 / Uint32 indices
+widened to Uint32 with identical values, triangle-shaped lengths, every
+index inside the vertex range) plus a finite-vertex scan of each distinct
+shared buffer; every tube's `ranges` table passes `readDevelopmentRanges`
+(string `developmentId` / `pieceId` / `levelId`, integer triangle-aligned
+`indexOffset` / `indexCount`, entries contiguous in buffer order — no
+overlap, no gap — covering the primitive exactly, unique piece ids, reveal
+metadata accepted by the shared `readRevealMeta` for the entry's count).
+`buildDevelopmentColliderUnits` yields one `ColliderUnit` per emitted
+primitive (`WALK:COLLIDER:DEVELOPMENT:<kind>`,
+`WALK:COLLIDER:DEVELOPMENT_CAP:<kind>`) with the source index arrays as-is
+and the shared vertex buffer transformed exactly once by `toThreePositions`
+((x, y, z) → (x, z, −y), a +1-determinant rotation). Anything else is a
+`DevelopmentGeometryError`, and the caller fails the walkthrough closed.
+
+### Composition, visibility, aperture containment
+
+* `resolveDevelopmentPhysics(context, developmentMesh)` — STATIC_FINAL and
+  a SUCCESS development mesh with a meshUrl → mount; TIMELINE_SNAPSHOT never.
+* `resolveWalkthroughComposition(context, developmentMesh, runtimeState)` —
+  Case A (no artifact) ramp-only; Case B (advertised + VALID) both collider
+  sets; Case C (advertised + MALFORMED / never mounted) `failClosed`.
+  `StaticDevelopmentRuntime` owns the development URL, suspends on the
+  drei-cached GLB, validates once per loaded scene and only then mounts the
+  core runtime — the physics world never exists without the promised
+  development colliders and the hook order of the core never depends on
+  the artifact's presence.
+* `walkthroughAuthorityLayers(context, developmentPhysicsMounted)` — the
+  walkthrough shows exactly the excavation it collides with (ramp always,
+  development iff mounted); `deriveVisibleLayers` returns that set in
+  WALKTHROUGH mode regardless of the stored toggles (bypassed, never
+  mutated). `MineScene` and `MineCanvas` evaluate the SAME predicate.
+* `resolveApertureContainment(tunnelJunctions, levelAccesses, smoothed,
+  activeSegmentIds, ramp)` (TIMELINE_SNAPSHOT) — `expected =
+  junctions.byType.RAMP_ACCESS`; 0 → NONE. Otherwise every OK access with a
+  `rampJunction` and a centerline must exist (count equality), each
+  junction must be welded onto the concatenated effective ramp polyline
+  (≤ 1e-3 m), the branch side is the sign of the access's first station
+  that has left the junction by a quarter width against the gravity-aligned
+  lateral `up × forward`, and every centerline interval on an ACTIVE
+  segment inside `[s_J − 3w, s_J + 3w]` (2-width cut window + 1-width
+  margin) yields one wall-line cuboid: endpoints `p + side·(w/2)·lateral`,
+  centre lifted by `up·h/2`, half extents `[len/2 + 1.25, h/2 + 0.25,
+  0.125]`, basis `(forward, up, forward × up)`. Any failure → INVALID and
+  the temporal session is unavailable (rule 117 analogue). The pieces
+  are the swept wall's own chords between rings (rule 65), so a curved
+  ramp is covered without a straight-line approximation.
+
+### Typed cap cut at a declared junction (`design/junctions.py::cut_cap`)
+
+The §10 audit (`accept20d2/capaudit.py`, geometry-only ray casts along the
+drift ↔ crosscut path, 0.25 m samples, rays at 0.4 / 0.9 / 1.4 m and 0.6 m
+long) reproduced the pre-20D.2 walk failures: every crosscut whose station
+sits on a drift END (TABULAR-REFERENCE 8 of 20 crosscuts, WARPED-301 both
+ends of all 14 drifts) hit `DRIFT_CAP`, every interior station hit
+nothing. Cause: the crosscut axis lies IN the DRIFT_CAP plane, so the cap's
+crosscut-side half stands inside the crosscut mouth — a cap is a separate
+fan primitive that the quad rules of 20D.1 / 20D.1.1 / 20D.1.2 never
+examine. Correction (render only, logical mesh untouched):
+
+    for each parent CAP end whose ring centre lies within the junction
+    window (2 widths) of a declared junction point:
+        corners = cap_fan_corners(ring, apex, start)   # emitted winding
+        window  = child.ring_window(junction.point, 3 widths)
+        for each fan triangle t:
+            sd = child.signed_distance(corners[t], window); inside = sd <= tol
+            all inside & edges stay inside  → OMIT
+            none inside & edges stay outside → KEEP
+            else → CLIP: _clip_triangle — crossings by bisection on the
+                   triangle's own edges (the SAME tolerance surface as the
+                   floor clip), remainder polygon (triangle or quad) kept
+                   when its edges stay outside, else bisect the longest
+                   edge (≤ CLIP_MAX_SUBDIVISION_DEPTH, typed
+                   JunctionClipTopologyError on exhaustion)
+
+`build_render_mesh(cap_cuts=…)` emits the kept fans, the remainder fans as
+NEW cap vertices (UV interpolated barycentrically from the fan corners,
+normals from the full uncut fan for the original vertices), and stamps the
+cut cap primitive with additive `omittedTriangles` / `clippedTriangles` /
+`replacementTriangles`; the development report adds `renderCap*` per
+development and `parentCap*` per junction opening, and `removedTriangles`
+counts tube and cap originals alike. Because the crosscut envelope is
++inf beyond its open start ring, the crossings converge onto that plane:
+the remainder is exactly the rock-side half of the end wall and its chord
+meets the crosscut's open start plane (measured on the TABULAR fixture:
+per drift cap 5 fans omitted, 6 clipped, 6–7 replacement fans; DRIFT_CAP
+88 → 49 triangles; caps no junction reaches and every crosscut face are
+bit-identical). Two junctions clipping one fan triangle are an explicit
+`JunctionClipConflictError`. This is not a general CSG: a cap at a
+declared junction is judged against ONE child envelope with the existing
+containment query.
+
+### Post-fix audit and the L-junction residual (§10 closeout)
+
+Re-running the audit on the regenerated meshes: TABULAR-REFERENCE 20 / 20
+crosscuts (8 on a drift extremity) register no blocking hit on the
+drift ↔ crosscut traffic line; WARPED-301 187 crosscuts (28 on a drift
+extremity), every interior station clean, 15 of the 28 extremity
+stations still register a `DRIFT_CAP` hit — every one of them on the kept
+half-cap's boundary edge at the station itself (hit distance ≤ 0.5 m from
+the station, all three ray heights, kept fan
+`(0, 0, 0)–(−w/2, 0, 0)–(0, 0, 2.25)` in the crosscut frame). That edge
+IS the traffic corner: with the station on the drift END, the crosscut
+axis passes through the corner of the excavated union (drift end wall
+meets crosscut wall), so a ray exactly on the centerline grazes the kept
+wall. TABULAR registers none because its cap plane contains the ray
+exactly (Möller–Trumbore determinant 0); a curved WARPED drift tilts the
+cap by ≈ 0.4° (end tangent `a = −0.007` in the crosscut frame) and the
+graze becomes a hit. It is a true convex corner, not surface inside the
+mouth: the PERSON capsule (r = 0.3 m) rounds it, and the browser walks on
+both fixtures pass the corner in both directions.
+
+The same audit exposed a SECOND, unrelated defect class at every
+extremity station (`accept20d2/holecheck.py`): the drift ends AT the
+station (`dEnd = 0.00` — the station lattice ends exactly at the backbone
+end), so half of the crosscut's OPEN start ring (`l ∈ (0, w/2]` beyond the
+drift end) faces unexcavated rock with no surface at all — 6 / 6 rays cast
+from inside the mouth back through the start plane travel > 4 m without
+hitting anything, on TABULAR 8 / 8 and WARPED-301 28 / 28 extremity
+stations (interior stations 0 / 0). The Phase 20D.1 endpoint policy (rule
+166) assumes an OPEN child start lies inside its parent — a T-junction; a
+station on the drift end is an L-junction, and the drift-side half of the
+mouth is the only part that opens into the drift. Phase 20D.2 does NOT
+patch it: rule 187 forbids an invented cap or any collision-only geometry,
+and the directive's stop condition (the same geometry defect class on both
+fixtures) applies, so it is recorded here and in the roadmap for an
+explicit decision. The candidate typed fix is the mirror of `cut_cap` on
+the CHILD start ring — the cap fan cut against the PARENT envelope keeping
+the OUTSIDE remainder, emitted as a `<KIND>_CAP` piece — or an endpoint
+policy `PARTIAL_CAP` with the same rule; either is a backend change to the
+typed union, never a frontend collider.
+

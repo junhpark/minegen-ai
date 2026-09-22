@@ -322,8 +322,8 @@ export function DesignPanel() {
             </div>
           ) : null}
           <div className="mt-1 text-mute">
-            swept on the owning centerlines · CAP / OPEN endpoints · no boolean junctions (Phase
-            20D)
+            swept on the owning centerlines · CAP / OPEN endpoints · typed local junction apertures
+            · no general CSG (Phase 20D)
           </div>
         </div>
       ) : null}

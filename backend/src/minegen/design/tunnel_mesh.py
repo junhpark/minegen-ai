@@ -32,7 +32,7 @@ from minegen.design.constraints import RejectionReason
 from minegen.design.cost_field import DesignCostEvaluator
 
 if TYPE_CHECKING:
-    from minegen.design.junctions import FloorClip
+    from minegen.design.junctions import CapCut, FloorClip
 from minegen.design.profile import (
     ProfileShape,
     boundary_points,
@@ -418,6 +418,11 @@ class RenderMesh:
     #: parent boundary and the replacement triangles emitted for them
     clipped_floor_quads: int = 0
     replacement_triangles: int = 0
+    #: Phase 20D.2 (additive): end-cap fan triangles omitted / clipped where
+    #: a declared junction's child occupies the cap, and their replacements
+    cap_omitted_triangles: int = 0
+    cap_clipped_triangles: int = 0
+    cap_replacement_triangles: int = 0
 
 
 def _profile_groups(
@@ -446,6 +451,20 @@ def _profile_groups(
     return groups, crease
 
 
+def cap_fan_corners(ring: FloatArray, apex: FloatArray, start: bool) -> FloatArray:
+    """The K fan triangles of one end cap, (K, 3, 3), in the EMITTED winding
+    of ``build_render_mesh`` (apex first): the start cap winds
+    (apex, j, j+1), the end cap (apex, j+1, j) — one authority for every
+    consumer that clips a cap (Phase 20D.2)."""
+    k = int(ring.shape[0])
+    j = np.arange(k)
+    jn = (j + 1) % k
+    a = np.broadcast_to(apex, (k, 3))
+    if start:
+        return np.stack([a, ring[j], ring[jn]], axis=1)
+    return np.stack([a, ring[jn], ring[j]], axis=1)
+
+
 def build_render_mesh(
     mesh: LogicalMesh,
     chain: RingChain,
@@ -456,6 +475,7 @@ def build_render_mesh(
     caps: tuple[bool, bool] = (True, True),
     quad_mask: npt.NDArray[np.bool_] | None = None,
     floor_clips: Mapping[tuple[int, int], FloorClip] | None = None,
+    cap_cuts: Mapping[str, CapCut] | None = None,
 ) -> RenderMesh:
     """Render-vertex split of the logical tube + caps. ``caps`` selects which
     end caps are emitted ((portal, terminal); the Phase 06 ramp keeps both, an
@@ -490,7 +510,15 @@ def build_render_mesh(
     ``omittedTriangles`` keeps its meaning (original sweep triangles not
     emitted as-is: whole omissions AND clipped originals); the additive
     ``clippedQuads`` / ``replacementTriangles`` extras account for the
-    remainder geometry."""
+    remainder geometry.
+
+    Phase 20D.2 ``cap_cuts`` (``"start"`` / ``"end"`` → ``CapCut``) omits or
+    clips the fan triangles of an end cap that a declared junction's child
+    occupies (a crosscut station on a drift extremity): omitted fans are not
+    emitted, clipped fans are replaced by their outside-child remainder with
+    NEW cap vertices (UV interpolated barycentrically from the fan corners).
+    Absent by default; the base-sweep closedness QA always judges the
+    UNCUT fans."""
     r, k = mesh.ring_count, mesh.k
     if quad_mask is not None and quad_mask.shape != (r - 1, k):
         raise ValueError(f"quad_mask shape {quad_mask.shape} != {(r - 1, k)}")
@@ -505,6 +533,25 @@ def build_render_mesh(
                 f"floor clip key ({ci}, {cj}) != clip ({entry.interval}, {entry.edge})"
             )
     n_clip_vertices = int(sum(int(p.shape[0]) for c in clips.values() for p in c.polygons))
+    cuts_by_end: dict[str, CapCut] = dict(cap_cuts) if cap_cuts else {}
+    for end_key, end_cut in cuts_by_end.items():
+        if end_key not in ("start", "end"):
+            raise ValueError(f"cap cut key {end_key!r} is not 'start' / 'end'")
+        if end_cut.omit.shape != (k,):
+            raise ValueError(f"cap cut omit shape {end_cut.omit.shape} != {(k,)}")
+        for fan_index, fan_clip in end_cut.clips.items():
+            if not (0 <= fan_index < k) or fan_clip.triangle != fan_index:
+                raise ValueError(f"cap clip {fan_index} outside the fan of {k} triangles")
+            if end_cut.omit[fan_index]:
+                raise ValueError(f"cap clip {fan_index} on an omitted fan triangle")
+    n_cap_clip_vertices = int(
+        sum(
+            int(p.shape[0])
+            for c in cuts_by_end.values()
+            for cl in c.clips.values()
+            for p in cl.polygons
+        )
+    )
     ring_pos = mesh.positions[: r * k].reshape(r, k, 3)
     _edge_group, crease = _profile_groups(shape, crease_angle_deg)
 
@@ -515,7 +562,13 @@ def build_render_mesh(
     vid_a = np.zeros((r, k), dtype=np.int64)
     vid_b = np.zeros((r, k), dtype=np.int64)
     positions = np.zeros(
-        (r * per_ring + n_clip_vertices + (int(caps[0]) + int(caps[1])) * (k + 1), 3)
+        (
+            r * per_ring
+            + n_clip_vertices
+            + n_cap_clip_vertices
+            + (int(caps[0]) + int(caps[1])) * (k + 1),
+            3,
+        )
     )
     uvs = np.zeros((positions.shape[0], 2))
     cursor = 0
@@ -601,12 +654,15 @@ def build_render_mesh(
 
     # caps: own flat-shaded vertices (removable primitives, rule 66)
     cap_prims: list[RenderPrimitive] = []
+    full_cap_prims: list[RenderPrimitive] = []  # uncut fans, base-sweep QA only
+    cap_omitted = cap_clipped = cap_replacement = 0
     for cap_name, ring_i, apex_logical, wanted in (
         ("PORTAL_CAP", 0, r * k, caps[0]),
         ("TERMINAL_CAP", r - 1, r * k + 1, caps[1]),
     ):
         if not wanted:
             continue
+        cut = cuts_by_end.get("start" if cap_name == "PORTAL_CAP" else "end")
         base = cursor
         for j in range(k):
             positions[cursor] = ring_pos[ring_i, j]
@@ -620,19 +676,62 @@ def build_render_mesh(
         uvs[cursor] = (0.5, shape.centroid[1] / max(shape.points[:, 1].max(), 1e-9))
         cursor += 1
         tris_c: list[tuple[int, int, int]] = []
+        full_c: list[tuple[int, int, int]] = []
         for j in range(k):
             jn = (j + 1) % k
-            if cap_name == "PORTAL_CAP":
-                tris_c.append((apex, base + j, base + jn))
-            else:
-                tris_c.append((apex, base + jn, base + j))
-        for t in tris_c:
-            _accumulate_normal(positions, normals, t)
+            # winding: one authority with ``cap_fan_corners`` (apex first)
+            tri = (
+                (apex, base + j, base + jn)
+                if cap_name == "PORTAL_CAP"
+                else (apex, base + jn, base + j)
+            )
+            full_c.append(tri)
+            if cut is not None and cut.omit[j]:
+                cap_omitted += 1
+                continue
+            cap_clip = cut.clips.get(j) if cut is not None else None
+            if cap_clip is not None:
+                # Phase 20D.2: the fan triangle's outside-child remainder,
+                # new cap vertices, UV from the fan corners' UVs
+                cap_clipped += 1
+                corner_uv = np.stack([uvs[tri[0]], uvs[tri[1]], uvs[tri[2]]])
+                for poly, bary in zip(cap_clip.polygons, cap_clip.bary, strict=True):
+                    b0 = cursor
+                    for q in range(int(poly.shape[0])):
+                        positions[cursor] = poly[q]
+                        uvs[cursor] = bary[q] @ corner_uv
+                        cursor += 1
+                    for fan in range(1, int(poly.shape[0]) - 1):
+                        tris_c.append((b0, b0 + fan, b0 + fan + 1))
+                        cap_replacement += 1
+                continue
+            tris_c.append(tri)
+        # normals: the ORIGINAL cap vertices from the full (uncut) fan — an
+        # omitted fan triangle still shapes its neighbours, exactly as an
+        # omitted tube quad does — and the new clip vertices from their own
+        # replacement fans (a flat cap: one normal either way)
+        for tri_c in full_c:
+            _accumulate_normal(positions, normals, tri_c)
+        for tri_c in tris_c:
+            if tri_c[0] >= base + k + 1:
+                _accumulate_normal(positions, normals, tri_c)
+        cap_extras: dict[str, Any] = {"role": cap_name}
+        if cut is not None:
+            cap_extras["omittedTriangles"] = cut.omitted_triangles
+            cap_extras["clippedTriangles"] = cut.clipped_triangles
+            cap_extras["replacementTriangles"] = cut.replacement_triangles
         cap_prims.append(
             RenderPrimitive(
                 name=cap_name,
-                extras={"role": cap_name},
+                extras=cap_extras,
                 indices=np.asarray(tris_c, dtype=np.uint32).ravel(),
+            )
+        )
+        full_cap_prims.append(
+            RenderPrimitive(
+                name=cap_name,
+                extras={"role": cap_name},
+                indices=np.asarray(full_c, dtype=np.uint32).ravel(),
             )
         )
 
@@ -694,12 +793,12 @@ def build_render_mesh(
     closed = all(caps) and _geometrically_closed(positions[:cursor], prims)
     # weld QA of the base sweep: the full tube before the declared junction
     # apertures were cut (a visualization cut is not a weld defect)
-    if quad_mask is not None and omitted_tris:
+    if (quad_mask is not None and omitted_tris) or cap_omitted or cap_clipped:
         full_prims = [
             RenderPrimitive(
                 name="_full", extras={}, indices=np.asarray(all_tris, dtype=np.uint32).ravel()
             ),
-            *cap_prims,
+            *full_cap_prims,
         ]
         base_closed = all(caps) and _geometrically_closed(positions[:cursor], full_prims)
     else:
@@ -714,6 +813,9 @@ def build_render_mesh(
         base_sweep_geometrically_closed=base_closed,
         clipped_floor_quads=int(interval_clipped.sum()),
         replacement_triangles=int(interval_replacement.sum()),
+        cap_omitted_triangles=int(cap_omitted),
+        cap_clipped_triangles=int(cap_clipped),
+        cap_replacement_triangles=int(cap_replacement),
     )
 
 

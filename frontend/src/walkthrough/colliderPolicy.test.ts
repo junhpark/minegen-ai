@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { resolveColliderPolicy } from './colliderPolicy'
+import {
+  resolveColliderPolicy,
+  resolveDevelopmentPhysics,
+  resolveWalkthroughComposition,
+} from './colliderPolicy'
+import { walkthroughAuthorityLayers } from './readiness'
 import type { TemporalWalkthroughPlan } from './temporalPlan'
 
 const ALL = ['SEG:A', 'SEG:B', 'SEG:C']
@@ -59,5 +64,98 @@ describe('collider policy per walkthrough context (§31)', () => {
     const p = resolveColliderPolicy('TIMELINE_SNAPSHOT', ALL, plan({ status: 'INVALID' }))
     expect(p.segmentIds).toEqual([])
     expect(p.frontierSegmentId).toBeNull()
+  })
+})
+
+describe('development physics per walkthrough context (Phase 20D.2, rule 187)', () => {
+  const ok = { status: 'SUCCESS', meshUrl: '/api/v1/scenarios/x/design/development-mesh/mesh.glb' }
+
+  it('STATIC_FINAL mounts the advertised SUCCESS development mesh (Case B)', () => {
+    expect(resolveDevelopmentPhysics('STATIC_FINAL', ok)).toEqual({
+      mount: true,
+      meshUrl: ok.meshUrl,
+    })
+  })
+
+  it('STATIC_FINAL without a development mesh keeps the ramp-only walkthrough (Case A)', () => {
+    expect(resolveDevelopmentPhysics('STATIC_FINAL', null)).toEqual({ mount: false, meshUrl: null })
+    expect(resolveDevelopmentPhysics('STATIC_FINAL', undefined)).toEqual({
+      mount: false,
+      meshUrl: null,
+    })
+    expect(resolveDevelopmentPhysics('STATIC_FINAL', { status: 'FAILED', meshUrl: null })).toEqual({
+      mount: false,
+      meshUrl: null,
+    })
+    expect(resolveDevelopmentPhysics('STATIC_FINAL', { status: 'SUCCESS', meshUrl: null })).toEqual(
+      {
+        mount: false,
+        meshUrl: null,
+      },
+    )
+  })
+
+  it('TIMELINE_SNAPSHOT never mounts the final development mesh, even when advertised', () => {
+    expect(resolveDevelopmentPhysics('TIMELINE_SNAPSHOT', ok)).toEqual({
+      mount: false,
+      meshUrl: null,
+    })
+  })
+})
+
+describe('STATIC_FINAL physics-world composition (Phase 20D.2, T4 / M6)', () => {
+  const ok = { status: 'SUCCESS', meshUrl: '/api/v1/scenarios/x/design/development-mesh/mesh.glb' }
+
+  it('Case B: advertised + valid runtime geometry → tunnel AND development colliders', () => {
+    expect(resolveWalkthroughComposition('STATIC_FINAL', ok, 'VALID')).toEqual({
+      tunnelCollider: true,
+      developmentCollider: true,
+      failClosed: false,
+    })
+  })
+
+  it('Case A: no development artifact → tunnel colliders only, never fail-closed', () => {
+    for (const dev of [null, undefined, { status: 'FAILED', meshUrl: null }]) {
+      for (const runtime of ['NOT_MOUNTED', 'VALID', 'MALFORMED'] as const) {
+        expect(resolveWalkthroughComposition('STATIC_FINAL', dev, runtime)).toEqual({
+          tunnelCollider: true,
+          developmentCollider: false,
+          failClosed: false,
+        })
+      }
+    }
+  })
+
+  it('Case C (M6): advertised but malformed → fail closed, NOT a silent ramp-only walkthrough', () => {
+    const c = resolveWalkthroughComposition('STATIC_FINAL', ok, 'MALFORMED')
+    expect(c.failClosed).toBe(true)
+    expect(c.developmentCollider).toBe(false)
+    // an advertised mesh that was simply never mounted is the same defect
+    expect(resolveWalkthroughComposition('STATIC_FINAL', ok, 'NOT_MOUNTED').failClosed).toBe(true)
+  })
+
+  it('TIMELINE_SNAPSHOT never composes development colliders', () => {
+    expect(resolveWalkthroughComposition('TIMELINE_SNAPSHOT', ok, 'VALID')).toEqual({
+      tunnelCollider: true,
+      developmentCollider: false,
+      failClosed: false,
+    })
+  })
+
+  it('T6 invariant: development collider mounted ⇔ development mesh visible (every context / artifact state)', () => {
+    for (const context of ['STATIC_FINAL', 'TIMELINE_SNAPSHOT'] as const) {
+      for (const dev of [
+        null,
+        { status: 'FAILED', meshUrl: null },
+        { status: 'SUCCESS', meshUrl: null },
+        ok,
+      ]) {
+        const mount = resolveDevelopmentPhysics(context, dev).mount
+        const visible = walkthroughAuthorityLayers(context, mount).has('developmentMesh')
+        expect(visible).toBe(mount)
+        // and the ramp tunnel is always both collidable and visible
+        expect(walkthroughAuthorityLayers(context, mount).has('tunnelMesh')).toBe(true)
+      }
+    }
   })
 })

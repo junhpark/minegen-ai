@@ -39,11 +39,31 @@ export const READINESS_MESSAGES: Record<Exclude<WalkthroughReadiness, 'READY'>, 
   INVALID_SPAWN_GEOMETRY: 'Smoothed decline geometry cannot host a walkthrough spawn',
 }
 
-/** Layers that stay visible inside the immersive walkthrough view.
- * Browser-acceptance hotfix §7: terrain rendered huge occluding surfaces
- * in first person, so ONLY the tunnel environment survives — in BOTH
- * STATIC_FINAL and TIMELINE_SNAPSHOT. Other modes are untouched. */
-const WALKTHROUGH_ALLOWED = new Set(['tunnelMesh'])
+/**
+ * Layers that stay visible inside the immersive walkthrough view — the
+ * AUTHORITY set, never an intersection with the user's stored toggles.
+ * Browser-acceptance hotfix §7: terrain rendered huge occluding surfaces in
+ * first person, so ONLY the excavation environment survives. Phase 20D.2
+ * (rule 187): the walkthrough shows exactly the excavation geometry whose
+ * collision it mounts — the ramp tunnel always, the development excavation
+ * meshes when STATIC_FINAL mounts their physics — so "collider active but
+ * geometry invisible" and "toggle off → boundary gone" are both impossible
+ * by construction; TIMELINE_SNAPSHOT keeps the ramp-only temporal contract
+ * (the final development mesh never leaks into a historical snapshot).
+ * Other modes are untouched.
+ */
+export function walkthroughAuthorityLayers(
+  walkthroughContext: 'STATIC_FINAL' | 'TIMELINE_SNAPSHOT' | null,
+  developmentPhysicsMounted: boolean,
+): ReadonlySet<string> {
+  // an unknown context is treated as temporal (the narrower set): the
+  // development mesh is shown only when STATIC_FINAL is explicit AND its
+  // physics is mounted
+  if (walkthroughContext === 'STATIC_FINAL' && developmentPhysicsMounted) {
+    return new Set(['tunnelMesh', 'developmentMesh'])
+  }
+  return new Set(['tunnelMesh'])
+}
 
 /**
  * Layers that a temporal view must never render (Phase 17.1 §2). The raw
@@ -59,11 +79,18 @@ const TEMPORAL_SUPPRESSED = new Set(['rawSearchPath'])
  * suppressed WITHOUT mutating the user's stored `visibleLayers`, so the
  * DESIGN-mode preference is intact on the way back out of 4D.
  */
-export function deriveVisibleLayers<T extends string>(mode: string, visible: Set<T>): Set<T> {
+export function deriveVisibleLayers<T extends string>(
+  mode: string,
+  visible: Set<T>,
+  walkthroughContext: 'STATIC_FINAL' | 'TIMELINE_SNAPSHOT' | null = null,
+  developmentPhysicsMounted = false,
+): Set<T> {
   if (mode === 'WALKTHROUGH') {
-    const out = new Set<T>()
-    for (const layer of visible) if (WALKTHROUGH_ALLOWED.has(layer)) out.add(layer)
-    return out
+    // rule 187: the walkable excavation is always shown, whatever the stored
+    // toggles say (stored preferences are never mutated, only bypassed here)
+    return new Set([
+      ...walkthroughAuthorityLayers(walkthroughContext, developmentPhysicsMounted),
+    ] as T[])
   }
   if (mode === '4D') {
     const out = new Set<T>()

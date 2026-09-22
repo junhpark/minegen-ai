@@ -42,11 +42,13 @@ from minegen.design.junctions import (
     JUNCTION_RING_SPACING_FRACTION,
     JUNCTION_WINDOW_WIDTHS,
     RAMP_TUBE_ID,
+    CapCut,
     FloorClip,
     Junction,
     JunctionClipTopologyError,
     JunctionCut,
     TubeEnvelope,
+    cut_cap,
     cut_tube,
     find_junctions,
     junction_report,
@@ -67,6 +69,7 @@ from minegen.design.tunnel_mesh import (
     build_logical_mesh,
     build_render_mesh,
     build_ring_chain,
+    cap_fan_corners,
 )
 
 FloatArray = npt.NDArray[np.float64]
@@ -400,6 +403,9 @@ class _Swept:
     #: Phase 20D.1.2: straddling child floor quads clipped at a parent
     #: boundary ((interval, edge) → clip), applied by ``render``
     floor_clips: dict[tuple[int, int], FloorClip] = field(default_factory=dict)
+    #: Phase 20D.2: end caps a declared junction's child occupies
+    #: ("start" / "end" → merged cut), applied by ``render``
+    cap_cuts: dict[str, CapCut] = field(default_factory=dict)
 
 
 class JunctionClipConflictError(ValueError):
@@ -503,6 +509,7 @@ class DevelopmentMeshBuilder:
             caps=(spec.start == "CAP", spec.end == "CAP"),
             quad_mask=sw.quad_mask if bool(sw.quad_mask.any()) else None,
             floor_clips=sw.floor_clips if sw.floor_clips else None,
+            cap_cuts=sw.cap_cuts if sw.cap_cuts else None,
         )
 
     def build(
@@ -558,15 +565,15 @@ class DevelopmentMeshBuilder:
                 )
             swept.append(sw)
         try:
-            cuts = self._open_junctions(junctions, swept, shape, ramp_payload)
+            cuts, cap_cuts = self._open_junctions(junctions, swept, shape, ramp_payload)
         except JunctionClipConflictError as exc:
             problems.append(f"JUNCTION_CLIP_CONFLICT: {exc}")
-            cuts = []
+            cuts, cap_cuts = [], []
         except JunctionClipTopologyError as exc:
             problems.append(f"JUNCTION_CLIP_TOPOLOGY: {exc}")
-            cuts = []
+            cuts, cap_cuts = [], []
         report = self._report(swept, shape)
-        report["junctions"] = junction_report(junctions, cuts)
+        report["junctions"] = junction_report(junctions, cuts, cap_cuts)
         if problems:
             report["status"] = "FAILED"
             report["failureReason"] = "; ".join(problems[:20]) + (
@@ -598,14 +605,16 @@ class DevelopmentMeshBuilder:
         swept: list[_Swept],
         shape: ProfileShape,
         ramp_payload: dict[str, Any] | None,
-    ) -> list[JunctionCut]:
+    ) -> tuple[list[JunctionCut], list[CapCut]]:
         """Apply every declared junction to the tubes this builder owns:
         the child side of RAMP_ACCESS (the parent ramp is cut by the tunnel
-        builder), both sides of ACCESS_DRIFT and DRIFT_CROSSCUT. Envelopes
-        are built once per tube; the ramp's from its centerline at the main
+        builder), both sides of ACCESS_DRIFT and DRIFT_CROSSCUT, and (Phase
+        20D.2) the parent's END CAP where the junction lies inside the cap's
+        window (a crosscut station on a drift extremity). Envelopes are
+        built once per tube; the ramp's from its centerline at the main
         tessellation. Render meshes are rebuilt only for cut tubes."""
         if not junctions:
-            return []
+            return [], []
         width = float(self.ramp.tunnel_width)
         by_id = {s.spec.development_id: s for s in swept}
         envelopes: dict[str, TubeEnvelope] = {
@@ -628,6 +637,7 @@ class DevelopmentMeshBuilder:
                 ramp_chain.centers, ramp_chain.tangents, main_shape
             )
         cuts: list[JunctionCut] = []
+        cap_cuts: list[CapCut] = []
         touched: set[str] = set()
         for j in junctions:
             parent_env = envelopes.get(j.parent_id)
@@ -641,6 +651,9 @@ class DevelopmentMeshBuilder:
                 parent.quad_mask |= cut.mask
                 touched.add(j.parent_id)
                 cuts.append(cut)
+                for cap_cut in self._cut_parent_caps(parent, child_env, j, width):
+                    cap_cuts.append(cap_cut)
+                    self._merge_cap_cut(parent, cap_cut)
             if child is not None and child.rings is not None and child.quad_mask is not None:
                 cut = cut_tube(child_env, child.rings, parent_env, j, "CHILD", width)
                 child.quad_mask |= cut.mask
@@ -662,7 +675,61 @@ class DevelopmentMeshBuilder:
                 cuts.append(cut)
         for dev_id in sorted(touched):
             self.render(by_id[dev_id], shape)
-        return cuts
+        return cuts, cap_cuts
+
+    @staticmethod
+    def _cut_parent_caps(
+        parent: _Swept, child_env: TubeEnvelope, junction: Junction, width: float
+    ) -> list[CapCut]:
+        """Phase 20D.2: the parent's CAP ends whose ring lies inside the
+        junction window are judged against the child envelope; a cap the
+        child does not reach yields nothing (every cap outside a declared
+        junction's window is bit-identical to Phase 20D.1.2)."""
+        assert parent.rings is not None and parent.closed is not None
+        r, k = parent.closed.ring_count, parent.closed.k
+        out: list[CapCut] = []
+        ends: tuple[tuple[Literal["start", "end"], int, int], ...] = (
+            ("start", 0, r * k),
+            ("end", r - 1, r * k + 1),
+        )
+        for end, ring_i, apex_i in ends:
+            if getattr(parent.spec, end) != "CAP":
+                continue
+            center = parent.chain.centers[ring_i]
+            if float(np.linalg.norm(center - junction.point)) > JUNCTION_WINDOW_WIDTHS * width:
+                continue
+            corners = cap_fan_corners(
+                parent.rings[ring_i], parent.closed.positions[apex_i], end == "start"
+            )
+            cap_cut = cut_cap(corners, child_env, junction, end, width)
+            if not cap_cut.empty:
+                out.append(cap_cut)
+        return out
+
+    @staticmethod
+    def _merge_cap_cut(parent: _Swept, cap_cut: CapCut) -> None:
+        """Merge one junction's cap cut into the parent's per-end cut: a whole
+        omission (by any junction) is a superset of a clip; two junctions
+        clipping one fan triangle are an explicit conflict, never an
+        approximation (same contract as the child floor clips)."""
+        existing = parent.cap_cuts.get(cap_cut.end)
+        if existing is None:
+            parent.cap_cuts[cap_cut.end] = CapCut(
+                cap_cut.junction, cap_cut.end, cap_cut.omit.copy(), dict(cap_cut.clips)
+            )
+            return
+        existing.omit |= cap_cut.omit
+        for t, clip in cap_cut.clips.items():
+            if existing.omit[t]:
+                continue
+            if t in existing.clips and existing.clips[t].junction_node_id != clip.junction_node_id:
+                raise JunctionClipConflictError(
+                    f"{parent.spec.development_id}: cap triangle {t} ({cap_cut.end}) clipped by "
+                    f"both {existing.clips[t].junction_node_id} and {clip.junction_node_id}"
+                )
+            existing.clips[t] = clip
+        for t in [t for t in existing.clips if existing.omit[t]]:
+            del existing.clips[t]
 
     def _report(self, swept: list[_Swept], shape: ProfileShape) -> dict[str, Any]:
         per_kind: dict[str, dict[str, Any]] = {}
@@ -719,6 +786,17 @@ class DevelopmentMeshBuilder:
                     "renderClippedFloorQuads": len(s.floor_clips),
                     "renderReplacementTriangles": int(
                         sum(c.replacement_triangles for c in s.floor_clips.values())
+                    ),
+                    # Phase 20D.2 (additive): end-cap fan triangles omitted /
+                    # clipped where a declared junction's child occupies the cap
+                    "renderCapOmittedTriangles": int(
+                        sum(c.omitted_triangles for c in s.cap_cuts.values())
+                    ),
+                    "renderCapClippedTriangles": int(
+                        sum(c.clipped_triangles for c in s.cap_cuts.values())
+                    ),
+                    "renderCapReplacementTriangles": int(
+                        sum(c.replacement_triangles for c in s.cap_cuts.values())
                     ),
                     "topology": {
                         "policy": s.topology.policy,
