@@ -1810,3 +1810,47 @@ code, the code and the rule win and the map is corrected.
      construction. A banked junction floor is Phase 20D (unified
      development mesh) scope; the 20D.1.2 child-floor clipping is neither
      relaxed nor replaced by this rule.
+
+189. Design assessment is a READ-ONLY projection (Phase 20D.3). The design
+     assessment (`assessment/`, `GET …/design/assessment`) projects existing
+     authoritative results — the layout-v2 catalogue (ranking, statuses,
+     scores), the selection, the active ramp source and the capability
+     graph (required capability paths, egress advisory) — into typed
+     engineering checks and a candidate comparison, computed per request
+     from ONE validated snapshot and persisted nowhere (no
+     `design_assessment.json`). It never creates geometry, changes
+     feasibility, re-ranks candidates, recomputes a score, generates a
+     missing artifact or infers a missing fact: an absent selection /
+     capability graph makes the dependent checks NOT_EVALUATED (never a
+     pass), and a STALE or MALFORMED artifact raises its own typed refusal
+     through the validated reader (LAYOUT_V2_SELECTION_STALE,
+     CAPABILITY_GRAPH_STALE, ARTIFACT_MALFORMED — never a fallback). READ ≠
+     TRUST holds at the assessment's OWN boundary too: every catalogue field
+     the projection consumes is validated once with its JSON path
+     (`assessment/builder.py::validate_catalogue_shape`) and a structural
+     defect the shared reader precondition cannot see — a missing
+     candidateId / requiredLevels, a malformed scores block, a ranking that
+     names an unknown, unscored or non-FEASIBLE candidate, a duplicated id —
+     is refused as 409 ARTIFACT_MALFORMED, never a bare 500; legitimate
+     engineering states (NO_FEASIBLE_CANDIDATE, INFEASIBLE / NOT_VALIDATED
+     rows, permitted null optional blocks) are never shape errors. The
+     ACTIVE ramp source is resolved from the same snapshot FIRST: under
+     LAYOUT_V2 the catalogue is required (absent → LAYOUT_V2_NOT_GENERATED);
+     under LEGACY it is optional — a LEGACY-only design keeps its generic
+     network / capability / egress assessment (`layoutScope = NONE`, layout
+     checks NOT_APPLICABLE, comparison empty) and a dormant catalogue /
+     selection is reported with explicit `INACTIVE_LAYOUT_V2` scope
+     (`activeDesignCandidateId` null), never as the active design. Candidate comparison preserves
+     the Layout V2 ranking and scores exactly (rows = the winner + the top
+     FEASIBLE alternatives in `ranking` order, bounded, the selection always
+     a row; INFEASIBLE / NOT_VALIDATED are never alternatives; deltas are
+     plain `candidate − winner` subtraction). Every check declares its
+     authority — HARD_DESIGN_RULE, DERIVED_VALIDATION, ADVISORY or
+     INFORMATIONAL — and physical / capability reachability of a required
+     path stay two separate recorded facts (rule 185). Dual-egress remains
+     an explicitly labelled DESIGN ADVISORY derived from the capability-graph
+     authority: no LEGAL / REGULATORY / STATUTORY COMPLIANCE, CERTIFIED,
+     SAFE or UNSAFE wording anywhere in the payload or the UI, and a
+     satisfied advisory is never rendered as a certification badge. Economic
+     quantities (cost, NPV, travel time, capacity, ventilation demand) are
+     never estimated here (Phase 22 / external).

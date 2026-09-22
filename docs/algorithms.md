@@ -1944,3 +1944,48 @@ and the browser rock-side push at an extremity station stops at the mouth
 cap on both fixtures. No general Boolean: ONE child end, ONE parent
 envelope, the declared junction only; the frontend adds no collider.
 
+## Phase 20D.3 — design assessment read model (`assessment/`, rule 189)
+
+Not an algorithm: a projection. `build_design_assessment(catalogue,
+selected, capability, sources)` is a pure function of already-validated
+documents and contains no search, no geometry, no graph traversal and no
+score arithmetic beyond `candidate − winner`:
+
+    ranking   = catalogue.ranking                       # verbatim; every entry must be FEASIBLE with a rank, else ValueError
+    rows      = [c for c in ranking if c in top(max_rows) ∪ {winnerId} ∪ {selectedId}]   # ranking order kept
+    deltas    = scores(row) − scores(winner)             # per group, plain subtraction
+    checks    = fixed list, each reading ONE recorded field set:
+                LAYOUT_SELECTED            selection.candidateId              (DERIVED_VALIDATION)
+                ACTIVE_RAMP_SOURCE         ramp_source.activeSource          (INFORMATIONAL)
+                SELECTED_IS_RANKING_WINNER catalogue.winnerId                (INFORMATIONAL)
+                CANDIDATE_FEASIBLE         candidates[].status                (HARD_DESIGN_RULE)
+                ALL_REQUIRED_LEVELS_ACCESSIBLE accessibleLevels == requiredLevels, unserved = keys(access.failures)
+                CLEARANCE_VALIDATED        candidates[].clearance.satisfied   (HARD_DESIGN_RULE)
+                GEOMETRY_VALIDATED         validation.invalidSampleCount == 0 (DERIVED_VALIDATION)
+                CAPABILITY_GRAPH_VALID     capability.status / validation.valid
+                REQUIRED_CAPABILITY_PATHS  requiredPaths[].satisfied; physicalOnly = physical ∧ ¬capability
+                DUAL_EGRESS_ADVISORY       egressAdvisory.perNode: meeting / failing counts + ids, min routes (ADVISORY)
+    absent field or artifact → NOT_EVALUATED (never inferred, never a pass)
+    shape     = validate_catalogue_shape(catalogue, selected) FIRST: every consumed field typed
+                and path-named; ranking ⊆ known FEASIBLE ranked scored ids; unique ids
+                → CatalogueShapeError → ArtifactMalformedError(layout_v2.json) (409, never 500)
+    scope     = ACTIVE_DESIGN under LAYOUT_V2; layout-v2 checks under LEGACY are INACTIVE_LAYOUT_V2
+                (NOT_APPLICABLE with no catalogue); capability / egress checks always ACTIVE_DESIGN
+
+The service half (`DesignService.design_assessment`) is one
+`ArtifactReader.snapshot` + `require_world` + per-artifact `read`: the
+active ramp source is resolved first; the catalogue is required only under
+LAYOUT_V2 (under LEGACY an absent catalogue is `layoutScope = NONE`, a
+present one `INACTIVE_LAYOUT_V2` with every layout-v2 check scoped and
+prefixed "inactive layout-v2 selection: "), the selection / accesses /
+network / capability graph are optional when ABSENT and refused with their
+own typed code when STALE or MALFORMED. Nothing is written. Tests: `tests/test_design_assessment.py`
+(T1 winner projection on a catalogue whose totals are deliberately not
+monotone in rank, T2 ranking order and the row bound, T3 FEASIBLE /
+INFEASIBLE / NOT_VALIDATED, T4 score identity and subtraction deltas, T5
+egress projection, T6 advisory authority and the forbidden-wording scan,
+T7 absent graph / selection → NOT_EVALUATED, T8 stale graph / stale
+selection / malformed catalogue → 409 through the real API, T9 required
+paths keep both reachabilities; plus the real chain search → activate →
+levels → network → capability graph → assessment in the e2e tier).
+

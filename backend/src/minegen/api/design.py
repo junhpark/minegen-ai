@@ -9,6 +9,7 @@ from pydantic import Field
 
 from minegen.api.deps import get_design_service, get_job_service
 from minegen.api.errors import ROUTER_DESIGN, guard
+from minegen.assessment.models import DesignAssessmentPayload
 from minegen.capability.models import CapabilityGraphPayload, CapabilityPathQuery
 from minegen.core.enums import Capability
 from minegen.core.models import ApiModel, ErrorDetail
@@ -273,6 +274,21 @@ def generate_capability_graph(scenario_id: str, svc: Service) -> CapabilityGraph
 def get_capability_graph(scenario_id: str, svc: Service) -> CapabilityGraphPayload:
     try:
         return svc.capability_graph(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _fail(scenario_id, exc) from exc
+
+
+@router.get("/assessment")
+def get_design_assessment(scenario_id: str, svc: Service) -> DesignAssessmentPayload:
+    """Phase 20D.3 (rule 189): the READ-ONLY design assessment and candidate
+    comparison projected from the persisted layout-v2 catalogue, selection,
+    ramp source and capability graph. Nothing is generated or persisted;
+    ``status`` is the assessment's own generation status, never a design
+    verdict."""
+    try:
+        return svc.design_assessment(scenario_id)
     except HTTPException:
         raise
     except Exception as exc:

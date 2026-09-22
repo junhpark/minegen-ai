@@ -124,6 +124,8 @@ TEST_MARKERS: dict[str, tuple[str, ...]] = {
     "test_missing_owning_geometry_409s": ("e2e",),
     "test_communication_api_lifecycle_and_invalidation": ("e2e",),
     "test_decline_lifecycle": ("e2e",),
+    # Phase 20D.3 design assessment over the REAL layout-v2 → capability chain
+    "test_e2e_assessment_projects_the_real_layout_and_capability_artifacts": ("e2e",),
     # Phase 20C.2B shaft + capability graph API lifecycle (legacy pipeline E2E)
     "test_shaft_and_capability_api_lifecycle": ("e2e",),
     # AC-01E artifact registry: every artifact built + regenerated through the
