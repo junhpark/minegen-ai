@@ -1224,3 +1224,198 @@ def test_r1_api_legacy_active_with_a_dormant_selection_is_not_conflated(
     assert body["layoutScope"] == "ACTIVE_DESIGN"
     assert body["activeDesignCandidateId"] == DORMANT_ID
     assert {c["id"]: c["scope"] for c in body["checks"]}["CANDIDATE_FEASIBLE"] == "ACTIVE_DESIGN"
+
+
+# --------------------------------------------------------------------------- #
+# PR #43 re-review — READ ≠ TRUST at the assessment's own catalogue boundary
+# --------------------------------------------------------------------------- #
+
+from minegen.assessment.builder import CatalogueShapeError  # noqa: E402
+
+
+def _get(client: TestClient, sid: str) -> Any:
+    return client.get(f"/api/v1/scenarios/{sid}/design/assessment")
+
+
+def _corrupt(client: TestClient, design_service: DesignService, mutate: Any) -> Any:
+    """A VALID LEGACY stack with a catalogue, then ONE structural corruption
+    of the catalogue document; returns the assessment response."""
+    sid = _stack(client, design_service)
+    derived = design_service.store.derived_dir(sid)
+    doc = catalogue()
+    mutate(doc)
+    _write(derived / LAYOUT_V2_ARTIFACT, doc)
+    return _get(client, sid)
+
+
+def _ranked(doc: dict[str, Any], cid: str = WINNER) -> dict[str, Any]:
+    return next(c for c in doc["candidates"] if c["candidateId"] == cid)
+
+
+def _assert_malformed(r: Any, *needles: str) -> None:
+    assert r.status_code == 409, (r.status_code, r.text[:300])
+    detail = r.json()["detail"]
+    assert detail["code"] == "ARTIFACT_MALFORMED", detail
+    for needle in needles:
+        assert needle in detail["message"], (needle, detail["message"])
+
+
+def test_r2_candidate_missing_candidate_id_is_malformed_not_500(
+    client: TestClient, design_service: DesignService
+) -> None:
+    def mutate(doc: dict[str, Any]) -> None:
+        del doc["candidates"][3]["candidateId"]
+
+    _assert_malformed(_corrupt(client, design_service, mutate), "candidates[3].candidateId")
+
+
+def test_r2_ranked_candidate_missing_a_required_field_is_malformed(
+    client: TestClient, design_service: DesignService
+) -> None:
+    def mutate(doc: dict[str, Any]) -> None:
+        del _ranked(doc)["requiredLevels"]
+
+    _assert_malformed(_corrupt(client, design_service, mutate), "requiredLevels")
+
+
+def test_r2_malformed_scores_on_a_feasible_ranked_row_is_malformed(
+    client: TestClient, design_service: DesignService
+) -> None:
+    def as_string(doc: dict[str, Any]) -> None:
+        _ranked(doc, RANK2)["scores"] = "4.6277"
+
+    def missing_total(doc: dict[str, Any]) -> None:
+        del _ranked(doc, RANK2)["scores"]["total"]
+
+    def nan_total(doc: dict[str, Any]) -> None:
+        _ranked(doc, RANK2)["scores"]["total"] = float("nan")
+
+    def absent_on_ranked(doc: dict[str, Any]) -> None:
+        _ranked(doc, RANK2)["scores"] = None
+
+    for mutate in (as_string, missing_total, nan_total, absent_on_ranked):
+        _assert_malformed(_corrupt(client, design_service, mutate), "scores")
+
+
+def test_r2_ranking_naming_an_unknown_candidate_is_malformed(
+    client: TestClient, design_service: DesignService
+) -> None:
+    def unknown(doc: dict[str, Any]) -> None:
+        doc["ranking"] = [WINNER, "SPIRAL-n9-CW-e+0-g0.120"]
+
+    def not_feasible(doc: dict[str, Any]) -> None:
+        doc["ranking"] = [WINNER, NOT_VALIDATED]
+
+    def not_a_list(doc: dict[str, Any]) -> None:
+        doc["ranking"] = WINNER
+
+    def duplicate_ids(doc: dict[str, Any]) -> None:
+        doc["candidates"].append(dict(_ranked(doc)))
+
+    _assert_malformed(_corrupt(client, design_service, unknown), "ranking", "SPIRAL-n9")
+    _assert_malformed(_corrupt(client, design_service, not_feasible), "ranking", "NOT_VALIDATED")
+    _assert_malformed(_corrupt(client, design_service, not_a_list), "ranking")
+    _assert_malformed(_corrupt(client, design_service, duplicate_ids), "duplicate")
+
+
+#: every consumed field, corrupted one at a time: the assessment's structural
+#: boundary must refuse each with the typed code and name the path
+def _mutations() -> list[tuple[str, Any]]:
+    def setter(path: list[Any], value: Any) -> Any:
+        def mutate(doc: dict[str, Any]) -> None:
+            target: Any = doc
+            for key in path[:-1]:
+                if key == "$W":
+                    target = next(c for c in target if c["candidateId"] == WINNER)
+                else:
+                    target = target[key]
+            target[path[-1]] = value
+
+        return mutate
+
+    W = ["candidates", "$W"]  # noqa: N806 — the winner row
+    return [
+        ("winnerId", setter(["winnerId"], 7)),
+        ("candidates", setter(["candidates"], {})),
+        ("family", setter([*W, "family"], None)),
+        ("status", setter([*W, "status"], "MAYBE")),
+        ("rank", setter([*W, "rank"], "1")),
+        ("requiredLevels", setter([*W, "requiredLevels"], "4")),
+        ("accessibleLevels", setter([*W, "accessibleLevels"], "4")),
+        ("failureReasons", setter([*W, "failureReasons"], "LEVEL_ACCESS_INFEASIBLE")),
+        ("failureDetail", setter([*W, "failureDetail"], 3)),
+        ("scores.development", setter([*W, "scores", "development"], "x")),
+        ("clearance", setter([*W, "clearance"], "EXACT")),
+        ("clearance.satisfied", setter([*W, "clearance", "satisfied"], "yes")),
+        ("clearance.requiredClearance", setter([*W, "clearance", "requiredClearance"], None)),
+        ("access", setter([*W, "access"], [])),
+        ("access.levelCount", setter([*W, "access", "levelCount"], None)),
+        ("access.failures", setter([*W, "access", "failures"], "L03")),
+        ("validation", setter([*W, "validation"], 0)),
+        ("validation.invalidSampleCount", setter([*W, "validation", "invalidSampleCount"], "0")),
+        (
+            "validation.rejectionReasonCounts",
+            setter([*W, "validation", "rejectionReasonCounts"], 1),
+        ),
+    ]
+
+
+@pytest.mark.parametrize(("field", "mutate"), _mutations(), ids=[m[0] for m in _mutations()])
+def test_r2_every_consumed_field_is_boundary_validated(
+    client: TestClient, design_service: DesignService, field: str, mutate: Any
+) -> None:
+    _assert_malformed(_corrupt(client, design_service, mutate), field.split(".")[-1])
+
+
+def test_r2_builder_shape_error_is_typed_and_names_the_path() -> None:
+    cat = catalogue()
+    del cat["candidates"][0]["candidateId"]
+    with pytest.raises(CatalogueShapeError, match=r"candidates\[0\]\.candidateId"):
+        build(cat=cat)
+
+
+def test_r2_legitimate_engineering_states_still_project(
+    client: TestClient, design_service: DesignService
+) -> None:
+    # NO_FEASIBLE_CANDIDATE: empty ranking, null winner, every row unscored
+    def no_feasible(doc: dict[str, Any]) -> None:
+        doc["status"] = "NO_FEASIBLE_CANDIDATE"
+        doc["ranking"] = []
+        doc["winnerId"] = None
+        doc["feasibleCount"] = 0
+        for c in doc["candidates"]:
+            if c["status"] == "FEASIBLE":
+                c["status"] = "INFEASIBLE"
+                c["failureReasons"] = ["LEVEL_ACCESS_INFEASIBLE"]
+            c["rank"] = None
+            c["scores"] = None
+            c["clearance"] = None
+
+    r = _corrupt(client, design_service, no_feasible)
+    assert r.status_code == 200, r.text
+    assert r.json()["winnerId"] is None and r.json()["candidateComparison"] == []
+    # the LEGACY (rule 150 default) summary names the empty inactive catalogue
+    assert (
+        "Inactive layout-v2 selection: none (catalogue winner none, 0 feasible)."
+        in (r.json()["summary"])
+    )
+
+    # INFEASIBLE / NOT_VALIDATED rows with their permitted null optional
+    # fields (scores / clearance / access / validation) are not MALFORMED
+    def optional_nulls(doc: dict[str, Any]) -> None:
+        inf = _ranked(doc, INFEASIBLE)
+        inf["clearance"] = None
+        inf["validation"] = None
+        inf["access"] = None
+        nv = _ranked(doc, NOT_VALIDATED)
+        nv["failureDetail"] = None
+        nv["stageReached"] = "CHEAP"
+
+    r = _corrupt(client, design_service, optional_nulls)
+    assert r.status_code == 200, r.text
+    ids = {c["candidateId"]: c["status"] for c in r.json()["candidateComparison"]}
+    assert INFEASIBLE not in ids and NOT_VALIDATED not in ids
+    # an unscored NON-ranked feasible-looking row is not a contract violation
+    # either: only RANKED rows must carry scores
+    sid = _stack(client, design_service)
+    assert _get(client, sid).status_code == 200

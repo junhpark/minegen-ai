@@ -1227,7 +1227,17 @@ adding a search, a gate, a threshold or a persisted file.
   (`LAYOUT_V2_SELECTION_STALE`, `CAPABILITY_GRAPH_STALE`,
   `ARTIFACT_MALFORMED`) through the design router's `_fail` — no fallback,
   nothing generated, nothing written (`derived/` is byte-identical before
-  and after a read).
+  and after a read). The assessment also owns a consumer-specific
+  structural boundary (PR #43 re-review): `validate_catalogue_shape`
+  checks every catalogue field the projection reads (candidate ids,
+  family, status, rank, requiredLevels, failureReasons, the scores /
+  clearance / access / validation blocks, ranking consistency, id
+  uniqueness) once, names the JSON path, and its `CatalogueShapeError` is
+  translated by the service into `ArtifactMalformedError(layout_v2.json,
+  …)` — a syntactically valid catalogue that the shared reader accepts but
+  the projection cannot consume is a typed 409, never a bare 500, while
+  NO_FEASIBLE_CANDIDATE / INFEASIBLE / NOT_VALIDATED and permitted null
+  optional blocks keep projecting.
 - **Authority model.** `AssessmentCheck{id, title, category, status,
   authority, summary, evidence, sourceArtifact, sourceField}` with
   `status ∈ SATISFIED | NOT_SATISFIED | NOT_APPLICABLE | NOT_EVALUATED`

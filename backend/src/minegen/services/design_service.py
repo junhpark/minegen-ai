@@ -15,7 +15,7 @@ from typing import Any, TypeVar
 
 import numpy as np
 
-from minegen.assessment.builder import build_design_assessment
+from minegen.assessment.builder import CatalogueShapeError, build_design_assessment
 from minegen.assessment.models import DesignAssessmentPayload, DesignAssessmentSources
 from minegen.capability.builder import (
     CapabilityGraphBuilder,
@@ -1302,6 +1302,23 @@ class DesignService:
         self._optional_read(snapshot, LEVEL_ACCESSES_ARTIFACT)
         self._optional_read(snapshot, NETWORK_ARTIFACT)
         capability = self._optional_read(snapshot, CAPABILITY_GRAPH_ARTIFACT)
+        try:
+            return self._build_assessment(snapshot, source, catalogue, selected, capability)
+        except CatalogueShapeError as err:
+            # AC-01F READ ≠ TRUST at the assessment's OWN boundary (PR #43
+            # re-review): a catalogue that passes the shared first-level
+            # precondition but lacks a field this consumer reads is a
+            # present-but-unusable artifact — typed, never a bare 500
+            raise ArtifactMalformedError(LAYOUT_V2_ARTIFACT, str(err)) from err
+
+    def _build_assessment(
+        self,
+        snapshot: ArtifactSnapshot,
+        source: RampSource,
+        catalogue: ArtifactRead,
+        selected: ArtifactRead | None,
+        capability: ArtifactRead | None,
+    ) -> DesignAssessmentPayload:
         capability_payload: CapabilityGraphPayload | None = None
         if capability is not None:
             assert isinstance(capability.model, CapabilityGraphPayload)

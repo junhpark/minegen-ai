@@ -1824,7 +1824,16 @@ code, the code and the rule win and the map is corrected.
      capability graph makes the dependent checks NOT_EVALUATED (never a
      pass), and a STALE or MALFORMED artifact raises its own typed refusal
      through the validated reader (LAYOUT_V2_SELECTION_STALE,
-     CAPABILITY_GRAPH_STALE, ARTIFACT_MALFORMED — never a fallback). The
+     CAPABILITY_GRAPH_STALE, ARTIFACT_MALFORMED — never a fallback). READ ≠
+     TRUST holds at the assessment's OWN boundary too: every catalogue field
+     the projection consumes is validated once with its JSON path
+     (`assessment/builder.py::validate_catalogue_shape`) and a structural
+     defect the shared reader precondition cannot see — a missing
+     candidateId / requiredLevels, a malformed scores block, a ranking that
+     names an unknown, unscored or non-FEASIBLE candidate, a duplicated id —
+     is refused as 409 ARTIFACT_MALFORMED, never a bare 500; legitimate
+     engineering states (NO_FEASIBLE_CANDIDATE, INFEASIBLE / NOT_VALIDATED
+     rows, permitted null optional blocks) are never shape errors. The
      ACTIVE ramp source is resolved from the same snapshot FIRST: under
      LAYOUT_V2 the catalogue is required (absent → LAYOUT_V2_NOT_GENERATED);
      under LEGACY it is optional — a LEGACY-only design keeps its generic

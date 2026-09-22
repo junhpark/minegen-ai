@@ -18,6 +18,7 @@ alternative (directive §10).
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from minegen.assessment.models import (
@@ -45,7 +46,12 @@ from minegen.core.artifacts import (
     RAMP_SOURCE_FILE,
 )
 
-__all__ = ["DEFAULT_MAX_COMPARISON_ROWS", "build_design_assessment"]
+__all__ = [
+    "DEFAULT_MAX_COMPARISON_ROWS",
+    "CatalogueShapeError",
+    "build_design_assessment",
+    "validate_catalogue_shape",
+]
 
 #: winner + top FEASIBLE alternatives (directive §10); the selected candidate
 #: is always a row even beyond this bound
@@ -61,6 +67,180 @@ INACTIVE: AssessmentScope = "INACTIVE_LAYOUT_V2"
 _INACTIVE_PREFIX = "inactive layout-v2 selection: "
 
 _ADVISORY_DISCLAIMER = "This is a design advisory, not a statutory compliance determination."
+
+
+class CatalogueShapeError(ValueError):
+    """The catalogue passed the shared reader precondition (``candidates`` is
+    a list of objects) but not the assessment's OWN structural requirements
+    (PR #43 re-review, AC-01F READ ≠ TRUST): a consumed field is missing or
+    of the wrong type, the ranking is inconsistent, or a candidate id is
+    duplicated. The message names the JSON path. The service translates it
+    into ``ArtifactMalformedError(LAYOUT_V2_ARTIFACT, …)`` — a typed 409,
+    never a bare 500. Legitimate engineering states (NO_FEASIBLE_CANDIDATE,
+    INFEASIBLE / NOT_VALIDATED rows, permitted ``null`` optional blocks) are
+    never shape errors."""
+
+
+CANDIDATE_STATUSES = frozenset({"FEASIBLE", "INFEASIBLE", "NOT_VALIDATED"})
+
+
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_num(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
+def _fail(path: str, expected: str, value: Any) -> None:
+    kind = "missing" if value is _MISSING else f"got {type(value).__name__}"
+    raise CatalogueShapeError(f"{path}: expected {expected}, {kind}")
+
+
+_MISSING = object()
+
+
+def _field(obj: dict[str, Any], path: str, key: str, check: Any, expected: str) -> Any:
+    value = obj.get(key, _MISSING)
+    if value is _MISSING or not check(value):
+        _fail(f"{path}.{key}", expected, value)
+    return value
+
+
+def _optional_field(obj: dict[str, Any], path: str, key: str, check: Any, expected: str) -> Any:
+    """A field the phase contract permits to be ``null`` (or absent)."""
+    value = obj.get(key)
+    if value is not None and not check(value):
+        _fail(f"{path}.{key}", f"{expected} or null", value)
+    return value
+
+
+def _check_block(
+    block: Any,
+    path: str,
+    required: dict[str, tuple[Any, str]],
+    optional: dict[str, tuple[Any, str]],
+) -> None:
+    if not isinstance(block, dict):
+        _fail(path, "object", block)
+    for key, (check, expected) in required.items():
+        _field(block, path, key, check, expected)
+    for key, (check, expected) in optional.items():
+        _optional_field(block, path, key, check, expected)
+
+
+def validate_catalogue_shape(catalogue: dict[str, Any], selected: dict[str, Any] | None) -> None:
+    """Every field ``build_design_assessment`` reads, checked ONCE at the
+    boundary with its JSON path. Only structure is judged — a value's
+    engineering meaning (feasible or not, ranked or not) is projected, never
+    validated here — and only the fields this consumer reads are required;
+    the shared reader keeps its own first-level precondition."""
+    _optional_field(catalogue, "$", "winnerId", lambda v: isinstance(v, str), "string")
+    ranking = catalogue.get("ranking", _MISSING)
+    if not isinstance(ranking, list) or not all(isinstance(c, str) for c in ranking):
+        _fail("$.ranking", "list of candidate ids", ranking)
+    candidates = catalogue.get("candidates", _MISSING)
+    if not isinstance(candidates, list):
+        _fail("$.candidates", "list of objects", candidates)
+    seen: dict[str, int] = {}
+    for i, cand in enumerate(candidates):
+        path = f"$.candidates[{i}]"
+        if not isinstance(cand, dict):
+            _fail(path, "object", cand)
+        cid = _field(cand, path, "candidateId", lambda v: isinstance(v, str), "string")
+        if cid in seen:
+            raise CatalogueShapeError(
+                f"{path}.candidateId: duplicate candidate id {cid!r} (also candidates[{seen[cid]}])"
+            )
+        seen[cid] = i
+        _field(cand, path, "family", lambda v: isinstance(v, str), "string")
+        _field(
+            cand,
+            path,
+            "status",
+            lambda v: v in CANDIDATE_STATUSES,
+            "FEASIBLE | INFEASIBLE | NOT_VALIDATED",
+        )
+        _optional_field(cand, path, "stageReached", lambda v: isinstance(v, str), "string")
+        _optional_field(cand, path, "rank", _is_int, "integer")
+        _field(cand, path, "requiredLevels", _is_int, "integer")
+        _optional_field(cand, path, "accessibleLevels", _is_int, "integer")
+        _field(
+            cand,
+            path,
+            "failureReasons",
+            lambda v: isinstance(v, list) and all(isinstance(r, str) for r in v),
+            "list of strings",
+        )
+        _optional_field(cand, path, "failureDetail", lambda v: isinstance(v, str), "string")
+        if cand.get("scores") is not None:
+            _check_block(
+                cand["scores"],
+                f"{path}.scores",
+                {
+                    k: (_is_num, "finite number")
+                    for k in ("development", "geology", "geometry", "total")
+                },
+                {},
+            )
+        if cand.get("clearance") is not None:
+            _check_block(
+                cand["clearance"],
+                f"{path}.clearance",
+                {
+                    "clearanceBasis": (lambda v: isinstance(v, str), "string"),
+                    "requiredClearance": (_is_num, "finite number"),
+                    "conservativeMinimumClearance": (_is_num, "finite number"),
+                    "satisfied": (lambda v: isinstance(v, bool), "boolean"),
+                },
+                {"clearanceErrorBound": (_is_num, "finite number")},
+            )
+        if cand.get("access") is not None:
+            _check_block(
+                cand["access"],
+                f"{path}.access",
+                {
+                    "levelCount": (_is_int, "integer"),
+                    "accessibleLevelCount": (_is_int, "integer"),
+                    "totalAccessLength": (_is_num, "finite number"),
+                    "worstAccessLength": (_is_num, "finite number"),
+                    "maxAccessGradient": (_is_num, "finite number"),
+                },
+                {
+                    "minAccessPlanRadius": (_is_num, "finite number"),
+                    "failures": (lambda v: isinstance(v, dict), "object"),
+                },
+            )
+        if cand.get("validation") is not None:
+            _check_block(
+                cand["validation"],
+                f"{path}.validation",
+                {},
+                {
+                    "invalidSampleCount": (_is_int, "integer"),
+                    "sampleCount": (_is_int, "integer"),
+                    "rejectionReasonCounts": (lambda v: isinstance(v, dict), "object"),
+                    "minimumOrebodyDistance": (_is_num, "finite number"),
+                    "minimumCover": (_is_num, "finite number"),
+                },
+            )
+    for i, cid in enumerate(ranking):
+        if cid not in seen:
+            raise CatalogueShapeError(f"$.ranking[{i}] names unknown candidate {cid!r}")
+        cand = candidates[seen[cid]]
+        if cand.get("status") != FEASIBLE or not _is_int(cand.get("rank")):
+            raise CatalogueShapeError(
+                f"$.ranking[{i}] names {cid!r} whose status is {cand.get('status')} "
+                f"(rank {cand.get('rank')}) — only FEASIBLE ranked candidates are alternatives"
+            )
+        if not isinstance(cand.get("scores"), dict):
+            raise CatalogueShapeError(f"$.ranking[{i}] names {cid!r} (FEASIBLE) without scores")
+    if selected is not None and not isinstance(selected.get("candidateId"), str):
+        _fail("selection.candidateId", "string", selected.get("candidateId", _MISSING))
 
 
 # --------------------------------------------------------------------------- #
@@ -81,6 +261,10 @@ def build_design_assessment(
     active = sources.active_source
     if catalogue is None and active == "LAYOUT_V2":
         raise ValueError("a LAYOUT_V2 active source requires the layout-v2 catalogue")
+    if catalogue is not None:
+        validate_catalogue_shape(catalogue, selected)
+    elif selected is not None and not isinstance(selected.get("candidateId"), str):
+        _fail("selection.candidateId", "string", selected.get("candidateId", _MISSING))
     layout_scope: LayoutScope = (
         "ACTIVE_DESIGN"
         if active == "LAYOUT_V2"
@@ -183,30 +367,16 @@ def _scoped(check: AssessmentCheck, scope: AssessmentScope, no_catalogue: bool) 
 
 
 def _candidates_by_id(catalogue: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    by_id: dict[str, dict[str, Any]] = {}
-    for cand in catalogue.get("candidates", []):
-        cid = str(cand["candidateId"])
-        if cid in by_id:
-            raise ValueError(f"{LAYOUT_V2_ARTIFACT}: duplicate candidate id {cid!r}")
-        by_id[cid] = cand
-    return by_id
+    """Index by id; uniqueness and shape were established by
+    :func:`validate_catalogue_shape` (a duplicate is a shape error)."""
+    return {str(cand["candidateId"]): cand for cand in catalogue.get("candidates", [])}
 
 
 def _ranking(catalogue: dict[str, Any], by_id: dict[str, dict[str, Any]]) -> list[str]:
-    """The authoritative ranking, checked for internal consistency only: an
-    entry must exist and be FEASIBLE with a rank (rule 148 ranks feasible
-    candidates only). Anything else is a catalogue defect, refused."""
-    ranking = [str(cid) for cid in catalogue.get("ranking", [])]
-    for cid in ranking:
-        cand = by_id.get(cid)
-        if cand is None:
-            raise ValueError(f"{LAYOUT_V2_ARTIFACT}: ranking names unknown candidate {cid!r}")
-        if cand.get("status") != FEASIBLE or cand.get("rank") is None:
-            raise ValueError(
-                f"{LAYOUT_V2_ARTIFACT}: ranking entry {cid!r} is {cand.get('status')} "
-                f"(rank {cand.get('rank')}) — only FEASIBLE ranked candidates are alternatives"
-            )
-    return ranking
+    """The authoritative ranking, verbatim; its consistency (known ids,
+    FEASIBLE ranked scored rows) was established by the shape validator."""
+    del by_id
+    return [str(cid) for cid in catalogue.get("ranking", [])]
 
 
 def _comparison_ids(

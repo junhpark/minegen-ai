@@ -1966,6 +1966,9 @@ score arithmetic beyond `candidate − winner`:
                 REQUIRED_CAPABILITY_PATHS  requiredPaths[].satisfied; physicalOnly = physical ∧ ¬capability
                 DUAL_EGRESS_ADVISORY       egressAdvisory.perNode: meeting / failing counts + ids, min routes (ADVISORY)
     absent field or artifact → NOT_EVALUATED (never inferred, never a pass)
+    shape     = validate_catalogue_shape(catalogue, selected) FIRST: every consumed field typed
+                and path-named; ranking ⊆ known FEASIBLE ranked scored ids; unique ids
+                → CatalogueShapeError → ArtifactMalformedError(layout_v2.json) (409, never 500)
     scope     = ACTIVE_DESIGN under LAYOUT_V2; layout-v2 checks under LEGACY are INACTIVE_LAYOUT_V2
                 (NOT_APPLICABLE with no catalogue); capability / egress checks always ACTIVE_DESIGN
 
