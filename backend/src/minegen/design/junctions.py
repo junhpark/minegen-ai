@@ -462,9 +462,11 @@ def _dedupe_loop(poly: list[FloatArray], par: list[FloatArray]) -> tuple[FloatAr
     ):
         keep_p.pop()
         keep_q.pop()
-    return np.asarray(keep_p, dtype=np.float64).reshape(-1, 3), np.asarray(
-        keep_q, dtype=np.float64
-    ).reshape(-1, 2)
+    q = np.asarray(keep_q, dtype=np.float64)
+    return (
+        np.asarray(keep_p, dtype=np.float64).reshape(-1, 3),
+        q.reshape(len(keep_q), -1) if keep_q else q.reshape(0, 2),
+    )
 
 
 class JunctionClipTopologyError(ValueError):
@@ -679,6 +681,294 @@ def _clip_floor_quad(
     )
 
 
+# --------------------------------------------------------------------------- #
+# Phase 20D.2: an end cap at a declared junction
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class CapClip:
+    """Render-only clip of ONE cap fan triangle (Phase 20D.2): the polygons
+    of its outside-child remainder, each with barycentric weights over the
+    fan triangle's three corners (emitted winding order) for UV
+    interpolation. The logical mesh is untouched."""
+
+    triangle: int
+    polygons: tuple[FloatArray, ...]
+    bary: tuple[FloatArray, ...]
+    junction_node_id: str
+
+    @property
+    def replacement_triangles(self) -> int:
+        return int(sum(max(int(p.shape[0]) - 2, 0) for p in self.polygons))
+
+
+@dataclass
+class CapCut:
+    """Fan triangles of ONE end cap omitted or clipped where a declared
+    junction's CHILD excavation occupies the cap surface (Phase 20D.2).
+
+    A crosscut station on a drift EXTREMITY puts the crosscut's axis in the
+    DRIFT_CAP plane: the cap's crosscut-side half then stands inside the
+    crosscut mouth (a cap is a separate primitive, so the quad rules never
+    saw it). Cap triangles inside-or-on the child are omitted, triangles
+    outside it are kept, straddling triangles are clipped at the child's
+    envelope — the SAME typed local cut the child floor receives, on a cap
+    fan instead of a quad grid. The remainder is the real end wall on the
+    rock side; nothing is invented and no blanket cap omission exists."""
+
+    junction: Junction
+    end: Literal["start", "end"]
+    omit: BoolArray  # (K,) True = omit the whole fan triangle
+    clips: dict[int, CapClip] = field(default_factory=dict)
+
+    @property
+    def omitted_triangles(self) -> int:
+        return int(self.omit.sum())
+
+    @property
+    def clipped_triangles(self) -> int:
+        return len(self.clips)
+
+    @property
+    def replacement_triangles(self) -> int:
+        return int(sum(c.replacement_triangles for c in self.clips.values()))
+
+    @property
+    def empty(self) -> bool:
+        return self.omitted_triangles == 0 and not self.clips
+
+
+def _clip_triangle(
+    pts: FloatArray,
+    bary: FloatArray,
+    other: TubeEnvelope,
+    window: tuple[int, int],
+    tol: float,
+    node_id: str,
+    label: int,
+    depth: int = 0,
+) -> list[tuple[FloatArray, FloatArray]]:
+    """Outside-``other`` remainder polygons of ONE triangle ``pts`` (3, 3)
+    with per-corner weights ``bary`` (3, 3): corners inside-or-on / outside
+    decided by the SAME tolerance surface the quad rules use, crossings by
+    deterministic bisection on the triangle's own edges, chord fidelity
+    checked on the remainder's edges; where a chord is not a faithful piece
+    of the boundary the triangle is bisected along its longest edge
+    (deterministically, at most ``CLIP_MAX_SUBDIVISION_DEPTH`` times).
+    A triangle wholly inside-or-on yields no polygon (omitted)."""
+    sd = other.signed_distance(pts, window)
+    out = sd > tol
+    if not out.any():
+        if _edges_stay(pts, other, window, tol, outside=False):
+            return []
+    elif out.all():
+        if _edges_stay(pts, other, window, tol, outside=True):
+            return [(pts, bary)]
+    else:
+        edges = ((0, 1), (1, 2), (2, 0))
+        mixed = [m for m, (a, b) in enumerate(edges) if out[a] != out[b]]
+        p_in = np.stack([pts[edges[m][1]] if out[edges[m][0]] else pts[edges[m][0]] for m in mixed])
+        p_out = np.stack(
+            [pts[edges[m][0]] if out[edges[m][0]] else pts[edges[m][1]] for m in mixed]
+        )
+        b_in = np.stack(
+            [bary[edges[m][1]] if out[edges[m][0]] else bary[edges[m][0]] for m in mixed]
+        )
+        b_out = np.stack(
+            [bary[edges[m][0]] if out[edges[m][0]] else bary[edges[m][1]] for m in mixed]
+        )
+        xs, ts = _boundary_crossings(other, window, p_in, p_out, tol)
+        cross_p = {m: xs[n] for n, m in enumerate(mixed)}
+        cross_b = {m: b_in[n] + ts[n] * (b_out[n] - b_in[n]) for n, m in enumerate(mixed)}
+        poly: list[FloatArray] = []
+        pb: list[FloatArray] = []
+        for m in range(3):
+            if out[m]:
+                poly.append(pts[m])
+                pb.append(bary[m])
+            if m in cross_p:
+                poly.append(cross_p[m])
+                pb.append(cross_b[m])
+        p_arr, b_arr = _dedupe_loop(poly, pb)
+        if p_arr.shape[0] < 3:
+            return []
+        if _edges_stay(p_arr, other, window, tol, outside=True):
+            return [(p_arr, b_arr)]
+    if depth >= CLIP_MAX_SUBDIVISION_DEPTH:
+        raise JunctionClipTopologyError(
+            f"{node_id}: cap triangle {label} boundary not representable after "
+            f"{CLIP_MAX_SUBDIVISION_DEPTH} subdivisions (corner sd {np.round(sd, 3).tolist()}, "
+            f"corners {np.round(pts, 3).tolist()})"
+        )
+    lengths = [
+        float(np.linalg.norm(pts[1] - pts[0])),
+        float(np.linalg.norm(pts[2] - pts[1])),
+        float(np.linalg.norm(pts[0] - pts[2])),
+    ]
+    e = int(np.argmax(lengths))
+    a, b, c = e, (e + 1) % 3, (e + 2) % 3
+    mid = 0.5 * (pts[a] + pts[b])
+    bm = 0.5 * (bary[a] + bary[b])
+    first = (np.stack([pts[a], mid, pts[c]]), np.stack([bary[a], bm, bary[c]]))
+    second = (np.stack([mid, pts[b], pts[c]]), np.stack([bm, bary[b], bary[c]]))
+    return _clip_triangle(*first, other, window, tol, node_id, label, depth + 1) + _clip_triangle(
+        *second, other, window, tol, node_id, label, depth + 1
+    )
+
+
+def cut_cap(
+    corners: FloatArray,
+    other: TubeEnvelope,
+    junction: Junction,
+    end: Literal["start", "end"],
+    width: float,
+) -> CapCut:
+    """Omit / clip the fan triangles of ONE end cap (``corners`` (K, 3, 3) in
+    the emitted winding: apex first) against the CHILD envelope ``other`` of
+    a declared junction. Same window, tolerance and classification as the
+    child floor quads: inside-or-on → omit, outside → keep, straddling →
+    clipped remainder. A cap the child does not reach comes back empty."""
+    radius = JUNCTION_WINDOW_WIDTHS * width
+    tol = JUNCTION_SURFACE_TOLERANCE_FRACTION * width
+    k = int(corners.shape[0])
+    omit = np.zeros(k, dtype=bool)
+    clips: dict[int, CapClip] = {}
+    window = other.ring_window(junction.point, radius + width)
+    if window[1] - window[0] < 2:
+        return CapCut(junction, end, omit, clips)
+    sd = other.signed_distance(corners.reshape(-1, 3), window).reshape(k, 3)
+    inside = sd <= tol
+    ident = np.eye(3, dtype=np.float64)
+    for t in range(k):
+        pts = corners[t]
+        if bool(inside[t].all()) and _edges_stay(pts, other, window, tol, outside=False):
+            omit[t] = True
+            continue
+        if not bool(inside[t].any()) and _edges_stay(pts, other, window, tol, outside=True):
+            continue
+        loops = _clip_triangle(pts, ident, other, window, tol, junction.node_id, t)
+        if not loops:
+            omit[t] = True
+            continue
+        clips[t] = CapClip(
+            triangle=t,
+            polygons=tuple(p for p, _ in loops),
+            bary=tuple(b for _, b in loops),
+            junction_node_id=junction.node_id,
+        )
+    return CapCut(junction, end, omit, clips)
+
+
+def cut_mouth_cap(
+    corners: FloatArray,
+    parent: TubeEnvelope,
+    junction: Junction,
+    end: Literal["start", "end"],
+    width: float,
+) -> CapCut | None:
+    """Phase 20D.2.1 — the CHILD's OPEN end ring judged against the PARENT
+    envelope: the mirror of ``cut_cap``. ``corners`` (K, 3, 3) is the cap fan
+    of the child's OPEN end ring (emitted winding, apex first). Fan
+    triangles inside-or-on the parent excavation are omitted (the mouth
+    stays OPEN into the parent), triangles outside it are kept and
+    straddling ones are clipped at the parent's boundary — the remainder is
+    the rock-facing part of the mouth that has no surface without it (a
+    crosscut station on a drift EXTREMITY: the drift ends AT the station,
+    so half of the crosscut mouth lies beyond the drift end). Same window,
+    tolerance and classification as every other typed junction cut; a ring
+    wholly inside its parent (an interior T-junction) yields ``None`` and
+    the render stays bit-identical. Not a general Boolean: ONE child end,
+    ONE parent envelope, the declared junction only."""
+    radius = JUNCTION_WINDOW_WIDTHS * width
+    window = parent.ring_window(junction.point, radius + width)
+    if window[1] - window[0] < 2:
+        raise JunctionClipTopologyError(
+            f"{junction.node_id}: parent {junction.parent_id} has no ring window at the "
+            f"child mouth (junction point {np.round(junction.point, 3).tolist()})"
+        )
+    cut = cut_cap(corners, parent, junction, end, width)
+    if cut.omitted_triangles == int(corners.shape[0]):
+        return None
+    # the remainder is emitted as float32 render geometry: a crossing that
+    # lands within float32 resolution of a fan corner would leave a zero-area
+    # sliver (a degenerate triangle covers no surface, so dropping it can
+    # open nothing); vertices closer than MOUTH_CAP_VERTEX_MERGE_M are merged
+    # and pieces below MOUTH_CAP_MIN_AREA_M2 are dropped
+    for t, clip in list(cut.clips.items()):
+        polys: list[FloatArray] = []
+        bars: list[FloatArray] = []
+        for poly, bary in zip(clip.polygons, clip.bary, strict=True):
+            cleaned = _clean_render_polygon(poly, bary)
+            if cleaned is not None:
+                polys.append(cleaned[0])
+                bars.append(cleaned[1])
+        if polys:
+            cut.clips[t] = CapClip(clip.triangle, tuple(polys), tuple(bars), clip.junction_node_id)
+        else:
+            del cut.clips[t]
+            cut.omit[t] = True
+    if cut.omitted_triangles == int(corners.shape[0]):
+        return None
+    return cut
+
+
+#: Phase 20D.2.1: render-scale cleaning of a mouth-cap remainder polygon —
+#: float32 positions at a few hundred metres resolve ≈ 1.5e-5 m, so a
+#: crossing within 1 mm of a corner is a degenerate sliver, never a surface
+MOUTH_CAP_VERTEX_MERGE_M = 1e-3
+MOUTH_CAP_MIN_AREA_M2 = 1e-6
+
+
+def _clean_render_polygon(
+    poly: FloatArray, bary: FloatArray
+) -> tuple[FloatArray, FloatArray] | None:
+    """Merge consecutive vertices closer than ``MOUTH_CAP_VERTEX_MERGE_M``,
+    drop interior vertices whose fan triangle (from vertex 0) is degenerate,
+    and drop the polygon when fewer than three vertices or less than
+    ``MOUTH_CAP_MIN_AREA_M2`` remain. The surface change is below float32
+    resolution of the emitted geometry."""
+    keep_p: list[FloatArray] = []
+    keep_b: list[FloatArray] = []
+    for q in range(int(poly.shape[0])):
+        if keep_p and float(np.linalg.norm(poly[q] - keep_p[-1])) < MOUTH_CAP_VERTEX_MERGE_M:
+            continue
+        keep_p.append(poly[q])
+        keep_b.append(bary[q])
+    while (
+        len(keep_p) > 1 and float(np.linalg.norm(keep_p[-1] - keep_p[0])) < MOUTH_CAP_VERTEX_MERGE_M
+    ):
+        keep_p.pop()
+        keep_b.pop()
+    # fan-degenerate interior vertices (collinear with vertex 0 and a neighbour)
+    changed = True
+    while changed and len(keep_p) >= 3:
+        changed = False
+        for i in range(1, len(keep_p) - 1):
+            area = 0.5 * float(
+                np.linalg.norm(np.cross(keep_p[i] - keep_p[0], keep_p[i + 1] - keep_p[0]))
+            )
+            if area < MOUTH_CAP_MIN_AREA_M2:
+                del keep_p[i]
+                del keep_b[i]
+                changed = True
+                break
+    if len(keep_p) < 3:
+        return None
+    p_arr = np.stack(keep_p)
+    total = 0.5 * float(
+        np.linalg.norm(
+            sum(
+                np.cross(p_arr[i] - p_arr[0], p_arr[i + 1] - p_arr[0])
+                for i in range(1, len(keep_p) - 1)
+            )
+        )
+    )
+    if total < MOUTH_CAP_MIN_AREA_M2:
+        return None
+    return p_arr, np.stack(keep_b)
+
+
 def cut_tube(
     own: TubeEnvelope,
     own_rings: FloatArray,
@@ -818,7 +1108,12 @@ def _extend_child_floor_pass(
             clips.append(clip)
 
 
-def junction_report(junctions: list[Junction], cuts: list[JunctionCut]) -> dict[str, Any]:
+def junction_report(
+    junctions: list[Junction],
+    cuts: list[JunctionCut],
+    cap_cuts: list[CapCut] | None = None,
+    mouth_caps: list[CapCut] | None = None,
+) -> dict[str, Any]:
     """The report block of one builder: every declared junction with the
     triangles this builder omitted on the sides it owns (a side swept by the
     other builder reports 0 here and its own count there)."""
@@ -837,10 +1132,33 @@ def junction_report(junctions: list[Junction], cuts: list[JunctionCut]) -> dict[
         clipped_quads = sum(c.clipped_floor_quads for c in child_cuts)
         replacement = sum(c.replacement_triangles for c in child_cuts)
         child = sum(2 * c.removed_quads for c in child_cuts) + 2 * clipped_quads
+        # Phase 20D.2: the parent's END CAP where the child occupies it (a
+        # crosscut station on a drift extremity); omitted + clipped fan
+        # triangles are not emitted as-is, so they count as removed
+        caps = [c for c in (cap_cuts or []) if c.junction is j]
+        cap_omitted = sum(c.omitted_triangles for c in caps)
+        cap_clipped = sum(c.clipped_triangles for c in caps)
+        cap_replacement = sum(c.replacement_triangles for c in caps)
+        # Phase 20D.2.1: the child's OPEN end ring outside the parent (a
+        # drift-extremity L-junction) carries a mouth cap: kept whole fans
+        # plus the clipped remainders; these triangles are ADDED (they never
+        # existed in the render), so they are not "removed"
+        mouths = [c for c in (mouth_caps or []) if c.junction is j]
+        mouth_emitted = sum(
+            int(c.omit.shape[0])
+            - c.omitted_triangles
+            - c.clipped_triangles
+            + c.replacement_triangles
+            for c in mouths
+        )
+        mouth_clipped = sum(c.clipped_triangles for c in mouths)
         openings.append(
             {
                 **j.to_dict(),
                 "parentRemovedTriangles": int(parent),
+                "parentCapOmittedTriangles": int(cap_omitted),
+                "parentCapClippedTriangles": int(cap_clipped),
+                "parentCapReplacementTriangles": int(cap_replacement),
                 # Phase 20D.1.1 mouth contract: the parent's vertical wall must
                 # open (> 0 where this builder owns the parent) and its floor
                 # must stay (always 0)
@@ -851,7 +1169,11 @@ def junction_report(junctions: list[Junction], cuts: list[JunctionCut]) -> dict[
                 "childClippedFloorQuads": int(clipped_quads),
                 "childClippedFloorTriangles": int(2 * clipped_quads),
                 "childReplacementTriangles": int(replacement),
-                "removedTriangles": int(parent + child),
+                # Phase 20D.2.1 (additive): the child mouth cap emitted on the
+                # rock-facing part of its OPEN end ring (0 at a T-junction)
+                "childMouthCapTriangles": int(mouth_emitted),
+                "childMouthCapClippedTriangles": int(mouth_clipped),
+                "removedTriangles": int(parent + child + cap_omitted + cap_clipped),
             }
         )
     return {
@@ -872,14 +1194,20 @@ __all__ = [
     "JUNCTION_SURFACE_TOLERANCE_FRACTION",
     "JUNCTION_TYPES",
     "JUNCTION_WINDOW_WIDTHS",
+    "MOUTH_CAP_MIN_AREA_M2",
+    "MOUTH_CAP_VERTEX_MERGE_M",
     "PARENT_QUAD_OVERLAP_MIN",
     "PARENT_QUAD_SAMPLE_FRACTIONS",
     "RAMP_TUBE_ID",
+    "CapClip",
+    "CapCut",
     "FloorClip",
     "Junction",
     "JunctionClipTopologyError",
     "JunctionCut",
     "TubeEnvelope",
+    "cut_cap",
+    "cut_mouth_cap",
     "cut_tube",
     "find_junctions",
     "junction_report",

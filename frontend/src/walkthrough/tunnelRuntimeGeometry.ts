@@ -43,32 +43,45 @@ interface PrimitiveUserData {
   segmentId?: unknown
 }
 
-function primitiveOf(mesh: Mesh): TunnelPrimitiveGeometry {
+/**
+ * Shared triangle-primitive reader (Phase 20D.2): validates the accessor
+ * shape every runtime adapter requires — position + index present,
+ * Float32 positions, Uint16/Uint32 indices, triangle-shaped lengths, every
+ * index inside the vertex range — and returns the source buffers as-is
+ * (Uint16 indices widened to Uint32, values unchanged). `fail` lets each
+ * adapter raise its own typed error; the ramp behaviour is unchanged.
+ */
+export function readTrianglePrimitive(
+  mesh: Mesh,
+  fail: (message: string) => never,
+): TunnelPrimitiveGeometry {
   const geometry = mesh.geometry
   const position = geometry.getAttribute('position')
   const index = geometry.getIndex()
-  if (!position || !index) throw new TunnelGeometryError('tunnel primitive lacks position/index')
+  if (!position || !index) fail('primitive lacks position/index')
   const positions = position.array
   const indices = index.array
-  if (!(positions instanceof Float32Array)) {
-    throw new TunnelGeometryError('tunnel positions are not a Float32Array')
-  }
+  if (!(positions instanceof Float32Array)) fail('positions are not a Float32Array')
   if (!(indices instanceof Uint32Array) && !(indices instanceof Uint16Array)) {
-    throw new TunnelGeometryError('tunnel indices are not an integer array')
+    fail('indices are not an integer array')
   }
   if (positions.length % 3 !== 0 || indices.length % 3 !== 0) {
-    throw new TunnelGeometryError('tunnel primitive arrays are not triangle-shaped')
+    fail('primitive arrays are not triangle-shaped')
   }
   const vertexCount = positions.length / 3
   for (let i = 0; i < indices.length; i++) {
-    if (indices[i]! >= vertexCount) {
-      throw new TunnelGeometryError('tunnel primitive index out of vertex range')
-    }
+    if (indices[i]! >= vertexCount) fail('primitive index out of vertex range')
   }
   return {
     positions,
     indices: indices instanceof Uint32Array ? indices : new Uint32Array(indices),
   }
+}
+
+function primitiveOf(mesh: Mesh): TunnelPrimitiveGeometry {
+  return readTrianglePrimitive(mesh, (message) => {
+    throw new TunnelGeometryError(`tunnel ${message}`)
+  })
 }
 
 /**

@@ -6,6 +6,7 @@ import { useScenarioStore } from '@/stores/scenarioStore'
 import { useSliceStore } from '@/stores/sliceStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { deriveVisibleLayers } from '@/walkthrough/readiness'
+import { resolveDevelopmentPhysics } from '@/walkthrough/colliderPolicy'
 import { temporalActiveSegmentIds } from '@/walkthrough/temporalPlan'
 import { TemporalTunnelLayer } from '@/walkthrough/TemporalTunnelLayer'
 import { AccessTargetsLayer } from './AccessTargetsLayer'
@@ -45,10 +46,22 @@ export function MineScene() {
   const scene = useScenarioStore((s) => s.scene)
   const storedVisible = useViewerStore((s) => s.visibleLayers)
   const mode = useViewerStore((st) => st.mode)
-  // §15: walkthrough derives an immersive view; stored layers are untouched
-  const visible = deriveVisibleLayers(mode, storedVisible)
-  const walkthroughActive = mode === 'WALKTHROUGH'
   const walkthroughContext = useViewerStore((st) => st.walkthroughContext)
+  // §15: walkthrough derives an immersive view; stored layers are untouched.
+  // Phase 20D.2 (rule 187): the SAME predicate that mounts the development
+  // physics (MineCanvas) decides whether its geometry is shown here, so
+  // visual and collidable excavation always coincide
+  const developmentPhysics = resolveDevelopmentPhysics(
+    walkthroughContext === 'TIMELINE_SNAPSHOT' ? 'TIMELINE_SNAPSHOT' : 'STATIC_FINAL',
+    scene?.developmentMesh ?? null,
+  )
+  const visible = deriveVisibleLayers(
+    mode,
+    storedVisible,
+    walkthroughContext,
+    mode === 'WALKTHROUGH' && developmentPhysics.mount,
+  )
+  const walkthroughActive = mode === 'WALKTHROUGH'
   const walkthroughSnapshotDay = useViewerStore((st) => st.walkthroughSnapshotDay)
   // §13: TIMELINE_SNAPSHOT never renders the full static tunnel GLB
   const temporalWalk = walkthroughActive && walkthroughContext === 'TIMELINE_SNAPSHOT'

@@ -470,12 +470,111 @@ colliders), so a future Phase 15 can toggle individual segment colliders by
 ID without rebuilding the physics world (rule 104). Phase 13 keeps every
 segment and both caps active.
 
-**Decline-only scope (rule 103)**: the walkable excavation is the Phase 06
-decline ONLY. DRIFT/CROSSCUT developments own centerlines, not volumetric
-meshes, and the frontend never inflates them into fake tunnels; timeline,
-communication and sensor semantics are untouched. Walkthrough visibility is
-DERIVED (tunnel mesh + passive terrain), never a mutation of the user's
-stored layers.
+**Decline-only scope (rule 103, Phase 13–15)**: the walkable excavation was
+the Phase 06 decline ONLY. DRIFT/CROSSCUT developments owned centerlines,
+not volumetric meshes, and the frontend never inflates them into fake
+tunnels; timeline, communication and sensor semantics are untouched.
+Walkthrough visibility is DERIVED (tunnel mesh + passive terrain), never a
+mutation of the user's stored layers.
+
+**Phase 20D.2 static branch walkthrough (rule 187)**: once Phase 20D.1
+emits `development_mesh.glb` with typed junction apertures, the STATIC_FINAL
+walkthrough consumes it the same way it consumes the ramp GLB —
+`walkthrough/developmentRuntimeGeometry.ts` splits the loaded scene by
+`geometry.userData` role/kind (`DEVELOPMENT` tubes for LEVEL_ACCESS / DRIFT
+/ CROSSCUT, `<KIND>_CAP` caps only where the writer emitted one), validates
+every primitive (position/index present, Float32 / Uint16|Uint32, triangle
+shaped, in-range indices, finite vertices, known role and kind, role/kind
+agreement, no duplicate semantic primitive, no orphan cap, no cap carrying
+`ranges`) and every tube's writer `ranges` table (string ids, integer
+triangle-aligned `indexOffset` / `indexCount`, contiguous in buffer order
+without overlap or gap, covering the primitive exactly, unique piece ids,
+reveal metadata accepted by the shared `readRevealMeta`), and reuses the
+source vertex buffer and index arrays EXACTLY under the shared
+`toThreePositions` transform. `DevelopmentColliderSet` mounts one fixed
+trimesh per emitted batched primitive (`WALK:COLLIDER:DEVELOPMENT:<kind>`,
+`WALK:COLLIDER:DEVELOPMENT_CAP:<kind>`) — the validated ranges keep piece
+identity for a later time-aware activation, but no piece split, no resweep,
+no proxy corridor, no frontend aperture or floor patch, default physics
+material and the unchanged PERSON capsule — so the player walks PORTAL →
+RAMP → LEVEL_ACCESS → DRIFT → CROSSCUT and back through the declared
+apertures, and an emitted cap is a real dead end.
+
+*Composition and visibility.* `resolveDevelopmentPhysics` decides the mount
+(STATIC_FINAL and a SUCCESS development mesh with a meshUrl);
+`resolveWalkthroughComposition` pins the three cases — Case A (no
+development artifact) ramp-only baseline, Case B (advertised + valid
+runtime geometry) ramp AND development colliders in ONE physics world, Case
+C (advertised but malformed) fail closed. The development GLB is loaded and
+validated by a wrapper that OWNS the URL (`StaticDevelopmentRuntime`) before
+the core runtime mounts, so hook order never depends on whether a
+development mesh exists and the physics world never exists without the
+colliders it was promised; a contract violation exits the walkthrough
+through `onGeometryError`, never a silent ramp-only fallback. Walkthrough
+visibility is the AUTHORITY set (`walkthroughAuthorityLayers`: ramp always,
+development iff its physics is mounted), never an intersection with the
+user's stored toggles — the same predicate feeds `MineCanvas` (colliders)
+and `MineScene` (layers), so "collider without geometry" and "toggle off →
+boundary gone" cannot occur; the stored preference is bypassed, never
+mutated.
+
+*Endpoint-cap audit (§10) and the typed cap cut.* The pre-20D.2 walks
+wedged when returning up a crosscut that starts at a drift extremity.
+Measured on both acceptance fixtures with a ray-cast audit along the
+drift ↔ crosscut path: every crosscut whose station sits on a drift END
+(TABULAR 8 of 20, all WARPED-301 levels) hit `DRIFT_CAP` at 0.4–1.4 m,
+every interior station hit nothing — the crosscut axis lies in the cap
+plane, so the cap's crosscut-side half stood inside the mouth (a cap is a
+separate primitive the quad rules never saw). The fix is the same typed
+local cut the child floor receives, on a cap fan instead of a quad grid
+(`design/junctions.py::cut_cap`, `CapCut`, `_clip_triangle`): fan triangles
+inside-or-on the child envelope are omitted, outside ones kept, straddling
+ones clipped by bisection on their own edges with the remainder
+fan-triangulated into new cap vertices (UV interpolated barycentrically);
+the end wall stays on the rock side, the chord meets the crosscut's open
+start plane, caps no junction reaches are bit-identical and crosscut faces
+are never cut. The render builder reports it additively (`omittedTriangles`
+/ `clippedTriangles` / `replacementTriangles` on a cut cap primitive,
+`renderCap*` per development, `parentCap*` per junction opening;
+`removedTriangles` now counts tube AND cap originals not emitted as-is)
+and the base-sweep closedness QA always judges the UNCUT fans. Two
+junctions clipping one fan triangle are an explicit conflict. Post-fix, the audit is clean on every interior station of both
+fixtures; the WARPED-301 extremity stations still register a graze on the
+kept half-cap's boundary edge, which is the traffic CORNER of the L-shaped
+union (the station sits on the drift end), not surface inside the mouth —
+the capsule rounds it and both browser walks pass it in both directions.
+The same audit exposed a second defect class at the same stations
+(closed in 20D.2.1, the PR #42 review blocker): at every drift-extremity
+station the half of the crosscut's OPEN start ring beyond the drift end
+faced unexcavated rock with no surface (TABULAR 8 / 20, WARPED-301
+28 / 187 stations) — the 20D.1 OPEN policy assumes a T-junction. The
+backend now emits the typed CHILD MOUTH CAP (`cut_mouth_cap`, the mirror
+of `cut_cap`: the crosscut's start-ring fan judged against the DRIFT
+envelope, inside-or-on fans omitted so the mouth stays open into the
+drift, outside fans kept, straddling fans clipped at the drift boundary;
+a `CROSSCUT_CAP` primitive flagged `junctionMouthCap`), for the typed
+DRIFT_CROSSCUT junction only; interior T-junctions get nothing and stay
+bit-identical, faces are untouched, the logical mesh / OPEN QA are
+unchanged, and the frontend still adds no collider (`docs/algorithms.md`,
+§10 closeout).
+
+*TIMELINE_SNAPSHOT.* The temporal walkthrough keeps its ramp-only
+collider contract, frontier barrier and snapshot freeze; since the ramp GLB
+now carries a RAMP_ACCESS aperture at every turnout, every declared
+aperture (tunnel report `junctions.byType.RAMP_ACCESS`) is closed by
+ephemeral wall-line barrier pieces (`walkthrough/apertureBarrier.ts`,
+`ApertureBarrierSet`): one thin gravity-aligned cuboid per effective
+centerline interval inside the cut window (2 widths, plus 1 width margin)
+on the branch side decided by the authoritative access centerline, mounted
+only on ACTIVE segments (an inactive branch side is already closed by the
+frontier). The inputs are frozen with the plan at mount; apertures
+declared but not locatable (level accesses missing / failed, a count
+mismatch, a junction not welded to the ramp centerline, unusable ramp
+dimensions) fail the temporal session closed. Final development geometry
+never leaks into a snapshot; temporal branch traversal is deferred.
+Minimap / ramp-chainage teleport stay ramp-based (a CH readout inside a
+branch refers to the main ramp); branch teleport, network maps, temporal
+branch physics and branch infrastructure interaction are later scope.
 
 ## Phase 14 — walkthrough interaction / inspection (rules 105–110)
 
@@ -1093,10 +1192,10 @@ chainages, entries, access lengths / gradients / radii and typed failures;
    `sources.levels` flag reports CONTRIBUTION (a persisted but FAILED levels
    artifact contributes nothing).
 8. **Out of scope**: the ramp / footwall / access stand-off semantics audit
-   (rule 168, roadmap item S1); boolean junction openings, an all-development
-   watertight union and walkthrough / collider integration for the
-   development meshes (Phase 20D — the walkthrough traverses the Phase 06
-   ramp tunnel only).
+   (rule 168, roadmap item S1); boolean junction openings and an
+   all-development watertight union (Phase 20D; the typed local apertures
+   landed in 20D.1 and the STATIC_FINAL development walkthrough in 20D.2,
+   see "Phase 20D.2 static branch walkthrough" under Phase 13).
 
 ## Golden retention policy (Phase 20B.3)
 

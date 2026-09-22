@@ -1712,8 +1712,66 @@ code, the code and the rule win and the map is corrected.
      measured by no gate (Gate C step 0 observation); a separation
      DIAGNOSTIC, never a gate, is a follow-up.
 
-188. RAMP_ACCESS vertical continuity (Phase 20B.x; 187 is reserved for the
-     in-flight Phase 20D.2 walkthrough rule). A level-access branch leaves
+187. STATIC_FINAL walkthrough collision authority is the emitted excavation
+     GLBs (Phase 20D.2). Ramp and development collision reuse the exact GLB
+     triangle / index topology under the canonical mine→Three transform
+     (`toThreePositions`, one authority): `walkthrough/tunnelRuntimeGeometry.ts`
+     for `tunnel_mesh.glb`, `walkthrough/developmentRuntimeGeometry.ts` for
+     `development_mesh.glb` — DEVELOPMENT tubes per kind with their
+     validated `ranges` (contiguous, gap-free, in-bounds, triangle-aligned,
+     unique piece ids, reveal metadata through the shared reader) and only
+     the emitted `<KIND>_CAP` caps, one fixed trimesh per batched primitive,
+     piece identity kept for a later time-aware activation. No centerline
+     resweep, proxy tunnel, frontend junction reconstruction, invisible
+     bridge / floor patch, collision-only geometry, body / gravity / autostep
+     tuning or physics-material tuning is permitted: typed junction
+     apertures are traversed exactly as emitted, an emitted cap is a real
+     dead end and an OPEN endpoint gets no invented cap. Composition
+     (`resolveWalkthroughComposition`): a missing / failed development
+     artifact keeps the ramp-only walkthrough (rule 103 baseline); an
+     advertised SUCCESS + meshUrl development GLB is mandatory and is loaded
+     and validated BEFORE the physics world mounts — a contract violation
+     fails the static walkthrough closed, never a silent ramp-only fallback.
+     Walkthrough visibility is the AUTHORITY set, never an intersection with
+     the stored layer toggles (`walkthroughAuthorityLayers`): exactly the
+     excavation whose collision is mounted is shown (ramp always,
+     development iff its physics is mounted), so "collider without
+     geometry" and "toggle off → boundary gone" cannot occur. A drift end
+     cap that a declared DRIFT_CROSSCUT junction occupies (a station on the
+     drift extremity puts the crosscut axis IN the DRIFT_CAP plane; measured
+     on the acceptance fixtures, every such cap obstructed the drift ↔
+     crosscut traffic line) is cut by the same typed local rule as the
+     child floor — inside-or-on fan triangles omitted, straddling fans
+     clipped at the child envelope, `design/junctions.py::cut_cap` — so the
+     end wall stays on the rock side and nothing stands inside the mouth;
+     caps no junction reaches are bit-identical and crosscut faces are never
+     cut. The same L-junction (20D.2.1, PR #42 review): a crosscut station
+     on a drift EXTREMITY has the drift ending AT the station, so the half
+     of the crosscut's OPEN start ring beyond the drift end would face
+     unexcavated rock with no surface (measured: TABULAR 8 / 20 stations,
+     WARPED-301 28 / 187; interior stations none). The backend closes it
+     with the typed CHILD MOUTH CAP — `design/junctions.py::cut_mouth_cap`,
+     the mirror of `cut_cap`: the child's start-ring cap fan judged against
+     the PARENT envelope, inside-or-on fans omitted (the mouth stays OPEN
+     into the drift), outside fans kept, straddling fans clipped at the
+     drift boundary, emitted render-only as a `<KIND>_CAP` primitive with
+     `junctionMouthCap` — for the typed DRIFT_CROSSCUT junction only. An
+     interior T-junction (ring wholly inside its parent) gets nothing and
+     stays bit-identical, crosscut faces are never touched, the logical
+     mesh and the OPEN topology QA are unchanged, and no general Boolean is
+     introduced; the walkthrough still adds no collider of its own.
+     TIMELINE_SNAPSHOT keeps its ramp-only temporal collider contract
+     (rules 112–118) and closes every RAMP_ACCESS aperture the ramp GLB
+     declares with ephemeral wall-line barrier pieces on the active segments
+     (`walkthrough/apertureBarrier.ts`, a rule 115 analogue: never persisted,
+     never engineering geometry); apertures declared but not locatable from
+     the authoritative level accesses fail the temporal session closed.
+     Final development geometry never leaks into a snapshot and temporal
+     branch traversal is deferred. Minimap, ramp-chainage teleport, branch
+     teleport / routing and branch infrastructure interaction are unchanged
+     / later scope.
+
+188. RAMP_ACCESS vertical continuity (Phase 20B.x). A level-access branch leaves
      the main ramp INSIDE the ramp's own floor, so its vertical profile is
      assigned on the delivered stations in two regimes, one geometric rule
      for every orebody type and family

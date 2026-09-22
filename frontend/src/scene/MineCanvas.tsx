@@ -20,6 +20,7 @@ import { createTelemetry } from '@/walkthrough/telemetry'
 import { buildMinimapModel } from '@/walkthrough/minimap'
 import { resolveTeleportTargets } from '@/walkthrough/teleport'
 import { temporalActiveSegmentIds } from '@/walkthrough/temporalPlan'
+import { resolveDevelopmentPhysics } from '@/walkthrough/colliderPolicy'
 
 /**
  * R3F canvas host. Camera positions are specified in mine coordinates and
@@ -108,6 +109,12 @@ export function MineCanvas() {
     readiness === 'READY' &&
     scene?.tunnelMesh?.meshUrl &&
     scene.smoothedDecline
+  // Phase 20D.2 (rule 187): STATIC_FINAL walks the emitted development
+  // GLB too; TIMELINE_SNAPSHOT stays on the ramp-only temporal contract
+  const developmentPhysics = resolveDevelopmentPhysics(
+    temporal ? 'TIMELINE_SNAPSHOT' : 'STATIC_FINAL',
+    scene?.developmentMesh ?? null,
+  )
 
   return (
     <MineViewportShell
@@ -136,6 +143,9 @@ export function MineCanvas() {
             {walkable ? (
               <WalkthroughRuntime
                 meshUrl={`${API_BASE_URL}${scene.tunnelMesh!.meshUrl}`}
+                developmentMeshUrl={
+                  developmentPhysics.mount ? `${API_BASE_URL}${developmentPhysics.meshUrl}` : null
+                }
                 scene={scene}
                 context={temporal ? 'TIMELINE_SNAPSHOT' : 'STATIC_FINAL'}
                 snapshotDay={walkthroughSnapshotDay}

@@ -3,6 +3,7 @@ import type { WorldScene } from '@/types/scene'
 import {
   deriveVisibleLayers,
   temporalWalkthroughReadiness,
+  walkthroughAuthorityLayers,
   walkthroughReadiness,
 } from './readiness'
 import { useViewerStore } from '@/stores/viewerStore'
@@ -62,6 +63,67 @@ describe('walkthrough derived visibility (§15)', () => {
   it('keeps ONLY the tunnel in walkthrough — terrain is suppressed (hotfix §7)', () => {
     const derived = deriveVisibleLayers('WALKTHROUGH', stored)
     expect([...derived]).toEqual(['tunnelMesh'])
+  })
+
+  describe('Phase 20D.2 (rule 187): the walkthrough shows exactly the excavation it collides with', () => {
+    const withDev = new Set([...stored, 'developmentMesh', 'levels', 'crosscuts', 'levelAccesses'])
+    const nothing = new Set<string>()
+
+    it('STATIC_FINAL with development physics mounted shows ramp tunnel AND development meshes, nothing else', () => {
+      const derived = deriveVisibleLayers('WALKTHROUGH', withDev, 'STATIC_FINAL', true)
+      expect([...derived].sort()).toEqual(['developmentMesh', 'tunnelMesh'])
+      for (const overlay of [
+        'terrain',
+        'orebody',
+        'levels',
+        'crosscuts',
+        'levelAccesses',
+        'network',
+      ]) {
+        expect(derived.has(overlay)).toBe(false)
+      }
+    })
+
+    it('STATIC_FINAL without development physics is the ramp-only baseline', () => {
+      expect([...deriveVisibleLayers('WALKTHROUGH', withDev, 'STATIC_FINAL', false)]).toEqual([
+        'tunnelMesh',
+      ])
+    })
+
+    it('T6: stored toggles cannot hide collidable geometry — the authority set ignores them', () => {
+      // a user who turned tunnelMesh / developmentMesh OFF in DESIGN still
+      // sees (and collides with) the excavation in the walkthrough
+      expect([...deriveVisibleLayers('WALKTHROUGH', nothing, 'STATIC_FINAL', true)].sort()).toEqual(
+        ['developmentMesh', 'tunnelMesh'],
+      )
+      expect([...deriveVisibleLayers('WALKTHROUGH', nothing, 'STATIC_FINAL', false)]).toEqual([
+        'tunnelMesh',
+      ])
+      expect([...deriveVisibleLayers('WALKTHROUGH', nothing, 'TIMELINE_SNAPSHOT', false)]).toEqual([
+        'tunnelMesh',
+      ])
+      expect([...walkthroughAuthorityLayers('STATIC_FINAL', true)].sort()).toEqual([
+        'developmentMesh',
+        'tunnelMesh',
+      ])
+    })
+
+    it('TIMELINE_SNAPSHOT keeps the ramp-only contract even if development physics were claimed', () => {
+      expect([...deriveVisibleLayers('WALKTHROUGH', withDev, 'TIMELINE_SNAPSHOT', true)]).toEqual([
+        'tunnelMesh',
+      ])
+      // an unknown context is the narrower (temporal) set, never the static one
+      expect([...deriveVisibleLayers('WALKTHROUGH', withDev, null, true)]).toEqual(['tunnelMesh'])
+      expect([...deriveVisibleLayers('WALKTHROUGH', withDev)]).toEqual(['tunnelMesh'])
+    })
+
+    it('never mutates the stored preference and passes DESIGN through untouched', () => {
+      const before = [...withDev]
+      deriveVisibleLayers('WALKTHROUGH', withDev, 'STATIC_FINAL', true)
+      deriveVisibleLayers('WALKTHROUGH', withDev, 'TIMELINE_SNAPSHOT')
+      expect([...withDev]).toEqual(before)
+      expect(deriveVisibleLayers('DESIGN', withDev, 'STATIC_FINAL', true)).toBe(withDev)
+    })
   })
 
   it('suppresses engineering, 4D, communication and sensor overlays', () => {
