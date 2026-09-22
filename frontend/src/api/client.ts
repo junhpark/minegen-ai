@@ -15,6 +15,7 @@ import type {
   CommunicationPayload,
   CostEvaluationRow,
   DeclinePayload,
+  DesignAssessmentPayload,
   JobRecord,
   JobSubmission,
   LayoutV2Catalogue,
@@ -154,6 +155,9 @@ export const api = {
   getLevelAccesses: (id: string) =>
     request<LevelAccessesPayload>(`/scenarios/${id}/design/level-accesses`),
   getRampSource: (id: string) => request<RampSourceSummary>(`/scenarios/${id}/design/ramp-source`),
+  /** Phase 20D.3 (rule 189): the READ-ONLY design assessment + candidate comparison. */
+  getDesignAssessment: (id: string) =>
+    request<DesignAssessmentPayload>(`/scenarios/${id}/design/assessment`),
   setRampSource: (id: string, activeSource: RampSource) =>
     request<RampSourceSummary>(`/scenarios/${id}/design/ramp-source`, {
       method: 'PUT',

@@ -3,11 +3,14 @@ import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/api/client'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { PanelSection } from '@/components/layout/PanelSection'
+import { assessmentKey } from '@/components/panels/assessmentKey'
+import { AlternativesTable, DesignAssessmentList } from '@/components/panels/DesignAssessment'
 import { compareCandidates } from '@/components/panels/layoutOrder'
 import { afterLayoutActivate, afterLayoutRegen, afterLayoutSelect } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import type {
+  DesignAssessmentPayload,
   JobRecord,
   LayoutCandidateSummary,
   LayoutV2Catalogue,
@@ -101,6 +104,21 @@ export function LayoutPanel() {
     },
   })
 
+  // Phase 20D.3 (rule 189): the READ-ONLY assessment of the persisted
+  // design; re-read whenever one of its source slots changes in the scene
+  const assessment = useQuery({
+    queryKey: ['design-assessment', epoch, ...assessmentKey(scene)],
+    queryFn: () => api.getDesignAssessment(scene?.scenarioId ?? ''),
+    enabled: scene !== null && scene.layoutV2 !== null && !running,
+    retry: false,
+  })
+  const assessmentError =
+    assessment.error instanceof ApiError
+      ? `${assessment.error.code}: ${assessment.error.message}`
+      : assessment.error
+        ? assessment.error.message
+        : null
+
   const err = generate.error ?? select.error ?? activate.error
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
@@ -116,6 +134,8 @@ export function LayoutPanel() {
       selecting={select.isPending}
       activating={activate.isPending}
       errorText={errorText}
+      assessment={assessment.data ?? null}
+      assessmentError={assessmentError}
       onPick={setPick}
       onShowAll={setShowAll}
       onGenerate={() => generate.mutate()}
@@ -135,6 +155,9 @@ export interface LayoutPanelBodyProps {
   selecting: boolean
   activating: boolean
   errorText: string | null
+  /** Phase 20D.3 read model (null while loading / unavailable) */
+  assessment?: DesignAssessmentPayload | null
+  assessmentError?: string | null
   onPick: (id: string) => void
   onShowAll: (show: boolean) => void
   onGenerate: () => void
@@ -308,6 +331,16 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
             finite declared grid · hard constraints stay hard · scores are Development / Geology /
             Geometry group totals (§26) · not an optimizer
           </div>
+          {p.assessment ? (
+            <>
+              <DesignAssessmentList assessment={p.assessment} />
+              <AlternativesTable assessment={p.assessment} />
+            </>
+          ) : p.assessmentError ? (
+            <div className="mt-2 text-mute" aria-label="design assessment unavailable">
+              design assessment unavailable — {p.assessmentError}
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="mt-2 text-[11px] text-mute">

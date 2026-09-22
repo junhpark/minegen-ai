@@ -782,6 +782,121 @@ export interface RampSourceSummary {
   segmentCount: number
 }
 
+// --------------------------------------------------------------------------- //
+// Phase 20D.3 — design assessment read model (rule 189; display-only mirror
+// of GET …/design/assessment: nothing here is computed on the client)
+// --------------------------------------------------------------------------- //
+
+export type AssessmentStatus = 'SATISFIED' | 'NOT_SATISFIED' | 'NOT_APPLICABLE' | 'NOT_EVALUATED'
+export type AssessmentAuthority =
+  'HARD_DESIGN_RULE' | 'DERIVED_VALIDATION' | 'ADVISORY' | 'INFORMATIONAL'
+export type AssessmentEvidenceValue = number | boolean | string | string[] | null
+
+export interface AssessmentCheck {
+  id: string
+  title: string
+  category: 'LAYOUT' | 'ACCESS' | 'CLEARANCE' | 'GEOMETRY' | 'CAPABILITY' | 'EGRESS'
+  status: AssessmentStatus
+  authority: AssessmentAuthority
+  summary: string
+  evidence: Record<string, AssessmentEvidenceValue>
+  sourceArtifact: string
+  sourceField: string
+}
+
+export interface ComparisonScores {
+  development: number
+  geology: number
+  geometry: number
+  total: number
+}
+
+export interface ScoreDeltas {
+  totalScoreDeltaFromWinner: number
+  developmentScoreDelta: number
+  geologyScoreDelta: number
+  geometryScoreDelta: number
+}
+
+export interface CandidateComparisonRow {
+  candidateId: string
+  family: RampFamily
+  rank: number | null
+  selected: boolean
+  winner: boolean
+  status: LayoutCandidateStatus
+  stageReached: string
+  scores: ComparisonScores | null
+  deltas: ScoreDeltas | null
+  accessibleLevels: number | null
+  requiredLevels: number
+  clearance: {
+    clearanceBasis: ClearanceBasis
+    requiredClearance: number
+    conservativeMinimumClearance: number
+    clearanceErrorBound: number | null
+    satisfied: boolean
+  } | null
+  access: {
+    levelCount: number
+    accessibleLevelCount: number
+    totalAccessLength: number
+    worstAccessLength: number
+    maxAccessGradient: number
+    minAccessPlanRadius: number | null
+  } | null
+  failureReasons: string[]
+  failureDetail: string | null
+}
+
+export interface RequiredPathProjection {
+  id: string
+  capability: Capability
+  sourceNodeId: string
+  targetNodeId: string
+  rule: string
+  physicalReachable: boolean
+  capabilityReachable: boolean
+  satisfied: boolean
+}
+
+export interface EgressAdvisoryProjection {
+  criterion: string
+  requiredRoutes: number
+  advisoryOnly: boolean
+  surfaceNodeIds: string[]
+  undergroundNodeCount: number
+  meetingNodeCount: number
+  failingNodeCount: number
+  failingNodeIds: string[]
+  minimumIndependentRoutes: number | null
+}
+
+export interface DesignAssessmentSources {
+  activeSource: RampSource
+  layoutV2Revision: string | null
+  selectedLayoutRevision: string | null
+  levelAccessesRevision: string | null
+  networkRevision: string | null
+  capabilityGraphRevision: string | null
+}
+
+export interface DesignAssessmentPayload {
+  /** generation status of the read model, never a design verdict */
+  status: 'SUCCESS'
+  activeSource: RampSource
+  winnerId: string | null
+  selectedCandidateId: string | null
+  selectedCandidate: CandidateComparisonRow | null
+  checks: AssessmentCheck[]
+  /** winner + top FEASIBLE alternatives in the authoritative ranking order */
+  candidateComparison: CandidateComparisonRow[]
+  requiredPaths: RequiredPathProjection[]
+  egressAdvisory: EgressAdvisoryProjection | null
+  summary: string
+  sources: DesignAssessmentSources
+}
+
 export interface NetworkNode {
   id: string
   type:

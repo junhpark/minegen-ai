@@ -15,6 +15,8 @@ from typing import Any, TypeVar
 
 import numpy as np
 
+from minegen.assessment.builder import build_design_assessment
+from minegen.assessment.models import DesignAssessmentPayload, DesignAssessmentSources
 from minegen.capability.builder import (
     CapabilityGraphBuilder,
     can_reach,
@@ -96,7 +98,12 @@ from minegen.services.artifact_errors import (
     TimelineNotGeneratedError,
     TunnelNotGeneratedError,
 )
-from minegen.services.artifact_reader import ArtifactReader, ArtifactSnapshot
+from minegen.services.artifact_reader import (
+    STATE_ABSENT,
+    ArtifactRead,
+    ArtifactReader,
+    ArtifactSnapshot,
+)
 from minegen.services.effective_ramp import (
     RAMP_FILES,
     RAMP_SOURCES,
@@ -1243,6 +1250,82 @@ class DesignService:
         ``capability/models.py`` calls "recorded, cross-checked" was compared
         by nobody)."""
         return self._require_model(scenario_id, CAPABILITY_GRAPH_ARTIFACT, CapabilityGraphPayload)
+
+    # -- design assessment (Phase 20D.3, rule 189) -------------------------- #
+
+    def design_assessment(self, scenario_id: str) -> DesignAssessmentPayload:
+        """READ-ONLY projection of the persisted design results into typed
+        engineering checks and a candidate comparison (rule 189). ONE
+        validated snapshot of the catalogue, the selection (with its
+        co-published level accesses, the reader's pair unit), the source
+        switch, the network and the capability graph; nothing is generated,
+        persisted or recomputed.
+
+        Read semantics (directive §17 / §18): the catalogue is REQUIRED
+        (absent → ``LAYOUT_V2_NOT_GENERATED``, the assessment is unavailable
+        without a layout-v2 catalogue); the selection and the capability
+        graph are OPTIONAL when ABSENT (no selection → the layout checks are
+        NOT_EVALUATED; no graph → the capability / egress checks are
+        NOT_EVALUATED) but every present artifact must be VALID — a STALE or
+        MALFORMED document raises its own typed refusal
+        (``LAYOUT_V2_SELECTION_STALE``, ``CAPABILITY_GRAPH_STALE``,
+        ``ARTIFACT_MALFORMED``, …) and is never projected."""
+        self.store.get(scenario_id)  # 404 / schema 422 / migration-on-read (A10)
+        names = (
+            LAYOUT_V2_ARTIFACT,
+            LAYOUT_V2_SELECTED_ARTIFACT,
+            LEVEL_ACCESSES_ARTIFACT,
+            RAMP_SOURCE_FILE,
+            NETWORK_ARTIFACT,
+            CAPABILITY_GRAPH_ARTIFACT,
+        )
+        snapshot = self._reader.snapshot(scenario_id, names)
+        self._reader.require_world(snapshot)
+        catalogue = self._reader.read(snapshot, LAYOUT_V2_ARTIFACT)
+        if catalogue.state == STATE_ABSENT:
+            raise LayoutV2NotGeneratedError(scenario_id)
+        if catalogue.error is not None:
+            raise catalogue.error
+        assert catalogue.raw is not None
+        source = self._reader.resolve_ramp_source(snapshot)
+        selected = self._optional_read(snapshot, LAYOUT_V2_SELECTED_ARTIFACT)
+        # the co-published half is observed by the selection's pair check; its
+        # own read is taken so a stale / malformed access artifact refuses too
+        self._optional_read(snapshot, LEVEL_ACCESSES_ARTIFACT)
+        self._optional_read(snapshot, NETWORK_ARTIFACT)
+        capability = self._optional_read(snapshot, CAPABILITY_GRAPH_ARTIFACT)
+        capability_payload: CapabilityGraphPayload | None = None
+        if capability is not None:
+            assert isinstance(capability.model, CapabilityGraphPayload)
+            capability_payload = capability.model
+        return build_design_assessment(
+            catalogue=catalogue.raw,
+            selected=None if selected is None else selected.raw,
+            capability=capability_payload,
+            sources=DesignAssessmentSources(
+                active_source=source,
+                layout_v2_revision=catalogue.revision,
+                selected_layout_revision=None if selected is None else selected.revision,
+                level_accesses_revision=self._present_revision(snapshot, LEVEL_ACCESSES_ARTIFACT),
+                network_revision=self._present_revision(snapshot, NETWORK_ARTIFACT),
+                capability_graph_revision=None if capability is None else capability.revision,
+            ),
+        )
+
+    def _optional_read(self, snapshot: ArtifactSnapshot, name: str) -> ArtifactRead | None:
+        """``ArtifactReader.optional`` over an ALREADY-taken snapshot: ABSENT
+        → ``None``, any error → raised, VALID → the read."""
+        read = self._reader.read(snapshot, name)
+        if read.state == STATE_ABSENT:
+            return None
+        if read.error is not None:
+            raise read.error
+        return read
+
+    @staticmethod
+    def _present_revision(snapshot: ArtifactSnapshot, name: str) -> str | None:
+        obs = snapshot.observation(name)
+        return obs.revision if obs is not None and obs.present else None
 
     def capability_path(
         self, scenario_id: str, source: str, target: str, capability: Capability

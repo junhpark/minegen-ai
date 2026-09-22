@@ -70,6 +70,10 @@ here. Per-phase decision records below keep their original wording.
       network/         MineNetwork graph, builder, metrics
       shafts/          Phase 20C.2B vertical shaft planner + shafts.json contract
       capability/      Phase 20C.2B capability graph (semantics over network ids)
+      assessment/      Phase 20D.3 design assessment read model (rule 189: a
+                       READ-ONLY projection of the layout-v2 catalogue,
+                       selection, ramp source and capability graph — never
+                       persisted, never a design authority)
       mining/          MiningMethod strategy interface, longhole open stoping,
                        stope generator, typed unsupported-method failure
       scheduling/      MineTask, dependencies, scheduler, timeline state
@@ -1196,6 +1200,72 @@ chainages, entries, access lengths / gradients / radii and typed failures;
    all-development watertight union (Phase 20D; the typed local apertures
    landed in 20D.1 and the STATIC_FINAL development walkthrough in 20D.2,
    see "Phase 20D.2 static branch walkthrough" under Phase 13).
+
+#### Phase 20D.3 — Design Assessment & Candidate Comparison (rule 189)
+
+The last Phase 20 closeout answers two questions from artifacts that
+already exist — "why was this layout selected?" and "how well does the
+selected design satisfy MineGen's engineering / design checks?" — without
+adding a search, a gate, a threshold or a persisted file.
+
+- **Read model, not an artifact.** `DesignService.design_assessment` takes
+  ONE `ArtifactReader.snapshot` of `layout_v2.json`,
+  `layout_v2_selected.json` (+ its co-published `level_accesses.json`),
+  `ramp_source.json`, `network.json` and `capability_graph.json`, applies
+  the world guard, and hands the VALID documents to the pure
+  `assessment/builder.py` projection. The catalogue is required
+  (`LAYOUT_V2_NOT_GENERATED` otherwise — the assessment is unavailable
+  without a layout-v2 catalogue, and a LEGACY-only scenario simply has
+  none); the selection and the capability graph are optional when ABSENT
+  (dependent checks answer `NOT_EVALUATED`); any present artifact that is
+  STALE or MALFORMED raises its own typed refusal
+  (`LAYOUT_V2_SELECTION_STALE`, `CAPABILITY_GRAPH_STALE`,
+  `ARTIFACT_MALFORMED`) through the design router's `_fail` — no fallback,
+  nothing generated, nothing written (`derived/` is byte-identical before
+  and after a read).
+- **Authority model.** `AssessmentCheck{id, title, category, status,
+  authority, summary, evidence, sourceArtifact, sourceField}` with
+  `status ∈ SATISFIED | NOT_SATISFIED | NOT_APPLICABLE | NOT_EVALUATED`
+  and `authority ∈ HARD_DESIGN_RULE | DERIVED_VALIDATION | ADVISORY |
+  INFORMATIONAL`. Evidence is numbers, flags and ids only. Checks, in a
+  fixed order: LAYOUT_SELECTED (selection artifact), ACTIVE_RAMP_SOURCE
+  (info), SELECTED_IS_RANKING_WINNER (info), CANDIDATE_FEASIBLE (hard:
+  `candidates[].status`), ALL_REQUIRED_LEVELS_ACCESSIBLE (hard:
+  `accessibleLevels == requiredLevels`, unserved ids from
+  `access.failures`), CLEARANCE_VALIDATED (hard: `clearance.satisfied`),
+  GEOMETRY_VALIDATED (validation: `validation.invalidSampleCount == 0`),
+  CAPABILITY_GRAPH_VALID (validation), REQUIRED_CAPABILITY_PATHS
+  (validation: `requiredPaths[].satisfied`, with `physicalReachable` and
+  `capabilityReachable` projected separately, rule 185) and
+  DUAL_EGRESS_ADVISORY (advisory: `egressAdvisory.perNode` counted —
+  required routes, surface nodes, underground / meeting / failing node
+  counts and ids, minimum independent routes; the summary always ends
+  "This is a design advisory, not a statutory compliance determination").
+- **Candidate comparison.** Rows are the catalogue `ranking` entries in
+  their stored order — the ranking winner plus the top FEASIBLE
+  alternatives (default 5 rows), the selected candidate always included —
+  each carrying the catalogue's own rank / status / stage / scores /
+  accessible-vs-required levels / clearance / access summary / failure
+  reasons and `deltas = candidate − winner` per score group (plain
+  subtraction). A ranking entry that is not FEASIBLE is a catalogue
+  inconsistency and is refused, never shown; INFEASIBLE and NOT_VALIDATED
+  candidates are never alternatives. The templated `summary` ("Selected …
+  Rank: 1 of N feasible … Compared with rank 2 …") is fixed sentences over
+  recorded numbers, never persisted reasoning.
+- **Frontend.** `LayoutPanel` reads `GET …/design/assessment` through
+  react-query whenever the scene carries a catalogue (key =
+  `assessmentKey(scene)`: scenario, catalogue identity, selection revision,
+  ramp source, network and capability revisions) and renders
+  `DesignAssessmentList` (✓ / ✗ for hard rules and validations, "!" and a
+  dashed *advisory* tag for the egress advisory, "i" for info, "?" and
+  NOT EVALUATED / NOT APPLICABLE otherwise — a satisfied advisory is never
+  a check-mark badge) and `AlternativesTable` (● winner, "(selected)",
+  rank, total score, Δ, accessible / required, status) in the delivered
+  order; a typed read refusal is shown as "design assessment unavailable —
+  CODE". No client-side check, score, delta, sorting or inference.
+- **Non-regression.** Winner, ranking, scores, goldens, characterization,
+  network, capability graph, geometry, meshes, walkthrough and timeline are
+  untouched — the module only reads them.
 
 ## Golden retention policy (Phase 20B.3)
 
