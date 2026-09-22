@@ -423,6 +423,12 @@ class RenderMesh:
     cap_omitted_triangles: int = 0
     cap_clipped_triangles: int = 0
     cap_replacement_triangles: int = 0
+    #: Phase 20D.2.1 (additive): triangles EMITTED as a child mouth cap on the
+    #: rock-facing part of an OPEN end ring (kept fans + clip remainders), the
+    #: clipped fans among them and the remainder triangles
+    mouth_cap_triangles: int = 0
+    mouth_cap_clipped_triangles: int = 0
+    mouth_cap_replacement_triangles: int = 0
 
 
 def _profile_groups(
@@ -476,6 +482,7 @@ def build_render_mesh(
     quad_mask: npt.NDArray[np.bool_] | None = None,
     floor_clips: Mapping[tuple[int, int], FloorClip] | None = None,
     cap_cuts: Mapping[str, CapCut] | None = None,
+    mouth_caps: Mapping[str, CapCut] | None = None,
 ) -> RenderMesh:
     """Render-vertex split of the logical tube + caps. ``caps`` selects which
     end caps are emitted ((portal, terminal); the Phase 06 ramp keeps both, an
@@ -518,7 +525,16 @@ def build_render_mesh(
     emitted, clipped fans are replaced by their outside-child remainder with
     NEW cap vertices (UV interpolated barycentrically from the fan corners).
     Absent by default; the base-sweep closedness QA always judges the
-    UNCUT fans."""
+    UNCUT fans.
+
+    Phase 20D.2.1 ``mouth_caps`` (``"start"`` / ``"end"`` → ``CapCut`` from
+    ``cut_mouth_cap``) emits, on an OPEN end (``caps`` False there), the
+    child's mouth cap: the fan triangles of that end ring OUTSIDE the parent
+    excavation (kept whole or clipped remainders), as a cap primitive of the
+    same role with ``junctionMouthCap = True``. The OPEN end stays open into
+    the parent, ``caps`` semantics and both closedness QA values are
+    unchanged (a mouth cap is never part of the base-sweep QA). Absent by
+    default: every pre-existing caller is bit-for-bit unaffected."""
     r, k = mesh.ring_count, mesh.k
     if quad_mask is not None and quad_mask.shape != (r - 1, k):
         raise ValueError(f"quad_mask shape {quad_mask.shape} != {(r - 1, k)}")
@@ -533,6 +549,14 @@ def build_render_mesh(
                 f"floor clip key ({ci}, {cj}) != clip ({entry.interval}, {entry.edge})"
             )
     n_clip_vertices = int(sum(int(p.shape[0]) for c in clips.values() for p in c.polygons))
+    mouths_by_end: dict[str, CapCut] = dict(mouth_caps) if mouth_caps else {}
+    for end_key, mouth_cut in mouths_by_end.items():
+        if end_key not in ("start", "end"):
+            raise ValueError(f"mouth cap key {end_key!r} is not 'start' / 'end'")
+        if caps[0 if end_key == "start" else 1]:
+            raise ValueError(f"mouth cap on the CAP end {end_key!r} (only an OPEN end has a mouth)")
+        if mouth_cut.omit.shape != (k,):
+            raise ValueError(f"mouth cap {end_key!r} omit shape {mouth_cut.omit.shape} != {(k,)}")
     cuts_by_end: dict[str, CapCut] = dict(cap_cuts) if cap_cuts else {}
     for end_key, end_cut in cuts_by_end.items():
         if end_key not in ("start", "end"):
@@ -552,6 +576,14 @@ def build_render_mesh(
             for p in cl.polygons
         )
     )
+    # Phase 20D.2.1: a mouth cap owns its ring + apex vertices and its clip
+    # remainder vertices exactly like an emitted end cap
+    n_mouth_vertices = int(
+        sum(
+            (k + 1) + sum(int(p.shape[0]) for cl in c.clips.values() for p in cl.polygons)
+            for c in mouths_by_end.values()
+        )
+    )
     ring_pos = mesh.positions[: r * k].reshape(r, k, 3)
     _edge_group, crease = _profile_groups(shape, crease_angle_deg)
 
@@ -566,6 +598,7 @@ def build_render_mesh(
             r * per_ring
             + n_clip_vertices
             + n_cap_clip_vertices
+            + n_mouth_vertices
             + (int(caps[0]) + int(caps[1])) * (k + 1),
             3,
         )
@@ -656,13 +689,20 @@ def build_render_mesh(
     cap_prims: list[RenderPrimitive] = []
     full_cap_prims: list[RenderPrimitive] = []  # uncut fans, base-sweep QA only
     cap_omitted = cap_clipped = cap_replacement = 0
+    mouth_emitted = mouth_clipped = mouth_replacement = 0
     for cap_name, ring_i, apex_logical, wanted in (
         ("PORTAL_CAP", 0, r * k, caps[0]),
         ("TERMINAL_CAP", r - 1, r * k + 1, caps[1]),
     ):
-        if not wanted:
+        end_key = "start" if cap_name == "PORTAL_CAP" else "end"
+        mouth = mouths_by_end.get(end_key)
+        if not wanted and mouth is None:
             continue
-        cut = cuts_by_end.get("start" if cap_name == "PORTAL_CAP" else "end")
+        # a CAP end applies its (parent) cap cut; an OPEN end emits ONLY the
+        # child mouth cap outside the parent (Phase 20D.2.1) — same fan, same
+        # winding, same clip emission
+        cut = cuts_by_end.get(end_key) if wanted else mouth
+        omit_n = clip_n = rep_n = 0
         base = cursor
         for j in range(k):
             positions[cursor] = ring_pos[ring_i, j]
@@ -687,13 +727,13 @@ def build_render_mesh(
             )
             full_c.append(tri)
             if cut is not None and cut.omit[j]:
-                cap_omitted += 1
+                omit_n += 1
                 continue
             cap_clip = cut.clips.get(j) if cut is not None else None
             if cap_clip is not None:
                 # Phase 20D.2: the fan triangle's outside-child remainder,
                 # new cap vertices, UV from the fan corners' UVs
-                cap_clipped += 1
+                clip_n += 1
                 corner_uv = np.stack([uvs[tri[0]], uvs[tri[1]], uvs[tri[2]]])
                 for poly, bary in zip(cap_clip.polygons, cap_clip.bary, strict=True):
                     b0 = cursor
@@ -703,7 +743,7 @@ def build_render_mesh(
                         cursor += 1
                     for fan in range(1, int(poly.shape[0]) - 1):
                         tris_c.append((b0, b0 + fan, b0 + fan + 1))
-                        cap_replacement += 1
+                        rep_n += 1
                 continue
             tris_c.append(tri)
         # normals: the ORIGINAL cap vertices from the full (uncut) fan — an
@@ -716,10 +756,24 @@ def build_render_mesh(
             if tri_c[0] >= base + k + 1:
                 _accumulate_normal(positions, normals, tri_c)
         cap_extras: dict[str, Any] = {"role": cap_name}
-        if cut is not None:
-            cap_extras["omittedTriangles"] = cut.omitted_triangles
-            cap_extras["clippedTriangles"] = cut.clipped_triangles
-            cap_extras["replacementTriangles"] = cut.replacement_triangles
+        if wanted:
+            cap_omitted += omit_n
+            cap_clipped += clip_n
+            cap_replacement += rep_n
+            if cut is not None:
+                cap_extras["omittedTriangles"] = cut.omitted_triangles
+                cap_extras["clippedTriangles"] = cut.clipped_triangles
+                cap_extras["replacementTriangles"] = cut.replacement_triangles
+        else:
+            assert mouth is not None
+            mouth_emitted += len(tris_c)
+            mouth_clipped += clip_n
+            mouth_replacement += rep_n
+            cap_extras["junctionMouthCap"] = True
+            cap_extras["junctionNodeId"] = mouth.junction.node_id
+            cap_extras["keptTriangles"] = k - omit_n - clip_n
+            cap_extras["clippedTriangles"] = clip_n
+            cap_extras["replacementTriangles"] = rep_n
         cap_prims.append(
             RenderPrimitive(
                 name=cap_name,
@@ -727,13 +781,14 @@ def build_render_mesh(
                 indices=np.asarray(tris_c, dtype=np.uint32).ravel(),
             )
         )
-        full_cap_prims.append(
-            RenderPrimitive(
-                name=cap_name,
-                extras={"role": cap_name},
-                indices=np.asarray(full_c, dtype=np.uint32).ravel(),
+        if wanted:
+            full_cap_prims.append(
+                RenderPrimitive(
+                    name=cap_name,
+                    extras={"role": cap_name},
+                    indices=np.asarray(full_c, dtype=np.uint32).ravel(),
+                )
             )
-        )
 
     lengths = np.linalg.norm(normals, axis=1, keepdims=True)
     normals = normals / np.maximum(lengths, 1e-12)
@@ -816,6 +871,9 @@ def build_render_mesh(
         cap_omitted_triangles=int(cap_omitted),
         cap_clipped_triangles=int(cap_clipped),
         cap_replacement_triangles=int(cap_replacement),
+        mouth_cap_triangles=int(mouth_emitted),
+        mouth_cap_clipped_triangles=int(mouth_clipped),
+        mouth_cap_replacement_triangles=int(mouth_replacement),
     )
 
 

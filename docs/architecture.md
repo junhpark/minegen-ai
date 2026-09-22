@@ -543,13 +543,20 @@ fixtures; the WARPED-301 extremity stations still register a graze on the
 kept half-cap's boundary edge, which is the traffic CORNER of the L-shaped
 union (the station sits on the drift end), not surface inside the mouth —
 the capsule rounds it and both browser walks pass it in both directions.
-The same audit recorded a second defect class the walkthrough does NOT
-patch: at every drift-extremity station the half of the crosscut's OPEN
-start ring beyond the drift end faces unexcavated rock with no surface
-(TABULAR 8 / 20, WARPED-301 28 / 187 stations) — a Phase 20D.1
-endpoint-policy gap (OPEN assumes a T-junction) recorded in
-`docs/algorithms.md` (§10 closeout) for an explicit backend decision (typed
-child-start cap or endpoint-policy correction), never a frontend collider.
+The same audit exposed a second defect class at the same stations
+(closed in 20D.2.1, the PR #42 review blocker): at every drift-extremity
+station the half of the crosscut's OPEN start ring beyond the drift end
+faced unexcavated rock with no surface (TABULAR 8 / 20, WARPED-301
+28 / 187 stations) — the 20D.1 OPEN policy assumes a T-junction. The
+backend now emits the typed CHILD MOUTH CAP (`cut_mouth_cap`, the mirror
+of `cut_cap`: the crosscut's start-ring fan judged against the DRIFT
+envelope, inside-or-on fans omitted so the mouth stays open into the
+drift, outside fans kept, straddling fans clipped at the drift boundary;
+a `CROSSCUT_CAP` primitive flagged `junctionMouthCap`), for the typed
+DRIFT_CROSSCUT junction only; interior T-junctions get nothing and stay
+bit-identical, faces are untouched, the logical mesh / OPEN QA are
+unchanged, and the frontend still adds no collider (`docs/algorithms.md`,
+§10 closeout).
 
 *TIMELINE_SNAPSHOT.* The temporal walkthrough keeps its ramp-only
 collider contract, frontier barrier and snapshot freeze; since the ramp GLB

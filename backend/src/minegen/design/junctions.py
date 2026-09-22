@@ -860,6 +860,115 @@ def cut_cap(
     return CapCut(junction, end, omit, clips)
 
 
+def cut_mouth_cap(
+    corners: FloatArray,
+    parent: TubeEnvelope,
+    junction: Junction,
+    end: Literal["start", "end"],
+    width: float,
+) -> CapCut | None:
+    """Phase 20D.2.1 — the CHILD's OPEN end ring judged against the PARENT
+    envelope: the mirror of ``cut_cap``. ``corners`` (K, 3, 3) is the cap fan
+    of the child's OPEN end ring (emitted winding, apex first). Fan
+    triangles inside-or-on the parent excavation are omitted (the mouth
+    stays OPEN into the parent), triangles outside it are kept and
+    straddling ones are clipped at the parent's boundary — the remainder is
+    the rock-facing part of the mouth that has no surface without it (a
+    crosscut station on a drift EXTREMITY: the drift ends AT the station,
+    so half of the crosscut mouth lies beyond the drift end). Same window,
+    tolerance and classification as every other typed junction cut; a ring
+    wholly inside its parent (an interior T-junction) yields ``None`` and
+    the render stays bit-identical. Not a general Boolean: ONE child end,
+    ONE parent envelope, the declared junction only."""
+    radius = JUNCTION_WINDOW_WIDTHS * width
+    window = parent.ring_window(junction.point, radius + width)
+    if window[1] - window[0] < 2:
+        raise JunctionClipTopologyError(
+            f"{junction.node_id}: parent {junction.parent_id} has no ring window at the "
+            f"child mouth (junction point {np.round(junction.point, 3).tolist()})"
+        )
+    cut = cut_cap(corners, parent, junction, end, width)
+    if cut.omitted_triangles == int(corners.shape[0]):
+        return None
+    # the remainder is emitted as float32 render geometry: a crossing that
+    # lands within float32 resolution of a fan corner would leave a zero-area
+    # sliver (a degenerate triangle covers no surface, so dropping it can
+    # open nothing); vertices closer than MOUTH_CAP_VERTEX_MERGE_M are merged
+    # and pieces below MOUTH_CAP_MIN_AREA_M2 are dropped
+    for t, clip in list(cut.clips.items()):
+        polys: list[FloatArray] = []
+        bars: list[FloatArray] = []
+        for poly, bary in zip(clip.polygons, clip.bary, strict=True):
+            cleaned = _clean_render_polygon(poly, bary)
+            if cleaned is not None:
+                polys.append(cleaned[0])
+                bars.append(cleaned[1])
+        if polys:
+            cut.clips[t] = CapClip(clip.triangle, tuple(polys), tuple(bars), clip.junction_node_id)
+        else:
+            del cut.clips[t]
+            cut.omit[t] = True
+    if cut.omitted_triangles == int(corners.shape[0]):
+        return None
+    return cut
+
+
+#: Phase 20D.2.1: render-scale cleaning of a mouth-cap remainder polygon —
+#: float32 positions at a few hundred metres resolve ≈ 1.5e-5 m, so a
+#: crossing within 1 mm of a corner is a degenerate sliver, never a surface
+MOUTH_CAP_VERTEX_MERGE_M = 1e-3
+MOUTH_CAP_MIN_AREA_M2 = 1e-6
+
+
+def _clean_render_polygon(
+    poly: FloatArray, bary: FloatArray
+) -> tuple[FloatArray, FloatArray] | None:
+    """Merge consecutive vertices closer than ``MOUTH_CAP_VERTEX_MERGE_M``,
+    drop interior vertices whose fan triangle (from vertex 0) is degenerate,
+    and drop the polygon when fewer than three vertices or less than
+    ``MOUTH_CAP_MIN_AREA_M2`` remain. The surface change is below float32
+    resolution of the emitted geometry."""
+    keep_p: list[FloatArray] = []
+    keep_b: list[FloatArray] = []
+    for q in range(int(poly.shape[0])):
+        if keep_p and float(np.linalg.norm(poly[q] - keep_p[-1])) < MOUTH_CAP_VERTEX_MERGE_M:
+            continue
+        keep_p.append(poly[q])
+        keep_b.append(bary[q])
+    while (
+        len(keep_p) > 1 and float(np.linalg.norm(keep_p[-1] - keep_p[0])) < MOUTH_CAP_VERTEX_MERGE_M
+    ):
+        keep_p.pop()
+        keep_b.pop()
+    # fan-degenerate interior vertices (collinear with vertex 0 and a neighbour)
+    changed = True
+    while changed and len(keep_p) >= 3:
+        changed = False
+        for i in range(1, len(keep_p) - 1):
+            area = 0.5 * float(
+                np.linalg.norm(np.cross(keep_p[i] - keep_p[0], keep_p[i + 1] - keep_p[0]))
+            )
+            if area < MOUTH_CAP_MIN_AREA_M2:
+                del keep_p[i]
+                del keep_b[i]
+                changed = True
+                break
+    if len(keep_p) < 3:
+        return None
+    p_arr = np.stack(keep_p)
+    total = 0.5 * float(
+        np.linalg.norm(
+            sum(
+                np.cross(p_arr[i] - p_arr[0], p_arr[i + 1] - p_arr[0])
+                for i in range(1, len(keep_p) - 1)
+            )
+        )
+    )
+    if total < MOUTH_CAP_MIN_AREA_M2:
+        return None
+    return p_arr, np.stack(keep_b)
+
+
 def cut_tube(
     own: TubeEnvelope,
     own_rings: FloatArray,
@@ -1003,6 +1112,7 @@ def junction_report(
     junctions: list[Junction],
     cuts: list[JunctionCut],
     cap_cuts: list[CapCut] | None = None,
+    mouth_caps: list[CapCut] | None = None,
 ) -> dict[str, Any]:
     """The report block of one builder: every declared junction with the
     triangles this builder omitted on the sides it owns (a side swept by the
@@ -1029,6 +1139,19 @@ def junction_report(
         cap_omitted = sum(c.omitted_triangles for c in caps)
         cap_clipped = sum(c.clipped_triangles for c in caps)
         cap_replacement = sum(c.replacement_triangles for c in caps)
+        # Phase 20D.2.1: the child's OPEN end ring outside the parent (a
+        # drift-extremity L-junction) carries a mouth cap: kept whole fans
+        # plus the clipped remainders; these triangles are ADDED (they never
+        # existed in the render), so they are not "removed"
+        mouths = [c for c in (mouth_caps or []) if c.junction is j]
+        mouth_emitted = sum(
+            int(c.omit.shape[0])
+            - c.omitted_triangles
+            - c.clipped_triangles
+            + c.replacement_triangles
+            for c in mouths
+        )
+        mouth_clipped = sum(c.clipped_triangles for c in mouths)
         openings.append(
             {
                 **j.to_dict(),
@@ -1046,6 +1169,10 @@ def junction_report(
                 "childClippedFloorQuads": int(clipped_quads),
                 "childClippedFloorTriangles": int(2 * clipped_quads),
                 "childReplacementTriangles": int(replacement),
+                # Phase 20D.2.1 (additive): the child mouth cap emitted on the
+                # rock-facing part of its OPEN end ring (0 at a T-junction)
+                "childMouthCapTriangles": int(mouth_emitted),
+                "childMouthCapClippedTriangles": int(mouth_clipped),
                 "removedTriangles": int(parent + child + cap_omitted + cap_clipped),
             }
         )
@@ -1067,6 +1194,8 @@ __all__ = [
     "JUNCTION_SURFACE_TOLERANCE_FRACTION",
     "JUNCTION_TYPES",
     "JUNCTION_WINDOW_WIDTHS",
+    "MOUTH_CAP_MIN_AREA_M2",
+    "MOUTH_CAP_VERTEX_MERGE_M",
     "PARENT_QUAD_OVERLAP_MIN",
     "PARENT_QUAD_SAMPLE_FRACTIONS",
     "RAMP_TUBE_ID",
@@ -1078,6 +1207,7 @@ __all__ = [
     "JunctionCut",
     "TubeEnvelope",
     "cut_cap",
+    "cut_mouth_cap",
     "cut_tube",
     "find_junctions",
     "junction_report",

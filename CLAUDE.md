@@ -1745,15 +1745,21 @@ code, the code and the rule win and the map is corrected.
      clipped at the child envelope, `design/junctions.py::cut_cap` — so the
      end wall stays on the rock side and nothing stands inside the mouth;
      caps no junction reaches are bit-identical and crosscut faces are never
-     cut. Recorded 20D.2 limitation (same §10 audit, both fixtures): a
-     crosscut station on a drift EXTREMITY is an L-junction — the drift
-     ends AT the station, so the half of the crosscut's OPEN start ring
-     beyond the drift end faces unexcavated rock with no surface (TABULAR
-     8 / 20 stations, WARPED-301 28 / 187; interior stations none). The
-     walkthrough does not patch it (no invented cap, no collision-only
-     geometry); the typed child-start cap (the mirror of `cut_cap` against
-     the parent envelope) or an endpoint-policy correction is a backend
-     follow-up decided explicitly (`docs/algorithms.md`, §10 closeout).
+     cut. The same L-junction (20D.2.1, PR #42 review): a crosscut station
+     on a drift EXTREMITY has the drift ending AT the station, so the half
+     of the crosscut's OPEN start ring beyond the drift end would face
+     unexcavated rock with no surface (measured: TABULAR 8 / 20 stations,
+     WARPED-301 28 / 187; interior stations none). The backend closes it
+     with the typed CHILD MOUTH CAP — `design/junctions.py::cut_mouth_cap`,
+     the mirror of `cut_cap`: the child's start-ring cap fan judged against
+     the PARENT envelope, inside-or-on fans omitted (the mouth stays OPEN
+     into the drift), outside fans kept, straddling fans clipped at the
+     drift boundary, emitted render-only as a `<KIND>_CAP` primitive with
+     `junctionMouthCap` — for the typed DRIFT_CROSSCUT junction only. An
+     interior T-junction (ring wholly inside its parent) gets nothing and
+     stays bit-identical, crosscut faces are never touched, the logical
+     mesh and the OPEN topology QA are unchanged, and no general Boolean is
+     introduced; the walkthrough still adds no collider of its own.
      TIMELINE_SNAPSHOT keeps its ramp-only temporal collider contract
      (rules 112–118) and closes every RAMP_ACCESS aperture the ramp GLB
      declares with ephemeral wall-line barrier pieces on the active segments

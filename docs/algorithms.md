@@ -1900,13 +1900,47 @@ hitting anything, on TABULAR 8 / 8 and WARPED-301 28 / 28 extremity
 stations (interior stations 0 / 0). The Phase 20D.1 endpoint policy (rule
 166) assumes an OPEN child start lies inside its parent — a T-junction; a
 station on the drift end is an L-junction, and the drift-side half of the
-mouth is the only part that opens into the drift. Phase 20D.2 does NOT
-patch it: rule 187 forbids an invented cap or any collision-only geometry,
-and the directive's stop condition (the same geometry defect class on both
-fixtures) applies, so it is recorded here and in the roadmap for an
-explicit decision. The candidate typed fix is the mirror of `cut_cap` on
-the CHILD start ring — the cap fan cut against the PARENT envelope keeping
-the OUTSIDE remainder, emitted as a `<KIND>_CAP` piece — or an endpoint
-policy `PARTIAL_CAP` with the same rule; either is a backend change to the
-typed union, never a frontend collider.
+mouth is the only part that opens into the drift.
+
+### Child mouth cap (20D.2.1, `design/junctions.py::cut_mouth_cap`)
+
+The PR #42 review made the hole a blocker; the correction is the mirror
+of `cut_cap` on the CHILD side, typed DRIFT_CROSSCUT only:
+
+    for the crosscut's OPEN start ring at a declared DRIFT_CROSSCUT junction:
+        corners = cap_fan_corners(start ring, start apex, start=True)  # emitted winding
+        cut     = cut_cap(corners, DRIFT envelope, junction, "start", width)
+                  # inside-or-on the drift → omit (the mouth stays OPEN into the drift)
+                  # outside the drift      → keep (rock-facing: needs a surface)
+                  # straddling             → _clip_triangle at the drift boundary
+        every fan omitted → None (an interior T-junction: nothing emitted, render bit-identical)
+        else → the child's MOUTH CAP: emitted by build_render_mesh(mouth_caps=…) on the
+               OPEN end as a cap primitive of the same role (batched into CROSSCUT_CAP) with
+               junctionMouthCap / keptTriangles / clippedTriangles / replacementTriangles
+
+The crossings converge onto the drift's end plane exactly as the parent
+cap's did onto the crosscut's open start plane (the drift envelope is +inf
+beyond its last ring), so the remainder is the half of the mouth beyond
+the drift end and its chord lies on the drift end plane. The logical mesh,
+the OPEN topology QA (boundary edges on the OPEN ring), `caps`, both
+closedness QA values and every crosscut FACE are unchanged; the report
+adds `renderMouthCap*` per development and `childMouthCapTriangles` per
+opening (additive — mouth triangles are added, never "removed"). The
+apex of the start-ring fan is the station itself, deep inside the drift
+profile, so no fan is wholly outside: every rock-side fan straddles the
+drift end plane and is re-emitted as its remainder (one triangle each),
+the drift-side fans are omitted. Measured on TABULAR-REFERENCE: 8
+extremity crosscuts × 6 mouth triangles (5 fans omitted, 6 clipped, K =
+11), interior crosscuts 0, `CROSSCUT_CAP` = 20 × K + 48; on WARPED-301:
+28 extremity crosscuts, 169 mouth triangles (6–7 each), the 159 interior
+crosscuts 0. Remainder polygons are cleaned at render scale
+(`MOUTH_CAP_VERTEX_MERGE_M` = 1 mm, `MOUTH_CAP_MIN_AREA_M2` = 1e-6 m²:
+float32 positions at a few hundred metres resolve ≈ 1.5e-5 m, and a
+crossing within that of a fan corner is a zero-area sliver, never a
+surface — measured once on WARPED-301 before the cleaning). The
+rock-facing rays of the audit now hit `CROSSCUT_CAP` on the start plane
+(9 / 9 per station, both fixtures) while the drift-side half stays open,
+and the browser rock-side push at an extremity station stops at the mouth
+cap on both fixtures. No general Boolean: ONE child end, ONE parent
+envelope, the declared junction only; the frontend adds no collider.
 

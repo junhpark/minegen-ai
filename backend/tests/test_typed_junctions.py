@@ -332,7 +332,10 @@ def test_t4_unrelated_endpoints_keep_their_cap_contract(tabular_meshes: dict[str
         for d in devs
     )
     assert by_name["DRIFT_CAP"]["indices"].shape[0] == 2 * n_levels * k_dev + cap_delta
-    assert by_name["CROSSCUT_CAP"]["indices"].shape[0] == len(_crosscuts(m)) * k_dev
+    # Phase 20D.2.1: a crosscut on a drift extremity adds its rock-facing
+    # MOUTH cap to the CROSSCUT_CAP primitive; every face keeps its K fans
+    mouth_total = sum(int(d.get("renderMouthCapTriangles", 0)) for d in devs)
+    assert by_name["CROSSCUT_CAP"]["indices"].shape[0] == len(_crosscuts(m)) * k_dev + mouth_total
     assert "LEVEL_ACCESS_CAP" not in by_name
 
 
@@ -1319,9 +1322,12 @@ def test_p20d2_interior_caps_and_crosscut_faces_are_untouched_tabular(
     _, _, dprims = _glb(m["dev"].glb)
     by_name = {p["name"]: p for p in dprims}
     k_dev = int(m["dev"].report["profile"]["archSegments"]) + 3
-    assert by_name["CROSSCUT_CAP"]["indices"].shape[0] == len(_crosscuts(m)) * k_dev
     n_levels = len({d["levelId"] for d in m["levels"]["developments"] if d["kind"] == "DRIFT"})
     devs = m["dev"].report["developments"]
+    # Phase 20D.2.1: the CROSSCUT_CAP primitive = K fans per face (never cut)
+    # + the mouth caps of the extremity crosscuts
+    mouth_total = sum(int(d.get("renderMouthCapTriangles", 0)) for d in devs)
+    assert by_name["CROSSCUT_CAP"]["indices"].shape[0] == len(_crosscuts(m)) * k_dev + mouth_total
     omitted = sum(int(d.get("renderCapOmittedTriangles", 0)) for d in devs)
     clipped = sum(int(d.get("renderCapClippedTriangles", 0)) for d in devs)
     replacement = sum(int(d.get("renderCapReplacementTriangles", 0)) for d in devs)
@@ -1334,3 +1340,234 @@ def test_p20d2_interior_caps_and_crosscut_faces_are_untouched_tabular(
         if d["kind"] == "CROSSCUT":
             assert d.get("renderCapOmittedTriangles", 0) == 0
             assert d.get("renderCapClippedTriangles", 0) == 0
+
+
+# --------------------------------------------------------------------------- #
+# Phase 20D.2.1 — child MOUTH CAP at a drift-extremity DRIFT_CROSSCUT junction
+# (PR #42 review blocker): the half of the crosscut's OPEN start ring that
+# lies beyond the drift end faces unexcavated rock and must carry a boundary
+# surface; the half inside the drift stays OPEN; an interior T-junction gets
+# nothing and stays bit-identical.
+# --------------------------------------------------------------------------- #
+
+
+def _mouth_cap_remainder(corners: np.ndarray, cut: Any) -> list[np.ndarray]:
+    """Polygons the render emits for a mouth cap: whole kept fans + clip remainders."""
+    polys: list[np.ndarray] = []
+    for t in range(int(corners.shape[0])):
+        if bool(cut.omit[t]):
+            continue
+        clip = cut.clips.get(t)
+        if clip is None:
+            polys.append(corners[t])
+        else:
+            polys.extend(clip.polygons)
+    return polys
+
+
+def _l_junction(parent_end_y: float) -> tuple[Any, Any, Any, Any, Any, float, Junction]:
+    """Straight parent along +y ending at ``parent_end_y`` (0 → an L-junction:
+    the child leaves from the parent's END; 30 → an interior T-junction) and a
+    child along +x starting at the origin."""
+    shape = build_profile(RampConstraints(), TunnelProfile())
+    width = float(RampConstraints().tunnel_width)
+    parent_env, _, _, _ = _straight_tube_mesh((0.0, -30.0, 0.0), (0.0, parent_end_y, 0.0), shape)
+    _child_env, child_rings, child_chain, child_mesh = _straight_tube_mesh(
+        (0.0, 0.0, 0.0), (30.0, 0.0, 0.0), shape
+    )
+    j = Junction(
+        type="DRIFT_CROSSCUT",
+        node_id="JUNCTION:L:S+00",
+        parent_id="DRIFT:L",
+        child_id="CROSSCUT:L:S+00",
+        point=np.array([0.0, 0.0, 0.0]),
+        child_end="start",
+        level_id="L",
+    )
+    return shape, parent_env, child_rings, child_chain, child_mesh, width, j
+
+
+def test_p20d21_a_synthetic_l_junction_mouth_cap_is_the_rock_facing_half() -> None:
+    """RED-first contract A: at an L-junction the child's start-ring cap fan
+    cut against the PARENT envelope keeps exactly the part beyond the parent
+    end (y > 0, rock) and omits the part inside the parent (y < 0, open into
+    the drift); the emitted triangles are finite, valid, non-degenerate and
+    wound outward (a start cap faces −axis)."""
+    from minegen.design.junctions import cut_mouth_cap
+    from minegen.design.tunnel_mesh import cap_fan_corners
+
+    shape, parent_env, rings, chain, mesh, width, j = _l_junction(0.0)
+    tol = JUNCTION_SURFACE_TOLERANCE_FRACTION * width
+    k = int(rings.shape[1])
+    corners = cap_fan_corners(rings[0], mesh.positions[mesh.ring_count * k], True)
+    cut = cut_mouth_cap(corners, parent_env, j, "start", width)
+    assert cut is not None
+    assert cut.omitted_triangles > 0 and cut.clipped_triangles > 0
+    polys = _mouth_cap_remainder(corners, cut)
+    assert polys
+    # every emitted vertex lies on the rock side of the parent end plane
+    for poly in polys:
+        assert np.all(poly[:, 1] >= -tol), poly
+        assert np.all(np.isfinite(poly))
+    # the remainder is the parent-outside half of the cap (area within 3 %)
+    full_area = sum(_polygon_area(corners[t]) for t in range(k))
+    kept_area = sum(_polygon_area(p) for p in polys)
+    assert abs(kept_area - 0.5 * full_area) <= 0.03 * full_area, (kept_area, full_area)
+    # nothing inside the parent excavation: fan centroids with y < -tol are omitted
+    for t in range(k):
+        if corners[t].mean(axis=0)[1] < -tol and np.all(corners[t][:, 1] < tol):
+            assert bool(cut.omit[t]), t
+    # the render emits it as a start-cap primitive of the child, outward-wound
+    meta = [{"segmentId": "S", "effectiveSource": "CROSSCUT"}]
+    render = build_render_mesh(
+        mesh, chain, shape, 30.0, meta, caps=(False, True), mouth_caps={"start": cut}
+    )
+    mouth = [p for p in render.primitives if p.extras.get("role") == "PORTAL_CAP"]
+    assert len(mouth) == 1 and mouth[0].extras.get("junctionMouthCap") is True
+    tris = mouth[0].indices.reshape(-1, 3)
+    assert tris.shape[0] == (k - cut.omitted_triangles - cut.clipped_triangles) + (
+        cut.replacement_triangles
+    )
+    pos = render.positions.astype(np.float64)
+    _assert_valid_triangle_set(pos, tris, "mouth cap")
+    centroids, areas, normals = _tri_geometry(pos, tris)
+    assert np.all(areas > 1e-6)
+    assert np.all(normals[:, 0] < -0.99), "a start cap faces -axis (outward of the child)"
+    assert np.all(centroids[:, 1] >= -tol)
+    assert render.mouth_cap_triangles == tris.shape[0]
+    # the crosscut FACE (end cap) is untouched
+    face = [p for p in render.primitives if p.extras.get("role") == "TERMINAL_CAP"]
+    assert len(face) == 1 and face[0].indices.shape[0] == 3 * k
+    assert "junctionMouthCap" not in face[0].extras
+
+
+def test_p20d21_b_interior_t_junction_gets_no_mouth_cap_and_stays_bit_identical() -> None:
+    """RED-first contract B: a child start ring wholly inside its parent (an
+    interior T-junction) yields no mouth cap, and the render is bit-for-bit
+    the Phase 20D.2 render."""
+    from minegen.design.junctions import cut_mouth_cap
+    from minegen.design.tunnel_mesh import cap_fan_corners
+
+    shape, parent_env, rings, chain, mesh, width, j = _l_junction(30.0)
+    k = int(rings.shape[1])
+    corners = cap_fan_corners(rings[0], mesh.positions[mesh.ring_count * k], True)
+    assert cut_mouth_cap(corners, parent_env, j, "start", width) is None
+    meta = [{"segmentId": "S", "effectiveSource": "CROSSCUT"}]
+    a = build_render_mesh(mesh, chain, shape, 30.0, meta, caps=(False, True))
+    b = build_render_mesh(mesh, chain, shape, 30.0, meta, caps=(False, True), mouth_caps={})
+    assert np.array_equal(a.positions, b.positions) and np.array_equal(a.normals, b.normals)
+    assert len(a.primitives) == len(b.primitives)
+    assert all(
+        np.array_equal(x.indices, y.indices) and x.extras == y.extras
+        for x, y in zip(a.primitives, b.primitives, strict=True)
+    )
+    assert a.mouth_cap_triangles == 0 and b.mouth_cap_triangles == 0
+
+
+def _mouth_hole_audit(m: dict[str, Any]) -> list[dict[str, Any]]:
+    """Per extremity DRIFT_CROSSCUT junction: rays cast from INSIDE the
+    crosscut mouth back through its start plane (direction −axis), on the
+    half beyond the drift end (rock side: a surface must stand there within
+    a width) and on the half inside the drift (must stay OPEN into the
+    drift: no cap within the drift's half width)."""
+    m = dict(m)
+    m.setdefault("width", float(m["sc"].ramp.tunnel_width))
+    width = m["width"]
+    envs, junctions = _builder_envelopes(m)
+    tris, labels = _emitted_triangles(m)
+    rows: list[dict[str, Any]] = []
+    for j in _extremity_crosscut_junctions(m, envs, junctions):
+        cc = next(d for d in m["levels"]["developments"] if d["id"] == j.child_id)
+        pts = np.asarray(cc["centerline"]["points"], dtype=np.float64).reshape(-1, 3)
+        axis = pts[1] - pts[0]
+        axis[2] = 0.0
+        axis /= np.linalg.norm(axis)
+        lat = np.array([-axis[1], axis[0], 0.0])
+        parent = envs[j.parent_id]
+        end_i = (
+            0
+            if np.linalg.norm(parent.centers[0] - j.point)
+            < np.linalg.norm(parent.centers[-1] - j.point)
+            else -1
+        )
+        inward = parent.centers[end_i + 1 if end_i == 0 else end_i - 1] - parent.centers[end_i]
+        drift_side = 1.0 if float(inward @ lat) >= 0 else -1.0
+        beyond: list[tuple[float, str] | None] = []
+        inside: list[tuple[float, str] | None] = []
+        for frac in (0.3, 0.6, 0.9):
+            for h in (0.5, 1.5, 3.0):
+                origin_rock = j.point + 1.0 * axis - drift_side * frac * (width / 2) * lat
+                origin_rock = origin_rock + np.array([0.0, 0.0, h])
+                beyond.append(_raycast_first(tris, labels, origin_rock, -axis, 1.0 + width))
+                origin_open = j.point + 1.0 * axis + drift_side * frac * (width / 2) * lat
+                origin_open = origin_open + np.array([0.0, 0.0, h])
+                inside.append(_raycast_first(tris, labels, origin_open, -axis, 1.0 + width / 2))
+        rows.append({"junction": j, "beyond": beyond, "inside": inside})
+    return rows
+
+
+def _assert_mouth_contract(m: dict[str, Any]) -> None:
+    rows = _mouth_hole_audit(m)
+    assert rows, "the station lattice reaches the drift ends"
+    for row in rows:
+        j = row["junction"]
+        holes = [r for r in row["beyond"] if r is None]
+        assert not holes, f"{j.node_id}: {len(holes)}/{len(row['beyond'])} rock-facing rays escape"
+        for hit in row["beyond"]:
+            assert hit is not None and hit[1].startswith("CROSSCUT_CAP"), (j.node_id, hit)
+            # ON the start plane (float32 render geometry: millimetre tolerance)
+            assert hit[0] <= 1.0 + 1e-3, (j.node_id, hit)
+        caps_in_drift = [r for r in row["inside"] if r is not None and "_CAP" in r[1]]
+        assert not caps_in_drift, f"{j.node_id}: drift-side half no longer open {caps_in_drift}"
+
+
+def test_p20d21_c_tabular_extremity_junctions_have_no_rock_facing_hole(
+    tabular_meshes: dict[str, Any],
+) -> None:
+    """RED-first contract C (TABULAR-REFERENCE): every extremity
+    DRIFT_CROSSCUT junction carries the mouth cap on its rock-facing half
+    only, interior junctions carry none, the face caps keep exactly K fans and
+    the report accounts for every emitted mouth-cap triangle."""
+    m = tabular_meshes
+    _assert_mouth_contract(m)
+    envs, junctions = _builder_envelopes(m)
+    ext = {j.child_id for j in _extremity_crosscut_junctions(m, envs, junctions)}
+    devs = {d["developmentId"]: d for d in m["dev"].report["developments"]}
+    mouth_total = 0
+    for cc in _crosscuts(m):
+        d = devs[cc["id"]]
+        n = int(d.get("renderMouthCapTriangles", 0))
+        if cc["id"] in ext:
+            assert n > 0, cc["id"]
+        else:
+            assert n == 0, cc["id"]
+        mouth_total += n
+    _, _, dprims = _glb(m["dev"].glb)
+    by_name = {p["name"]: p for p in dprims}
+    k_dev = int(m["dev"].report["profile"]["archSegments"]) + 3
+    assert by_name["CROSSCUT_CAP"]["indices"].shape[0] == len(_crosscuts(m)) * k_dev + mouth_total
+    openings = m["dev"].report["junctions"]["openings"]
+    assert sum(int(o.get("childMouthCapTriangles", 0)) for o in openings) == mouth_total
+    assert all(
+        int(o.get("childMouthCapTriangles", 0)) == 0
+        for o in openings
+        if o["type"] != "DRIFT_CROSSCUT" or o["childId"] not in ext
+    )
+
+
+def test_p20d21_d_warped_extremity_junctions_have_no_rock_facing_hole(
+    warped_meshes: dict[str, Any],
+) -> None:
+    """RED-first contract D (WARPED-301, curved drifts): the same mouth
+    contract; the parent-cap cut and its graze contract are unchanged."""
+    m = warped_meshes
+    assert m["dev"].status == "SUCCESS", m["dev"].report.get("failureReason")
+    _assert_mouth_contract(m)
+    mm = dict(m)
+    mm["width"] = float(m["sc"].ramp.tunnel_width)
+    envs, junctions = _builder_envelopes(mm)
+    ext = {j.child_id for j in _extremity_crosscut_junctions(mm, envs, junctions)}
+    devs = {d["developmentId"]: d for d in m["dev"].report["developments"]}
+    for cc in [d for d in m["levels"]["developments"] if d["kind"] == "CROSSCUT"]:
+        n = int(devs[cc["id"]].get("renderMouthCapTriangles", 0))
+        assert (n > 0) == (cc["id"] in ext), (cc["id"], n)

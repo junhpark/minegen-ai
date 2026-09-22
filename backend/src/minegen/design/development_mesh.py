@@ -49,6 +49,7 @@ from minegen.design.junctions import (
     JunctionCut,
     TubeEnvelope,
     cut_cap,
+    cut_mouth_cap,
     cut_tube,
     find_junctions,
     junction_report,
@@ -406,6 +407,9 @@ class _Swept:
     #: Phase 20D.2: end caps a declared junction's child occupies
     #: ("start" / "end" → merged cut), applied by ``render``
     cap_cuts: dict[str, CapCut] = field(default_factory=dict)
+    #: Phase 20D.2.1: the mouth cap of an OPEN end ring outside the parent
+    #: ("start" / "end" → cut, DRIFT_CROSSCUT L-junctions), applied by ``render``
+    mouth_caps: dict[str, CapCut] = field(default_factory=dict)
 
 
 class JunctionClipConflictError(ValueError):
@@ -510,6 +514,7 @@ class DevelopmentMeshBuilder:
             quad_mask=sw.quad_mask if bool(sw.quad_mask.any()) else None,
             floor_clips=sw.floor_clips if sw.floor_clips else None,
             cap_cuts=sw.cap_cuts if sw.cap_cuts else None,
+            mouth_caps=sw.mouth_caps if sw.mouth_caps else None,
         )
 
     def build(
@@ -565,15 +570,15 @@ class DevelopmentMeshBuilder:
                 )
             swept.append(sw)
         try:
-            cuts, cap_cuts = self._open_junctions(junctions, swept, shape, ramp_payload)
+            cuts, cap_cuts, mouth_caps = self._open_junctions(junctions, swept, shape, ramp_payload)
         except JunctionClipConflictError as exc:
             problems.append(f"JUNCTION_CLIP_CONFLICT: {exc}")
-            cuts, cap_cuts = [], []
+            cuts, cap_cuts, mouth_caps = [], [], []
         except JunctionClipTopologyError as exc:
             problems.append(f"JUNCTION_CLIP_TOPOLOGY: {exc}")
-            cuts, cap_cuts = [], []
+            cuts, cap_cuts, mouth_caps = [], [], []
         report = self._report(swept, shape)
-        report["junctions"] = junction_report(junctions, cuts, cap_cuts)
+        report["junctions"] = junction_report(junctions, cuts, cap_cuts, mouth_caps)
         if problems:
             report["status"] = "FAILED"
             report["failureReason"] = "; ".join(problems[:20]) + (
@@ -605,16 +610,19 @@ class DevelopmentMeshBuilder:
         swept: list[_Swept],
         shape: ProfileShape,
         ramp_payload: dict[str, Any] | None,
-    ) -> tuple[list[JunctionCut], list[CapCut]]:
+    ) -> tuple[list[JunctionCut], list[CapCut], list[CapCut]]:
         """Apply every declared junction to the tubes this builder owns:
         the child side of RAMP_ACCESS (the parent ramp is cut by the tunnel
-        builder), both sides of ACCESS_DRIFT and DRIFT_CROSSCUT, and (Phase
+        builder), both sides of ACCESS_DRIFT and DRIFT_CROSSCUT, (Phase
         20D.2) the parent's END CAP where the junction lies inside the cap's
-        window (a crosscut station on a drift extremity). Envelopes are
-        built once per tube; the ramp's from its centerline at the main
-        tessellation. Render meshes are rebuilt only for cut tubes."""
+        window (a crosscut station on a drift extremity) and (Phase 20D.2.1)
+        the CHILD's mouth cap where its OPEN start ring reaches beyond the
+        parent excavation (the same L-junction, typed DRIFT_CROSSCUT only).
+        Envelopes are built once per tube; the ramp's from its centerline at
+        the main tessellation. Render meshes are rebuilt only for cut tubes.
+        Returns (tube cuts, parent cap cuts, child mouth caps)."""
         if not junctions:
-            return [], []
+            return [], [], []
         width = float(self.ramp.tunnel_width)
         by_id = {s.spec.development_id: s for s in swept}
         envelopes: dict[str, TubeEnvelope] = {
@@ -638,6 +646,7 @@ class DevelopmentMeshBuilder:
             )
         cuts: list[JunctionCut] = []
         cap_cuts: list[CapCut] = []
+        mouth_caps: list[CapCut] = []
         touched: set[str] = set()
         for j in junctions:
             parent_env = envelopes.get(j.parent_id)
@@ -673,9 +682,38 @@ class DevelopmentMeshBuilder:
                     del child.floor_clips[key]
                 touched.add(j.child_id)
                 cuts.append(cut)
+                # Phase 20D.2.1: a typed DRIFT_CROSSCUT child whose OPEN
+                # start ring reaches beyond the drift end (an L-junction)
+                # gets its rock-facing mouth cap; a T-junction gets nothing
+                if j.type == "DRIFT_CROSSCUT" and getattr(child.spec, j.child_end) == "OPEN":
+                    mouth = self._cut_child_mouth(child, parent_env, j, width)
+                    if mouth is not None:
+                        existing = child.mouth_caps.get(j.child_end)
+                        if existing is not None and existing.junction.node_id != j.node_id:
+                            raise JunctionClipConflictError(
+                                f"{j.child_id}: {j.child_end} mouth cap claimed by both "
+                                f"{existing.junction.node_id} and {j.node_id}"
+                            )
+                        child.mouth_caps[j.child_end] = mouth
+                        mouth_caps.append(mouth)
         for dev_id in sorted(touched):
             self.render(by_id[dev_id], shape)
-        return cuts, cap_cuts
+        return cuts, cap_cuts, mouth_caps
+
+    @staticmethod
+    def _cut_child_mouth(
+        child: _Swept, parent_env: TubeEnvelope, junction: Junction, width: float
+    ) -> CapCut | None:
+        """Phase 20D.2.1: the child's OPEN end ring at the junction, as a cap
+        fan in the emitted winding, judged against the PARENT envelope; the
+        outside remainder (if any) becomes the mouth cap."""
+        assert child.rings is not None and child.closed is not None
+        r, k = child.closed.ring_count, child.closed.k
+        end = junction.child_end
+        ring_i, apex_i = (0, r * k) if end == "start" else (r - 1, r * k + 1)
+        apex = child.closed.positions[apex_i]
+        corners = cap_fan_corners(child.rings[ring_i], apex, end == "start")
+        return cut_mouth_cap(corners, parent_env, junction, end, width)
 
     @staticmethod
     def _cut_parent_caps(
@@ -797,6 +835,13 @@ class DevelopmentMeshBuilder:
                     ),
                     "renderCapReplacementTriangles": int(
                         sum(c.replacement_triangles for c in s.cap_cuts.values())
+                    ),
+                    # Phase 20D.2.1 (additive): the mouth cap emitted on the
+                    # rock-facing part of an OPEN end ring (an L-junction)
+                    "renderMouthCapTriangles": int(s.render.mouth_cap_triangles),
+                    "renderMouthCapClippedTriangles": int(s.render.mouth_cap_clipped_triangles),
+                    "renderMouthCapReplacementTriangles": int(
+                        s.render.mouth_cap_replacement_triangles
                     ),
                     "topology": {
                         "policy": s.topology.policy,
