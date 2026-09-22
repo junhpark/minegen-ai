@@ -1,20 +1,29 @@
 import type { WorldScene } from '@/types/scene'
 
-/** react-query key tokens: the scene slots the assessment is a projection
- * of (rule 189). A change in any of them re-reads the read model; the
- * backend re-validates the artifacts regardless — this is a cache key,
- * never an authority. */
-export function assessmentKey(scene: WorldScene | null): (string | null)[] {
+/**
+ * react-query key of the design assessment read model (rule 189).
+ *
+ * The key is the IDENTITY of the scene object, not a digest of a few of its
+ * fields: every backend mutation reaches the store through `setScene` /
+ * `applyScene` with a NEW scene object, so any regenerated artifact — a
+ * catalogue with the same winner / count / ranking but different projected
+ * values included — yields a new key and a fresh validated read. The same
+ * scene object keeps its key (no refetch storm). The backend validated read
+ * stays the only correctness authority; this is a cache key.
+ */
+const generations = new WeakMap<WorldScene, number>()
+let nextGeneration = 1
+
+export function sceneGeneration(scene: WorldScene): number {
+  let gen = generations.get(scene)
+  if (gen === undefined) {
+    gen = nextGeneration++
+    generations.set(scene, gen)
+  }
+  return gen
+}
+
+export function assessmentKey(scene: WorldScene | null): (string | number | null)[] {
   if (!scene) return [null]
-  const cat = scene.layoutV2
-  const sel = scene.layoutV2Selected
-  const cap = scene.capabilityGraph ?? null
-  return [
-    scene.scenarioId,
-    cat ? `${cat.winnerId ?? ''}|${String(cat.candidateCount)}|${cat.ranking.join(',')}` : null,
-    sel ? `${sel.candidateId ?? ''}|${sel.sourceRevision ?? ''}|${sel.layoutRevision ?? ''}` : null,
-    `${scene.rampSource.activeSource}|${scene.rampSource.candidateId ?? ''}`,
-    scene.network ? scene.network.sourceRevision : null,
-    cap ? `${cap.sourceRevision}|${cap.networkRevision}` : null,
-  ]
+  return [scene.scenarioId, sceneGeneration(scene)]
 }

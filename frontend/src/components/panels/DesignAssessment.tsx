@@ -89,6 +89,13 @@ export function DesignAssessmentList({ assessment }: { assessment: DesignAssessm
         <span>DESIGN ASSESSMENT</span>
         <span className="text-mute">read-only projection · no statutory claim</span>
       </div>
+      <div className="mt-0.5 text-mute" aria-label="assessment scope">
+        {assessment.activeSource === 'LAYOUT_V2'
+          ? `active design: Layout v2 · ${assessment.activeDesignCandidateId ?? '—'}`
+          : assessment.layoutScope === 'INACTIVE_LAYOUT_V2'
+            ? 'active design: LEGACY (Hybrid-A*) · layout-v2 checks describe the INACTIVE layout-v2 selection'
+            : 'active design: LEGACY (Hybrid-A*) · no layout-v2 catalogue'}
+      </div>
       <ul className="mt-1">
         {assessment.checks.map((c) => {
           const m = mark(c)
@@ -99,6 +106,7 @@ export function DesignAssessmentList({ assessment }: { assessment: DesignAssessm
               data-check-id={c.id}
               data-authority={c.authority}
               data-status={c.status}
+              data-scope={c.scope}
               aria-label={`${c.title}: ${statusLabel(c)} (${AUTHORITY_LABEL[c.authority]})`}
             >
               <div className="flex items-start gap-1">
@@ -109,6 +117,9 @@ export function DesignAssessmentList({ assessment }: { assessment: DesignAssessm
                   className={`flex-1 ${c.authority === 'ADVISORY' ? 'italic text-chalk-dim' : ''}`}
                 >
                   {c.title}
+                  {c.scope === 'INACTIVE_LAYOUT_V2' && c.status !== 'NOT_APPLICABLE' ? (
+                    <span className="text-mute"> (inactive)</span>
+                  ) : null}
                 </span>
                 <span
                   className={`shrink-0 whitespace-nowrap rounded-sm border px-1 text-[9px] uppercase ${
@@ -157,10 +168,17 @@ export function AlternativesTable({ assessment }: { assessment: DesignAssessment
   return (
     <div className="readout mt-2 text-[11px]" aria-label="candidate alternatives">
       <div className="flex justify-between text-chalk-dim">
-        <span>ALTERNATIVES</span>
+        <span>
+          ALTERNATIVES
+          {assessment.layoutScope === 'INACTIVE_LAYOUT_V2' ? (
+            <span className="text-mute"> (inactive layout-v2 catalogue)</span>
+          ) : null}
+        </span>
         <span className="text-mute">{rows.length} rows · ranking order · ● winner</span>
       </div>
-      {rows.length === 0 ? (
+      {assessment.layoutScope === 'NONE' ? (
+        <div className="mt-1 text-mute">no layout-v2 catalogue</div>
+      ) : rows.length === 0 ? (
         <div className="mt-1 text-mute">no feasible candidate</div>
       ) : (
         <table className="mt-1 w-full table-fixed border-collapse whitespace-nowrap text-[10px]">

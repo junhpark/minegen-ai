@@ -23,6 +23,7 @@ from typing import Any
 from minegen.assessment.models import (
     AssessmentAuthority,
     AssessmentCheck,
+    AssessmentScope,
     AssessmentStatus,
     CandidateComparisonRow,
     ComparisonAccessSummary,
@@ -32,6 +33,7 @@ from minegen.assessment.models import (
     DesignAssessmentSources,
     EgressAdvisoryProjection,
     EvidenceValue,
+    LayoutScope,
     RequiredPathProjection,
     ScoreDeltas,
 )
@@ -53,6 +55,10 @@ FEASIBLE = "FEASIBLE"
 SATISFIED: AssessmentStatus = "SATISFIED"
 NOT_SATISFIED: AssessmentStatus = "NOT_SATISFIED"
 NOT_EVALUATED: AssessmentStatus = "NOT_EVALUATED"
+NOT_APPLICABLE: AssessmentStatus = "NOT_APPLICABLE"
+ACTIVE: AssessmentScope = "ACTIVE_DESIGN"
+INACTIVE: AssessmentScope = "INACTIVE_LAYOUT_V2"
+_INACTIVE_PREFIX = "inactive layout-v2 selection: "
 
 _ADVISORY_DISCLAIMER = "This is a design advisory, not a statutory compliance determination."
 
@@ -64,7 +70,7 @@ _ADVISORY_DISCLAIMER = "This is a design advisory, not a statutory compliance de
 
 def build_design_assessment(
     *,
-    catalogue: dict[str, Any],
+    catalogue: dict[str, Any] | None,
     selected: dict[str, Any] | None,
     capability: CapabilityGraphPayload | None,
     sources: DesignAssessmentSources,
@@ -72,9 +78,20 @@ def build_design_assessment(
 ) -> DesignAssessmentPayload:
     if max_comparison_rows < 1:
         raise ValueError("max_comparison_rows must be >= 1")
-    by_id = _candidates_by_id(catalogue)
-    ranking = _ranking(catalogue, by_id)
-    winner_id = catalogue.get("winnerId")
+    active = sources.active_source
+    if catalogue is None and active == "LAYOUT_V2":
+        raise ValueError("a LAYOUT_V2 active source requires the layout-v2 catalogue")
+    layout_scope: LayoutScope = (
+        "ACTIVE_DESIGN"
+        if active == "LAYOUT_V2"
+        else "NONE"
+        if catalogue is None
+        else "INACTIVE_LAYOUT_V2"
+    )
+    scope: AssessmentScope = ACTIVE if active == "LAYOUT_V2" else INACTIVE
+    by_id = _candidates_by_id(catalogue) if catalogue is not None else {}
+    ranking = _ranking(catalogue, by_id) if catalogue is not None else []
+    winner_id = catalogue.get("winnerId") if catalogue is not None else None
     winner_id = str(winner_id) if winner_id is not None else None
     selected_id = None if selected is None else str(selected["candidateId"])
     winner_scores = by_id[winner_id].get("scores") if winner_id in by_id else None
@@ -103,6 +120,9 @@ def build_design_assessment(
         _check_levels_accessible(selected_id, selected_cand),
         _check_clearance(selected_id, selected_cand),
         _check_geometry(selected_id, selected_cand),
+    ]
+    checks = [_scoped(c, scope, catalogue is None) for c in checks]
+    checks += [
         _check_capability_valid(capability),
         _check_required_paths(capability),
         _check_egress(capability),
@@ -111,7 +131,9 @@ def build_design_assessment(
     egress = None if capability is None else _egress_projection(capability)
     return DesignAssessmentPayload(
         status="SUCCESS",
-        active_source=sources.active_source,
+        active_source=active,
+        layout_scope=layout_scope,
+        active_design_candidate_id=selected_id if active == "LAYOUT_V2" else None,
         winner_id=winner_id,
         selected_candidate_id=selected_id,
         selected_candidate=selected_row,
@@ -123,6 +145,7 @@ def build_design_assessment(
             catalogue,
             ranking,
             by_id,
+            active_source=active,
             winner_id=winner_id,
             selected_id=selected_id,
             selected_cand=selected_cand,
@@ -131,6 +154,27 @@ def build_design_assessment(
         ),
         sources=sources,
     )
+
+
+def _scoped(check: AssessmentCheck, scope: AssessmentScope, no_catalogue: bool) -> AssessmentCheck:
+    """Layout-v2 checks under a LEGACY active source describe a DORMANT
+    layout-v2 selection, never the active design: they keep their recorded
+    status but carry the INACTIVE scope and a summary prefix; with no
+    catalogue at all they are NOT_APPLICABLE. ``ACTIVE_RAMP_SOURCE`` is a
+    fact about the active design and keeps the active scope."""
+    if scope == ACTIVE or check.id == "ACTIVE_RAMP_SOURCE":
+        return check
+    if no_catalogue:
+        return check.model_copy(
+            update={
+                "scope": INACTIVE,
+                "status": NOT_APPLICABLE,
+                "summary": "not applicable: the active design is the LEGACY ramp and no "
+                "layout-v2 catalogue exists",
+                "evidence": {},
+            }
+        )
+    return check.model_copy(update={"scope": INACTIVE, "summary": _INACTIVE_PREFIX + check.summary})
 
 
 # --------------------------------------------------------------------------- #
@@ -272,6 +316,7 @@ def _check(
         category=category,
         status=status,
         authority=authority,
+        scope=ACTIVE,
         summary=summary,
         evidence=evidence,
         source_artifact=source_artifact,
@@ -358,10 +403,14 @@ def _check_active_source(
         (
             "the active Effective Ramp is the layout-v2 selection"
             if active == "LAYOUT_V2"
-            else "the active ramp source is LEGACY; network and capability checks describe the "
-            "active design"
+            else "the active ramp source is LEGACY (Hybrid-A* ramp); network and capability "
+            "checks describe that design, layout-v2 checks describe a dormant selection"
         ),
-        {"activeSource": active, "selectedCandidateId": selected_id},
+        {
+            "activeSource": active,
+            "selectedCandidateId": selected_id,
+            "inactiveLayoutSelectionId": None if active == "LAYOUT_V2" else selected_id,
+        },
         RAMP_SOURCE_FILE,
         "activeSource",
     )
@@ -729,10 +778,11 @@ def _check_egress(capability: CapabilityGraphPayload | None) -> AssessmentCheck:
 
 
 def _summary(
-    catalogue: dict[str, Any],
+    catalogue: dict[str, Any] | None,
     ranking: list[str],
     by_id: dict[str, dict[str, Any]],
     *,
+    active_source: str,
     winner_id: str | None,
     selected_id: str | None,
     selected_cand: dict[str, Any] | None,
@@ -741,10 +791,22 @@ def _summary(
 ) -> str:
     lines: list[str] = []
     feasible = len(ranking)
-    if winner_id is None or not ranking:
+    if active_source == "LEGACY":
+        lines.append("Active design: LEGACY (Hybrid-A*) ramp — not a layout-v2 candidate.")
+        if catalogue is None:
+            lines.append("Layout-v2 catalogue: none.")
+        else:
+            dormant = selected_id if selected_id is not None else "none"
+            winner = winner_id if winner_id is not None else "none"
+            lines.append(
+                f"Inactive layout-v2 selection: {dormant} "
+                f"(catalogue winner {winner}, {feasible} feasible)."
+            )
+    elif winner_id is None or not ranking:
+        cat = catalogue if catalogue is not None else {}
         lines.append(
             "No feasible layout candidate: catalogue status "
-            f"{catalogue.get('status')} ({catalogue.get('candidateCount')} enumerated)."
+            f"{cat.get('status')} ({cat.get('candidateCount')} enumerated)."
         )
     elif selected_id is None or selected_cand is None:
         who = (

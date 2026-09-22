@@ -31,6 +31,7 @@ from minegen.core.models import ApiModel
 __all__ = [
     "AssessmentAuthority",
     "AssessmentCheck",
+    "AssessmentScope",
     "AssessmentStatus",
     "CandidateComparisonRow",
     "CandidateStatusLiteral",
@@ -41,6 +42,7 @@ __all__ = [
     "DesignAssessmentSources",
     "EgressAdvisoryProjection",
     "EvidenceValue",
+    "LayoutScope",
     "RequiredPathProjection",
     "ScoreDeltas",
 ]
@@ -48,6 +50,12 @@ __all__ = [
 CandidateStatusLiteral = Literal["FEASIBLE", "INFEASIBLE", "NOT_VALIDATED"]
 AssessmentStatus = Literal["SATISFIED", "NOT_SATISFIED", "NOT_APPLICABLE", "NOT_EVALUATED"]
 AssessmentAuthority = Literal["HARD_DESIGN_RULE", "DERIVED_VALIDATION", "ADVISORY", "INFORMATIONAL"]
+#: WHAT a check describes: the ACTIVE mine design (the Effective Ramp the
+#: network / capability graph were built on), or a layout-v2 selection /
+#: catalogue that is NOT the active design (rule 150: LEGACY active) — never
+#: conflated (PR #43 review correction)
+AssessmentScope = Literal["ACTIVE_DESIGN", "INACTIVE_LAYOUT_V2"]
+LayoutScope = Literal["ACTIVE_DESIGN", "INACTIVE_LAYOUT_V2", "NONE"]
 #: evidence is numbers, flags, ids and lists of ids — never free text
 EvidenceValue = int | float | bool | str | list[str] | None
 
@@ -58,6 +66,7 @@ class AssessmentCheck(ApiModel):
     category: Literal["LAYOUT", "ACCESS", "CLEARANCE", "GEOMETRY", "CAPABILITY", "EGRESS"]
     status: AssessmentStatus
     authority: AssessmentAuthority
+    scope: AssessmentScope
     summary: str
     evidence: dict[str, EvidenceValue]
     source_artifact: str
@@ -170,6 +179,13 @@ class DesignAssessmentPayload(ApiModel):
 
     status: Literal["SUCCESS"]
     active_source: Literal["LEGACY", "LAYOUT_V2"]
+    #: whether the layout-v2 half describes the ACTIVE design, a dormant
+    #: (inactive) catalogue / selection under a LEGACY source, or nothing
+    #: (LEGACY with no catalogue)
+    layout_scope: LayoutScope
+    #: the layout-v2 candidate that IS the active Effective Ramp (LAYOUT_V2
+    #: source only); ``None`` under LEGACY even when a selection is persisted
+    active_design_candidate_id: str | None
     winner_id: str | None
     selected_candidate_id: str | None
     selected_candidate: CandidateComparisonRow | None

@@ -1261,10 +1261,15 @@ class DesignService:
         switch, the network and the capability graph; nothing is generated,
         persisted or recomputed.
 
-        Read semantics (directive §17 / §18): the catalogue is REQUIRED
-        (absent → ``LAYOUT_V2_NOT_GENERATED``, the assessment is unavailable
-        without a layout-v2 catalogue); the selection and the capability
-        graph are OPTIONAL when ABSENT (no selection → the layout checks are
+        Read semantics (directive §17 / §18 / §21, PR #43 correction): the
+        active ramp source is resolved from the same snapshot FIRST. Under
+        LAYOUT_V2 the catalogue is REQUIRED (absent →
+        ``LAYOUT_V2_NOT_GENERATED``); under LEGACY it is optional — absent
+        gives ``layoutScope = NONE`` (layout checks NOT_APPLICABLE, generic
+        network / capability / egress checks intact), present gives
+        ``INACTIVE_LAYOUT_V2`` (a dormant selection, explicitly scoped, never
+        the active design). The selection and the capability graph are
+        OPTIONAL when ABSENT (no selection → the layout checks are
         NOT_EVALUATED; no graph → the capability / egress checks are
         NOT_EVALUATED) but every present artifact must be VALID — a STALE or
         MALFORMED document raises its own typed refusal
@@ -1281,13 +1286,16 @@ class DesignService:
         )
         snapshot = self._reader.snapshot(scenario_id, names)
         self._reader.require_world(snapshot)
+        # the active source FIRST (PR #43 review correction): the catalogue
+        # is required only when it IS the active design; a LEGACY design
+        # keeps its generic network / capability / egress assessment and a
+        # present catalogue / selection is reported as INACTIVE
+        source = self._reader.resolve_ramp_source(snapshot)
         catalogue = self._reader.read(snapshot, LAYOUT_V2_ARTIFACT)
-        if catalogue.state == STATE_ABSENT:
+        if catalogue.state == STATE_ABSENT and source == "LAYOUT_V2":
             raise LayoutV2NotGeneratedError(scenario_id)
         if catalogue.error is not None:
             raise catalogue.error
-        assert catalogue.raw is not None
-        source = self._reader.resolve_ramp_source(snapshot)
         selected = self._optional_read(snapshot, LAYOUT_V2_SELECTED_ARTIFACT)
         # the co-published half is observed by the selection's pair check; its
         # own read is taken so a stale / malformed access artifact refuses too
@@ -1299,12 +1307,12 @@ class DesignService:
             assert isinstance(capability.model, CapabilityGraphPayload)
             capability_payload = capability.model
         return build_design_assessment(
-            catalogue=catalogue.raw,
+            catalogue=catalogue.raw if catalogue.state != STATE_ABSENT else None,
             selected=None if selected is None else selected.raw,
             capability=capability_payload,
             sources=DesignAssessmentSources(
                 active_source=source,
-                layout_v2_revision=catalogue.revision,
+                layout_v2_revision=self._present_revision(snapshot, LAYOUT_V2_ARTIFACT),
                 selected_layout_revision=None if selected is None else selected.revision,
                 level_accesses_revision=self._present_revision(snapshot, LEVEL_ACCESSES_ARTIFACT),
                 network_revision=self._present_revision(snapshot, NETWORK_ARTIFACT),

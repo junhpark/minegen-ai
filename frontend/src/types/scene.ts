@@ -791,6 +791,10 @@ export type AssessmentStatus = 'SATISFIED' | 'NOT_SATISFIED' | 'NOT_APPLICABLE' 
 export type AssessmentAuthority =
   'HARD_DESIGN_RULE' | 'DERIVED_VALIDATION' | 'ADVISORY' | 'INFORMATIONAL'
 export type AssessmentEvidenceValue = number | boolean | string | string[] | null
+/** what a check describes: the ACTIVE design, or a dormant layout-v2
+ * selection under a LEGACY source (never conflated) */
+export type AssessmentScope = 'ACTIVE_DESIGN' | 'INACTIVE_LAYOUT_V2'
+export type LayoutScope = 'ACTIVE_DESIGN' | 'INACTIVE_LAYOUT_V2' | 'NONE'
 
 export interface AssessmentCheck {
   id: string
@@ -798,6 +802,7 @@ export interface AssessmentCheck {
   category: 'LAYOUT' | 'ACCESS' | 'CLEARANCE' | 'GEOMETRY' | 'CAPABILITY' | 'EGRESS'
   status: AssessmentStatus
   authority: AssessmentAuthority
+  scope: AssessmentScope
   summary: string
   evidence: Record<string, AssessmentEvidenceValue>
   sourceArtifact: string
@@ -885,6 +890,9 @@ export interface DesignAssessmentPayload {
   /** generation status of the read model, never a design verdict */
   status: 'SUCCESS'
   activeSource: RampSource
+  layoutScope: LayoutScope
+  /** the layout-v2 candidate that IS the active ramp (LAYOUT_V2 only) */
+  activeDesignCandidateId: string | null
   winnerId: string | null
   selectedCandidateId: string | null
   selectedCandidate: CandidateComparisonRow | null

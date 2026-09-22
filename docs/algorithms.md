@@ -1966,12 +1966,17 @@ score arithmetic beyond `candidate − winner`:
                 REQUIRED_CAPABILITY_PATHS  requiredPaths[].satisfied; physicalOnly = physical ∧ ¬capability
                 DUAL_EGRESS_ADVISORY       egressAdvisory.perNode: meeting / failing counts + ids, min routes (ADVISORY)
     absent field or artifact → NOT_EVALUATED (never inferred, never a pass)
+    scope     = ACTIVE_DESIGN under LAYOUT_V2; layout-v2 checks under LEGACY are INACTIVE_LAYOUT_V2
+                (NOT_APPLICABLE with no catalogue); capability / egress checks always ACTIVE_DESIGN
 
 The service half (`DesignService.design_assessment`) is one
 `ArtifactReader.snapshot` + `require_world` + per-artifact `read`: the
-catalogue is required, the selection / accesses / network / capability
-graph are optional when ABSENT and refused with their own typed code when
-STALE or MALFORMED. Nothing is written. Tests: `tests/test_design_assessment.py`
+active ramp source is resolved first; the catalogue is required only under
+LAYOUT_V2 (under LEGACY an absent catalogue is `layoutScope = NONE`, a
+present one `INACTIVE_LAYOUT_V2` with every layout-v2 check scoped and
+prefixed "inactive layout-v2 selection: "), the selection / accesses /
+network / capability graph are optional when ABSENT and refused with their
+own typed code when STALE or MALFORMED. Nothing is written. Tests: `tests/test_design_assessment.py`
 (T1 winner projection on a catalogue whose totals are deliberately not
 monotone in rank, T2 ranking order and the row bound, T3 FEASIBLE /
 INFEASIBLE / NOT_VALIDATED, T4 score identity and subtraction deltas, T5

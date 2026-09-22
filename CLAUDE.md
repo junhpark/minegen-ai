@@ -1822,10 +1822,16 @@ code, the code and the rule win and the map is corrected.
      feasibility, re-ranks candidates, recomputes a score, generates a
      missing artifact or infers a missing fact: an absent selection /
      capability graph makes the dependent checks NOT_EVALUATED (never a
-     pass), an absent catalogue is LAYOUT_V2_NOT_GENERATED, and a STALE or
-     MALFORMED artifact raises its own typed refusal through the validated
-     reader (LAYOUT_V2_SELECTION_STALE, CAPABILITY_GRAPH_STALE,
-     ARTIFACT_MALFORMED — never a fallback). Candidate comparison preserves
+     pass), and a STALE or MALFORMED artifact raises its own typed refusal
+     through the validated reader (LAYOUT_V2_SELECTION_STALE,
+     CAPABILITY_GRAPH_STALE, ARTIFACT_MALFORMED — never a fallback). The
+     ACTIVE ramp source is resolved from the same snapshot FIRST: under
+     LAYOUT_V2 the catalogue is required (absent → LAYOUT_V2_NOT_GENERATED);
+     under LEGACY it is optional — a LEGACY-only design keeps its generic
+     network / capability / egress assessment (`layoutScope = NONE`, layout
+     checks NOT_APPLICABLE, comparison empty) and a dormant catalogue /
+     selection is reported with explicit `INACTIVE_LAYOUT_V2` scope
+     (`activeDesignCandidateId` null), never as the active design. Candidate comparison preserves
      the Layout V2 ranking and scores exactly (rows = the winner + the top
      FEASIBLE alternatives in `ranking` order, bounded, the selection always
      a row; INFEASIBLE / NOT_VALIDATED are never alternatives; deltas are

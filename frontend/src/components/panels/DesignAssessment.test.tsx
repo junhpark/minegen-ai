@@ -62,6 +62,7 @@ function check(over: Partial<AssessmentCheck>): AssessmentCheck {
     category: 'LAYOUT',
     status: 'SATISFIED',
     authority: 'HARD_DESIGN_RULE',
+    scope: 'ACTIVE_DESIGN',
     summary: 'candidate status FEASIBLE at stage DETAILED',
     evidence: { status: 'FEASIBLE', stageReached: 'DETAILED', rank: 1, failureReasons: [] },
     sourceArtifact: 'layout_v2.json',
@@ -106,6 +107,8 @@ function payload(over: Partial<DesignAssessmentPayload>): DesignAssessmentPayloa
   return {
     status: 'SUCCESS',
     activeSource: 'LAYOUT_V2',
+    layoutScope: 'ACTIVE_DESIGN',
+    activeDesignCandidateId: WINNER,
     winnerId: WINNER,
     selectedCandidateId: WINNER,
     selectedCandidate: WINNER_ROW,
@@ -429,14 +432,174 @@ describe('LayoutPanelBody assessment wiring', () => {
     expect(html).not.toContain('ALTERNATIVES')
   })
 
-  it('derives the query key from the source slots only', () => {
+  it('derives the query key from the scene identity', () => {
     expect(assessmentKey(null)).toEqual([null])
     const key = assessmentKey(scene)
     expect(key[0]).toBe('S')
-    expect(key[1]).toBe(`${WINNER}|3|${[WINNER, RANK2, RANK3].join(',')}`)
-    expect(key[2]).toBeNull()
-    expect(key[3]).toBe('LEGACY|')
-    expect(key[4]).toBeNull()
-    expect(key[5]).toBeNull()
+    expect(typeof key[1]).toBe('number')
+    expect(assessmentKey(scene)).toEqual(key)
+    expect(assessmentKey({ ...scene })).not.toEqual(key)
+  })
+})
+
+const CATALOGUE_A = {
+  layoutVersion: 2,
+  status: 'SUCCESS',
+  portal: [0, 0, 0],
+  portalGenerated: true,
+  requiredLevels: [],
+  serviceableLevelCount: 0,
+  candidateCount: 3,
+  feasibleCount: 3,
+  shortlist: [],
+  ranking: [WINNER, RANK2, RANK3],
+  winnerId: WINNER,
+  clearanceBasis: 'EXACT',
+  clearanceErrorBound: 0,
+  requiredClearance: 10.6,
+  accessReach: 60,
+  footwallStandoff: 50,
+  performance: { totalSeconds: 1 },
+  searchConfig: {},
+  candidates: [
+    {
+      candidateId: WINNER,
+      rank: 1,
+      scores: { development: 1, geology: 0, geometry: 1, total: 4.5, components: {} },
+    },
+    {
+      candidateId: RANK2,
+      rank: 2,
+      scores: { development: 1, geology: 0, geometry: 1, total: 4.6, components: {} },
+    },
+  ],
+}
+
+function sceneFor(catalogue: unknown): WorldScene {
+  return {
+    scenarioId: 'S',
+    layoutV2: catalogue,
+    layoutV2Selected: null,
+    smoothedDecline: null,
+    legacySmoothedDecline: null,
+    network: null,
+    rampSource: {
+      activeSource: 'LEGACY',
+      owningArtifact: 'decline_smoothed.json',
+      available: false,
+      legacyAvailable: false,
+      layoutV2Available: true,
+      layoutV2Selected: false,
+      sourceKind: null,
+      sourceRevision: null,
+      candidateId: null,
+      family: null,
+      status: null,
+      segmentCount: 0,
+    },
+  } as unknown as WorldScene
+}
+
+describe('PR #43 review correction', () => {
+  it('assessmentKey changes for a regenerated catalogue with the same winner / count / ranking', () => {
+    // the projected values (scores) changed while every identity field the
+    // old key used stayed the same: a stale read model must not survive
+    const before = sceneFor(CATALOGUE_A)
+    const regenerated = sceneFor({
+      ...CATALOGUE_A,
+      candidates: CATALOGUE_A.candidates.map((c) =>
+        c.scores ? { ...c, scores: { ...c.scores, total: c.scores.total + 1 } } : c,
+      ),
+    })
+    expect(assessmentKey(before)).not.toEqual(assessmentKey(regenerated))
+    // the same scene object keeps the same key (no refetch storm)
+    expect(assessmentKey(before)).toEqual(assessmentKey(before))
+    expect(assessmentKey(null)).toEqual([null])
+  })
+
+  it('renders the generic assessment for a LEGACY-only scene without a catalogue', () => {
+    const legacyOnly = {
+      scenarioId: 'S',
+      layoutV2: null,
+      layoutV2Selected: null,
+      smoothedDecline: null,
+      legacySmoothedDecline: null,
+      network: null,
+      rampSource: {
+        activeSource: 'LEGACY',
+        owningArtifact: 'decline_smoothed.json',
+        available: true,
+        legacyAvailable: true,
+        layoutV2Available: false,
+        layoutV2Selected: false,
+        sourceKind: 'LEGACY_SMOOTHED',
+        sourceRevision: 'r',
+        candidateId: null,
+        family: null,
+        status: 'SUCCESS',
+        segmentCount: 3,
+      },
+    } as unknown as WorldScene
+    const p = payload({
+      activeSource: 'LEGACY',
+      layoutScope: 'NONE',
+      winnerId: null,
+      selectedCandidateId: null,
+      selectedCandidate: null,
+      activeDesignCandidateId: null,
+      candidateComparison: [],
+    })
+    for (const c of p.checks) {
+      if (c.category === 'CAPABILITY' || c.category === 'EGRESS') continue
+      c.status = 'NOT_APPLICABLE'
+      c.scope = 'INACTIVE_LAYOUT_V2'
+      c.evidence = {}
+    }
+    const html = renderToStaticMarkup(
+      <LayoutPanelBody
+        scene={legacyOnly}
+        pick={null}
+        showAll={false}
+        job={null}
+        busy={false}
+        generating={false}
+        selecting={false}
+        activating={false}
+        errorText={null}
+        assessment={p}
+        assessmentError={null}
+        onPick={() => undefined}
+        onShowAll={() => undefined}
+        onGenerate={() => undefined}
+        onSelect={() => undefined}
+        onActivate={() => undefined}
+      />,
+    )
+    expect(html).toContain('DESIGN ASSESSMENT')
+    expect(html).toContain('active design: LEGACY')
+    expect(html).toContain('18/22 nodes · 2 routes')
+    expect(html).toContain('Selected candidate feasible: NOT APPLICABLE (hard rule)')
+    expect(html).toContain('no layout-v2 catalogue')
+    expect(html).not.toContain('data-candidate-id=')
+  })
+
+  it('labels a dormant layout-v2 selection as inactive, never as the active design', () => {
+    const p = payload({
+      activeSource: 'LEGACY',
+      layoutScope: 'INACTIVE_LAYOUT_V2',
+      activeDesignCandidateId: null,
+    })
+    for (const c of p.checks) {
+      if (c.category === 'CAPABILITY' || c.category === 'EGRESS') continue
+      c.scope = 'INACTIVE_LAYOUT_V2'
+    }
+    const html = renderToStaticMarkup(<DesignAssessmentList assessment={p} />)
+    expect(html).toContain('active design: LEGACY')
+    expect(html).toContain('layout-v2 checks describe the INACTIVE layout-v2 selection')
+    expect(html).toContain('data-scope="INACTIVE_LAYOUT_V2"')
+    const table = renderToStaticMarkup(<AlternativesTable assessment={p} />)
+    expect(table).toContain('inactive layout-v2 catalogue')
+    expect(table).toContain('(selected)')
+    expect(table).not.toContain('(active)')
   })
 })

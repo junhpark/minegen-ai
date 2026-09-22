@@ -734,10 +734,16 @@ def test_active_source_is_an_informational_check() -> None:
     c = check(payload, "ACTIVE_RAMP_SOURCE")
     assert c.authority == "INFORMATIONAL"
     assert c.status == "NOT_SATISFIED"
-    assert c.evidence == {"activeSource": "LEGACY", "selectedCandidateId": WINNER}
+    assert c.evidence == {
+        "activeSource": "LEGACY",
+        "selectedCandidateId": WINNER,
+        "inactiveLayoutSelectionId": WINNER,
+    }
+    assert c.scope == "ACTIVE_DESIGN"  # a fact about the active design itself
     assert payload.active_source == "LEGACY"
     payload = build(sel=selection(WINNER), active_source="LAYOUT_V2")
-    assert check(payload, "ACTIVE_RAMP_SOURCE").status == "SATISFIED"
+    c = check(payload, "ACTIVE_RAMP_SOURCE")
+    assert c.status == "SATISFIED" and c.evidence["inactiveLayoutSelectionId"] is None
 
 
 def test_capability_graph_validity_check_reads_the_recorded_validation() -> None:
@@ -851,11 +857,25 @@ def _stack(
     return sid
 
 
-def test_api_assessment_requires_the_catalogue(client: TestClient) -> None:
+def test_api_assessment_without_any_design_is_a_legacy_none_assessment(
+    client: TestClient, design_service: DesignService
+) -> None:
+    # a fresh world under the rule-150 LEGACY default: no catalogue, no
+    # network, no capability graph → 200 with nothing evaluated, nothing
+    # written (PR #43 correction: LAYOUT_V2_NOT_GENERATED only when the
+    # catalogue IS the active design — test_r1_api_layout_v2_active_…)
     sid = _prepare(client)
+    derived = design_service.store.derived_dir(sid)
+    before = sorted(p.name for p in derived.iterdir())
     r = client.get(f"/api/v1/scenarios/{sid}/design/assessment")
-    assert r.status_code == 409, r.text
-    assert r.json()["detail"]["code"] == "LAYOUT_V2_NOT_GENERATED"
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["activeSource"] == "LEGACY" and body["layoutScope"] == "NONE"
+    assert body["candidateComparison"] == [] and body["winnerId"] is None
+    statuses = {c["id"]: c["status"] for c in body["checks"]}
+    assert all(statuses[c] == "NOT_APPLICABLE" for c in LAYOUT_CHECKS)
+    assert all(statuses[c] == "NOT_EVALUATED" for c in CAPABILITY_CHECKS)
+    assert sorted(p.name for p in derived.iterdir()) == before
     r = client.get("/api/v1/scenarios/nope/design/assessment")
     assert r.status_code == 404
 
@@ -1003,3 +1023,204 @@ def test_e2e_assessment_projects_the_real_layout_and_capability_artifacts(
     checks = {c["id"]: c for c in r.json()["checks"]}
     assert checks["DUAL_EGRESS_ADVISORY"]["status"] == "NOT_EVALUATED"
     assert client.get(f"{base}/design/capability-graph").status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# PR #43 review correction — LEGACY-only scenarios keep the generic assessment
+# --------------------------------------------------------------------------- #
+
+from minegen.core.artifacts import (  # noqa: E402
+    LEGACY_RAMP_ARTIFACT,
+    LEVEL_ACCESSES_ARTIFACT,
+    RAMP_SOURCE_FILE,
+)
+from tests.test_artifact_reader import CANDIDATE_ID as DORMANT_ID  # noqa: E402
+from tests.test_artifact_reader import _accesses, _selection  # noqa: E402
+
+LAYOUT_CHECKS = (
+    "LAYOUT_SELECTED",
+    "SELECTED_IS_RANKING_WINNER",
+    "CANDIDATE_FEASIBLE",
+    "ALL_REQUIRED_LEVELS_ACCESSIBLE",
+    "CLEARANCE_VALIDATED",
+    "GEOMETRY_VALIDATED",
+)
+CAPABILITY_CHECKS = ("CAPABILITY_GRAPH_VALID", "REQUIRED_CAPABILITY_PATHS", "DUAL_EGRESS_ADVISORY")
+
+
+def test_r1_builder_legacy_without_catalogue_keeps_the_generic_checks() -> None:
+    payload = build_design_assessment(
+        catalogue=None,
+        selected=None,
+        capability=capability_graph(),
+        sources=sources(
+            active_source="LEGACY", layout_v2_revision=None, selected_layout_revision=None
+        ),
+    )
+    assert payload.status == "SUCCESS"
+    assert payload.active_source == "LEGACY"
+    assert payload.layout_scope == "NONE"
+    assert payload.winner_id is None
+    assert payload.selected_candidate_id is None and payload.selected_candidate is None
+    assert payload.active_design_candidate_id is None
+    assert payload.candidate_comparison == []
+    for cid in LAYOUT_CHECKS:
+        c = check(payload, cid)
+        assert c.status == "NOT_APPLICABLE", cid
+        assert c.scope == "INACTIVE_LAYOUT_V2"
+        assert "no layout-v2 catalogue" in c.summary
+    for cid in CAPABILITY_CHECKS:
+        c = check(payload, cid)
+        assert c.status != "NOT_EVALUATED" and c.status != "NOT_APPLICABLE", cid
+        assert c.scope == "ACTIVE_DESIGN"
+    assert check(payload, "DUAL_EGRESS_ADVISORY").evidence["undergroundNodeCount"] == 5
+    assert payload.egress_advisory is not None and len(payload.required_paths) == 3
+    assert payload.summary.startswith("Active design: LEGACY")
+
+
+def test_r1_builder_layout_v2_active_requires_the_catalogue() -> None:
+    with pytest.raises(ValueError, match="LAYOUT_V2"):
+        build_design_assessment(
+            catalogue=None, selected=None, capability=None, sources=sources(layout_v2_revision=None)
+        )
+
+
+def test_r1_builder_legacy_with_a_dormant_selection_is_explicitly_scoped() -> None:
+    payload = build(sel=selection(WINNER), cap=capability_graph(), active_source="LEGACY")
+    assert payload.active_source == "LEGACY"
+    assert payload.layout_scope == "INACTIVE_LAYOUT_V2"
+    # the dormant selection is reported AS the layout-v2 selection, never as
+    # the active design
+    assert payload.selected_candidate_id == WINNER
+    assert payload.active_design_candidate_id is None
+    assert payload.winner_id == WINNER
+    assert [r.candidate_id for r in payload.candidate_comparison] == RANKING[:5]
+    for cid in LAYOUT_CHECKS:
+        c = check(payload, cid)
+        assert c.scope == "INACTIVE_LAYOUT_V2", cid
+        assert c.summary.startswith("inactive layout-v2 selection: "), cid
+    # the hard checks still read their fields — scoped, never hidden
+    assert check(payload, "CANDIDATE_FEASIBLE").status == "SATISFIED"
+    assert check(payload, "CLEARANCE_VALIDATED").status == "SATISFIED"
+    for cid in CAPABILITY_CHECKS:
+        assert check(payload, cid).scope == "ACTIVE_DESIGN", cid
+    src = check(payload, "ACTIVE_RAMP_SOURCE")
+    assert src.status == "NOT_SATISFIED"
+    assert src.evidence["inactiveLayoutSelectionId"] == WINNER
+    assert payload.summary.startswith("Active design: LEGACY")
+    assert f"Inactive layout-v2 selection: {WINNER}" in payload.summary
+    # under an ACTIVE layout-v2 source the same input is the active design
+    active = build(sel=selection(WINNER), cap=capability_graph(), active_source="LAYOUT_V2")
+    assert active.layout_scope == "ACTIVE_DESIGN"
+    assert active.active_design_candidate_id == WINNER
+    assert all(c.scope == "ACTIVE_DESIGN" for c in active.checks)
+
+
+def _legacy_stack(
+    client: TestClient,
+    design_service: DesignService,
+    *,
+    with_capability: bool = True,
+    with_catalogue: bool = False,
+    with_selection: bool = False,
+    ramp_source: str | None = None,
+) -> str:
+    """A hand-written LEGACY design: a VALID legacy ramp artifact, network and
+    (optionally) capability graph; optionally a dormant layout-v2 catalogue /
+    selection pair and an explicit ramp_source.json."""
+    sid = _prepare(client)
+    derived = design_service.store.derived_dir(sid)
+    _write(derived / LEGACY_RAMP_ARTIFACT, {"status": "SUCCESS", "segments": []})
+    _write(derived / NETWORK_ARTIFACT, _network_doc())
+    if with_capability:
+        cap = capability_graph(network_revision=_rev(derived / NETWORK_ARTIFACT))
+        _write(derived / CAPABILITY_GRAPH_ARTIFACT, cap.model_dump(mode="json", by_alias=True))
+    if with_catalogue:
+        _write(derived / LAYOUT_V2_ARTIFACT, catalogue())
+    if with_selection:
+        rev = _rev(derived / LAYOUT_V2_ARTIFACT)
+        _write(derived / LAYOUT_V2_SELECTED_ARTIFACT, _selection(rev))
+        _write(derived / LEVEL_ACCESSES_ARTIFACT, _accesses(rev))
+    if ramp_source is not None:
+        _write(derived / RAMP_SOURCE_FILE, {"activeSource": ramp_source})
+    return sid
+
+
+def test_r1_api_legacy_only_scenario_receives_the_generic_assessment(
+    client: TestClient, design_service: DesignService
+) -> None:
+    sid = _legacy_stack(client, design_service)
+    derived = design_service.store.derived_dir(sid)
+    before = sorted(p.name for p in derived.iterdir())
+    r = client.get(f"/api/v1/scenarios/{sid}/design/assessment")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "SUCCESS"
+    assert body["activeSource"] == "LEGACY"
+    assert body["layoutScope"] == "NONE"
+    assert body["candidateComparison"] == []
+    assert body["winnerId"] is None and body["selectedCandidateId"] is None
+    checks = {c["id"]: c for c in body["checks"]}
+    adv = checks["DUAL_EGRESS_ADVISORY"]
+    assert adv["status"] == "NOT_SATISFIED" and adv["evidence"]["undergroundNodeCount"] == 5
+    assert checks["REQUIRED_CAPABILITY_PATHS"]["evidence"]["satisfiedPathCount"] == 2
+    assert all(checks[c]["status"] == "NOT_APPLICABLE" for c in LAYOUT_CHECKS)
+    assert body["sources"]["layoutV2Revision"] is None
+    assert body["sources"]["capabilityGraphRevision"] == _rev(derived / CAPABILITY_GRAPH_ARTIFACT)
+    assert sorted(p.name for p in derived.iterdir()) == before  # zero writes
+    assert not (derived / LAYOUT_V2_ARTIFACT).exists()
+
+
+def test_r1_api_legacy_only_without_capability_graph_is_not_evaluated(
+    client: TestClient, design_service: DesignService
+) -> None:
+    sid = _legacy_stack(client, design_service, with_capability=False)
+    derived = design_service.store.derived_dir(sid)
+    r = client.get(f"/api/v1/scenarios/{sid}/design/assessment")
+    assert r.status_code == 200, r.text
+    checks = {c["id"]: c for c in r.json()["checks"]}
+    assert all(checks[c]["status"] == "NOT_EVALUATED" for c in CAPABILITY_CHECKS)
+    assert r.json()["egressAdvisory"] is None and r.json()["requiredPaths"] == []
+    assert not (derived / CAPABILITY_GRAPH_ARTIFACT).exists()
+    assert not (derived / LAYOUT_V2_ARTIFACT).exists()
+
+
+def test_r1_api_layout_v2_active_without_catalogue_stays_not_generated(
+    client: TestClient, design_service: DesignService
+) -> None:
+    sid = _legacy_stack(client, design_service, ramp_source="LAYOUT_V2")
+    r = client.get(f"/api/v1/scenarios/{sid}/design/assessment")
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["code"] == "LAYOUT_V2_NOT_GENERATED"
+
+
+def test_r1_api_legacy_active_with_a_dormant_selection_is_not_conflated(
+    client: TestClient, design_service: DesignService
+) -> None:
+    sid = _legacy_stack(
+        client, design_service, with_catalogue=True, with_selection=True, ramp_source="LEGACY"
+    )
+    r = client.get(f"/api/v1/scenarios/{sid}/design/assessment")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["activeSource"] == "LEGACY"
+    assert body["layoutScope"] == "INACTIVE_LAYOUT_V2"
+    assert body["selectedCandidateId"] == DORMANT_ID
+    assert body["activeDesignCandidateId"] is None
+    assert body["winnerId"] == WINNER
+    assert [row["candidateId"] for row in body["candidateComparison"]] == RANKING[:5]
+    checks = {c["id"]: c for c in body["checks"]}
+    for cid in LAYOUT_CHECKS:
+        assert checks[cid]["scope"] == "INACTIVE_LAYOUT_V2", cid
+        assert checks[cid]["summary"].startswith("inactive layout-v2 selection: "), cid
+    for cid in CAPABILITY_CHECKS:
+        assert checks[cid]["scope"] == "ACTIVE_DESIGN", cid
+    assert checks["ACTIVE_RAMP_SOURCE"]["status"] == "NOT_SATISFIED"
+    assert checks["ACTIVE_RAMP_SOURCE"]["evidence"]["inactiveLayoutSelectionId"] == DORMANT_ID
+    assert body["sources"]["selectedLayoutRevision"] is not None
+    # activating the layout source flips the SAME artifacts to the active design
+    _write(design_service.store.derived_dir(sid) / RAMP_SOURCE_FILE, {"activeSource": "LAYOUT_V2"})
+    body = client.get(f"/api/v1/scenarios/{sid}/design/assessment").json()
+    assert body["layoutScope"] == "ACTIVE_DESIGN"
+    assert body["activeDesignCandidateId"] == DORMANT_ID
+    assert {c["id"]: c["scope"] for c in body["checks"]}["CANDIDATE_FEASIBLE"] == "ACTIVE_DESIGN"

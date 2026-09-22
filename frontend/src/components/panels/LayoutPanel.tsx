@@ -109,7 +109,7 @@ export function LayoutPanel() {
   const assessment = useQuery({
     queryKey: ['design-assessment', epoch, ...assessmentKey(scene)],
     queryFn: () => api.getDesignAssessment(scene?.scenarioId ?? ''),
-    enabled: scene !== null && scene.layoutV2 !== null && !running,
+    enabled: scene !== null && !running,
     retry: false,
   })
   const assessmentError =
@@ -331,16 +331,6 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
             finite declared grid · hard constraints stay hard · scores are Development / Geology /
             Geometry group totals (§26) · not an optimizer
           </div>
-          {p.assessment ? (
-            <>
-              <DesignAssessmentList assessment={p.assessment} />
-              <AlternativesTable assessment={p.assessment} />
-            </>
-          ) : p.assessmentError ? (
-            <div className="mt-2 text-mute" aria-label="design assessment unavailable">
-              design assessment unavailable — {p.assessmentError}
-            </div>
-          ) : null}
         </div>
       ) : (
         <p className="mt-2 text-[11px] text-mute">
@@ -349,6 +339,19 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
           feasible candidates. Works for every orebody type.
         </p>
       )}
+      {/* Phase 20D.3 (PR #43 correction): the assessment is shown for EVERY
+          design — a LEGACY-only scene keeps its generic network / capability
+          / egress checks; a catalogue is not a prerequisite */}
+      {p.assessment ? (
+        <>
+          <DesignAssessmentList assessment={p.assessment} />
+          <AlternativesTable assessment={p.assessment} />
+        </>
+      ) : p.assessmentError ? (
+        <div className="mt-2 text-[11px] text-mute" aria-label="design assessment unavailable">
+          design assessment unavailable — {p.assessmentError}
+        </div>
+      ) : null}
     </PanelSection>
   )
 }

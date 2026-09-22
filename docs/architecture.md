@@ -1212,11 +1212,16 @@ adding a search, a gate, a threshold or a persisted file.
   ONE `ArtifactReader.snapshot` of `layout_v2.json`,
   `layout_v2_selected.json` (+ its co-published `level_accesses.json`),
   `ramp_source.json`, `network.json` and `capability_graph.json`, applies
-  the world guard, and hands the VALID documents to the pure
-  `assessment/builder.py` projection. The catalogue is required
-  (`LAYOUT_V2_NOT_GENERATED` otherwise — the assessment is unavailable
-  without a layout-v2 catalogue, and a LEGACY-only scenario simply has
-  none); the selection and the capability graph are optional when ABSENT
+  the world guard, resolves the ACTIVE ramp source first and hands the
+  VALID documents to the pure `assessment/builder.py` projection. Under
+  LAYOUT_V2 the catalogue is required (`LAYOUT_V2_NOT_GENERATED`
+  otherwise); under LEGACY it is optional (PR #43 review correction): a
+  LEGACY-only design keeps its generic network / capability / egress
+  checks (`layoutScope = NONE`, layout checks `NOT_APPLICABLE`, empty
+  comparison), and a dormant catalogue / selection is reported with the
+  explicit `INACTIVE_LAYOUT_V2` scope on every layout-v2 check and
+  `activeDesignCandidateId = null` — never conflated with the active
+  design. The selection and the capability graph are optional when ABSENT
   (dependent checks answer `NOT_EVALUATED`); any present artifact that is
   STALE or MALFORMED raises its own typed refusal
   (`LAYOUT_V2_SELECTION_STALE`, `CAPABILITY_GRAPH_STALE`,
@@ -1253,9 +1258,14 @@ adding a search, a gate, a threshold or a persisted file.
   Rank: 1 of N feasible … Compared with rank 2 …") is fixed sentences over
   recorded numbers, never persisted reasoning.
 - **Frontend.** `LayoutPanel` reads `GET …/design/assessment` through
-  react-query whenever the scene carries a catalogue (key =
-  `assessmentKey(scene)`: scenario, catalogue identity, selection revision,
-  ramp source, network and capability revisions) and renders
+  react-query for every loaded scene (key = `assessmentKey(scene)`: the
+  scenario id plus the scene object's IDENTITY — every backend mutation
+  produces a new scene object, so a regenerated catalogue with the same
+  winner / count / ranking but changed values can never leave a stale read
+  model on screen; the backend validated read stays the authority) and
+  renders the scope line ("active design: Layout v2 · id" / "active design:
+  LEGACY · layout-v2 checks describe the INACTIVE layout-v2 selection" /
+  "· no layout-v2 catalogue"),
   `DesignAssessmentList` (✓ / ✗ for hard rules and validations, "!" and a
   dashed *advisory* tag for the egress advisory, "i" for info, "?" and
   NOT EVALUATED / NOT APPLICABLE otherwise — a satisfied advisory is never
