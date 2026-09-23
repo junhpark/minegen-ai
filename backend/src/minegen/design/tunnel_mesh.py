@@ -919,6 +919,65 @@ def _geometrically_closed(positions: FloatArray, prims: list[RenderPrimitive]) -
 # --------------------------------------------------------------------------- #
 
 
+class RingTurnError(ValueError):
+    """The ring chain's local turn exceeds ``ringMaxTurnDeg`` (the builder
+    reports it as a typed FAILED result; the exporter as a typed failure)."""
+
+    def __init__(self, message: str, max_local_turn_deg: float) -> None:
+        super().__init__(message)
+        self.max_local_turn_deg = max_local_turn_deg
+
+
+@dataclass
+class RampSweep:
+    """The base logical sweep of the Effective Ramp — the SAME objects
+    ``TunnelMeshBuilder.build`` continues from (Phase 23A extraction: pure,
+    behaviour-preserving; the render mesh, QA and GLB stay in the builder)."""
+
+    shape: ProfileShape
+    junctions: list[Any]
+    refine: FloatArray | None
+    chain: RingChain
+    mesh: LogicalMesh
+
+
+def ramp_logical_sweep(
+    smoothed_payload: dict[str, Any],
+    accesses_payload: dict[str, Any] | None,
+    ramp: RampConstraints,
+    profile: TunnelProfile,
+) -> RampSweep:
+    """Profile → declared RAMP_ACCESS junctions → junction-refined ring chain
+    → closed logical mesh, from the persisted Effective Ramp and its
+    co-published level accesses. Raises ``RingTurnError`` exactly where the
+    builder used to fail."""
+    from minegen.design.junctions import (
+        JUNCTION_RING_SPACING_FRACTION,
+        JUNCTION_WINDOW_WIDTHS,
+        find_junctions,
+    )
+
+    segments = smoothed_payload["segments"]
+    shape = build_profile(ramp, profile)
+    width = float(ramp.tunnel_width)
+    junctions = find_junctions(smoothed_payload, accesses_payload, None)
+    refine = np.asarray([j.point for j in junctions], dtype=np.float64) if junctions else None
+    chain = build_ring_chain(
+        segments,
+        profile.ring_max_spacing,
+        refine_near=refine,
+        refine_radius=JUNCTION_WINDOW_WIDTHS * width,
+        refine_spacing=JUNCTION_RING_SPACING_FRACTION * width,
+    )
+    if chain.max_local_turn_deg > profile.ring_max_turn_deg + 1e-9:
+        raise RingTurnError(
+            f"local turn {chain.max_local_turn_deg:.2f}° exceeds "
+            f"ringMaxTurnDeg {profile.ring_max_turn_deg:g}°",
+            chain.max_local_turn_deg,
+        )
+    return RampSweep(shape, junctions, refine, chain, build_logical_mesh(chain, shape))
+
+
 @dataclass
 class TunnelMeshResult:
     status: str  # SUCCESS | FAILED
@@ -957,7 +1016,6 @@ class TunnelMeshBuilder:
             JUNCTION_WINDOW_WIDTHS,
             TubeEnvelope,
             cut_tube,
-            find_junctions,
             junction_report,
         )
         from minegen.design.profile import secondary_profile
@@ -971,25 +1029,19 @@ class TunnelMeshBuilder:
         segments = smoothed_payload["segments"]
         if not segments:
             return self._failed("Phase 05 artifact has no segments", {})
-        shape = build_profile(self.ramp, self.profile)
         progress(0, len(segments), "", "SEGMENT_STARTED")
         width = float(self.ramp.tunnel_width)
-        junctions = find_junctions(smoothed_payload, accesses_payload, None)
-        refine = np.asarray([j.point for j in junctions], dtype=np.float64) if junctions else None
-        chain = build_ring_chain(
-            segments,
-            self.profile.ring_max_spacing,
-            refine_near=refine,
-            refine_radius=JUNCTION_WINDOW_WIDTHS * width,
-            refine_spacing=JUNCTION_RING_SPACING_FRACTION * width,
+        try:
+            sweep = ramp_logical_sweep(smoothed_payload, accesses_payload, self.ramp, self.profile)
+        except RingTurnError as err:
+            return self._failed(str(err), {"maxLocalTurnDeg": err.max_local_turn_deg})
+        shape, junctions, refine, chain, mesh = (
+            sweep.shape,
+            sweep.junctions,
+            sweep.refine,
+            sweep.chain,
+            sweep.mesh,
         )
-        if chain.max_local_turn_deg > self.profile.ring_max_turn_deg + 1e-9:
-            return self._failed(
-                f"local turn {chain.max_local_turn_deg:.2f}° exceeds "
-                f"ringMaxTurnDeg {self.profile.ring_max_turn_deg:g}°",
-                {"maxLocalTurnDeg": chain.max_local_turn_deg},
-            )
-        mesh = build_logical_mesh(chain, shape)
         cap_groups = (mesh.n_segments, mesh.n_segments + 1)
         topo = validate_topology(mesh, cap_groups)
         envelope = validate_envelope(self.ev, mesh)

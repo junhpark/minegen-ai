@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from minegen.api.deps import (
     get_design_service,
+    get_exchange_service,
     get_infrastructure_service,
     get_job_service,
     get_scenario_store,
@@ -29,6 +30,7 @@ from minegen.core.models import (
 from minegen.layout.search import LayoutSearchResult, LayoutV2Search
 from minegen.main import create_app
 from minegen.services.design_service import DesignService
+from minegen.services.exchange_service import ExchangeService
 from minegen.services.infrastructure_service import InfrastructureService
 from minegen.services.job_service import JobService
 from minegen.services.scenario_realizer import realize_scenario
@@ -126,6 +128,23 @@ TEST_MARKERS: dict[str, tuple[str, ...]] = {
     "test_decline_lifecycle": ("e2e",),
     # Phase 20D.3 design assessment over the REAL layout-v2 → capability chain
     "test_e2e_assessment_projects_the_real_layout_and_capability_artifacts": ("e2e",),
+    # Phase 23A MineExchange over the REAL LAYOUT_V2 chain (module-scoped
+    # stack: search + tunnel + levels + development mesh + network +
+    # capability graph) and the REAL LEGACY chain (decline + smoothing)
+    "test_e2e_full_bundle_is_deterministic_and_read_only": ("e2e",),
+    "test_e2e_orebody_and_terrain_on_the_full_bundle": ("e2e",),
+    "test_e1_e4_every_excavation_kind_is_an_individually_closed_solid": ("e2e",),
+    "test_e5_export_solids_are_the_production_base_logical_sweep": ("e2e",),
+    "test_e6_junction_connected_solids_stay_closed_and_overlap": ("e2e",),
+    "test_e7_e8_multibody_is_a_concatenation_never_a_union": ("e2e",),
+    "test_render_glbs_are_verbatim_source_bytes": ("e2e",),
+    "test_l1_l4_centerlines_csv_matches_the_authoritative_polylines": ("e2e",),
+    "test_l2_l3_centerlines_dxf_round_trips_with_stable_identity": ("e2e",),
+    "test_n1_n5_network_projection": ("e2e",),
+    "test_p1_p4_capability_projection": ("e2e",),
+    "test_snapshot_change_during_export_is_refused": ("e2e",),
+    "test_p5_p6_capability_absent_stale_and_malformed": ("e2e",),
+    "test_legacy_ramp_export": ("e2e",),
     # Phase 20C.2B shaft + capability graph API lifecycle (legacy pipeline E2E)
     "test_shaft_and_capability_api_lifecycle": ("e2e",),
     # AC-01E artifact registry: every artifact built + regenerated through the
@@ -227,6 +246,7 @@ def client(
         store, design_service
     )
     app.dependency_overrides[get_job_service] = lambda: job_service
+    app.dependency_overrides[get_exchange_service] = lambda: ExchangeService(store, world_service)
     # the WebSocket handler resolves the registry without DI; point it at the same instance
     import minegen.api.jobs as jobs_module
 

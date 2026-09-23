@@ -1854,3 +1854,21 @@ code, the code and the rule win and the map is corrected.
      satisfied advisory is never rendered as a certification badge. Economic
      quantities (cost, NPV, travel time, capacity, ventilation demand) are
      never estimated here (Phase 22 / external).
+
+190. MineExchange is a versioned, read-only projection of existing
+     authoritative MineGen state (Phase 23A, `exchange/`,
+     `POST …/export/mine-exchange`, `docs/mine-exchange.md`). It never
+     redesigns the mine, changes ranking, invents engineering semantics,
+     or promotes a derived representation into a stronger authority.
+     Geometry, topology and capability remain separate. Every exported
+     file declares its coordinate frame, units, provenance and
+     representation semantics; individual excavation STL bodies are
+     closed but not boolean-unioned. The bundle is built from ONE
+     validated snapshot (READ_SNAPSHOT_CHANGED on drift), is
+     deterministic (same snapshot → same bytes), is never a persisted
+     derived artifact, and reuses the production sweep helpers
+     (`ramp_logical_sweep`, `closed_sweep`) rather than a second
+     geometry algorithm; absent optional artifacts are manifest
+     omissions, present STALE / MALFORMED artifacts are typed refusals,
+     and a mandatory entity failing its closed-solid QA fails the whole
+     export.

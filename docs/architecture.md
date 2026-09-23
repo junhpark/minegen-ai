@@ -81,6 +81,14 @@ here. Per-phase decision records below keep their original wording.
                        coverage models, placement solver
       regression/      golden suites, comparisons and audits (CLI)
       export/          scene manifest, JSON, glTF
+      exchange/        Phase 23A MineExchange v1 (rule 190): read-only
+                       projection of authoritative state into a versioned,
+                       deterministic bundle — DTOs (models), builder,
+                       bundle (ZIP + manifest integrity), geometry
+                       projections (terrain, orebody, faults, centerlines,
+                       closed excavation solids through the production
+                       sweep helpers) and pure format writers (STL, OBJ,
+                       GLB, DXF, ASC, CSV, JSON); docs/mine-exchange.md
       services/        scenario persistence, world / design / infrastructure
                        orchestration, async job service
       api/             FastAPI routers (thin; no algorithms)
@@ -1426,3 +1434,34 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
 `verify-full.yml` (backend + frontend component jobs aggregated by the
 `Release Authority` job — the ONE CI release verdict, AC-01H); the original
 `ci.yml` was retired after same-revision equivalence was proven.
+
+## Phase 23A — MineExchange Core v1 (rule 190)
+
+`docs/mine-exchange.md` is the contract document. Architecture summary:
+
+- **Boundary.** `services/exchange_service.py` takes ONE validated
+  `ArtifactReader.snapshot` of every source (scenario, arrays, ramp source and
+  both ramp owners, level accesses, levels, shafts, network, capability
+  graph, tunnel / development reports + GLB bytes), verifies the world
+  binding against it, resolves the active Effective Ramp exactly as the
+  design service does, feeds `exchange/builder.py::build_exchange` (pure:
+  authoritative documents + world → `BundleSpec`), writes the ZIP through
+  `exchange/bundle.py::write_bundle` and re-snapshots before returning
+  (`READ_SNAPSHOT_CHANGED` on any revision / presence drift). Nothing is
+  persisted; the ZIP is not a derived artifact and has no lifecycle.
+- **Export ≠ engineering.** Closed excavation solids are the CAP–CAP logical
+  sweeps produced by the SAME helpers the production mesh builders continue
+  from — `design/tunnel_mesh.py::ramp_logical_sweep` and
+  `design/development_mesh.py::closed_sweep`, extracted behaviour-preserving
+  (existing tunnel / development GLB bytes proven bit-identical before /
+  after) — with the same junction refinement points. No search, planner,
+  ranking or centerline is re-run; the render GLBs are copied verbatim.
+- **Formats are pure.** `exchange/formats/` writers map typed geometry to
+  bytes only (own binary STL / OBJ / ESRI ASC / CSV / minimal ASCII DXF
+  writers with independent readers for round-trip tests; GLB through the
+  existing `design/glb_writer.write_glb` with an ADDITIVE root-node matrix
+  and extras — bytes unchanged when omitted). No new dependency.
+- **Frontend.** `api.exportMineExchange` downloads the blob with the
+  server-declared filename; the Scenario panel button is enabled once a world
+  exists and shows `Preparing export…`; the backend manifest is the only
+  authority on what the bundle contains.

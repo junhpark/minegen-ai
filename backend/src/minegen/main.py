@@ -13,7 +13,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from minegen import __version__
-from minegen.api import design, health, infrastructure, jobs, network, scenarios, world
+from minegen.api import (
+    design,
+    exchange,
+    health,
+    infrastructure,
+    jobs,
+    network,
+    scenarios,
+    world,
+)
 from minegen.config import get_settings
 from minegen.services.scenario_migration import UnsupportedSchemaVersionError
 
@@ -87,6 +96,7 @@ def create_app() -> FastAPI:
     api.include_router(network.router)
     api.include_router(infrastructure.router)
     api.include_router(jobs.router)
+    api.include_router(exchange.router)
     app.include_router(api)
     app.include_router(jobs.ws_router)
     return app

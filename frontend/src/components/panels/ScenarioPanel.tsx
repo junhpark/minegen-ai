@@ -19,6 +19,7 @@ import {
 import { PanelSection } from '@/components/layout/PanelSection'
 import { activateScenario, scenarioEpoch } from '@/stores/scenarioSession'
 import { useScenarioStore } from '@/stores/scenarioStore'
+import { saveFile } from '@/utils/download'
 import { fmtMeters } from '@/utils/format'
 
 /**
@@ -106,7 +107,19 @@ export function ScenarioPanel() {
     },
   })
 
-  const error = realize.error ?? create.error ?? load.error ?? generate.error
+  // Phase 23A: MineExchange download — the backend is the only authority on
+  // what the bundle contains (manifest omissions); the panel never guesses
+  // artifact availability and generates no geometry.
+  const exportExchange = useMutation({
+    mutationFn: async () => {
+      if (!scenario) throw new Error('no scenario selected')
+      const file = await api.exportMineExchange(scenario.id)
+      saveFile(file.blob, file.filename)
+    },
+  })
+
+  const error =
+    realize.error ?? create.error ?? load.error ?? generate.error ?? exportExchange.error
   const errorText =
     error instanceof ApiError ? `${error.code}: ${error.message}` : error ? error.message : null
 
@@ -213,6 +226,16 @@ export function ScenarioPanel() {
           className="plate mt-2 w-full rounded-sm bg-lamp px-3 py-1.5 text-[13px] text-rock-950 hover:bg-lamp-deep hover:text-chalk disabled:cursor-not-allowed disabled:opacity-40"
         >
           {generate.isPending ? 'Generating world…' : scene ? 'Regenerate world' : 'Generate world'}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => exportExchange.mutate()}
+          disabled={!scenario || !scene || exportExchange.isPending}
+          title="Download the MineExchange v1 bundle (terrain, orebody, faults, and every generated design artifact)"
+          className="plate mt-2 w-full rounded-sm border border-rock-700 bg-rock-800 px-3 py-1.5 text-[13px] text-chalk hover:bg-rock-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {exportExchange.isPending ? 'Preparing export…' : 'Export MineExchange (.zip)'}
         </button>
 
         {errorText ? (
