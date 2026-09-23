@@ -17,6 +17,8 @@ import {
   type ScenarioPreset,
 } from '@/types/api'
 import { PanelSection } from '@/components/layout/PanelSection'
+import { ExportContents } from '@/components/panels/ExportContents'
+import { describeExportContents } from '@/components/panels/exportContents'
 import { activateScenario, scenarioEpoch } from '@/stores/scenarioSession'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { saveFile } from '@/utils/download'
@@ -232,11 +234,14 @@ export function ScenarioPanel() {
           type="button"
           onClick={() => exportExchange.mutate()}
           disabled={!scenario || !scene || exportExchange.isPending}
-          title="Download the MineExchange v1 bundle (terrain, orebody, faults, and every generated design artifact)"
+          title="Download the MineExchange v1 bundle of the currently available mine state (a world-only export is valid; missing layers are recorded in the manifest)"
           className="plate mt-2 w-full rounded-sm border border-rock-700 bg-rock-800 px-3 py-1.5 text-[13px] text-chalk hover:bg-rock-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {exportExchange.isPending ? 'Preparing export…' : 'Export MineExchange (.zip)'}
         </button>
+        <ExportContents
+          layers={describeExportContents(scene, (scenario?.shafts?.specs.length ?? 0) > 0)}
+        />
 
         {errorText ? (
           <p role="alert" className="mt-2 text-[11px] text-danger">

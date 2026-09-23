@@ -145,6 +145,10 @@ TEST_MARKERS: dict[str, tuple[str, ...]] = {
     "test_snapshot_change_during_export_is_refused": ("e2e",),
     "test_p5_p6_capability_absent_stale_and_malformed": ("e2e",),
     "test_legacy_ramp_export": ("e2e",),
+    "test_legacy_shaft_export_parents_capability_status_and_zero_apertures": ("e2e",),
+    "test_b1_every_network_edge_resolves_through_the_owning_contract": ("e2e",),
+    "test_s1_b3_aggregates_and_parents_on_the_real_chain": ("e2e",),
+    "test_b1_http_wrong_owner_geometry_ref_is_a_typed_409": ("e2e",),
     # Phase 20C.2B shaft + capability graph API lifecycle (legacy pipeline E2E)
     "test_shaft_and_capability_api_lifecycle": ("e2e",),
     # AC-01E artifact registry: every artifact built + regenerated through the

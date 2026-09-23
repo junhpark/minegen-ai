@@ -50,7 +50,7 @@ from minegen.exchange.formats.stl import (
 )
 from minegen.exchange.geometry.qa import mesh_qa
 from minegen.exchange.geometry.terrain import terrain_grid_rows, terrain_surface
-from minegen.exchange.models import COORDINATE_FRAME, SourceSnapshot
+from minegen.exchange.models import COORDINATE_FRAME, ExchangeEntity, SourceSnapshot
 from minegen.world.terrain import Terrain
 
 CANONICAL = np.array([[10.0, 20.0, 30.0]])
@@ -337,7 +337,22 @@ def _spec() -> BundleSpec:
                 False,
             ),
         ],
-        entities=[],
+        entities=[
+            ExchangeEntity(
+                entity_id="orebody:primary",
+                kind="OREBODY",
+                source_artifact="scenario.json",
+                source_id="orebody",
+                files=["orebody/orebody.stl"],
+            ),
+            ExchangeEntity(
+                entity_id="terrain:surface",
+                kind="TERRAIN",
+                source_artifact="arrays.npz",
+                source_id="terrain",
+                files=["terrain/terrain_grid.csv"],
+            ),
+        ],
         omissions=[],
         notes=[],
     )

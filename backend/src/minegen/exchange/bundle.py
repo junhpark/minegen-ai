@@ -13,7 +13,8 @@ import io
 import posixpath
 import zipfile
 
-from minegen.exchange.builder import BundleSpec
+from minegen.exchange.builder import BundleSpec, preflight_bundle
+from minegen.exchange.errors import ExchangeExportError
 from minegen.exchange.formats.json_document import dumps
 from minegen.exchange.models import (
     MINE_EXCHANGE_VERSION,
@@ -28,8 +29,9 @@ README_PATH = "README.txt"
 _ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
 
-class BundlePathError(ValueError):
-    pass
+class BundlePathError(ExchangeExportError, ValueError):
+    """An unsafe or duplicated bundle path — typed (409), still a ValueError
+    for callers that treat path validation generically."""
 
 
 def safe_relative_path(path: str) -> str:
@@ -98,8 +100,17 @@ def readme_text(manifest: ExchangeManifest) -> str:
         "",
         f"Coordinate frame: {manifest.coordinate_system.name} (X east, Y north, Z up), unit metre,",
         "CRS LOCAL_SYNTHETIC (no real-world georeference).",
-        "GLB files store canonical-frame vertices; their root node carries the explicit",
-        "mine -> glTF transform recorded as transformMatrix (x, y, z) -> (x, z, -y).",
+        "Two kinds of GLB exist and the manifest declares which is which (files[].glb):",
+        "  - exporter-created GLBs (terrain_surface.glb, orebody.glb, faults.glb):",
+        "    storedVertexFrame = LOCAL_ENU_Z_UP, sceneFrame = GLTF_Y_UP; the root node",
+        "    carries the mine -> glTF transform (x, y, z) -> (x, z, -y) as transformMatrix.",
+        "  - copied production render GLBs (excavations/render/*.glb): the production",
+        "    bytes verbatim; storedVertexFrame = sceneFrame = LOCAL_ENU_Z_UP and",
+        "    transformMatrix = null (the consumer applies the rotation itself); their",
+        "    junctionApertures flag comes from the source junction report (true / false /",
+        "    null = unknown), never assumed.",
+        "Shafts are represented by centerlines only (axis segments + station drives);",
+        "a shaft:<id> entity is an aggregate parent with no geometry file of its own.",
         "",
         "Included groups: " + ", ".join(groups),
         "Omissions:",
@@ -117,6 +128,7 @@ def write_bundle(spec: BundleSpec) -> tuple[bytes, ExchangeManifest]:
     """→ (zip bytes, manifest). The README and manifest are added after the
     payload files; README is listed in the manifest, the manifest itself
     describes the OTHER files and is not self-listed."""
+    preflight_bundle(spec)  # typed referential integrity before any byte is written
     manifest = build_manifest(spec)
     readme = readme_text(manifest).encode("utf-8")
     manifest.files.append(
@@ -136,7 +148,7 @@ def write_bundle(spec: BundleSpec) -> tuple[bytes, ExchangeManifest]:
     manifest.files.sort(key=lambda f: f.path)
     payload: dict[str, bytes] = {f.path: f.data for f in spec.files}
     if len(payload) != len(spec.files):
-        raise BundlePathError("duplicate bundle path")
+        raise BundlePathError("duplicate bundle path")  # unreachable after preflight
     payload[README_PATH] = readme
     payload[MANIFEST_PATH] = dumps(manifest.model_dump(mode="json", by_alias=True))
     buf = io.BytesIO()

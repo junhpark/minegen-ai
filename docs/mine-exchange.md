@@ -59,14 +59,20 @@ request runs; typed refusals through the existing `ApiError` display).
 | `crs` | `LOCAL_SYNTHETIC` — no EPSG, no UTM zone, no `.prj` |
 
 STL, OBJ, DXF and CSV store canonical `LOCAL_ENU_Z_UP` coordinates verbatim.
-GLB files written by the exporter store canonical vertices too and carry the
-mine → glTF rotation as the **root node matrix** (column-major
-`[1,0,0,0, 0,0,-1,0, 0,1,0,0, 0,0,0,1]`, i.e. `(x, y, z) → (x, z, −y)`, the
-same orientation the viewer applies). Each GLB manifest entry declares
-`glb.storedVertexFrame`, `glb.sceneFrame`, `glb.sourceFrame` and
-`glb.transformMatrix`. The copied render GLBs (`excavations/render/`) are the
-production bytes unchanged: canonical vertices, `transformMatrix = null`,
-`sceneFrame = LOCAL_ENU_Z_UP` (the consumer applies the rotation itself).
+Two kinds of GLB exist, and each GLB manifest entry declares which one it is
+through `glb.storedVertexFrame`, `glb.sceneFrame`, `glb.sourceFrame` and
+`glb.transformMatrix`:
+
+| GLB kind | files | stored vertices | scene frame | root transform |
+| --- | --- | --- | --- | --- |
+| exporter-created | `terrain/terrain_surface.glb`, `orebody/orebody.glb`, `geology/faults.glb` | `LOCAL_ENU_Z_UP` | `GLTF_Y_UP` | mine → glTF rotation as the **root node matrix** (column-major `[1,0,0,0, 0,0,-1,0, 0,1,0,0, 0,0,0,1]`, i.e. `(x, y, z) → (x, z, −y)`, the orientation the viewer applies), recorded as `transformMatrix` |
+| copied production render | `excavations/render/tunnel.glb`, `excavations/render/development.glb` | `LOCAL_ENU_Z_UP` | `LOCAL_ENU_Z_UP` | none — `transformMatrix = null`; the production bytes are copied **verbatim** and the consumer applies the rotation itself |
+
+The copied render GLBs' `geometry.junctionApertures` is read from the
+authoritative junction report of the source artifact (`junctions.count`,
+`openedEndpointCount`, `removedTriangles`, `openings[]`): any positive count
+→ `true`, every counter present and zero → `false`, no usable junction
+information → `null`. It is never assumed.
 
 ## Bundle tree
 
@@ -92,11 +98,31 @@ production bytes unchanged: canonical vertices, `transformMatrix = null`,
       semantics/capability.json         capability DTO (edge capabilities, required paths, egress advisory)
 
 A world-only scenario yields `terrain/`, `orebody/`, `geology/` and records
-everything else under `manifest.omissions[]` (`ARTIFACT_ABSENT`). A present
-but STALE / MALFORMED artifact is **never** treated as absent — the export is
-refused with the artifact's own typed code (validated-read semantics). Files
-are never faked; `NOT_IN_V1` omissions name what v1 deliberately leaves out
-(stopes, timeline, field lattice).
+everything else under `manifest.omissions[]` (`ARTIFACT_ABSENT`). Partial
+exports (world-only, world + ramp, world + ramp + levels, …) are the normal
+case: the bundle is a portable snapshot of the currently valid authoritative
+state, and the exporter never generates or recomputes a design to fill a
+gap. Four situations are kept distinct:
+
+| source state | export outcome |
+| --- | --- |
+| absent | omission `ARTIFACT_ABSENT` for that group |
+| present, VALID, status `FAILED` (optional source: level accesses, levels, shafts, network, capability graph, render meshes) | omission `SOURCE_NOT_SUCCESS` with the artifact, its status and `failureReason` in `detail`; the rest of the bundle is unaffected |
+| present but STALE | typed refusal with the artifact's own code (e.g. `CAPABILITY_GRAPH_STALE`, `LAYOUT_V2_SELECTION_STALE`) — never treated as absent |
+| present but MALFORMED | typed refusal `ARTIFACT_MALFORMED` |
+
+Files are never faked; `NOT_IN_V1` omissions name what v1 deliberately leaves
+out (stopes, timeline, field lattice). A defect in the exporter's own
+projection — an unresolvable network geometry reference, a duplicated entity
+id or bundle path, a dangling parent, an unrecognised development id, a
+closed-solid QA failure — is a typed `409 MINE_EXCHANGE_EXPORT_FAILED`
+(`exchange/errors.py`), never a bare 500 and never a partial bundle with a
+silent `null`. A bundle **preflight** (`builder.py::preflight_bundle`) checks
+referential integrity before any byte is written: unique entity ids, unique
+safe paths, every `entities[].files` entry present, every non-null
+`parentEntityId` and every excavation / geology `sourceEntityIds` entry
+resolving to an entity, and every exported network edge's
+`geometryEntityId` resolving.
 
 ## Manifest schema (1.0.0)
 
@@ -105,7 +131,8 @@ are never faked; `NOT_IN_V1` omissions name what v1 deliberately leaves out
     coordinateSystem      { name, crs, axes, axisOrder, verticalAxis, handedness, unit }
     units                 { length, angle, volume }
     sourceSnapshot        { scenarioRevision, arraysRevision, activeRampSource, artifactRevisions{} }
-    entities[]            { entityId, kind, levelId, sourceArtifact, sourceId, parentEntityId, files[] }
+    entities[]            { entityId, kind, levelId, sourceArtifact, sourceId, sourceMemberIds?,
+                            parentEntityId, files[] }
     files[]               { path, sha256, mediaType, semanticType, representation,
                             sourceEntityIds[], sourceArtifact, sourceRevision,
                             coordinateFrame, derived, geometry?, glb?, components?, dxfEntities?, notes[] }
@@ -137,16 +164,30 @@ reused; new ids follow a documented deterministic rule
 | terrain | `terrain:surface` | |
 | orebody | `orebody:primary` | |
 | fault | `fault:F<nn>` (1-based scenario order) | `fault:F01` |
-| main ramp | `ramp:main`; per segment `ramp:main:<segmentId>` | `ramp:main:S02` |
+| main ramp | `ramp:main` (aggregate); per segment `ramp:main:<segmentId>` | `ramp:main:S02` |
 | level access | `level-access:<levelId>` | `level-access:L01` |
-| drift | `drift:<levelId>` (solid) / `drift:<levelId>:<piece>` (pieces) | `drift:L01`, `drift:L01:00` |
+| drift | `drift:<levelId>` (aggregate + solid) / `drift:<levelId>:<piece>` (pieces) | `drift:L01`, `drift:L01:00` |
 | crosscut | `crosscut:<levelId>:<station>` | `crosscut:L01:S+00` |
-| shaft | `shaft:<id>`, `shaft-station-access:<id>` | |
+| shaft | `shaft:<shaftId>` (aggregate, kind `SHAFT`); axis segments `shaft:<centerlineId>` (kind `SHAFT_SEGMENT`, parent `shaft:<shaftId>`); station drives `shaft-station-access:<centerlineId>` | `shaft:SHAFT-01`, `shaft:SHAFT:SHAFT-01:SEG00` |
 
-STL file stems replace `:` with `_` (`excavations/solids/crosscut_L01_S+00.stl`);
-`entities[].files` maps each entity to its files, `files[].sourceEntityIds`
-maps back, and DXF entities carry a `handle → entityId` table in the
-manifest (`files[].dxfEntities`).
+**Aggregates** (`ramp:main`, `drift:<levelId>`, `shaft:<shaftId>`) are parent
+entities: `sourceId` is `null` (the ramp and drift aggregates have no single
+authoritative id; the shaft aggregate carries its `shaftId`) and
+`sourceMemberIds[]` lists the authoritative member ids in persisted order
+(segment ids, drift piece ids, shaft axis segment ids). Every non-null
+`parentEntityId` resolves to an entity in the same manifest. The shaft
+aggregate owns **no geometry** (`files = []`): shafts are represented by
+centerlines only — the axis segments and station drives — and no shaft solid,
+Boolean or reinterpretation is emitted. `excavations/entities.json` lists the
+aggregates with `ownsGeometry`.
+
+STL file stems are deterministic, **injective** and path-safe: the sanitized
+entity id (`:` and other unsafe characters → `_`) followed by the first 8 hex
+characters of the entity id's SHA-256, e.g.
+`excavations/solids/crosscut_L01_S+00_73a3bcb0.stl`. Consumers resolve files
+through `entities[].files` / `files[].sourceEntityIds`, never by
+reconstructing a stem (`a:b` and `a_b` cannot collide). DXF entities carry a
+`handle → entityId` table in the manifest (`files[].dxfEntities`).
 
 ## Terrain semantics
 
@@ -187,9 +228,11 @@ solids.
 
 1. **Render surfaces** (`excavations/render/*.glb`, `RENDER_SURFACE`): the
    production `tunnel_mesh.glb` / `development_mesh.glb` bytes copied
-   verbatim, with the typed junction apertures opened. `closed` is the source
-   report's `geometricallyClosed` for the ramp; the development render mesh
-   has OPEN endpoint policy and is reported `closed = false`.
+   verbatim. `junctionApertures` states whether typed junction apertures are
+   opened in those bytes, read from the source junction report (`true` /
+   `false` / `null` = unknown, see the coordinate contract). `closed` is the
+   source report's `geometricallyClosed` for the ramp; the development render
+   mesh has OPEN endpoint policy and is reported `closed = false`.
 2. **Individual closed solids** (`excavations/solids/*.stl`,
    `CLOSED_LOGICAL_SWEEP`): the CAP–CAP logical sweep of every RAMP /
    LEVEL_ACCESS / DRIFT / CROSSCUT on its authoritative centerline with the
@@ -232,21 +275,37 @@ tag-level parser in the test-suite.
 
 `topology/network.json` is a MineExchange DTO — not the internal
 `network.json`. Nodes: `id, type, position, levelId, surface`; edges: `id,
-type, sourceNodeId, targetNodeId, geometryEntityId, length, orientation,
-crossSection`. Edge direction is the storage / centerline direction
+type, sourceNodeId, targetNodeId, geometryEntityId, geometryContract, length,
+orientation, crossSection`. Every physical edge's `geometryRef` is resolved
+through the canonical `minegen.network.geometry_refs.resolve_owning_centerline`
+**with its edge type** (RAMP → the active ramp owning artifact, LEVEL_ACCESS →
+`level_accesses.json`, DRIFT / CROSSCUT → `levels.json`, SHAFT /
+SHAFT_STATION_ACCESS → `shafts.json`; non-negative integer index in range;
+flat, numeric, finite centerline), then checked to be the ACTIVE ramp
+artifact for RAMP edges and an exported centerline entity. Any failure —
+wrong owner, out-of-range index, absent owner, malformed geometry, resolved
+geometry not exported, a network built over the inactive ramp — is a typed
+`MINE_EXCHANGE_EXPORT_FAILED` refusal, never a silent `null`.
+`geometryContract = OWNING_CENTERLINE` marks a resolved edge; only an edge
+type with no owning-centerline contract (RAISE, rule 184) is exported with
+`geometryContract = NONE` and `geometryEntityId = null`, and no geometry is
+invented for it. Edge direction is the storage / centerline direction
 (`directionSemantics` explains this); it does **not** mean one-way traffic
 and no traffic semantics are exported because none exist in the authority.
 The CSVs are convenience tables; JSON is the semantic authority.
 
 ## Capability semantics
 
-`semantics/capability.json` projects the capability graph: capability list,
+`semantics/capability.json` projects a **SUCCESS** capability graph: capability list,
 per-edge typed may / may-not tags with their `source`, node `supports`,
 surface node ids, required paths with **both** `physicalReachable` and
 `capabilityReachable` (never conflated) and `satisfied`, the egress advisory
 (`advisoryOnly = true`, explicitly a design advisory — never a statutory or
 regulatory compliance determination) and the build-time validation summary.
-Capability ≠ capacity: no tonnes / hour, people / hour or airflow.
+Capability ≠ capacity: no tonnes / hour, people / hour or airflow. A present
+but FAILED capability graph yields no `capability.json` and an omission
+`CAPABILITY / SOURCE_NOT_SUCCESS` (status + failure reason in `detail`);
+STALE / MALFORMED graphs are typed refusals as everywhere else.
 
 Geometry ≠ topology ≠ capability: a DXF polyline does not mean connected, a
 network edge does not mean personnel-capable, a capability does not mean a
@@ -270,6 +329,18 @@ capability graph, tunnel / development reports and GLB bytes), checks the
 world binding against it, builds the bundle, then re-snapshots and refuses
 with `READ_SNAPSHOT_CHANGED` if any revision or presence changed meanwhile.
 A bundle never mixes revisions.
+
+## Frontend
+
+The Scenario panel's "Export MineExchange (.zip)" button downloads the bundle
+of the currently available state; a world is the only prerequisite and the
+button is never disabled because a design layer is missing. Beneath it,
+"Current export contents" (`components/panels/exportContents.ts`) lists each
+layer as included / not generated / failed, read from the already-loaded
+scene snapshot only — no generation endpoint is called and nothing is
+inferred — with the helper text "MineExchange exports the currently available
+mine state. Layers not yet generated are omitted and recorded in the
+manifest." The manifest remains the authority on the bundle's content.
 
 ## Exclusions in v1 (`NOT_IN_V1` / non-scope)
 

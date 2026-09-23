@@ -1869,6 +1869,15 @@ code, the code and the rule win and the map is corrected.
      derived artifact, and reuses the production sweep helpers
      (`ramp_logical_sweep`, `closed_sweep`) rather than a second
      geometry algorithm; absent optional artifacts are manifest
-     omissions, present STALE / MALFORMED artifacts are typed refusals,
-     and a mandatory entity failing its closed-solid QA fails the whole
-     export.
+     omissions (ARTIFACT_ABSENT), present-but-FAILED optional artifacts
+     are explicit SOURCE_NOT_SUCCESS omissions, present STALE / MALFORMED
+     artifacts are typed refusals, and a mandatory entity failing its
+     closed-solid QA fails the whole export. Every network geometryRef is
+     resolved through the canonical `resolve_owning_centerline` (per edge
+     type) and verified against the exported entities; aggregate entities
+     (ramp, drift, shaft) carry `sourceId = null` + `sourceMemberIds` and a
+     shaft aggregate owns no geometry (centerlines only); file stems are
+     injective (sanitized id + short hash); a bundle preflight refuses
+     duplicate ids / paths and dangling references; every projection
+     defect is a typed 409 MINE_EXCHANGE_EXPORT_FAILED, never a bare 500
+     or a silent null.

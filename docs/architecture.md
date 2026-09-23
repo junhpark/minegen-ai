@@ -87,8 +87,11 @@ here. Per-phase decision records below keep their original wording.
                        bundle (ZIP + manifest integrity), geometry
                        projections (terrain, orebody, faults, centerlines,
                        closed excavation solids through the production
-                       sweep helpers) and pure format writers (STL, OBJ,
-                       GLB, DXF, ASC, CSV, JSON); docs/mine-exchange.md
+                       sweep helpers), pure format writers (STL, OBJ,
+                       GLB, DXF, ASC, CSV, JSON) and the typed projection
+                       failure (errors.py, 409 MINE_EXCHANGE_EXPORT_FAILED);
+                       network geometryRefs resolve through
+                       network/geometry_refs.py; docs/mine-exchange.md
       services/        scenario persistence, world / design / infrastructure
                        orchestration, async job service
       api/             FastAPI routers (thin; no algorithms)

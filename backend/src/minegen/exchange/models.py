@@ -94,6 +94,7 @@ EntityKind = Literal[
     "DRIFT_PIECE",
     "CROSSCUT",
     "SHAFT",
+    "SHAFT_SEGMENT",
     "SHAFT_STATION_ACCESS",
 ]
 
@@ -170,8 +171,13 @@ class ExchangeEntity(ApiModel):
     kind: EntityKind
     level_id: str | None = None
     source_artifact: str | None
-    #: the authoritative id inside the source artifact (never a list index)
+    #: the authoritative id inside the source artifact (never a list index);
+    #: ``null`` for an AGGREGATE entity (ramp:main, drift:<level>, shaft:<id>)
+    #: whose members are listed in ``sourceMemberIds`` instead of a selector
     source_id: str | None
+    #: aggregate entities only: the authoritative member ids (segment ids,
+    #: drift piece ids, shaft segment ids) in their persisted order
+    source_member_ids: list[str] | None = None
     parent_entity_id: str | None = None
     files: list[str]
 
@@ -235,8 +241,12 @@ class ExchangeNetworkEdge(ApiModel):
     type: str
     source_node_id: str
     target_node_id: str
-    #: the exported centerline entity that owns this edge's geometry
+    #: the exported centerline entity that owns this edge's geometry —
+    #: resolved through the canonical ``resolve_owning_centerline`` and
+    #: verified to be an exported entity; ``null`` ONLY for an edge type with
+    #: no owning-centerline contract (``geometryContract = NONE``: RAISE)
     geometry_entity_id: str | None
+    geometry_contract: Literal["OWNING_CENTERLINE", "NONE"] = "OWNING_CENTERLINE"
     length: float
     orientation: str
     cross_section: dict[str, Any] | None

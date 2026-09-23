@@ -114,6 +114,13 @@ class Bundle:
     def omissions(self) -> dict[str, str]:
         return {o["group"]: o["reasonCode"] for o in self.manifest["omissions"]}
 
+    def solid_path(self, entity_id: str) -> str:
+        """The closed-solid STL of an entity, resolved through the manifest
+        (file stems are hashed, never derived from the id by the consumer)."""
+        return next(
+            p for p in self.entities[entity_id]["files"] if p.endswith(".stl") and "/solids/" in p
+        )
+
 
 def export(client: TestClient, sid: str) -> Bundle:
     r = client.post(f"/api/v1/scenarios/{sid}{EXPORT}")
@@ -420,11 +427,7 @@ def test_e5_export_solids_are_the_production_base_logical_sweep(tabular: Tabular
         near = junction_points.get(spec.development_id)
         swept = builder.sweep(spec, shape, np.asarray(near) if near else None)
         assert swept.closed is not None
-        stem = spec.development_id.replace(":", "_")
-        stem = {"LEVEL_ACCESS": "level-access", "DRIFT": "drift", "CROSSCUT": "crosscut"}[
-            str(spec.kind)
-        ] + stem[len(str(spec.kind)) :]
-        p, t = b.stl(f"excavations/solids/{stem}.stl")
+        p, t = b.stl(b.solid_path(development_entity_id(spec.development_id)))
         prod = np.unique(np.asarray(swept.closed.positions, dtype=np.float32), axis=0)
         np.testing.assert_array_equal(p.astype(np.float32), prod)
         assert t.shape[0] == swept.closed.triangles.shape[0]
@@ -447,7 +450,7 @@ def test_e5_export_solids_are_the_production_base_logical_sweep(tabular: Tabular
         return np.unique(np.vstack(out), axis=0)
 
     ramp_glb = glb_vertices("excavations/render/tunnel.glb")
-    p, _ = b.stl("excavations/solids/ramp_main.stl")
+    p, _ = b.stl(b.solid_path("ramp:main"))
     ramp_set = {tuple(v) for v in ramp_glb.tolist()}
     assert all(tuple(v) in ramp_set for v in p.astype(np.float32).tolist())
 
@@ -457,8 +460,13 @@ def test_e6_junction_connected_solids_stay_closed_and_overlap(tabular_bundle: Bu
     levels = b.json("excavations/entities.json")
     drift = next(e for e in levels["centerlines"] if e["kind"] == "DRIFT_PIECE")
     level = drift["levelId"]
-    d_path = f"excavations/solids/drift_{level}.stl"
-    x_path = next(p for p in _solids(b) if p.startswith(f"excavations/solids/crosscut_{level}_"))
+    d_path = b.solid_path(f"drift:{level}")
+    x_path = next(
+        p
+        for p, f in _solids(b).items()
+        if b.entities[f["sourceEntityIds"][0]]["kind"] == "CROSSCUT"
+        and b.entities[f["sourceEntityIds"][0]]["levelId"] == level
+    )
     dp, dt = b.stl(d_path)
     xp, xt = b.stl(x_path)
     assert mesh_qa(dp, dt).closed_solid and mesh_qa(xp, xt).closed_solid
@@ -488,8 +496,7 @@ def test_e7_e8_multibody_is_a_concatenation_never_a_union(tabular_bundle: Bundle
     first = 0
     for c in comps:
         assert c["firstTriangle"] == first
-        stem = c["entityId"].replace(":", "_")
-        comp_tris, _ = read_binary_stl(b.entries[f"excavations/solids/{stem}.stl"])
+        comp_tris, _ = read_binary_stl(b.entries[b.solid_path(c["entityId"])])
         np.testing.assert_array_equal(tris[first : first + c["triangleCount"]], comp_tris)
         first += c["triangleCount"]
     for bad in ("excavation.stl", "mine_solid.stl", "watertight_mine.stl"):
@@ -507,11 +514,24 @@ def test_render_glbs_are_verbatim_source_bytes(
         assert b.entries[path] == (tabular.derived / src).read_bytes()
         f = b.files[path]
         assert f["representation"] == "RENDER_SURFACE"
-        assert f["geometry"]["junctionApertures"] is True and f["geometry"]["unioned"] is False
+        assert f["geometry"]["unioned"] is False
+        assert f["glb"]["transformMatrix"] is None
+        assert f["glb"]["storedVertexFrame"] == f["glb"]["sceneFrame"] == "LOCAL_ENU_Z_UP"
     tunnel_report = tabular.artifact("tunnel_mesh.json")
     assert b.files["excavations/render/tunnel.glb"]["geometry"]["closed"] == bool(
         tunnel_report["geometricallyClosed"]
     )
+    # B5: the aperture flag is the source junction report's fact, never assumed
+    for path, report in (
+        ("excavations/render/tunnel.glb", tunnel_report),
+        ("excavations/render/development.glb", tabular.artifact("development_mesh.json")),
+    ):
+        count = report["junctions"]["count"]
+        assert count > 0  # the layout-v2 chain opens RAMP_ACCESS turnouts
+        assert b.files[path]["geometry"]["junctionApertures"] is (count > 0)
+    # exporter-created GLBs are the other kind: rotated scene, explicit root transform
+    created = b.files["orebody/orebody.glb"]["glb"]
+    assert created["sceneFrame"] == "GLTF_Y_UP" and created["transformMatrix"] is not None
 
 
 # -- L1–L4 ------------------------------------------------------------------ #
@@ -599,6 +619,56 @@ def test_n1_n5_network_projection(tabular: TabularStack, tabular_bundle: Bundle)
     assert [ln.split(",")[0] for ln in edges_csv[1:]] == [e["id"] for e in net["edges"]]
 
 
+def test_b1_every_network_edge_resolves_through_the_owning_contract(
+    tabular: TabularStack, tabular_bundle: Bundle
+) -> None:
+    b = tabular_bundle
+    src = tabular.artifact(NETWORK_ARTIFACT)
+    net = b.json("topology/network.json")
+    expected_owner = {
+        "RAMP": "layout_v2_selected.json",
+        "LEVEL_ACCESS": "level_accesses.json",
+        "DRIFT": "levels.json",
+        "CROSSCUT": "levels.json",
+    }
+    for out, inp in zip(net["edges"], src["edges"], strict=True):
+        assert out["geometryContract"] == "OWNING_CENTERLINE"
+        assert inp["geometryRef"]["artifact"] == expected_owner[inp["type"]]
+        ent = b.entities[out["geometryEntityId"]]
+        assert ent["sourceArtifact"] == inp["geometryRef"]["artifact"]
+        assert (
+            ent["kind"]
+            == {
+                "RAMP": "RAMP_SEGMENT",
+                "LEVEL_ACCESS": "LEVEL_ACCESS",
+                "DRIFT": "DRIFT_PIECE",
+                "CROSSCUT": "CROSSCUT",
+            }[inp["type"]]
+        )
+    edges_csv = b.text("topology/edges.csv").splitlines()
+    assert edges_csv[0].split(",")[5] == "geometryContract"
+
+
+def test_s1_b3_aggregates_and_parents_on_the_real_chain(tabular_bundle: Bundle) -> None:
+    b = tabular_bundle
+    ramp = b.entities["ramp:main"]
+    assert ramp["sourceId"] is None
+    segments = [
+        c["sourceId"]
+        for c in b.json("excavations/entities.json")["centerlines"]
+        if c["kind"] == "RAMP_SEGMENT"
+    ]
+    assert ramp["sourceMemberIds"] == segments and len(segments) > 1
+    drifts = [e for e in b.manifest["entities"] if e["kind"] == "DRIFT"]
+    assert drifts and all(d["sourceId"] is None and d["sourceMemberIds"] for d in drifts)
+    for e in b.manifest["entities"]:
+        if e["parentEntityId"] is not None:
+            assert e["parentEntityId"] in b.entities, e["entityId"]
+        for path in e["files"]:
+            assert path in b.entries, (e["entityId"], path)
+    assert "segments[*]" not in json.dumps(b.manifest)
+
+
 # -- P1–P4 ------------------------------------------------------------------ #
 
 
@@ -678,6 +748,30 @@ def test_p5_p6_capability_absent_stale_and_malformed(tabular: TabularStack) -> N
     assert "semantics/capability.json" in export(tabular.client, tabular.sid).entries
 
 
+def test_b1_http_wrong_owner_geometry_ref_is_a_typed_409(tabular: TabularStack) -> None:
+    net_path = tabular.derived / NETWORK_ARTIFACT
+    cap_path = tabular.derived / CAPABILITY_GRAPH_ARTIFACT
+    original = net_path.read_bytes()
+    st0 = net_path.stat()
+    cap_path.unlink()  # the capability graph is bound to the network revision
+    doc = json.loads(original)
+    ramp_edge = next(e for e in doc["edges"] if e["type"] == "RAMP")
+    ramp_edge["geometryRef"] = {"artifact": LEVELS_ARTIFACT, "segmentIndex": 0}
+    net_path.write_text(json.dumps(doc), encoding="utf-8")
+    try:
+        r = tabular.client.post(f"/api/v1/scenarios/{tabular.sid}{EXPORT}")
+        assert r.status_code == 409, r.text
+        detail = r.json()["detail"]
+        assert detail["code"] == "MINE_EXCHANGE_EXPORT_FAILED", detail
+        assert "must be owned by" in detail["message"] and ramp_edge["id"] in detail["message"]
+    finally:
+        net_path.write_bytes(original)
+        os.utime(net_path, ns=(st0.st_atime_ns, st0.st_mtime_ns))
+    r = tabular.client.post(f"/api/v1/scenarios/{tabular.sid}/design/capability-graph")
+    assert r.status_code == 200, r.text
+    assert "semantics/capability.json" in export(tabular.client, tabular.sid).entries
+
+
 # --------------------------------------------------------------------------- #
 # e2e — LEGACY active ramp
 # --------------------------------------------------------------------------- #
@@ -693,7 +787,7 @@ def test_legacy_ramp_export(client: TestClient, store: ScenarioStore) -> None:
     assert b.manifest["sourceSnapshot"]["activeRampSource"] == "LEGACY"
     ramp = b.entities["ramp:main"]
     assert ramp["sourceArtifact"] == LEGACY_RAMP_ARTIFACT
-    assert b.stl_qa("excavations/solids/ramp_main.stl").closed_solid
+    assert b.stl_qa(b.solid_path("ramp:main")).closed_solid
     assert "excavations/render/tunnel.glb" not in b.entries
     om = b.omissions()
     assert om["RENDER_GLB"] == "ARTIFACT_ABSENT" and om["NETWORK"] == "ARTIFACT_ABSENT"
@@ -701,6 +795,89 @@ def test_legacy_ramp_export(client: TestClient, store: ScenarioStore) -> None:
     rows = [ln.split(",") for ln in b.text("excavations/centerlines.csv").splitlines()[1:]]
     n_pts = sum(s["effectiveCenterline"]["pointCount"] for s in doc["segments"])
     assert len(rows) == n_pts
+
+
+def test_legacy_shaft_export_parents_capability_status_and_zero_apertures(
+    client: TestClient, store: ScenarioStore
+) -> None:
+    """B3 on a REAL shafts.json, B2 on a real persisted FAILED capability
+    graph, B5 with a confirmed-zero junction report (LEGACY ramp: no level
+    accesses, so the tunnel mesh opens no aperture)."""
+    from tests.test_network_api import _levels, _network
+    from tests.test_shafts_api import _capability, _prepare_with_shaft, _shafts
+    from tests.test_tunnel_api import _tunnel
+
+    sid = _prepare_with_shaft(client)
+    _decline(client, sid)
+    r = client.post(f"/api/v1/scenarios/{sid}/design/decline/smooth", params={"sync": "true"})
+    assert r.status_code == 200 and r.json()["status"] == "SUCCESS", r.text
+    tunnel = _tunnel(client, sid)
+    assert tunnel["status"] == "SUCCESS", tunnel["failureReason"]
+    assert _levels(client, sid)["status"] == "SUCCESS"
+    shafts = _shafts(client, sid)
+    assert shafts["status"] == "SUCCESS", shafts["failureReason"]
+    assert _network(client, sid)["status"] == "SUCCESS"
+    assert _capability(client, sid)["status"] == "SUCCESS"
+
+    b = export(client, sid)
+    assert_integrity(b)
+    # B3 — aggregate shaft parents, centerline-only shafts
+    shaft_ids = [s["shaftId"] for s in shafts["shafts"] if s["status"] == "OK"]
+    assert shaft_ids == ["SHAFT-01"]
+    agg = b.entities["shaft:SHAFT-01"]
+    assert agg["kind"] == "SHAFT" and agg["sourceId"] == "SHAFT-01" and agg["files"] == []
+    seg_ids = [shafts["centerlines"][i]["id"] for i in shafts["shafts"][0]["segmentIndices"]]
+    assert agg["sourceMemberIds"] == seg_ids and len(seg_ids) >= 2
+    for seg in seg_ids:
+        ent = b.entities[f"shaft:{seg}"]
+        assert ent["kind"] == "SHAFT_SEGMENT" and ent["parentEntityId"] == "shaft:SHAFT-01"
+    stations = [c for c in shafts["centerlines"] if c["kind"] == "STATION_ACCESS"]
+    assert stations
+    for c in stations:
+        ent = b.entities[f"shaft-station-access:{c['id']}"]
+        assert ent["kind"] == "SHAFT_STATION_ACCESS" and ent["parentEntityId"] is None
+    for e in b.manifest["entities"]:
+        if e["parentEntityId"] is not None:
+            assert e["parentEntityId"] in b.entities, e["entityId"]
+    solids = _solids(b)
+    assert not any(
+        b.entities[f["sourceEntityIds"][0]]["kind"].startswith("SHAFT") for f in solids.values()
+    )
+    # network: SHAFT / SHAFT_STATION_ACCESS edges map onto the shaft centerlines
+    net = b.json("topology/network.json")
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for e in net["edges"]:
+        by_type.setdefault(e["type"], []).append(e)
+    assert by_type["SHAFT"] and by_type["SHAFT_STATION_ACCESS"]
+    for e in by_type["SHAFT"]:
+        assert b.entities[e["geometryEntityId"]]["kind"] == "SHAFT_SEGMENT"
+    for e in by_type["SHAFT_STATION_ACCESS"]:
+        assert b.entities[e["geometryEntityId"]]["kind"] == "SHAFT_STATION_ACCESS"
+    assert all(e["geometryContract"] == "OWNING_CENTERLINE" for e in net["edges"])
+    # B5 — the legacy tunnel mesh has no turnout: apertures confirmed FALSE
+    report = json.loads((store.derived_dir(sid) / "tunnel_mesh.json").read_text())
+    assert report["junctions"]["count"] == 0
+    assert b.files["excavations/render/tunnel.glb"]["geometry"]["junctionApertures"] is False
+    assert (
+        b.entries["excavations/render/tunnel.glb"]
+        == (store.derived_dir(sid) / "tunnel_mesh.glb").read_bytes()
+    )
+
+    # B2 — a VALID persisted FAILED capability graph: partial bundle, explicit omission
+    cap_path = store.derived_dir(sid) / CAPABILITY_GRAPH_ARTIFACT
+    good = cap_path.read_text(encoding="utf-8")
+    failed = json.loads(good)
+    failed["status"] = "FAILED"
+    failed["failureReason"] = "EGRESS_UNSATISFIED: synthetic"
+    cap_path.write_text(json.dumps(failed), encoding="utf-8")
+    partial = export(client, sid)
+    assert "semantics/capability.json" not in partial.entries
+    assert "topology/network.json" in partial.entries
+    om = next(o for o in partial.manifest["omissions"] if o["group"] == "CAPABILITY")
+    assert om["reasonCode"] == "SOURCE_NOT_SUCCESS"
+    assert "FAILED" in om["detail"] and "EGRESS_UNSATISFIED" in om["detail"]
+    cap_path.write_text(good, encoding="utf-8")
+    assert "semantics/capability.json" in export(client, sid).entries
 
 
 # --------------------------------------------------------------------------- #

@@ -15,6 +15,7 @@ Bundle tree (``mine_exchange/``)::
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -28,6 +29,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_ARTIFACT,
 )
 from minegen.core.models import Scenario
+from minegen.exchange.errors import ExchangeExportError
 from minegen.exchange.formats.asc import write_esri_ascii_grid
 from minegen.exchange.formats.csv_table import write_csv
 from minegen.exchange.formats.dxf import DxfDocument, DxfPolygon, DxfPolyline, write_dxf
@@ -37,11 +39,15 @@ from minegen.exchange.formats.obj import write_obj
 from minegen.exchange.formats.stl import concatenate_stl_triangles, write_binary_stl
 from minegen.exchange.geometry.centerlines import (
     RAMP_ENTITY_ID,
+    AggregateEntity,
     CenterlineEntity,
     access_centerlines,
+    drift_aggregates,
     geometry_ref_index,
     level_centerlines,
+    ramp_aggregate,
     ramp_centerlines,
+    shaft_aggregates,
     shaft_centerlines,
 )
 from minegen.exchange.geometry.excavation import (
@@ -73,6 +79,11 @@ from minegen.exchange.models import (
     MultiBodyComponent,
     SourceSnapshot,
 )
+from minegen.network.geometry_refs import (
+    OWNING_ARTIFACTS_BY_EDGE_TYPE,
+    GeometryRefError,
+    resolve_owning_centerline,
+)
 from minegen.world.synthetic_world import SyntheticWorld
 
 __all__ = [
@@ -96,16 +107,7 @@ _MEDIA = {
 }
 
 
-class ExchangeExportError(RuntimeError):
-    """A mandatory bundle member cannot be produced honestly (a closed-solid
-    QA failure on backend-authored geometry, a sweep failure) — the whole
-    export fails; no partial bundle is ever returned."""
-
-    code = "MINE_EXCHANGE_EXPORT_FAILED"
-    http_status = 409
-
-    def __init__(self, detail: str) -> None:
-        super().__init__(f"MineExchange export failed: {detail}")
+__all__ = ["ExchangeExportError"]  # re-exported for the API layer
 
 
 @dataclass(frozen=True)
@@ -168,6 +170,9 @@ class BundleSpec:
     entities: list[ExchangeEntity]
     omissions: list[ExchangeOmission]
     notes: list[str]
+    #: every exported network edge that claims a geometry entity
+    #: ``(edge id, geometryEntityId)`` — re-checked by ``preflight_bundle``
+    network_geometry_refs: list[tuple[str, str]] = field(default_factory=list)
 
 
 def _glb_frame() -> GlbFrame:
@@ -188,10 +193,18 @@ def _copied_glb_frame() -> GlbFrame:
     )
 
 
-def file_stem(entity_id: str) -> str:
-    """Deterministic file name of an entity: ``:`` → ``_``; other characters
-    kept when path-safe."""
-    return re.sub(r"[^A-Za-z0-9_+\-.]", "_", entity_id.replace(":", "_"))
+FILE_STEM_HASH_CHARS = 8
+
+
+def entity_file_stem(entity_id: str) -> str:
+    """Deterministic, INJECTIVE and path-safe file stem of an entity id
+    (PR #44 correction B4): a readable sanitized form (``:`` and every other
+    unsafe character → ``_``) followed by the first 8 hex characters of the
+    entity id's SHA-256, so ``a:b`` and ``a_b`` never collide
+    (``ramp_main_d0f3fde5``). Stable across runs and platforms."""
+    readable = re.sub(r"[^A-Za-z0-9_+\-.]", "_", entity_id).strip(".") or "entity"
+    digest = hashlib.sha256(entity_id.encode("utf-8")).hexdigest()[:FILE_STEM_HASH_CHARS]
+    return f"{readable}_{digest}"
 
 
 # --------------------------------------------------------------------------- #
@@ -209,7 +222,7 @@ def build_exchange(inputs: ExchangeInputs) -> BundleSpec:
     _orebody(inputs, files, entities)
     _faults(inputs, files, entities)
     centerlines = _excavations(inputs, files, entities, omissions)
-    _topology(inputs, centerlines, files, entities, omissions)
+    geometry_refs = _topology(inputs, centerlines, files, omissions)
     _capability(inputs, files, omissions)
     for group, detail in (
         ("STOPES", "planned stope geometry is a Phase 21A.2 MineExchange extension"),
@@ -232,7 +245,7 @@ def build_exchange(inputs: ExchangeInputs) -> BundleSpec:
     notes.append(
         "Dual-egress and required capability paths are design advisories, never statutory claims."
     )
-    return BundleSpec(
+    spec = BundleSpec(
         scenario_id=inputs.scenario.id,
         scenario_name=inputs.scenario.name,
         source_snapshot=SourceSnapshot(
@@ -245,7 +258,58 @@ def build_exchange(inputs: ExchangeInputs) -> BundleSpec:
         entities=entities,
         omissions=omissions,
         notes=notes,
+        network_geometry_refs=geometry_refs,
     )
+    preflight_bundle(spec)
+    return spec
+
+
+#: files whose ``sourceEntityIds`` name MineNetwork node / edge ids (topology
+#: identity), not exchange entities
+_NON_ENTITY_SOURCE_TYPES = frozenset(
+    {"MINE_NETWORK", "MINE_NETWORK_NODES", "MINE_NETWORK_EDGES", "CAPABILITY", "README"}
+)
+
+
+def preflight_bundle(spec: BundleSpec) -> None:
+    """Referential integrity BEFORE any byte is written (PR #44 correction
+    B4): unique entity ids, unique safe bundle paths, every ``entities[].files``
+    entry present, every non-null ``parentEntityId`` resolving to an entity,
+    every excavation / geology file's ``sourceEntityIds`` resolving, and every
+    exported network edge's ``geometryEntityId`` resolving. Any defect is a
+    typed ``ExchangeExportError`` (409), never a partial bundle."""
+    from minegen.exchange.bundle import BundlePathError, safe_relative_path
+
+    entity_ids: set[str] = set()
+    for e in spec.entities:
+        if e.entity_id in entity_ids:
+            raise ExchangeExportError(f"duplicate entity id {e.entity_id!r}")
+        entity_ids.add(e.entity_id)
+    paths: set[str] = set()
+    for f in spec.files:
+        norm = safe_relative_path(f.path)  # BundlePathError is a typed ExchangeExportError
+        if norm in paths:
+            raise BundlePathError(f"duplicate bundle path {f.path!r}")
+        paths.add(norm)
+        if f.semantic_type not in _NON_ENTITY_SOURCE_TYPES:
+            for sid in f.source_entity_ids:
+                if sid not in entity_ids:
+                    raise ExchangeExportError(f"file {f.path!r} references unknown entity {sid!r}")
+    for e in spec.entities:
+        for path in e.files:
+            if path not in paths:
+                raise ExchangeExportError(
+                    f"entity {e.entity_id!r} references missing file {path!r}"
+                )
+        if e.parent_entity_id is not None and e.parent_entity_id not in entity_ids:
+            raise ExchangeExportError(
+                f"entity {e.entity_id!r} names unknown parent {e.parent_entity_id!r}"
+            )
+    for edge_id, geometry_id in spec.network_geometry_refs:
+        if geometry_id not in entity_ids:
+            raise ExchangeExportError(
+                f"network edge {edge_id!r} resolves to unexported geometry {geometry_id!r}"
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -579,6 +643,22 @@ def _faults(
 # --------------------------------------------------------------------------- #
 
 
+def _source_not_success(
+    group: Literal["EXCAVATIONS", "SHAFTS", "CAPABILITY", "RENDER_GLB", "NETWORK"],
+    artifact: str,
+    doc: dict[str, Any],
+) -> ExchangeOmission:
+    """A PRESENT, VALID artifact whose status is not SUCCESS (S2 / B2): the
+    group is omitted with the artifact's own status and failure reason."""
+    reason = doc.get("failureReason")
+    detail = f"{artifact} status is {doc.get('status')}"
+    if reason:
+        detail += f": {reason}"
+    return ExchangeOmission(
+        group=group, reason_code="SOURCE_NOT_SUCCESS", detail=detail, source_artifact=artifact
+    )
+
+
 def _excavations(
     inputs: ExchangeInputs,
     files: list[BundleFile],
@@ -613,13 +693,22 @@ def _excavations(
     shafts = inputs.shafts.document if inputs.shafts is not None else None
 
     # -- centerlines (authoritative polylines, stable ids) ------------------ #
+    # A present but non-SUCCESS optional development source is an explicit
+    # omission (PR #44 correction S2): recorded, never faked, never fatal.
     centerlines: list[CenterlineEntity] = ramp_centerlines(ramp_doc, inputs.ramp_artifact)
+    aggregates: list[AggregateEntity] = [ramp_aggregate(ramp_doc, inputs.ramp_artifact)]
     if accesses is not None and accesses.get("status") == "SUCCESS":
         centerlines += access_centerlines(accesses)
+    elif accesses is not None:
+        omissions.append(_source_not_success("EXCAVATIONS", "level_accesses.json", accesses))
     if levels is not None and levels.get("status") == "SUCCESS":
         centerlines += level_centerlines(levels)
+        aggregates += drift_aggregates(levels)
+    elif levels is not None:
+        omissions.append(_source_not_success("EXCAVATIONS", "levels.json", levels))
     if shafts is not None and shafts.get("status") == "SUCCESS":
         centerlines += shaft_centerlines(shafts)
+        aggregates += shaft_aggregates(shafts)
     elif scenario.shafts.specs:
         # declared shafts without a (SUCCESS) shafts artifact: recorded, never faked
         omissions.append(
@@ -664,7 +753,7 @@ def _excavations(
     components: list[MultiBodyComponent] = []
     first = 0
     for solid in solids:
-        path = f"excavations/solids/{file_stem(solid.entity_id)}.stl"
+        path = f"excavations/solids/{entity_file_stem(solid.entity_id)}.stl"
         solid_paths[solid.entity_id] = path
         files.append(
             BundleFile(
@@ -770,7 +859,7 @@ def _excavations(
         "LEVEL_ACCESS": "LEVEL_ACCESS",
         "DRIFT_PIECE": "DRIFT",
         "CROSSCUT": "CROSSCUT",
-        "SHAFT": "SHAFT",
+        "SHAFT_SEGMENT": "SHAFT",
         "SHAFT_STATION_ACCESS": "SHAFT",
     }
     text, mapping = write_dxf(
@@ -797,16 +886,25 @@ def _excavations(
     )
 
     # -- entities ----------------------------------------------------------- #
-    entities.append(
-        ExchangeEntity(
-            entity_id=RAMP_ENTITY_ID,
-            kind="RAMP",
-            source_artifact=inputs.ramp_artifact,
-            source_id="segments[*]",
-            files=[solid_paths[RAMP_ENTITY_ID], "excavations/mine_multibody.stl"],
+    # aggregates first (ramp:main, drift:<level>, shaft:<id>): sourceId null,
+    # members explicit (S1); a shaft aggregate claims no geometry file (B3)
+    for agg in aggregates:
+        agg_files = (
+            [solid_paths[agg.entity_id], "excavations/mine_multibody.stl"]
+            if agg.entity_id in solid_paths
+            else []
         )
-    )
-    solid_by_id = {s.entity_id: s for s in solids}
+        entities.append(
+            ExchangeEntity(
+                entity_id=agg.entity_id,
+                kind=agg.kind,
+                level_id=agg.level_id,
+                source_artifact=agg.source_artifact,
+                source_id=agg.source_id,
+                source_member_ids=list(agg.member_source_ids),
+                files=agg_files,
+            )
+        )
     for c in centerlines:
         cl_files = ["excavations/centerlines.csv", "excavations/centerlines.dxf"]
         if c.entity_id in solid_paths:
@@ -822,19 +920,6 @@ def _excavations(
                 files=cl_files,
             )
         )
-    for s in solids:
-        if s.kind == "DRIFT":  # the level drift solid (its pieces are centerline entities)
-            entities.append(
-                ExchangeEntity(
-                    entity_id=s.entity_id,
-                    kind="DRIFT",
-                    level_id=s.level_id,
-                    source_artifact=s.source_artifact,
-                    source_id=s.source_id,
-                    files=[solid_paths[s.entity_id], "excavations/mine_multibody.stl"],
-                )
-            )
-    del solid_by_id
     entity_doc = {
         "mineExchangeVersion": MINE_EXCHANGE_VERSION,
         "semanticType": "EXCAVATION_ENTITIES",
@@ -849,6 +934,18 @@ def _excavations(
             "archSegmentsRamp": scenario.tunnel_profile.arch_segments,
             "archSegmentsDevelopment": max(2, scenario.tunnel_profile.arch_segments // 2),
         },
+        "aggregates": [
+            {
+                "entityId": a.entity_id,
+                "kind": a.kind,
+                "levelId": a.level_id,
+                "sourceArtifact": a.source_artifact,
+                "sourceId": a.source_id,
+                "sourceMemberIds": a.member_source_ids,
+                "ownsGeometry": a.entity_id in solid_paths,
+            }
+            for a in aggregates
+        ],
         "solids": [
             {
                 "entityId": s.entity_id,
@@ -857,7 +954,7 @@ def _excavations(
                 "file": solid_paths[s.entity_id],
                 "sourceArtifact": s.source_artifact,
                 "sourceId": s.source_id,
-                "members": s.member_source_ids,
+                "sourceMemberIds": s.member_source_ids,
                 "closed": True,
                 "unioned": False,
                 "overlappingAtJunctions": True,
@@ -936,15 +1033,14 @@ def _render_glb(
         return
     doc = report.document
     if doc.get("status") != "SUCCESS":
-        omissions.append(
-            ExchangeOmission(
-                group="RENDER_GLB",
-                reason_code="SOURCE_NOT_SUCCESS",
-                detail=f"{artifact} status is {doc.get('status')}",
-                source_artifact=artifact,
-            )
-        )
+        omissions.append(_source_not_success("RENDER_GLB", artifact, doc))
         return
+    apertures = junction_apertures_of(doc)
+    aperture_note = {
+        True: "typed junction apertures opened per the source junction report",
+        False: "the source junction report confirms zero junction apertures",
+        None: "the source report carries no junction information (apertures unknown)",
+    }[apertures]
     files.append(
         BundleFile(
             path,
@@ -967,18 +1063,43 @@ def _render_glb(
                 else None,
                 manifold=doc.get("manifold") if isinstance(doc.get("manifold"), bool) else None,
                 unioned=False,
-                junction_apertures=True,
+                junction_apertures=apertures,
                 triangle_count=int(doc["triangleCount"])
                 if isinstance(doc.get("triangleCount"), int)
                 else None,
             ),
             glb=_copied_glb_frame(),
             notes=[
-                "source GLB bytes copied verbatim (typed junction apertures opened; "
-                "the frontend applies the mine→Three transform itself)"
+                "source GLB bytes copied verbatim; stored vertices are canonical "
+                "LOCAL_ENU_Z_UP with no root transform (the consumer applies the "
+                "mine -> glTF rotation itself)",
+                aperture_note,
             ],
         )
     )
+
+
+def junction_apertures_of(report: dict[str, Any]) -> bool | None:
+    """Whether a production render mesh has typed junction apertures opened,
+    read from its AUTHORITATIVE junction report (PR #44 correction B5):
+    any positive opening count / opened endpoint / removed triangle /
+    listed opening → ``True``; every counter present and confirmed zero →
+    ``False``; no usable junction information → ``None``. Never assumed."""
+    junctions = report.get("junctions")
+    if not isinstance(junctions, dict):
+        return None
+    counters: list[int] = []
+    for key in ("count", "openedEndpointCount", "removedTriangles"):
+        value = junctions.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            continue
+        counters.append(value)
+    openings = junctions.get("openings")
+    if isinstance(openings, list):
+        counters.append(len(openings))
+    if not counters:
+        return None
+    return any(c > 0 for c in counters)
 
 
 # --------------------------------------------------------------------------- #
@@ -990,10 +1111,8 @@ def _topology(
     inputs: ExchangeInputs,
     centerlines: list[CenterlineEntity],
     files: list[BundleFile],
-    entities: list[ExchangeEntity],
     omissions: list[ExchangeOmission],
-) -> None:
-    del entities
+) -> list[tuple[str, str]]:
     if inputs.network is None:
         omissions.append(
             ExchangeOmission(
@@ -1003,52 +1122,22 @@ def _topology(
                 source_artifact=NETWORK_ARTIFACT,
             )
         )
-        return
+        return []
     net = inputs.network.document
     if net.get("status") != "SUCCESS":
-        omissions.append(
-            ExchangeOmission(
-                group="NETWORK",
-                reason_code="SOURCE_NOT_SUCCESS",
-                detail=f"network.json status is {net.get('status')}",
-                source_artifact=NETWORK_ARTIFACT,
-            )
-        )
-        return
-    refs = geometry_ref_index(centerlines)
-    nodes = [
-        ExchangeNetworkNode(
-            id=str(n["id"]),
-            type=str(n["type"]),
-            position=[float(v) for v in n["position"]],
-            level_id=n.get("levelId"),
-            surface=str(n["type"]) in SURFACE_NODE_TYPES,
-        )
-        for n in net["nodes"]
-    ]
-    edges = []
-    for e in net["edges"]:
-        ref = e.get("geometryRef") or {}
-        key = (str(ref.get("artifact")), int(ref.get("segmentIndex", -1)))
-        edges.append(
-            ExchangeNetworkEdge(
-                id=str(e["id"]),
-                type=str(e["type"]),
-                source_node_id=str(e["fromNode"]),
-                target_node_id=str(e["toNode"]),
-                geometry_entity_id=refs.get(key),
-                length=float(e["length3d"]),
-                orientation=str(e.get("orientation", "DEVELOPMENT")),
-                cross_section=e.get("crossSection"),
-            )
-        )
-    doc = ExchangeNetwork(
-        mine_exchange_version=MINE_EXCHANGE_VERSION,
-        source_artifact=NETWORK_ARTIFACT,
-        source_revision=inputs.network.revision,
-        nodes=nodes,
-        edges=edges,
+        omissions.append(_source_not_success("NETWORK", NETWORK_ARTIFACT, net))
+        return []
+    doc = project_network(
+        net,
+        inputs.network.revision,
+        centerlines,
+        ramp_doc=inputs.ramp.document if inputs.ramp is not None else None,
+        ramp_artifact=inputs.ramp_artifact,
+        accesses_doc=inputs.accesses.document if inputs.accesses is not None else None,
+        levels_doc=inputs.levels.document if inputs.levels is not None else None,
+        shafts_doc=inputs.shafts.document if inputs.shafts is not None else None,
     )
+    nodes, edges = doc.nodes, doc.edges
     node_ids = [n.id for n in nodes]
     files.append(
         BundleFile(
@@ -1060,7 +1149,13 @@ def _topology(
             NETWORK_ARTIFACT,
             inputs.network.revision,
             False,
-            notes=["semantic authority of the topology; the CSVs are conveniences"],
+            notes=[
+                "semantic authority of the topology; the CSVs are conveniences",
+                "geometryEntityId is resolved through the canonical owning-centerline "
+                "resolver and verified against the exported entities; only an edge "
+                "type without an owning-centerline contract carries null "
+                "(geometryContract = NONE)",
+            ],
         )
     )
     files.append(
@@ -1088,6 +1183,7 @@ def _topology(
                     "sourceNodeId",
                     "targetNodeId",
                     "geometryEntityId",
+                    "geometryContract",
                     "length",
                     "orientation",
                 ),
@@ -1098,6 +1194,7 @@ def _topology(
                         e.source_node_id,
                         e.target_node_id,
                         e.geometry_entity_id,
+                        e.geometry_contract,
                         e.length,
                         e.orientation,
                     )
@@ -1111,6 +1208,98 @@ def _topology(
             inputs.network.revision,
             False,
         )
+    )
+    return [(e.id, e.geometry_entity_id) for e in edges if e.geometry_entity_id is not None]
+
+
+def project_network(
+    net: dict[str, Any],
+    revision: str,
+    centerlines: list[CenterlineEntity],
+    *,
+    ramp_doc: dict[str, Any] | None,
+    ramp_artifact: str | None,
+    accesses_doc: dict[str, Any] | None,
+    levels_doc: dict[str, Any] | None,
+    shafts_doc: dict[str, Any] | None,
+) -> ExchangeNetwork:
+    """MineNetwork → MineExchange topology DTO (PR #44 correction B1).
+
+    Every physical edge's ``geometryRef`` goes through the canonical
+    ``minegen.network.geometry_refs.resolve_owning_centerline`` WITH its edge
+    type (owner artifact per type, non-negative integer index, range,
+    centerline shape, finite coordinates) and the resolved owner must
+    additionally (a) be the ACTIVE ramp artifact for RAMP edges and (b) be an
+    exported centerline entity. Any failure is a typed
+    ``ExchangeExportError`` — never a silent ``null``. An edge type with no
+    owning-centerline contract (RAISE, rule 184) is exported explicitly with
+    ``geometryContract = NONE`` and ``geometryEntityId = null``; no geometry
+    is invented for it.
+    """
+    refs = geometry_ref_index(centerlines)
+    nodes = [
+        ExchangeNetworkNode(
+            id=str(n["id"]),
+            type=str(n["type"]),
+            position=[float(v) for v in n["position"]],
+            level_id=n.get("levelId"),
+            surface=str(n["type"]) in SURFACE_NODE_TYPES,
+        )
+        for n in net["nodes"]
+    ]
+    edges: list[ExchangeNetworkEdge] = []
+    for e in net["edges"]:
+        edge_id = str(e["id"])
+        edge_type = str(e["type"])
+        geometry_id: str | None = None
+        contract: Literal["OWNING_CENTERLINE", "NONE"] = "OWNING_CENTERLINE"
+        if edge_type not in OWNING_ARTIFACTS_BY_EDGE_TYPE:
+            # no owning-centerline contract exists for this type (RAISE):
+            # explicit, typed, and no polyline is invented for it
+            contract = "NONE"
+        else:
+            try:
+                owner = resolve_owning_centerline(
+                    e.get("geometryRef"),
+                    edge_type=edge_type,
+                    smoothed_payload=ramp_doc,
+                    levels_payload=levels_doc,
+                    accesses_payload=accesses_doc,
+                    shafts_payload=shafts_doc,
+                )
+            except GeometryRefError as err:
+                raise ExchangeExportError(f"network edge {edge_id!r} ({edge_type}): {err}") from err
+            if edge_type == "RAMP" and owner.artifact != ramp_artifact:
+                raise ExchangeExportError(
+                    f"network edge {edge_id!r} (RAMP) is owned by {owner.artifact} but the "
+                    f"active Effective Ramp artifact is {ramp_artifact}"
+                )
+            geometry_id = refs.get((owner.artifact, owner.segment_index))
+            if geometry_id is None:
+                raise ExchangeExportError(
+                    f"network edge {edge_id!r} ({edge_type}) resolves to "
+                    f"{owner.artifact}[{owner.segment_index}], which is not an exported "
+                    "centerline entity"
+                )
+        edges.append(
+            ExchangeNetworkEdge(
+                id=edge_id,
+                type=edge_type,
+                source_node_id=str(e["fromNode"]),
+                target_node_id=str(e["toNode"]),
+                geometry_entity_id=geometry_id,
+                geometry_contract=contract,
+                length=float(e["length3d"]),
+                orientation=str(e.get("orientation", "DEVELOPMENT")),
+                cross_section=e.get("crossSection"),
+            )
+        )
+    return ExchangeNetwork(
+        mine_exchange_version=MINE_EXCHANGE_VERSION,
+        source_artifact=NETWORK_ARTIFACT,
+        source_revision=revision,
+        nodes=nodes,
+        edges=edges,
     )
 
 
@@ -1133,6 +1322,12 @@ def _capability(
         )
         return
     cap = inputs.capability.document
+    if cap.get("status") != "SUCCESS":
+        # a PRESENT, VALID, non-SUCCESS capability graph (PR #44 correction
+        # B2): no capability.json, an explicit omission; STALE / MALFORMED
+        # were already refused by the validated read upstream
+        omissions.append(_source_not_success("CAPABILITY", CAPABILITY_GRAPH_ARTIFACT, cap))
+        return
     advisory = cap.get("egressAdvisory")
     doc = ExchangeCapability(
         mine_exchange_version=MINE_EXCHANGE_VERSION,

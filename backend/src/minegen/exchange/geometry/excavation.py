@@ -41,7 +41,9 @@ class ExcavationSolid:
     kind: str  # RAMP | LEVEL_ACCESS | DRIFT | CROSSCUT
     level_id: str | None
     source_artifact: str
-    source_id: str
+    #: the authoritative id inside the source artifact; ``None`` for an
+    #: AGGREGATE solid (the ramp, a level drift) whose members are listed
+    source_id: str | None
     positions: FloatArray
     triangles: IntArray
     ring_count: int
@@ -69,7 +71,7 @@ def ramp_solid(
         kind="RAMP",
         level_id=None,
         source_artifact=owning_artifact,
-        source_id="segments[*]",
+        source_id=None,
         positions=np.asarray(mesh.positions, dtype=np.float64),
         triangles=np.asarray(mesh.triangles, dtype=np.int64),
         ring_count=mesh.ring_count,
@@ -119,7 +121,8 @@ def development_solids(
                 kind=str(spec.kind),
                 level_id=spec.level_id,
                 source_artifact=str(spec.geometry_ref["artifact"]),
-                source_id=spec.development_id,
+                # DRIFT:<level> is the sweep's aggregate spec id, not a persisted id
+                source_id=None if spec.kind == "DRIFT" else spec.development_id,
                 positions=np.asarray(closed.positions, dtype=np.float64),
                 triangles=np.asarray(closed.triangles, dtype=np.int64),
                 ring_count=closed.ring_count,
