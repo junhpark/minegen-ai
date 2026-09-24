@@ -69,10 +69,14 @@ through `glb.storedVertexFrame`, `glb.sceneFrame`, `glb.sourceFrame` and
 | copied production render | `excavations/render/tunnel.glb`, `excavations/render/development.glb` | `LOCAL_ENU_Z_UP` | `LOCAL_ENU_Z_UP` | none — `transformMatrix = null`; the production bytes are copied **verbatim** and the consumer applies the rotation itself |
 
 The copied render GLBs' `geometry.junctionApertures` is read from the
-authoritative junction report of the source artifact (`junctions.count`,
-`openedEndpointCount`, `removedTriangles`, `openings[]`): any positive count
-→ `true`, every counter present and zero → `false`, no usable junction
-information → `null`. It is never assumed.
+authoritative junction report of the source artifact and answers whether an
+aperture was ACTUALLY opened: only the aperture outcome counters decide
+(`junctions.openedEndpointCount`, `junctions.removedTriangles`, each
+`openings[].removedTriangles`) — any positive → `true`, every present
+outcome counter zero → `false`, no outcome counter at all → `null`.
+`junctions.count` and the mere presence of `openings[]` are not evidence:
+production records an opening report for every junction it finds, opened or
+not. It is never assumed.
 
 ## Bundle tree
 
@@ -171,22 +175,29 @@ reused; new ids follow a documented deterministic rule
 | shaft | `shaft:<shaftId>` (aggregate, kind `SHAFT`); axis segments `shaft:<centerlineId>` (kind `SHAFT_SEGMENT`, parent `shaft:<shaftId>`); station drives `shaft-station-access:<centerlineId>` | `shaft:SHAFT-01`, `shaft:SHAFT:SHAFT-01:SEG00` |
 
 **Aggregates** (`ramp:main`, `drift:<levelId>`, `shaft:<shaftId>`) are parent
-entities: `sourceId` is `null` (the ramp and drift aggregates have no single
-authoritative id; the shaft aggregate carries its `shaftId`) and
-`sourceMemberIds[]` lists the authoritative member ids in persisted order
-(segment ids, drift piece ids, shaft axis segment ids). Every non-null
+entities. Provenance is by kind:
+
+| aggregate | `sourceId` | `sourceMemberIds[]` |
+| --- | --- | --- |
+| synthetic — `ramp:main`, `drift:<levelId>` (no single authoritative id) | `null` | segment ids / drift piece ids |
+| authoritative — `shaft:<shaftId>` (`shafts.json` `shafts[shaftId]`) | `shaftId` | axis segment ids |
+
+Members are listed in persisted order. Every non-null
 `parentEntityId` resolves to an entity in the same manifest. The shaft
 aggregate owns **no geometry** (`files = []`): shafts are represented by
 centerlines only — the axis segments and station drives — and no shaft solid,
 Boolean or reinterpretation is emitted. `excavations/entities.json` lists the
 aggregates with `ownsGeometry`.
 
-STL file stems are deterministic, **injective** and path-safe: the sanitized
-entity id (`:` and other unsafe characters → `_`) followed by the first 8 hex
-characters of the entity id's SHA-256, e.g.
-`excavations/solids/crosscut_L01_S+00_73a3bcb0.stl`. Consumers resolve files
-through `entities[].files` / `files[].sourceEntityIds`, never by
-reconstructing a stem (`a:b` and `a_b` cannot collide). DXF entities carry a
+STL file stems are deterministic, **collision-resistant** and path-safe: the
+sanitized entity id (`:` and other unsafe characters → `_`) followed by the
+first 8 hex characters of the entity id's SHA-256, e.g.
+`excavations/solids/crosscut_L01_S+00_73a3bcb0.stl`. The old sanitizer
+collisions (`a:b` vs `a_b`) no longer occur, but a 32-bit hash prefix is not
+injective in the mathematical sense — **final uniqueness is enforced by the
+bundle preflight** (a duplicate path is a typed 409), never assumed from the
+stem. Consumers resolve files through `entities[].files` /
+`files[].sourceEntityIds`, never by reconstructing a stem. DXF entities carry a
 `handle → entityId` table in the manifest (`files[].dxfEntities`).
 
 ## Terrain semantics
@@ -286,10 +297,11 @@ artifact for RAMP edges and an exported centerline entity. Any failure —
 wrong owner, out-of-range index, absent owner, malformed geometry, resolved
 geometry not exported, a network built over the inactive ramp — is a typed
 `MINE_EXCHANGE_EXPORT_FAILED` refusal, never a silent `null`.
-`geometryContract = OWNING_CENTERLINE` marks a resolved edge; only an edge
-type with no owning-centerline contract (RAISE, rule 184) is exported with
+`geometryContract = OWNING_CENTERLINE` marks a resolved edge; RAISE, the one
+edge type with no owning-centerline contract (rule 184), is exported with
 `geometryContract = NONE` and `geometryEntityId = null`, and no geometry is
-invented for it. Edge direction is the storage / centerline direction
+invented for it. Any other edge type missing from the canonical ownership
+table is a typed refusal (fail closed), never an unowned export. Edge direction is the storage / centerline direction
 (`directionSemantics` explains this); it does **not** mean one-way traffic
 and no traffic semantics are exported because none exist in the authority.
 The CSVs are convenience tables; JSON is the semantic authority.

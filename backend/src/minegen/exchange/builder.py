@@ -197,11 +197,15 @@ FILE_STEM_HASH_CHARS = 8
 
 
 def entity_file_stem(entity_id: str) -> str:
-    """Deterministic, INJECTIVE and path-safe file stem of an entity id
-    (PR #44 correction B4): a readable sanitized form (``:`` and every other
-    unsafe character → ``_``) followed by the first 8 hex characters of the
-    entity id's SHA-256, so ``a:b`` and ``a_b`` never collide
-    (``ramp_main_d0f3fde5``). Stable across runs and platforms."""
+    """Deterministic, COLLISION-RESISTANT and path-safe file stem of an
+    entity id (PR #44 correction B4): a readable sanitized form (``:`` and
+    every other unsafe character → ``_``) followed by the first 8 hex
+    characters of the entity id's SHA-256, so the old sanitizer collisions
+    (``a:b`` vs ``a_b``) no longer occur (``ramp_main_d0f3fde5``). A 32-bit
+    hash prefix is not injective in the mathematical sense: FINAL path
+    uniqueness is enforced by ``preflight_bundle`` (a duplicate path is a
+    typed 409), never assumed from the stem. Stable across runs and
+    platforms."""
     readable = re.sub(r"[^A-Za-z0-9_+\-.]", "_", entity_id).strip(".") or "entity"
     digest = hashlib.sha256(entity_id.encode("utf-8")).hexdigest()[:FILE_STEM_HASH_CHARS]
     return f"{readable}_{digest}"
@@ -1079,27 +1083,42 @@ def _render_glb(
     )
 
 
+def _aperture_counter(value: Any) -> int | None:
+    """A non-negative integer aperture OUTCOME counter, else ``None``."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
 def junction_apertures_of(report: dict[str, Any]) -> bool | None:
-    """Whether a production render mesh has typed junction apertures opened,
-    read from its AUTHORITATIVE junction report (PR #44 correction B5):
-    any positive opening count / opened endpoint / removed triangle /
-    listed opening → ``True``; every counter present and confirmed zero →
-    ``False``; no usable junction information → ``None``. Never assumed."""
+    """Whether a production render mesh has typed junction apertures ACTUALLY
+    opened, read from its AUTHORITATIVE junction report (PR #44 corrections
+    B5 / B5-R1). Only aperture OUTCOMES decide: ``openedEndpointCount``,
+    ``removedTriangles`` and each ``openings[].removedTriangles``. Any of
+    them positive → ``True``; every present outcome counter confirmed zero →
+    ``False``; no outcome counter at all → ``None``. ``junctions.count`` and
+    the mere presence of ``openings[]`` are NOT evidence: production records
+    an opening report for every junction it finds, opened or not (a junction
+    whose cut removed no triangle has ``removedTriangles = 0``). Never
+    assumed."""
     junctions = report.get("junctions")
     if not isinstance(junctions, dict):
         return None
-    counters: list[int] = []
-    for key in ("count", "openedEndpointCount", "removedTriangles"):
-        value = junctions.get(key)
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            continue
-        counters.append(value)
+    outcomes: list[int] = []
+    for key in ("openedEndpointCount", "removedTriangles"):
+        value = _aperture_counter(junctions.get(key))
+        if value is not None:
+            outcomes.append(value)
     openings = junctions.get("openings")
     if isinstance(openings, list):
-        counters.append(len(openings))
-    if not counters:
+        for opening in openings:
+            if isinstance(opening, dict):
+                value = _aperture_counter(opening.get("removedTriangles"))
+                if value is not None:
+                    outcomes.append(value)
+    if not outcomes:
         return None
-    return any(c > 0 for c in counters)
+    return any(c > 0 for c in outcomes)
 
 
 # --------------------------------------------------------------------------- #
@@ -1231,10 +1250,11 @@ def project_network(
     centerline shape, finite coordinates) and the resolved owner must
     additionally (a) be the ACTIVE ramp artifact for RAMP edges and (b) be an
     exported centerline entity. Any failure is a typed
-    ``ExchangeExportError`` — never a silent ``null``. An edge type with no
-    owning-centerline contract (RAISE, rule 184) is exported explicitly with
-    ``geometryContract = NONE`` and ``geometryEntityId = null``; no geometry
-    is invented for it.
+    ``ExchangeExportError`` — never a silent ``null``. RAISE, the ONE edge
+    type with no owning-centerline contract (rule 184), is exported
+    explicitly with ``geometryContract = NONE`` and ``geometryEntityId =
+    null``; no geometry is invented for it. Any other type missing from the
+    canonical ownership table is a typed failure (fail closed).
     """
     refs = geometry_ref_index(centerlines)
     nodes = [
@@ -1253,10 +1273,17 @@ def project_network(
         edge_type = str(e["type"])
         geometry_id: str | None = None
         contract: Literal["OWNING_CENTERLINE", "NONE"] = "OWNING_CENTERLINE"
-        if edge_type not in OWNING_ARTIFACTS_BY_EDGE_TYPE:
-            # no owning-centerline contract exists for this type (RAISE):
+        if edge_type == "RAISE":
+            # the ONE edge type with no owning-centerline contract (rule 184):
             # explicit, typed, and no polyline is invented for it
             contract = "NONE"
+        elif edge_type not in OWNING_ARTIFACTS_BY_EDGE_TYPE:
+            # a type the canonical ownership table does not know fails
+            # CLOSED — never silently exported without geometry
+            raise ExchangeExportError(
+                f"network edge {edge_id!r} has unknown edge type {edge_type!r}: no "
+                "owning-centerline contract is declared for it"
+            )
         else:
             try:
                 owner = resolve_owning_centerline(

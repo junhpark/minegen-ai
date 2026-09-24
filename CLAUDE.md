@@ -1874,10 +1874,15 @@ code, the code and the rule win and the map is corrected.
      artifacts are typed refusals, and a mandatory entity failing its
      closed-solid QA fails the whole export. Every network geometryRef is
      resolved through the canonical `resolve_owning_centerline` (per edge
-     type) and verified against the exported entities; aggregate entities
-     (ramp, drift, shaft) carry `sourceId = null` + `sourceMemberIds` and a
-     shaft aggregate owns no geometry (centerlines only); file stems are
-     injective (sanitized id + short hash); a bundle preflight refuses
-     duplicate ids / paths and dangling references; every projection
-     defect is a typed 409 MINE_EXCHANGE_EXPORT_FAILED, never a bare 500
-     or a silent null.
+     type; RAISE alone carries no owning contract and any other unknown
+     type fails closed) and verified against the exported entities;
+     aggregate entities list `sourceMemberIds` (synthetic ramp / drift
+     aggregates carry `sourceId = null`, the authoritative shaft aggregate
+     carries its `shaftId`) and a shaft aggregate owns no geometry
+     (centerlines only); file stems are collision-resistant (sanitized id +
+     short hash) with final uniqueness enforced by the bundle preflight,
+     which refuses duplicate ids / paths and dangling references; a copied
+     GLB's `junctionApertures` reflects aperture OUTCOMES (opened endpoints /
+     removed triangles), never the mere existence of junctions; every
+     projection defect is a typed 409 MINE_EXCHANGE_EXPORT_FAILED, never a
+     bare 500 or a silent null.

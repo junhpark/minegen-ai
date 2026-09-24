@@ -14,9 +14,12 @@ artifact's own id::
     shaft:<centerlineId>          shafts.json SHAFT_SEGMENT centerlines (parent shaft:<shaftId>)
     shaft-station-access:<id>     shafts.json STATION_ACCESS centerlines
 
-Aggregates carry ``sourceId = null`` and list their authoritative members in
-``sourceMemberIds`` (PR #44 correction S1); they never own a polyline of
-their own. A development id that does not follow the persisted
+Aggregates list their authoritative members in ``sourceMemberIds`` (PR #44
+correction S1) and never own a polyline of their own. Synthetic aggregates
+(``ramp:main``, ``drift:<levelId>``) have no single authoritative id and
+carry ``sourceId = null``; the shaft aggregate is an AUTHORITATIVE record
+(``shafts.json`` ``shafts[shaftId]``) and carries ``sourceId = shaftId``. A
+development id that does not follow the persisted
 ``<KIND>:<rest>`` convention is a typed ``ExchangeExportError`` (correction
 B4), never a KeyError / ValueError escaping the projection.
 """

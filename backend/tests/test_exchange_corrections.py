@@ -9,7 +9,7 @@ directly, so every correction is proven without the layout-v2 chain:
   typed refusals, RAISE explicit (never a silent null)
 - B2 present-but-FAILED capability graph → SOURCE_NOT_SUCCESS omission
 - B3 shaft aggregate parents (``shaft:<id>``) that own no geometry
-- B4 injective file stems + bundle preflight (duplicate ids / paths, dangling
+- B4 collision-resistant file stems + bundle preflight (duplicate ids / paths, dangling
   parents / geometry refs, malformed development ids) → typed 409
 - B5 copied-GLB ``junctionApertures`` from the authoritative report
 - S1 aggregates carry ``sourceId = null`` + ``sourceMemberIds``
@@ -381,6 +381,13 @@ def test_b1_raise_has_no_owning_contract_and_is_exported_explicitly() -> None:
     assert dumped["edges"][0]["geometryContract"] == "NONE"
 
 
+def test_b1_unknown_edge_type_fails_closed_never_an_unowned_export() -> None:
+    # only RAISE is exempt from the ownership table; a future / foreign type
+    # is a typed refusal, not a silent geometryContract = NONE
+    with pytest.raises(ExchangeExportError, match=r"unknown edge type 'WINZE'"):
+        _project(_single(_edge("WINZE:W1", "WINZE", None, 0)))
+
+
 def test_b1_projection_is_deterministic() -> None:
     a = _project(network_doc()).model_dump(mode="json", by_alias=True)
     b = _project(network_doc()).model_dump(mode="json", by_alias=True)
@@ -595,7 +602,7 @@ def test_s2_absent_optional_sources_are_not_omissions_of_that_kind(mine: Synthet
 # -- B4 ------------------------------------------------------------------------ #
 
 
-def test_b4_file_stems_are_injective_readable_and_path_safe() -> None:
+def test_b4_file_stems_are_collision_resistant_readable_and_path_safe() -> None:
     assert entity_file_stem("a:b") != entity_file_stem("a_b")  # the old sanitizer collided
     assert entity_file_stem("ramp:main").startswith("ramp_main_")
     stem = entity_file_stem("crosscut:L01:S+00")
@@ -772,18 +779,65 @@ def test_b5_junction_apertures_come_from_the_authoritative_report() -> None:
             "count": 4,
             "openedEndpointCount": 4,
             "removedTriangles": 750,
-            "openings": [{}] * 4,
+            "openings": [{"removedTriangles": 216}] * 4,
         }
     }
     assert junction_apertures_of(opened) is True
+    confirmed_zero = {
+        "junctions": {"count": 0, "openedEndpointCount": 0, "removedTriangles": 0, "openings": []}
+    }
+    assert junction_apertures_of(confirmed_zero) is False
+    # an outcome counter alone is enough evidence either way
+    assert junction_apertures_of({"junctions": {"removedTriangles": 12}}) is True
+    assert junction_apertures_of({"junctions": {"openedEndpointCount": 0}}) is False
+    assert junction_apertures_of({"junctions": {"openings": [{"removedTriangles": 3}]}}) is True
+    # no outcome information → unknown, never assumed
+    assert junction_apertures_of({}) is None
+    assert junction_apertures_of({"junctions": None}) is None
+    assert junction_apertures_of({"junctions": {"count": 4}}) is None
+    assert junction_apertures_of({"junctions": {"openings": [{"type": "RAMP_ACCESS"}]}}) is None
+    assert junction_apertures_of({"junctions": {"openedEndpointCount": "4"}}) is None
+    assert junction_apertures_of({"junctions": {"removedTriangles": True}}) is None
+    assert junction_apertures_of({"junctions": {"removedTriangles": -1}}) is None
+
+
+def test_b5_r1_existing_junctions_with_no_opened_aperture_are_false() -> None:
+    """B5-R1 regression: production reports an opening record for EVERY
+    junction it finds; a junction whose cut removed nothing is not an
+    aperture. ``count`` / ``len(openings)`` are never evidence of ``true``."""
+    two_junctions_nothing_opened = {
+        "junctions": {
+            "count": 2,
+            "byType": {"RAMP_ACCESS": 2},
+            "openedEndpointCount": 0,
+            "removedTriangles": 0,
+            "openings": [
+                {"type": "RAMP_ACCESS", "childId": "LEVEL_ACCESS:L01", "removedTriangles": 0},
+                {"type": "RAMP_ACCESS", "childId": "LEVEL_ACCESS:L02", "removedTriangles": 0},
+            ],
+        }
+    }
+    assert junction_apertures_of(two_junctions_nothing_opened) is False
+    one_opened = {
+        "junctions": {
+            "count": 2,
+            "openedEndpointCount": 1,
+            "removedTriangles": 216,
+            "openings": [
+                {"type": "RAMP_ACCESS", "removedTriangles": 216},
+                {"type": "RAMP_ACCESS", "removedTriangles": 0},
+            ],
+        }
+    }
+    assert junction_apertures_of(one_opened) is True
+    # the per-opening outcome alone can prove an aperture when the totals are
+    # missing, and confirms zero when every opening removed nothing
     assert (
         junction_apertures_of(
             {
                 "junctions": {
-                    "count": 0,
-                    "openedEndpointCount": 0,
-                    "removedTriangles": 0,
-                    "openings": [],
+                    "count": 2,
+                    "openings": [{"removedTriangles": 0}, {"removedTriangles": 0}],
                 }
             }
         )
@@ -791,16 +845,15 @@ def test_b5_junction_apertures_come_from_the_authoritative_report() -> None:
     )
     assert (
         junction_apertures_of(
-            {"junctions": {"count": 0, "openedEndpointCount": 0, "removedTriangles": 12}}
+            {
+                "junctions": {
+                    "count": 2,
+                    "openings": [{"removedTriangles": 0}, {"removedTriangles": 5}],
+                }
+            }
         )
         is True
     )
-    assert junction_apertures_of({"junctions": {"openings": [{"type": "RAMP_ACCESS"}]}}) is True
-    assert junction_apertures_of({}) is None
-    assert junction_apertures_of({"junctions": None}) is None
-    assert junction_apertures_of({"junctions": {"count": "4"}}) is None
-    assert junction_apertures_of({"junctions": {"count": True}}) is None
-    assert junction_apertures_of({"junctions": {"count": -1}}) is None
 
 
 def _tunnel_report(junctions: Any) -> dict[str, Any]:

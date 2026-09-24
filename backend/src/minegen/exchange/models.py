@@ -172,8 +172,10 @@ class ExchangeEntity(ApiModel):
     level_id: str | None = None
     source_artifact: str | None
     #: the authoritative id inside the source artifact (never a list index);
-    #: ``null`` for an AGGREGATE entity (ramp:main, drift:<level>, shaft:<id>)
-    #: whose members are listed in ``sourceMemberIds`` instead of a selector
+    #: ``null`` for a SYNTHETIC aggregate (ramp:main, drift:<level>) that has
+    #: no single authoritative id — its members are listed in
+    #: ``sourceMemberIds`` instead of a selector; the shaft aggregate is an
+    #: authoritative record and carries its ``shaftId``
     source_id: str | None
     #: aggregate entities only: the authoritative member ids (segment ids,
     #: drift piece ids, shaft segment ids) in their persisted order
