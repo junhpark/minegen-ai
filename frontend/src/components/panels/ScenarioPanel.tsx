@@ -17,8 +17,11 @@ import {
   type ScenarioPreset,
 } from '@/types/api'
 import { PanelSection } from '@/components/layout/PanelSection'
+import { ExportContents } from '@/components/panels/ExportContents'
+import { describeExportContents } from '@/components/panels/exportContents'
 import { activateScenario, scenarioEpoch } from '@/stores/scenarioSession'
 import { useScenarioStore } from '@/stores/scenarioStore'
+import { saveFile } from '@/utils/download'
 import { fmtMeters } from '@/utils/format'
 
 /**
@@ -106,7 +109,19 @@ export function ScenarioPanel() {
     },
   })
 
-  const error = realize.error ?? create.error ?? load.error ?? generate.error
+  // Phase 23A: MineExchange download — the backend is the only authority on
+  // what the bundle contains (manifest omissions); the panel never guesses
+  // artifact availability and generates no geometry.
+  const exportExchange = useMutation({
+    mutationFn: async () => {
+      if (!scenario) throw new Error('no scenario selected')
+      const file = await api.exportMineExchange(scenario.id)
+      saveFile(file.blob, file.filename)
+    },
+  })
+
+  const error =
+    realize.error ?? create.error ?? load.error ?? generate.error ?? exportExchange.error
   const errorText =
     error instanceof ApiError ? `${error.code}: ${error.message}` : error ? error.message : null
 
@@ -214,6 +229,19 @@ export function ScenarioPanel() {
         >
           {generate.isPending ? 'Generating world…' : scene ? 'Regenerate world' : 'Generate world'}
         </button>
+
+        <button
+          type="button"
+          onClick={() => exportExchange.mutate()}
+          disabled={!scenario || !scene || exportExchange.isPending}
+          title="Download the MineExchange v1 bundle of the currently available mine state (a world-only export is valid; missing layers are recorded in the manifest)"
+          className="plate mt-2 w-full rounded-sm border border-rock-700 bg-rock-800 px-3 py-1.5 text-[13px] text-chalk hover:bg-rock-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {exportExchange.isPending ? 'Preparing export…' : 'Export MineExchange (.zip)'}
+        </button>
+        <ExportContents
+          layers={describeExportContents(scene, (scenario?.shafts?.specs.length ?? 0) > 0)}
+        />
 
         {errorText ? (
           <p role="alert" className="mt-2 text-[11px] text-danger">

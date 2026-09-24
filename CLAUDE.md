@@ -1854,3 +1854,35 @@ code, the code and the rule win and the map is corrected.
      satisfied advisory is never rendered as a certification badge. Economic
      quantities (cost, NPV, travel time, capacity, ventilation demand) are
      never estimated here (Phase 22 / external).
+
+190. MineExchange is a versioned, read-only projection of existing
+     authoritative MineGen state (Phase 23A, `exchange/`,
+     `POST …/export/mine-exchange`, `docs/mine-exchange.md`). It never
+     redesigns the mine, changes ranking, invents engineering semantics,
+     or promotes a derived representation into a stronger authority.
+     Geometry, topology and capability remain separate. Every exported
+     file declares its coordinate frame, units, provenance and
+     representation semantics; individual excavation STL bodies are
+     closed but not boolean-unioned. The bundle is built from ONE
+     validated snapshot (READ_SNAPSHOT_CHANGED on drift), is
+     deterministic (same snapshot → same bytes), is never a persisted
+     derived artifact, and reuses the production sweep helpers
+     (`ramp_logical_sweep`, `closed_sweep`) rather than a second
+     geometry algorithm; absent optional artifacts are manifest
+     omissions (ARTIFACT_ABSENT), present-but-FAILED optional artifacts
+     are explicit SOURCE_NOT_SUCCESS omissions, present STALE / MALFORMED
+     artifacts are typed refusals, and a mandatory entity failing its
+     closed-solid QA fails the whole export. Every network geometryRef is
+     resolved through the canonical `resolve_owning_centerline` (per edge
+     type; RAISE alone carries no owning contract and any other unknown
+     type fails closed) and verified against the exported entities;
+     aggregate entities list `sourceMemberIds` (synthetic ramp / drift
+     aggregates carry `sourceId = null`, the authoritative shaft aggregate
+     carries its `shaftId`) and a shaft aggregate owns no geometry
+     (centerlines only); file stems are collision-resistant (sanitized id +
+     short hash) with final uniqueness enforced by the bundle preflight,
+     which refuses duplicate ids / paths and dangling references; a copied
+     GLB's `junctionApertures` reflects aperture OUTCOMES (opened endpoints /
+     removed triangles), never the mere existence of junctions; every
+     projection defect is a typed 409 MINE_EXCHANGE_EXPORT_FAILED, never a
+     bare 500 or a silent null.

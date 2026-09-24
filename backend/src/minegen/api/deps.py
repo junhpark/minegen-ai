@@ -6,6 +6,7 @@ from functools import lru_cache
 
 from minegen.config import get_settings
 from minegen.services.design_service import DesignService
+from minegen.services.exchange_service import ExchangeService
 from minegen.services.infrastructure_service import InfrastructureService
 from minegen.services.job_service import JobService
 from minegen.services.scenario_service import ScenarioStore
@@ -35,3 +36,8 @@ def get_infrastructure_service() -> InfrastructureService:
 @lru_cache
 def get_job_service() -> JobService:
     return JobService()
+
+
+@lru_cache
+def get_exchange_service() -> ExchangeService:
+    return ExchangeService(get_scenario_store(), get_world_service())

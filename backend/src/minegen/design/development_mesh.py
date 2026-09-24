@@ -412,6 +412,35 @@ class _Swept:
     mouth_caps: dict[str, CapCut] = field(default_factory=dict)
 
 
+def closed_sweep(
+    spec: DevelopmentSpec,
+    shape: ProfileShape,
+    profile: TunnelProfile,
+    width: float,
+    refine_near: FloatArray | None,
+) -> tuple[RingChain, LogicalMesh]:
+    """The CAP-CAP closed logical sweep of one development on its
+    authoritative centerline: junction-refined ring chain + closed logical
+    mesh (Phase 23A extraction from ``DevelopmentMeshBuilder.sweep``: pure,
+    same inputs, same outputs; ``strip_caps`` / QA / render stay in the
+    builder). ``profile`` is the (secondary) tessellation the builder
+    sweeps with."""
+    segs = chain_segments(spec)
+    chain = build_ring_chain(
+        segs,
+        profile.ring_max_spacing,
+        refine_near=refine_near,
+        refine_radius=JUNCTION_WINDOW_WIDTHS * width,
+        refine_spacing=JUNCTION_RING_SPACING_FRACTION * width,
+    )
+    if chain.max_local_turn_deg > profile.ring_max_turn_deg + 1e-9:
+        raise ValueError(
+            f"{spec.development_id}: local turn {chain.max_local_turn_deg:.2f}° exceeds "
+            f"ringMaxTurnDeg {profile.ring_max_turn_deg:g}°"
+        )
+    return chain, build_logical_mesh(chain, shape)
+
+
 class JunctionClipConflictError(ValueError):
     """Two typed junctions ask to clip the SAME child floor quad (their
     windows overlap on one tube). The union cannot represent the
@@ -451,21 +480,9 @@ class DevelopmentMeshBuilder:
         junction points), closed logical mesh, OPEN-aware QA and envelope.
         The RENDER mesh is built by ``render`` once every junction cut of
         this tube is known; ``sweep`` alone builds the uncut render mesh."""
-        segs = chain_segments(spec)
-        width = float(self.ramp.tunnel_width)
-        chain = build_ring_chain(
-            segs,
-            self.profile.ring_max_spacing,
-            refine_near=refine_near,
-            refine_radius=JUNCTION_WINDOW_WIDTHS * width,
-            refine_spacing=JUNCTION_RING_SPACING_FRACTION * width,
+        chain, closed = closed_sweep(
+            spec, shape, self.profile, float(self.ramp.tunnel_width), refine_near
         )
-        if chain.max_local_turn_deg > self.profile.ring_max_turn_deg + 1e-9:
-            raise ValueError(
-                f"{spec.development_id}: local turn {chain.max_local_turn_deg:.2f}° exceeds "
-                f"ringMaxTurnDeg {self.profile.ring_max_turn_deg:g}°"
-            )
-        closed = build_logical_mesh(chain, shape)
         logical = strip_caps(closed, spec.start, spec.end)
         topology = validate_development_topology(logical, chain, spec)
         envelope = validate_development_envelope(self._evaluator_for(spec.kind), logical)

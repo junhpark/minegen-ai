@@ -26,8 +26,18 @@ _UNSIGNED_INT = 5125
 
 
 def write_glb(
-    mesh: RenderMesh, *, generator: str = "minegen-phase06", name: str = "tunnel"
+    mesh: RenderMesh,
+    *,
+    generator: str = "minegen-phase06",
+    name: str = "tunnel",
+    node_matrix: list[float] | None = None,
+    node_extras: dict[str, object] | None = None,
 ) -> bytes:
+    """``node_matrix`` (glTF column-major, 16 values) and ``node_extras`` are
+    ADDITIVE (Phase 23A MineExchange): when omitted the emitted bytes are
+    byte-identical to the Phase 06 writer — the stored vertices are never
+    transformed; a root transform only re-frames the scene."""
+
     def pad4(data: bytes, fill: bytes) -> bytes:
         return data + fill * (-len(data) % 4)
 
@@ -98,7 +108,7 @@ def write_glb(
         "bufferViews": views,
         "accessors": accessors,
         "meshes": [{"name": name, "primitives": primitives}],
-        "nodes": [{"mesh": 0, "name": name}],
+        "nodes": [_node(name, node_matrix, node_extras)],
         "scenes": [{"nodes": [0]}],
         "scene": 0,
     }
@@ -112,6 +122,19 @@ def write_glb(
     out += struct.pack("<II", len(bin_padded), _BIN_CHUNK)
     out += bin_padded
     return bytes(out)
+
+
+def _node(
+    name: str, matrix: list[float] | None, extras: dict[str, object] | None
+) -> dict[str, object]:
+    node: dict[str, object] = {"mesh": 0, "name": name}
+    if matrix is not None:
+        if len(matrix) != 16:
+            raise ValueError("node_matrix must carry 16 column-major values")
+        node["matrix"] = [float(v) for v in matrix]
+    if extras:
+        node["extras"] = dict(extras)
+    return node
 
 
 def read_glb(data: bytes) -> tuple[dict[str, object], bytes]:

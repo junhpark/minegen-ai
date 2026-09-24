@@ -54,32 +54,64 @@ export class ApiError extends Error {
   }
 }
 
+/** Map a failed response to the typed `ApiError` (backend `ErrorDetail`). */
+async function apiErrorOf(res: Response): Promise<ApiError> {
+  let code = 'HTTP_ERROR'
+  let message = `${res.status} ${res.statusText}`
+  try {
+    const body = (await res.json()) as { detail?: unknown }
+    const d = body.detail
+    if (d && typeof d === 'object' && 'code' in d && 'message' in d) {
+      code = String((d as { code: unknown }).code)
+      message = String((d as { message: unknown }).message)
+    } else if (typeof d === 'string') {
+      message = d
+    } else if (Array.isArray(d)) {
+      code = 'VALIDATION_ERROR'
+      message = 'Request failed validation'
+    }
+  } catch {
+    // body was not JSON
+  }
+  return new ApiError(res.status, code, message)
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
     headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
     ...init,
   })
-  if (!res.ok) {
-    let code = 'HTTP_ERROR'
-    let message = `${res.status} ${res.statusText}`
-    try {
-      const body = (await res.json()) as { detail?: unknown }
-      const d = body.detail
-      if (d && typeof d === 'object' && 'code' in d && 'message' in d) {
-        code = String((d as { code: unknown }).code)
-        message = String((d as { message: unknown }).message)
-      } else if (typeof d === 'string') {
-        message = d
-      } else if (Array.isArray(d)) {
-        code = 'VALIDATION_ERROR'
-        message = 'Request failed validation'
-      }
-    } catch {
-      // body was not JSON
-    }
-    throw new ApiError(res.status, code, message)
-  }
+  if (!res.ok) throw await apiErrorOf(res)
   return (await res.json()) as T
+}
+
+/** A downloaded file: the raw bytes plus the server-declared filename. */
+export interface FileDownload {
+  blob: Blob
+  filename: string
+}
+
+/** `attachment; filename="x.zip"` → `x.zip` (RFC 6266 plain form; the
+ * backend never emits the `filename*` encoded form). Falls back when the
+ * header is absent or malformed. */
+export function parseAttachmentFilename(header: string | null, fallback: string): string {
+  if (!header) return fallback
+  const m = /filename="([^"\\]+)"/i.exec(header) ?? /filename=([^;\s]+)/i.exec(header)
+  const name = m?.[1]?.trim()
+  return name && !name.includes('/') && !name.includes('..') ? name : fallback
+}
+
+async function requestFile(
+  path: string,
+  init: RequestInit,
+  fallback: string,
+): Promise<FileDownload> {
+  const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, init)
+  if (!res.ok) throw await apiErrorOf(res)
+  return {
+    blob: await res.blob(),
+    filename: parseAttachmentFilename(res.headers.get('content-disposition'), fallback),
+  }
 }
 
 export const api = {
@@ -156,6 +188,14 @@ export const api = {
     request<LevelAccessesPayload>(`/scenarios/${id}/design/level-accesses`),
   getRampSource: (id: string) => request<RampSourceSummary>(`/scenarios/${id}/design/ramp-source`),
   /** Phase 20D.3 (rule 189): the READ-ONLY design assessment + candidate comparison. */
+  /** Phase 23A: the MineExchange v1 bundle (application/zip). Read-only on
+   * the backend — nothing is generated or persisted by this request. */
+  exportMineExchange: (id: string) =>
+    requestFile(
+      `/scenarios/${id}/export/mine-exchange`,
+      { method: 'POST' },
+      `minegen_${id}_mineexchange_v1.zip`,
+    ),
   getDesignAssessment: (id: string) =>
     request<DesignAssessmentPayload>(`/scenarios/${id}/design/assessment`),
   setRampSource: (id: string, activeSource: RampSource) =>
