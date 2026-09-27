@@ -1662,6 +1662,30 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
   recorded as a test property and every other difference stays BLOCKING.
   The rule 192 parity fixture is untouched; its CUT_AND_FILL case is
   retained as a historical record and explicitly superseded.
+- **PR #47 review round.** (1) The rule 159 regression test compares the
+  backbone DRIFT pieces AND the single central production CROSSCUT of two
+  Longhole-parameter variants pairwise. (2) `mining/methods/integrity.py`:
+  `cut_fill_integrity` / `room_pillar_integrity` run at the entry of each
+  plan's `production_schedule` — a structurally valid but corrupted
+  production payload (a cut without its backfill record, two backfills for
+  one cut, a backfill volume disagreeing with its cut, a duplicate room /
+  unit / pillar id, a room ↔ unit membership mismatch) is a typed FAILED
+  timeline (`tests/test_production_timeline.py`). (3) Frontend isolation:
+  `scenarioStore.replaceScenarioDocument` + `activateScenarioRevision`
+  make a same-id scenario PUT a revision transition (epoch + 1, scene / jobs
+  / slice / day cursor / scenario-scoped viewer state cleared; regression in
+  `stores/scenarioSession.test.ts`), and the Mining-method card's draft is
+  keyed by the revision identity through `reconcileMiningDraft`
+  (`MiningMethodCard.test.tsx`). (4) Rendering: `scene/productionBatches.ts`
+  + `solidGeometry.mergeSolids` batch the production solids per (kind,
+  validity) and per 4D state; measured on the default Room & Pillar
+  scenario (7,322 solids, SwiftShader): Design 14,797 → 157 draw calls per
+  frame and 638 → 213 ms per frame, 4D 14,744 → 106 draw calls and 619 →
+  199 ms, 20-step 4D scrub 75.7 s → 24.6 s. (5) A reserved method reports
+  `productionKind = null`; the UI shows the sublevel interval only and a
+  disabled "Not implemented" production action. (6) The exporter's
+  `_flat_triples` guard turns a ragged / non-numeric coordinate list into a
+  typed `ExchangeExportError`.
 - **MineExchange 1.2.0** (`docs/mine-exchange.md`): typed method-parameter
   DTOs in `semantics/mining_method.json`, `production/cut_fill.json` +
   `production/cut_fill/cuts/<id>.{stl,obj,glb}` (CUT solids, BACKFILL

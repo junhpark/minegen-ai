@@ -2065,3 +2065,33 @@ code, the code and the rule win and the map is corrected.
      implemented: Sublevel Caving, Shrinkage Stoping, WARPED_VEIN
      production geometry, production-room walkthrough colliders, any
      geotechnical pillar design.
+
+     PR #47 review round (binding): (a) READ ≠ TRUST at the SCHEDULE too —
+     `production_schedule` verifies the method-specific SEMANTIC integrity
+     of the persisted payload at its entry (`mining/methods/integrity.py`:
+     unique cut / backfill ids, exactly one backfill per cut with a
+     bijective `sourceCutId`, backfill volume == cut volume; unique room /
+     extraction-unit / pillar ids and an EXACT two-way `RoomCell.
+     extractionUnitIds` ↔ `ExtractionUnit.roomId` membership) and a
+     violation is a typed FAILED timeline — the plan never invents a task
+     from the surviving half of a relation and a duplicate id is never a
+     silent dict overwrite. (b) A scenario PUT under the same id is a new
+     scenario REVISION for the frontend: `activateScenarioRevision` ALWAYS
+     advances the epoch and clears the scene, the in-flight job ids, the
+     slice, the 4D cursor and the scenario-scoped viewer state, so a result
+     computed for the previous revision is dropped; plain re-selection of
+     the same id stays a refresh. (c) The method card's draft is scoped to
+     the scenario revision identity (`scenarioId:epoch`,
+     `reconcileMiningDraft`): a pending, unapplied edit never survives a
+     scenario switch or a document replacement. (d) Production RENDERING
+     is batched (`scene/productionBatches.ts`, `mergeSolids`): one merged
+     geometry + one material per (kind, validity) in the static layer and
+     per visual state (plus RETAINED pillars) in 4D — a concatenation of
+     the persisted triangles with offset indices, never new geometry
+     (measured on the default 7,322-solid Room & Pillar: 14,797 → 157 draw
+     calls per frame in Design, 14,744 → 106 in 4D). (e) A reserved method
+     has `productionKind = null` in the scene (never STOPES): the card
+     edits the shared sublevel interval only and the Production action
+     reads "Not implemented" and stays disabled. (f) MineExchange refuses a
+     ragged / non-numeric flat coordinate list as a typed export error
+     before any `reshape` (never a bare NumPy ValueError → 500).

@@ -100,9 +100,10 @@ describe('productionKindOf / labels', () => {
     expect(productionKindOf(longhole)).toBe('STOPES')
     expect(productionKindOf(cutFill)).toBe('CUT_FILL')
     expect(productionKindOf(roomPillar)).toBe('ROOM_PILLAR')
-    // a reserved method persists the Longhole-shaped typed boundary
+    // a reserved method persists the Longhole-SHAPED typed boundary but has
+    // NO production kind: it is never presented as stopes
     const reserved = { ...longhole, method: 'SUBLEVEL_CAVING' } as unknown as ProductionPayload
-    expect(productionKindOf(reserved)).toBe('STOPES')
+    expect(productionKindOf(reserved)).toBeNull()
   })
 
   it('names the generic action per kind', () => {

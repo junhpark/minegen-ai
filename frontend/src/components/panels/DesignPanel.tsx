@@ -16,7 +16,7 @@ import {
   productionKindOf,
   productionSummary,
 } from '@/scene/production'
-import { activateScenario } from '@/stores/scenarioSession'
+import { activateScenarioRevision } from '@/stores/scenarioSession'
 import {
   afterCapabilityGraphRegen,
   afterDevelopmentMeshRegen,
@@ -36,6 +36,7 @@ import type {
   LevelsPayload,
   MiningMethodSummary,
   NetworkPayload,
+  ProductionKind,
   ProductionPayload,
   ShaftsPayload,
   TimelinePayload,
@@ -171,7 +172,10 @@ export function DesignPanel({ view }: { view: DesignTab }) {
       delete body.id
       delete body.schemaVersion
       const updated = await api.replaceScenario(id, body as unknown as ScenarioCreate)
-      const started = activateScenario(updated) // same id → same epoch, derived state cleared
+      // the PUT replaced the document: a NEW scenario revision (epoch + 1,
+      // scene / jobs / slice / day cursor cleared) so a result of the previous
+      // revision still in flight is dropped, never applied to this one
+      const started = activateScenarioRevision(updated)
       await api.generateWorld(id)
       const next = await api.getScene(id)
       setScene(next, started)
@@ -300,6 +304,7 @@ export function DesignPanel({ view }: { view: DesignTab }) {
       }
       onGenerateCapabilityGraph={() => generateCapabilityGraph.mutate()}
       miningMethod={miningMethod}
+      scenarioIdentity={`${scenarioDoc?.id ?? ''}:${epoch}`}
       methodPending={applyMethod.isPending}
       methodEnabled={scenarioDoc !== null && scene !== null && !applyMethod.isPending}
       onApplyMethod={(mining) => applyMethod.mutate(mining)}
@@ -307,6 +312,7 @@ export function DesignPanel({ view }: { view: DesignTab }) {
       productionPending={generateProduction.isPending}
       productionEnabled={
         levelsReady &&
+        miningMethod?.implementationStatus === 'IMPLEMENTED' &&
         !generateProduction.isPending &&
         !generateLevels.isPending &&
         !applyMethod.isPending
@@ -373,6 +379,9 @@ export interface DesignPanelBodyProps {
 
   /** Phase 21B/C method card (null only while no scene is loaded) */
   miningMethod: MiningMethodSummary | null
+  /** identity of the scenario REVISION the card edits (`id:epoch`) — its draft
+   * never survives a scenario switch or a document replacement */
+  scenarioIdentity: string
   methodPending: boolean
   methodEnabled: boolean
   onApplyMethod: (mining: MiningConfig) => void
@@ -842,10 +851,12 @@ function MiningView(p: DesignPanelBodyProps) {
   const { production, timeline, miningMethod } = p
   const tm = timeline?.metrics ?? null
   // the production KIND comes from the payload's own method when one exists,
-  // else from the scenario's persisted method (both backend discriminators)
-  const kind = production
+  // else from the scenario's persisted method (both backend discriminators);
+  // null = the active method has no production implementation
+  const kind: ProductionKind | null = production
     ? productionKindOf(production)
-    : (miningMethod?.productionKind ?? 'STOPES')
+    : (miningMethod?.productionKind ?? null)
+  const implemented = miningMethod?.implementationStatus === 'IMPLEMENTED'
   const summary =
     production && production.status === 'SUCCESS' ? productionSummary(production) : null
   return (
@@ -854,7 +865,7 @@ function MiningView(p: DesignPanelBodyProps) {
       <ErrorLine text={p.miningError} />
       {miningMethod ? (
         <MiningMethodCard
-          key={`${miningMethod.method}:${JSON.stringify(miningMethod.methodParameters)}`}
+          identity={p.scenarioIdentity}
           summary={miningMethod}
           pending={p.methodPending}
           enabled={p.methodEnabled}
@@ -868,13 +879,22 @@ function MiningView(p: DesignPanelBodyProps) {
         info="The planned production volumes of the scenario's mining method — longhole stopes between adjacent levels, Cut & Fill lifts of cuts with their 1:1 backfills, or Room & Pillar rooms (heading and benches) with retained pillars — as orebody-aligned prisms the backend generated from the level development. Volume, tonnes and the grade proxy are deterministic planning quantities — never resources, reserves, a feasibility grade or a geotechnical pillar design."
         summary={summary}
         failure={production && production.status !== 'SUCCESS' ? production.failureReason : null}
+        notice={
+          miningMethod && !implemented
+            ? `${miningMethod.displayName} production is not implemented in this version: no production geometry is generated and nothing is substituted from another method.`
+            : null
+        }
         action={
           <ActionButton
             variant={nextActionVariant(production !== null, p.productionEnabled)}
-            disabled={!p.productionEnabled}
+            disabled={!p.productionEnabled || !implemented || kind === null}
             onClick={p.onGenerateProduction}
           >
-            {p.productionPending ? 'Generating…' : PRODUCTION_ACTION[kind]}
+            {p.productionPending
+              ? 'Generating…'
+              : implemented && kind !== null
+                ? PRODUCTION_ACTION[kind]
+                : 'Not implemented'}
           </ActionButton>
         }
         details={production ? <Metrics rows={productionRows(production)} /> : null}
@@ -912,7 +932,7 @@ function MiningView(p: DesignPanelBodyProps) {
                 tm ? { label: 'Development tasks', value: tm.developmentTaskCount } : null,
                 tm
                   ? {
-                      label: `Production tasks (${PRODUCTION_UNIT_NOUN[kind]})`,
+                      label: `Production tasks (${kind ? PRODUCTION_UNIT_NOUN[kind] : 'production units'})`,
                       value: tm.productionTaskCount ?? tm.stopeTaskCount,
                     }
                   : null,

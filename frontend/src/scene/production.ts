@@ -43,10 +43,11 @@ export const PRODUCTION_KIND_OF_METHOD: Record<string, ProductionKind> = {
   ROOM_AND_PILLAR: 'ROOM_PILLAR',
 }
 
-/** The production kind of a payload — from its own `method` discriminator;
- * reserved methods persist the Longhole-shaped typed FAILED boundary. */
-export function productionKindOf(payload: ProductionPayload): ProductionKind {
-  return PRODUCTION_KIND_OF_METHOD[payload.method] ?? 'STOPES'
+/** The production kind of a payload — from its own `method` discriminator.
+ * A reserved method persists the Longhole-SHAPED typed FAILED boundary but
+ * has NO production kind (null): it is never presented as stopes. */
+export function productionKindOf(payload: ProductionPayload): ProductionKind | null {
+  return PRODUCTION_KIND_OF_METHOD[payload.method] ?? null
 }
 
 /** Every solid of the ACTIVE production payload, in persisted order. */

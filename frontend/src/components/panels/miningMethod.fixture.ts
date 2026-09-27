@@ -36,14 +36,14 @@ export const METHOD_TABLE: MiningMethodSummary['availableMethods'] = [
     method: 'SUBLEVEL_CAVING',
     displayName: 'Sublevel Caving',
     implementationStatus: 'UNSUPPORTED_METHOD',
-    productionKind: 'STOPES',
+    productionKind: null,
     defaultParameters: null,
   },
   {
     method: 'SHRINKAGE_STOPING',
     displayName: 'Shrinkage Stoping',
     implementationStatus: 'UNSUPPORTED_METHOD',
-    productionKind: 'STOPES',
+    productionKind: null,
     defaultParameters: null,
   },
 ]

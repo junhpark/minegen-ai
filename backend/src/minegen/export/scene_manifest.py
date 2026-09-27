@@ -188,18 +188,28 @@ def mining_method_summary(scenario: Scenario) -> dict[str, Any]:
         "stopeLength": float(mining.stope_length),
         "minimumPillar": float(mining.minimum_pillar),
         "methodParameters": mp.model_dump(mode="json", by_alias=True) if mp is not None else None,
-        "productionKind": PRODUCTION_KIND[production_payload_class(mining.method)],
+        "productionKind": _production_kind(mining.method),
         "availableMethods": [
             {
                 "method": m.value,
                 "displayName": p.display_name,
                 "implementationStatus": p.implementation_status,
-                "productionKind": PRODUCTION_KIND[production_payload_class(m)],
+                "productionKind": _production_kind(m),
                 "defaultParameters": _default_parameters(m),
             }
             for m, p in all_plans().items()
         ],
     }
+
+
+def _production_kind(method: MiningMethodType) -> str | None:
+    """The production semantics kind of an IMPLEMENTED method; ``None`` for a
+    reserved method — its persisted typed FAILED boundary is Longhole-SHAPED
+    for compatibility but it has no production, so the UI never presents it
+    as stopes (Phase 21B/C review)."""
+    if plan_for(method).implementation_status != "IMPLEMENTED":
+        return None
+    return PRODUCTION_KIND[production_payload_class(method)]
 
 
 def _default_parameters(method: MiningMethodType) -> dict[str, Any] | None:

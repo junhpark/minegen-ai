@@ -209,6 +209,9 @@ def test_scene_mining_method_block_echoes_the_registry() -> None:
     assert by_method["ROOM_AND_PILLAR"]["defaultParameters"]["benchCount"] == 1
     assert by_method["SUBLEVEL_CAVING"]["defaultParameters"] is None
     assert by_method["SUBLEVEL_CAVING"]["implementationStatus"] == "UNSUPPORTED_METHOD"
+    # a reserved method has NO production kind — never presented as stopes
+    assert by_method["SUBLEVEL_CAVING"]["productionKind"] is None
+    assert by_method["SHRINKAGE_STOPING"]["productionKind"] is None
     cf_block = mining_method_summary(
         sc.model_copy(update={"mining": MiningConfig(method=MiningMethodType.CUT_AND_FILL)})
     )
@@ -220,6 +223,7 @@ def test_scene_mining_method_block_echoes_the_registry() -> None:
     block = mining_method_summary(reserved)
     assert block["method"] == "SUBLEVEL_CAVING"
     assert block["displayName"] == "Sublevel Caving"
+    assert block["productionKind"] is None
     assert block["implementationStatus"] == "UNSUPPORTED_METHOD"
     # the frontend never maps a method to a status: every enum member is covered here
     statuses = {

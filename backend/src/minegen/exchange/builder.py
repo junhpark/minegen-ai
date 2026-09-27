@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import numpy as np
+from numpy.typing import NDArray
 
 from minegen.core.artifacts import (
     CAPABILITY_GRAPH_ARTIFACT,
@@ -1567,6 +1568,25 @@ def _stope_file(
     )
 
 
+def _flat_triples(eid: str, field: str, values: Any, dtype: type) -> NDArray[Any]:
+    """A persisted flat coordinate / index list as an ``(n, 3)`` array. A
+    list whose length is not a multiple of three, or that is not a flat
+    numeric list, is a TYPED refusal — never NumPy's bare ``ValueError`` from
+    ``reshape`` (rule 190: malformed artifacts answer 409, never 500)."""
+    if not isinstance(values, list) or len(values) % 3 != 0:
+        n = len(values) if isinstance(values, list) else type(values).__name__
+        raise ExchangeExportError(
+            f"{eid}: geometry.{field} must be a flat list of coordinate triples, got {n}"
+        )
+    try:
+        arr: NDArray[Any] = np.asarray(values, dtype=dtype)
+    except (TypeError, ValueError) as exc:
+        raise ExchangeExportError(f"{eid}: geometry.{field} is not numeric ({exc})") from exc
+    if arr.ndim != 1 or (dtype is np.float64 and not np.all(np.isfinite(arr))):
+        raise ExchangeExportError(f"{eid}: geometry.{field} is not a finite flat list")
+    return arr.reshape(-1, 3)
+
+
 def _export_prism(
     eid: str,
     kind: str,
@@ -1584,8 +1604,8 @@ def _export_prism(
     positive volume agreeing with ``rec['geometricVolumeM3']``). Returns the
     three file paths and the declared volume. A defect is a typed refusal."""
     geom = rec["geometry"]
-    positions = np.asarray(geom["vertices"], dtype=np.float64).reshape(-1, 3)
-    triangles = np.asarray(geom["triangleIndices"], dtype=np.int64).reshape(-1, 3)
+    positions = _flat_triples(eid, "vertices", geom["vertices"], np.float64)
+    triangles = _flat_triples(eid, "triangleIndices", geom["triangleIndices"], np.int64)
     if positions.shape[0] != STOPE_VERTEX_COUNT or triangles.shape[0] != STOPE_TRIANGLE_COUNT:
         raise ExchangeExportError(
             f"{eid}: {kind.lower()} prism must carry {STOPE_VERTEX_COUNT} vertices / "

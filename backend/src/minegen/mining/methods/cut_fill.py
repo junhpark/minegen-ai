@@ -41,6 +41,7 @@ from minegen.mining.methods.contracts import (
     ProductionTaskSpec,
     ProductionUnitSpec,
 )
+from minegen.mining.methods.integrity import cut_fill_integrity
 from minegen.mining.methods.schedule_support import access_task_for, fixed_days_task, rate_task
 from minegen.mining.methods.solids import (
     MAX_PRODUCTION_SOLIDS,
@@ -284,6 +285,12 @@ class CutFillPlan:
         fully backfilled and cured, and no two cuts are worked at once.
         A deterministic sequencing BASELINE (rule 82), never a resource
         optimization; rates come from ``scenario.schedule`` only."""
+        # semantic integrity FIRST (review blocker 4): the schedule derives
+        # BACKFILL / CURE tasks from the persisted 1:1 backfill relation and
+        # must never invent them for a cut whose backfill record is missing
+        integrity = cut_fill_integrity(production_payload)
+        if integrity is not None:
+            return integrity
         sch = ctx.schedule
         tasks: list[ProductionTaskSpec] = []
         units: list[ProductionUnitSpec] = []

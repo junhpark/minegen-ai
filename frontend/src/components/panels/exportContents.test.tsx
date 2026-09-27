@@ -166,3 +166,15 @@ describe('ExportContents readout', () => {
     expect(empty).toContain(EXPORT_HELPER_TEXT)
   })
 })
+
+describe('production row of a method without a production implementation', () => {
+  it('names the row honestly instead of calling it Stopes', () => {
+    const layers = describeExportContents(
+      scene({ miningMethod: { productionKind: null } } as never),
+      false,
+    )
+    const row = layers.find((l) => l.key === 'stopes')
+    expect(row?.label).toBe('Production (method not implemented)')
+    expect(row?.state).toBe('NOT_GENERATED')
+  })
+})

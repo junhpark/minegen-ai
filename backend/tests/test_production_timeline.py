@@ -14,10 +14,17 @@ RP-12 single-front order: rooms by Manhattan index distance from the central
 Also: the builder never inspects the method (a mismatching payload is refused
 through the plan's identity contract), and a missing production access is a
 typed failure.
+
+Review blocker 4 — method-specific SEMANTIC integrity is verified at the entry
+of ``production_schedule`` (``mining/methods/integrity.py``): a structurally
+valid but corrupted artifact (a cut whose backfill record is gone, a duplicate
+room id, a room ↔ unit membership mismatch, a backfill volume disagreeing with
+its cut) yields a typed FAILED timeline, never a schedule the plan invents.
 """
 
 from __future__ import annotations
 
+import json
 from itertools import pairwise
 from typing import Any
 
@@ -326,3 +333,185 @@ def test_rp12_single_front_order_from_the_central_room(rp_case: dict[str, Any]) 
         assert f"TASK:MUCKING:{a}" in _unit_tasks(tl, b, RP_CHAIN)[0]["dependencies"]
     # the timeline references geometry by id only (rule 81)
     assert "geometry" not in tl["production"]["units"][0]
+
+
+# --------------------------------------------------------------------------- #
+# review blocker 4: semantic integrity of the persisted production payload
+# --------------------------------------------------------------------------- #
+
+
+def _cf_timeline(cf_case: dict[str, Any], mutate: Any) -> TimelinePayload:
+    from minegen.scheduling.builder import MineTimelineBuilder
+
+    sc = with_method(small_scenario(), MiningMethodType.CUT_AND_FILL)
+    stopes = json.loads(json.dumps(cf_case["stopes"]))
+    mutate(stopes)
+    return MineTimelineBuilder(sc).build(
+        cf_case["network"],
+        stopes,
+        cf_case["ramp"],
+        cf_case["levels"],
+        "rev",
+        accesses_payload=cf_case["accesses"],
+    )
+
+
+def _rp_timeline(rp_case: dict[str, Any], mutate: Any) -> TimelinePayload:
+    from minegen.scheduling.builder import MineTimelineBuilder
+
+    stopes = json.loads(json.dumps(rp_case["stopes"]))
+    mutate(stopes)
+    return MineTimelineBuilder(_rp_scenario()).build(
+        rp_case["network"],
+        stopes,
+        rp_case["ramp"],
+        rp_case["levels"],
+        "rev",
+        accesses_payload=rp_case["accesses"],
+    )
+
+
+def test_cf_integrity_missing_backfill_record_fails_instead_of_inventing_a_task(
+    cf_case: dict[str, Any],
+) -> None:
+    """The persisted 1:1 backfill relation is the authority: dropping cut B's
+    backfill record must not leave a SUCCESS timeline carrying a BACKFILL
+    task for cut B."""
+    victim = cf_case["stopes"]["cuts"][1]["id"]
+
+    def drop(doc: dict[str, Any]) -> None:
+        doc["backfills"] = [b for b in doc["backfills"] if b["sourceCutId"] != victim]
+
+    out = _cf_timeline(cf_case, drop)
+    assert out.status == "FAILED"
+    reason = out.failure_reason or ""
+    assert "CUT_AND_FILL production integrity" in reason
+    assert "one cut : one backfill" in reason or "without a backfill" in reason
+    assert not any(t.id == f"TASK:BACKFILL:{victim}" for t in out.tasks)
+    # the untouched artifact still schedules
+    assert _cf_timeline(cf_case, lambda d: None).status == "SUCCESS"
+
+
+@pytest.mark.parametrize(
+    ("label", "mutate", "needle"),
+    [
+        (
+            "duplicate backfill id",
+            lambda d: d["backfills"].__setitem__(
+                1, {**d["backfills"][1], "id": d["backfills"][0]["id"]}
+            ),
+            "duplicate backfill ids",
+        ),
+        (
+            "two backfills for one cut",
+            lambda d: d["backfills"].__setitem__(
+                1, {**d["backfills"][1], "sourceCutId": d["backfills"][0]["sourceCutId"]}
+            ),
+            "two backfills",
+        ),
+        (
+            "orphan backfill",
+            lambda d: d["backfills"].__setitem__(
+                0, {**d["backfills"][0], "sourceCutId": "CUT:NOPE"}
+            ),
+            "unknown cuts",
+        ),
+        (
+            "backfill volume disagrees with its cut",
+            lambda d: d["backfills"].__setitem__(
+                0, {**d["backfills"][0], "volumeM3": d["backfills"][0]["volumeM3"] * 1.001}
+            ),
+            "disagrees with its cut's geometric volume",
+        ),
+        (
+            "duplicate cut id",
+            lambda d: d["cuts"].__setitem__(1, {**d["cuts"][1], "id": d["cuts"][0]["id"]}),
+            "duplicate",
+        ),
+    ],
+)
+def test_cf_integrity_corruptions_are_typed_failures(
+    cf_case: dict[str, Any], label: str, mutate: Any, needle: str
+) -> None:
+    out = _cf_timeline(cf_case, mutate)
+    assert out.status == "FAILED", label
+    assert needle in (out.failure_reason or ""), (label, out.failure_reason)
+    assert out.tasks == [] and out.production is None
+
+
+def test_rp_integrity_duplicate_room_id_is_never_a_silent_overwrite(
+    rp_case: dict[str, Any],
+) -> None:
+    def dup_room(doc: dict[str, Any]) -> None:
+        doc["rooms"][1] = {**doc["rooms"][1], "id": doc["rooms"][0]["id"]}
+
+    out = _rp_timeline(rp_case, dup_room)
+    assert out.status == "FAILED"
+    assert "ROOM_AND_PILLAR production integrity" in (out.failure_reason or "")
+    assert "duplicate room ids" in (out.failure_reason or "")
+    assert _rp_timeline(rp_case, lambda d: None).status == "SUCCESS"
+
+
+@pytest.mark.parametrize(
+    ("label", "mutate", "needle"),
+    [
+        (
+            "unit names a room that does not declare it",
+            lambda d: d["extractionUnits"].__setitem__(
+                0, {**d["extractionUnits"][0], "roomId": d["rooms"][1]["id"]}
+            ),
+            "declares",
+        ),
+        (
+            "room declares a unit that does not exist",
+            lambda d: d["rooms"].__setitem__(
+                0,
+                {
+                    **d["rooms"][0],
+                    "extractionUnitIds": [*d["rooms"][0]["extractionUnitIds"], "UNIT:NOPE"],
+                },
+            ),
+            "missing extraction units",
+        ),
+        (
+            "unit of an unknown room",
+            lambda d: d["extractionUnits"].__setitem__(
+                0, {**d["extractionUnits"][0], "roomId": "ROOM:R999:C999"}
+            ),
+            "unknown rooms",
+        ),
+        (
+            "duplicate extraction unit id",
+            lambda d: d["extractionUnits"].__setitem__(
+                1, {**d["extractionUnits"][1], "id": d["extractionUnits"][0]["id"]}
+            ),
+            "duplicate",
+        ),
+        (
+            "duplicate pillar id",
+            lambda d: d["pillars"].__setitem__(1, {**d["pillars"][1], "id": d["pillars"][0]["id"]}),
+            "duplicate pillar ids",
+        ),
+        (
+            "room declares a unit twice",
+            lambda d: d["rooms"].__setitem__(
+                0,
+                {
+                    **d["rooms"][0],
+                    "extractionUnitIds": [
+                        *d["rooms"][0]["extractionUnitIds"],
+                        d["rooms"][0]["extractionUnitIds"][0],
+                    ],
+                },
+            ),
+            "declared by two rooms",
+        ),
+    ],
+)
+def test_rp_integrity_corruptions_are_typed_failures(
+    rp_case: dict[str, Any], label: str, mutate: Any, needle: str
+) -> None:
+    out = _rp_timeline(rp_case, mutate)
+    assert out.status == "FAILED", label
+    assert needle in (out.failure_reason or ""), (label, out.failure_reason)
+    assert out.tasks == [] and out.production is None

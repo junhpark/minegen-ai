@@ -30,6 +30,16 @@ export interface ScenarioState {
   /** Switch the active scenario and return the NEW epoch. Clears the scene
    * manifest, every derived product and all in-flight job ids in one set(). */
   setScenario: (scenario: Scenario | null) => number
+  /**
+   * Replace the active scenario DOCUMENT under the same id (a scenario PUT —
+   * Phase 21B/C review blocker 2). The backend invalidates every derived
+   * artifact on a PUT (rule 40), so the frontend must treat it as a new
+   * scenario REVISION: the epoch ALWAYS increments, the scene manifest and
+   * the in-flight job ids are cleared, and a result computed for the
+   * previous revision can never be written back. Unlike `setScenario`,
+   * re-selecting the same id is NOT a refresh here.
+   */
+  replaceScenarioDocument: (scenario: Scenario) => number
   setScene: (scene: WorldScene | null, epoch: number) => void
   /**
    * The ONLY way to write a derived product. `update` receives the scene as
@@ -56,6 +66,12 @@ export const useScenarioStore = create<ScenarioState>()((set, get) => ({
       return prev.epoch
     }
     const epoch = prev.epoch + 1
+    set({ scenario, scene: null, epoch, jobs: { ...NO_JOBS } })
+    return epoch
+  },
+
+  replaceScenarioDocument: (scenario) => {
+    const epoch = get().epoch + 1
     set({ scenario, scene: null, epoch, jobs: { ...NO_JOBS } })
     return epoch
   },

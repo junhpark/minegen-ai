@@ -1678,8 +1678,9 @@ export interface MiningMethodSummary {
   /** Phase 21B/C: the persisted method-specific parameters (null for Longhole
    * and reserved methods) */
   methodParameters: MethodParameters | null
-  /** the production semantics kind of the ACTIVE method */
-  productionKind: ProductionKind
+  /** the production semantics kind of the ACTIVE method — null for a method
+   * the registry does not implement (no production geometry exists for it) */
+  productionKind: ProductionKind | null
   /** the registry's whole method table with canonical default parameters —
    * the ONLY source of selector options, statuses and defaults (rule 124) */
   availableMethods: AvailableMethod[]
@@ -1689,7 +1690,8 @@ export interface AvailableMethod {
   method: MiningMethodType
   displayName: string
   implementationStatus: 'IMPLEMENTED' | 'UNSUPPORTED_METHOD'
-  productionKind: ProductionKind
+  /** null for a reserved (not implemented) method */
+  productionKind: ProductionKind | null
   defaultParameters: MethodParameters | null
 }
 

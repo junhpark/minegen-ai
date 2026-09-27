@@ -7,9 +7,11 @@ import type { MiningMethodType } from '@/types/enums'
 import type { AvailableMethod, MiningMethodSummary } from '@/types/scene'
 import {
   IMPLEMENTATION_LABEL,
+  type MiningDraftState,
   miningDraftFor,
   miningDraftIsDirty,
   persistedMining,
+  reconcileMiningDraft,
 } from './miningDraft'
 
 const FIELD =
@@ -17,6 +19,9 @@ const FIELD =
 
 interface Props {
   summary: MiningMethodSummary
+  /** the scenario REVISION this card edits (`scenarioId:epoch`); a change
+   * discards the pending draft (review blocker 3: never leak A's edits into B) */
+  identity: string
   pending: boolean
   enabled: boolean
   onApply: (mining: MiningConfig) => void
@@ -31,9 +36,17 @@ interface Props {
  * The card computes nothing: statuses, defaults and validation are the
  * backend's.
  */
-export function MiningMethodCard({ summary, pending, enabled, onApply }: Props) {
+export function MiningMethodCard({ summary, identity, pending, enabled, onApply }: Props) {
   const persisted = persistedMining(summary)
-  const [draft, setDraft] = useState<MiningConfig>(persisted)
+  // the draft is derived from (identity, stored state): a stored draft of
+  // another identity is never shown or submitted — no effect, no remount needed
+  const [stored, setStored] = useState<MiningDraftState>({ identity, draft: persisted })
+  const draft = reconcileMiningDraft(stored, identity, persisted).draft
+  const setDraft = (update: (d: MiningConfig) => MiningConfig) =>
+    setStored((s) => {
+      const current = reconcileMiningDraft(s, identity, persisted).draft
+      return { identity, draft: update(current) }
+    })
   const selected: AvailableMethod | undefined = summary.availableMethods.find(
     (m) => m.method === draft.method,
   )
@@ -99,14 +112,17 @@ export function MiningMethodCard({ summary, pending, enabled, onApply }: Props) 
           {!implemented && selected ? (
             <p className="text-[10px] text-mute">
               {selected.displayName} is not implemented: applying it designs level access and the
-              generic drift only.
+              generic drift only — it has no production parameters.
             </p>
           ) : null}
           <div className="grid grid-cols-2 gap-1.5" data-testid="mining-parameters">
             {num('Sublevel interval (m)', draft.sublevelInterval, (v) =>
               setDraft((d) => ({ ...d, sublevelInterval: v })),
             )}
-            {mp === undefined
+            {/* stope length / minimum pillar are LONGHOLE production parameters
+                (rule 159): a method without a production implementation shows
+                the shared sublevel interval only */}
+            {mp === undefined && implemented
               ? [
                   num('Stope length (m)', draft.stopeLength, (v) =>
                     setDraft((d) => ({ ...d, stopeLength: v })),
@@ -163,12 +179,12 @@ export function MiningMethodCard({ summary, pending, enabled, onApply }: Props) 
         <Metrics
           rows={[
             { label: 'Persisted method', value: summary.displayName },
-            { label: 'Export group', value: summary.productionKind },
+            { label: 'Export group', value: summary.productionKind ?? 'none (not implemented)' },
             { label: 'Sublevel interval', value: `${summary.sublevelInterval} m` },
-            summary.methodParameters === null
+            summary.methodParameters === null && activeImplemented
               ? { label: 'Stope length', value: `${summary.stopeLength} m` }
               : null,
-            summary.methodParameters === null
+            summary.methodParameters === null && activeImplemented
               ? { label: 'Minimum pillar', value: `${summary.minimumPillar} m` }
               : null,
             ...parameterRows(summary.methodParameters),

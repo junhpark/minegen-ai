@@ -178,6 +178,10 @@ def layout_full_chain(sc: Scenario, world: SyntheticWorld) -> dict[str, Any]:
         .build(out["network"], out["stopes"], ramp, levels, REV, accesses_payload=accesses)
         .model_dump(mode="json", by_alias=True)
     )
+    # the timeline builder's own inputs, so a test can re-run the builder over
+    # a mutated production payload (``reduce_full`` never reads these keys)
+    out["ramp"] = ramp
+    out["accesses"] = accesses
     return out
 
 

@@ -430,14 +430,14 @@ def test_mx7_payload_method_authority_guard(cut_fill: TabularStack) -> None:
 def test_mx8_corrupted_geometry_is_refused_never_trusted(
     cut_fill: TabularStack, room_pillar: TabularStack
 ) -> None:
-    def corrupt(stack: TabularStack, mutate: Any) -> str:
+    def corrupt(stack: TabularStack, mutate: Any, code: str = "MINE_EXCHANGE_EXPORT_FAILED") -> str:
         path = stack.derived / STOPES_ARTIFACT
         original = path.read_bytes()
         doc = json.loads(original)
         mutate(doc)
         _rewrite(path, doc)
         try:
-            return _refused(stack.client, stack.sid, "MINE_EXCHANGE_EXPORT_FAILED")
+            return _refused(stack.client, stack.sid, code)
         finally:
             path.write_bytes(original)
 
@@ -466,6 +466,25 @@ def test_mx8_corrupted_geometry_is_refused_never_trusted(
 
     msg = corrupt(cut_fill, orphan_backfill)
     assert "has no backfill" in msg or "unknown cut" in msg
+
+    # a structurally malformed flat list (length not a multiple of three, or
+    # non-numeric) is a TYPED refusal — never NumPy's bare ValueError → 500
+    def ragged_vertex_list(doc: dict[str, Any]) -> None:
+        doc["cuts"][0]["geometry"]["vertices"].append(1.0)
+
+    assert "flat list of coordinate triples" in corrupt(cut_fill, ragged_vertex_list)
+
+    def ragged_index_list(doc: dict[str, Any]) -> None:
+        del doc["cuts"][0]["geometry"]["triangleIndices"][0]
+
+    assert "flat list of coordinate triples" in corrupt(cut_fill, ragged_index_list)
+
+    # a non-numeric coordinate is already refused STRUCTURALLY by the reader
+    # (typed 409 ARTIFACT_MALFORMED at the read boundary, rule 189 analogue)
+    def non_numeric_vertex(doc: dict[str, Any]) -> None:
+        doc["cuts"][0]["geometry"]["vertices"][0] = "x"
+
+    assert "not usable" in corrupt(cut_fill, non_numeric_vertex, "ARTIFACT_MALFORMED")
 
     def flipped_pillar_face(doc: dict[str, Any]) -> None:
         t = doc["pillars"][0]["geometry"]["triangleIndices"]

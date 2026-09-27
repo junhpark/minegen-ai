@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import { productionSolids, type ProductionSolidKind } from '@/scene/production'
-import { solidGeometry } from '@/scene/solidGeometry'
+import { staticBatches } from '@/scene/productionBatches'
+import { mergeSolids, prepareSolid } from '@/scene/solidGeometry'
 import type { ProductionPayload } from '@/types/scene'
 
 /** Visual-only kind palette — never an engineering classification. */
@@ -19,27 +20,33 @@ const INVALID_COLOR = '#d9655a'
  * pillars): translucent prisms from the ACTIVE production payload. Every
  * solid is PLANNED here; temporal states belong to the 4D layer. The kind
  * decides the colour only — the backend decided the geometry and the QA.
+ *
+ * Rendering is BATCHED (review item 5): one merged geometry + one material
+ * per (kind, validity), so a ≈ 7,300-solid Room & Pillar panel is a handful
+ * of draw calls instead of thousands. Batching concatenates the persisted
+ * triangles verbatim; it computes no geometry.
  */
 export function ProductionLayer({ production }: { production: ProductionPayload }) {
-  const meshes = useMemo(
+  const batches = useMemo(
     () =>
-      productionSolids(production).map((s) => ({
-        key: s.id,
-        geometry: solidGeometry(s.geometry),
-        style: KIND_STYLE[s.kind],
-        valid: s.valid,
+      staticBatches(productionSolids(production)).map((b) => ({
+        key: b.key,
+        geometry: mergeSolids(b.solids.map((s) => prepareSolid(s.geometry))),
+        style: KIND_STYLE[b.kind],
+        valid: b.valid,
+        count: b.solids.length,
       })),
     [production],
   )
 
   return (
     <group>
-      {meshes.map((m) => (
-        <mesh key={m.key} geometry={m.geometry}>
+      {batches.map((b) => (
+        <mesh key={b.key} geometry={b.geometry} userData={{ batch: b.key, solids: b.count }}>
           <meshStandardMaterial
-            color={m.valid ? m.style.color : INVALID_COLOR}
+            color={b.valid ? b.style.color : INVALID_COLOR}
             transparent
-            opacity={m.style.opacity}
+            opacity={b.style.opacity}
             side={THREE.DoubleSide}
             depthWrite={false}
           />

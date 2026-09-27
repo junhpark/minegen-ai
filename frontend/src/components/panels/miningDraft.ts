@@ -44,3 +44,23 @@ export const IMPLEMENTATION_LABEL = {
   IMPLEMENTED: 'Implemented',
   UNSUPPORTED_METHOD: 'Not implemented',
 } as const
+
+/**
+ * The card's draft is scoped to ONE scenario revision (Phase 21B/C review
+ * blocker 3). `identity` is `scenarioId:epoch`; when it changes — another
+ * scenario was loaded, or the document was replaced by a PUT — the pending
+ * edits of the previous identity are discarded and the draft restarts at the
+ * new persisted configuration. Same identity → the edits are kept.
+ */
+export interface MiningDraftState {
+  identity: string
+  draft: MiningConfig
+}
+
+export function reconcileMiningDraft(
+  state: MiningDraftState,
+  identity: string,
+  persisted: MiningConfig,
+): MiningDraftState {
+  return state.identity === identity ? state : { identity, draft: persisted }
+}

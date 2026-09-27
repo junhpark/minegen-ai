@@ -42,6 +42,7 @@ from minegen.mining.methods.contracts import (
     ProductionTaskSpec,
     ProductionUnitSpec,
 )
+from minegen.mining.methods.integrity import room_pillar_integrity
 from minegen.mining.methods.schedule_support import access_task_for, fixed_days_task, rate_task
 from minegen.mining.methods.solids import (
     MAX_PRODUCTION_SOLIDS,
@@ -339,6 +340,12 @@ class RoomPillarPlan:
         development task of the room's production access AND on the previous
         unit's mucking. Pillars are retained material and are never
         scheduled. A deterministic sequencing BASELINE (rule 82)."""
+        # semantic integrity FIRST (review blocker 4): unique ids (a
+        # duplicate room id must never be a silent dict overwrite) and the
+        # exact two-way room ↔ extraction-unit membership
+        integrity = room_pillar_integrity(production_payload)
+        if integrity is not None:
+            return integrity
         sch = ctx.schedule
         rooms = {str(r["id"]): r for r in production_payload["rooms"]}
         if not rooms:
@@ -347,8 +354,6 @@ class RoomPillarPlan:
         for u in production_payload["extractionUnits"]:
             units_by_room.setdefault(str(u["roomId"]), []).append(u)
         for rid in units_by_room:
-            if rid not in rooms:
-                return f"extraction units reference unknown room {rid}"
             units_by_room[rid].sort(key=lambda u: int(u["benchIndex"]))
         central = _central_room(list(rooms.values()))
         r0, c0 = int(central["rowIndex"]), int(central["columnIndex"])

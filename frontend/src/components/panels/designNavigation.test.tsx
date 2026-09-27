@@ -52,6 +52,7 @@ function props(over: Partial<DesignPanelBodyProps> = {}): DesignPanelBodyProps {
     capabilityEnabled: false,
     onGenerateCapabilityGraph: () => undefined,
     miningMethod: LONGHOLE,
+    scenarioIdentity: 'scenario-a:1',
     methodPending: false,
     methodEnabled: true,
     onApplyMethod: () => undefined,
@@ -206,6 +207,34 @@ describe('Design workflow tabs expose one context at a time', () => {
     expect(card).toContain('data-status="INACTIVE"')
     expect(card).not.toContain('data-status="FAILED"')
     expect(card).toContain('not implemented in this version')
+    // review SHOULD_FIX 7: a method without a production implementation shows
+    // the shared sublevel interval only — never the Longhole production
+    // parameters — and offers no Longhole production action
+    expect(card).toContain('Sublevel interval (m)')
+    expect(card).not.toContain('Stope length (m)')
+    expect(card).not.toContain('Minimum pillar (m)')
+    const production = html.slice(html.indexOf('>Production'), html.indexOf('>Schedule'))
+    expect(production).toContain('Not implemented')
+    expect(production).not.toContain('Generate Stopes')
+    expect(production).toContain('disabled=""')
+    expect(production).toContain('no production geometry is generated')
+  })
+
+  it('the production action stays disabled for an unsupported method even when levels exist', () => {
+    const html = render({
+      view: 'MINING',
+      productionEnabled: true, // the parent gate is also closed in DesignPanel; the body never trusts it alone
+      miningMethod: {
+        ...LONGHOLE,
+        method: 'SHRINKAGE_STOPING',
+        displayName: 'Shrinkage Stoping',
+        implementationStatus: 'UNSUPPORTED_METHOD',
+        productionKind: null,
+      },
+    })
+    const production = html.slice(html.indexOf('>Production'), html.indexOf('>Schedule'))
+    expect(production).toContain('Not implemented')
+    expect(production).toContain('disabled=""')
   })
 
   it('without a loaded scene the method card is simply absent', () => {

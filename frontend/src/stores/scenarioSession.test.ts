@@ -14,7 +14,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Scenario } from '@/types/api'
 import type { WorldScene } from '@/types/scene'
-import { activateScenario, scenarioEpoch } from './scenarioSession'
+import { activateScenario, activateScenarioRevision, scenarioEpoch } from './scenarioSession'
 import { useScenarioStore } from './scenarioStore'
 import { useSliceStore } from './sliceStore'
 import { useTimelineStore } from './timelineStore'
@@ -214,5 +214,70 @@ describe('asynchronous cross-contamination (the actual bug)', () => {
     const epochA = activateScenario(scenario('A'))
     state().applyScene(epochA, (current) => ({ ...current, decline: { tag: 'x' } as never }))
     expect(state().scene).toBeNull()
+  })
+})
+
+describe('scenario REVISION boundary (a PUT under the same id — review blocker 2)', () => {
+  it('replacing the document of the SAME scenario id advances the epoch and clears derived state', () => {
+    const epochA = activateScenario(scenario('A'))
+    state().setScene(scene('A', 'a'), epochA)
+    state().setJob('layout', 'job-a', epochA)
+    useSliceStore.getState().setAxis('x')
+    useTimelineStore.getState().setRange(0, 100)
+    useTimelineStore.getState().setCurrentDay(12)
+    useViewerStore.setState({ selectedObjectId: 'x' } as never)
+    expect(useTimelineStore.getState().currentDay).toBe(12)
+
+    const revised = { ...scenario('A'), name: 'A (Cut & Fill)' }
+    const epochA2 = activateScenarioRevision(revised)
+
+    expect(epochA2).toBe(epochA + 1)
+    expect(state().scenario?.name).toBe('A (Cut & Fill)')
+    expect(state().scene).toBeNull()
+    expect(state().jobs).toEqual({
+      decline: null,
+      smooth: null,
+      tunnel: null,
+      developmentMesh: null,
+      layout: null,
+    })
+    expect(useTimelineStore.getState().currentDay).toBe(0)
+    expect(useViewerStore.getState().selectedObjectId).toBeNull()
+    expect(useSliceStore.getState().axis).toBe(useSliceStore.getInitialState().axis)
+  })
+
+  it('an old-revision asynchronous result is dropped after the same-id replacement', () => {
+    // a Longhole design job starts under revision 1 of scenario A
+    const epochA = activateScenario(scenario('A'))
+    state().setScene(scene('A', 'a'), epochA)
+    const startedEpoch = scenarioEpoch()
+
+    // the user changes the mining method: PUT (backend clears every derived
+    // artifact) → revision 2 → world regenerated → empty scene loaded
+    const epochA2 = activateScenarioRevision({ ...scenario('A'), name: 'A2' })
+    const emptyA2 = {
+      ...scene('A', 'a2'),
+      ...Object.fromEntries(DERIVED.map((k) => [k, null])),
+    }
+    state().setScene(emptyA2, epochA2)
+
+    // ONLY NOW does the revision-1 job resolve — its write must be dropped
+    state().applyScene(startedEpoch, (current) => ({ ...current, stopes: { tag: 'a' } as never }))
+    state().setJob('layout', 'job-stale', startedEpoch)
+    state().setScene(scene('A', 'stale'), startedEpoch)
+
+    expect(state().epoch).toBe(epochA2)
+    for (const key of DERIVED) expect(state().scene?.[key]).toBeNull()
+    expect(state().jobs.layout).toBeNull()
+    // a revision-2 write is accepted
+    state().applyScene(epochA2, (current) => ({ ...current, stopes: { tag: 'a2' } as never }))
+    expect((state().scene?.stopes as unknown as { tag: string }).tag).toBe('a2')
+  })
+
+  it('plain re-selection of the same id is still a refresh, not a revision', () => {
+    const epochA = activateScenario(scenario('A'))
+    state().setScene(scene('A', 'a'), epochA)
+    expect(activateScenario(scenario('A'))).toBe(epochA)
+    expect(state().scene).not.toBeNull()
   })
 })

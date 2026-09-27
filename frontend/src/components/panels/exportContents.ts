@@ -71,7 +71,9 @@ export function describeExportContents(
     // (stopes / cuts / rooms-benches-pillars) — one production kind per bundle
     {
       key: 'stopes',
-      label: PRODUCTION_LABEL[scene.miningMethod.productionKind],
+      label: scene.miningMethod.productionKind
+        ? PRODUCTION_LABEL[scene.miningMethod.productionKind]
+        : 'Production (method not implemented)',
       state: stateOf(scene.stopes),
     },
   )
