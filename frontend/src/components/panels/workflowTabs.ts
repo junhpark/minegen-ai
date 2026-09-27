@@ -28,7 +28,16 @@ export const SYSTEMS_TABS: readonly PanelTab<SystemsTab>[] = [
   { id: 'SENSORS', label: 'Sensors' },
 ]
 
+/** Phase 22A/B — the Analysis workspace: quantities first, economics second. */
+export type AnalysisTab = 'OVERVIEW' | 'ECONOMICS'
+
+export const ANALYSIS_TABS: readonly PanelTab<AnalysisTab>[] = [
+  { id: 'OVERVIEW', label: 'Overview' },
+  { id: 'ECONOMICS', label: 'Economics' },
+]
+
 export const DESIGN_PANEL_ID = 'design-workflow-panel'
+export const ANALYSIS_PANEL_ID = 'analysis-workflow-panel'
 export const SYSTEMS_PANEL_ID = 'systems-workflow-panel'
 
 /**

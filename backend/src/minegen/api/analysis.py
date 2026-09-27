@@ -1,0 +1,68 @@
+"""Phase 22A/B: the read-only mine analysis and the planning-economics
+assumption document."""
+
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from minegen.analysis.economics import EconomicsConfig, EconomicsConfigResponse
+from minegen.analysis.models import MineAnalysisPayload
+from minegen.api.deps import get_analysis_service
+from minegen.api.errors import ROUTER_DESIGN, guard
+from minegen.services.analysis_service import AnalysisService
+
+router = APIRouter(prefix="/scenarios/{scenario_id}/analysis", tags=["analysis"])
+
+Service = Annotated[AnalysisService, Depends(get_analysis_service)]
+
+
+def _mapped(scenario_id: str, exc: Exception) -> HTTPException:
+    mapped = guard(scenario_id, exc, router=ROUTER_DESIGN)
+    if mapped is None:
+        raise exc
+    return mapped
+
+
+@router.get("")
+def get_mine_analysis(scenario_id: str, svc: Service) -> MineAnalysisPayload:
+    """Synchronous READ-ONLY projection of the persisted mine state into
+    development / production / schedule / ratio / economics sections. No
+    job, no generation, no persistence; a missing source is a NOT_AVAILABLE
+    section (200), a present but malformed or inconsistent source a typed
+    409 (``ANALYSIS_SOURCE_INCONSISTENT`` / ``ARTIFACT_MALFORMED`` /
+    ``READ_SNAPSHOT_CHANGED``)."""
+    try:
+        return svc.analyze(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _mapped(scenario_id, exc) from exc
+
+
+@router.get("/economics-config")
+def get_economics_config(scenario_id: str, svc: Service) -> EconomicsConfigResponse:
+    """The user-authored planning economics assumptions of this scenario.
+    Absent → ``{configured: false, revision: null, config: null}``."""
+    try:
+        return svc.economics_config(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _mapped(scenario_id, exc) from exc
+
+
+@router.put("/economics-config")
+def put_economics_config(
+    scenario_id: str, config: EconomicsConfig, svc: Service
+) -> EconomicsConfigResponse:
+    """Validate → atomic write of ``economics.json`` → content revision.
+    Never touches a mine artifact: no geometry, production or timeline
+    invalidation follows an economics change."""
+    try:
+        return svc.put_economics_config(scenario_id, config)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _mapped(scenario_id, exc) from exc

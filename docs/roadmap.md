@@ -37,7 +37,8 @@ demo (D0) is **deferred** and is no longer the next phase.
 | 23A | MineExchange Core v1 — **DELIVERED** (rule 190, `docs/mine-exchange.md`) | versioned (`1.0.0`), read-only, deterministic interoperability bundle projected from authoritative state: terrain node grid (CSV / ESRI ASC / open TIN), orebody authority JSON + derived closed mesh (TABULAR / ELLIPSOID / WARPED_VEIN, QA'd), fault planes, individual closed excavation solids through the production sweep helpers (never unioned; `mine_multibody.stl` is a concatenation), verbatim render GLBs, centerlines CSV / DXF, network and capability DTOs; world-only exports with manifest omissions; `POST …/export/mine-exchange` (sync, no persisted artifact); Scenario-panel button. Stopes / mining-method contract delivered by 21A as MineExchange 1.1 |
 | 21A | Mining Method Core + Longhole migration + MineExchange 1.1 — **DELIVERED** (rule 192; the former 21A.2 is folded in) | ONE mining-method registry (`mining/methods/registry.py::plan_for`, explicit for every `MiningMethodType`, no `None`, no longhole fallback) resolving a declarative `MiningMethodPlan` (WHAT: production-development intent, station lattice pitch / margin, production generation) consumed by `LevelDevelopmentBuilder` (WHERE / validity) and `DesignService.generate_stopes`; the longhole geometry algorithm is untouched and its outputs are proven unchanged against the committed pre-migration parity fixture (two-tier gate: structure / ids / counts exact, floats within 1e-10; canonical digests advisory) (`tests/fixtures/phase21a/longhole_parity.json`: TABULAR legacy, TABULAR layout-v2, CUT_AND_FILL, WARPED typed boundary); goldens unchanged. Reserved methods (CUT_AND_FILL, ROOM_AND_PILLAR, SUBLEVEL_CAVING, SHRINKAGE_STOPING) are explicit unsupported plans (generic backbone + UNSUPPORTED_METHOD + FAILED stopes). MineExchange **1.1.0**: `semantics/mining_method.json` (always present), `production/stopes.json` + one authoritative closed prism per stope (STL / OBJ / GLB, independent QA), `STOPE` entity kind, STOPES omission semantics ARTIFACT_ABSENT / SOURCE_NOT_SUCCESS (TIMELINE stays NOT_IN_V1), method-authority mismatch a typed 409, stopes exportable without a network. Frontend: read-only "Mining method" card at the top of the Mining tab (Implemented / Not implemented, parameters in Details, NO selector), export contents rows, keyboard tab focus follows the arrow keys. No drawpoint / pillar / backfill / room / cut / bench entities |
 | 21B/C | Cut & Fill + Room & Pillar — **DELIVERED** together (rules 193–196) | Both methods are first-class registered plans (`methods/cut_fill.py`, `methods/room_pillar.py`; `methods/solids.py` shared prism helpers) — the registry table is now Longhole / Cut & Fill / Room & Pillar IMPLEMENTED, Sublevel Caving / Shrinkage UNSUPPORTED; `plan_for` remains the only method authority (access pattern → level builder, production schedule → timeline builder, typed payload → scene / MineExchange). ONE active production artifact at the legacy path `derived/stopes.json`, typed `ProductionPayload` union; `POST/GET …/design/production` method-generic, `…/design/stopes` Longhole-only (409 otherwise); `MiningConfig.methodParameters` typed union with backend defaults. Cut & Fill: dip-aware equal-partition lifts, snake-ordered cuts, 1:1 semantic backfills, single conservative PREP→STOPING→MUCKING→BACKFILL→CURE chain. Room & Pillar: alternating band grid, ROOM cells with HEADING / BENCH stages, retained PILLAR solids never scheduled, single-front schedule from the central cell. Longhole levels / stopes / network / timeline proven byte-unchanged against the 21B/C baseline captured on 7052606. MineExchange **1.2.0** (CUT / BACKFILL / ROOM / BENCH / PILLAR entities, per-method production documents, one omission group per bundle). Frontend: method selector with Implemented / Not implemented badges, method-specific parameter editor (Apply = scenario PUT + world regeneration), generic Production action, kind-coloured production layer + 4D states from the backend transitions. Not implemented: Sublevel Caving, Shrinkage, WARPED production, production-room walkthrough, geotechnical pillar design |
-| 22 | Analysis / Economics / Compliance — **NEXT** | production, development, cost, revenue, cashflow + rule compliance + layout comparison |
+| 22A/B | Mine Analysis Core + Planning Economics — **DELIVERED** (rules 197–202, `docs/analysis-economics.md`) | READ-ONLY downstream projection (`analysis/`, `GET …/analysis`, sync, no derived artifact, ONE re-verified snapshot): development lengths / GROSS excavation volumes per edge type from MineNetwork, planned mined tonnes / volume / grade proxy per method (Longhole stopes, Cut & Fill cuts + separate backfill, Room & Pillar extraction units + separate retained pillars), schedule KPIs and planning ratios from the timeline, cross-artifact integrity (409 ANALYSIS_SOURCE_INCONSISTENT), partial 200 for absent sources; user-authored `economics.json` beside the scenario (`GET/PUT …/analysis/economics-config`, sha256 revision, zero invalidation), cost / gross-revenue summary, Planning Cashflow buckets and Baseline Planning NPV (mid-bucket discounting); Analysis workspace (Overview \| Economics) with the assumptions editor and the permanent synthetic-economics disclaimer. Non-scope: rule compliance, candidate what-if economics, IRR / tax / royalty, ventilation / haulage / capacity |
+| 22C | Rule compliance + layout comparison economics — **NEXT** | rulebook checks over the assessment read model, per-candidate what-if quantities on the layout-v2 catalogue |
 | 23B | External software adapters — PLANNED | Ventsim, AnyLogic, RS3, blast, support, Unreal adapters built ON the MineExchange bundle (never inside the core) |
 
 ## Phase 20 completion gate
@@ -81,8 +82,8 @@ Deferred deployment item (not scheduled):
 | --- | --- | --- |
 | D0 | Hugging Face public demo | single Docker Space, session isolation, TTL, prebuilt demo scenario; demo mode (viewer-only: OrbitControls autoRotate roundview paused on input, 20× looping 4D playback reusing the timeline clock, one "Demo" HUD toggle, disabled in walkthrough) |
 
-Phases 01–20E, 21A, 21B/C and 23A are described in `docs/architecture.md`;
-the invariants they established are `CLAUDE.md` rules 1–196.
+Phases 01–20E, 21A, 21B/C, 22A/B and 23A are described in `docs/architecture.md`;
+the invariants they established are `CLAUDE.md` rules 1–202.
 
 ## Phase 20E — UI/UX consolidation (frontend only)
 
@@ -133,6 +134,26 @@ verbatim), MineExchange grows to 1.2.0 additively, and the Mining tab gains
 the method selector + parameter editor and the generic Production action.
 Non-scope: Sublevel Caving, Shrinkage Stoping, WARPED_VEIN production
 geometry, production-room walkthrough, geotechnical pillar design.
+
+## Phase 22A/B — Mine Analysis Core + Planning Economics (delivered together)
+
+A downstream, read-only analysis layer over the persisted authoritative
+state (rules 197–202): the MineNetwork is the development authority (length
+and GROSS excavation volume per edge type), the active production artifact
+the tonnage authority (planned mined tonnes from geometry × density; pillars
+retained, backfill semantic), the MineTimeline the timing authority (baseline
+duration, ramp completion, first production, task counts), and a
+user-authored `economics.json` beside the scenario — never a derived
+artifact, never an invalidation trigger — the assumption authority
+(development rates per edge type, production rate per method, processing,
+backfill, fixed opex, initial capital, gross revenue per mined tonne, discount
+rate, bucket size). Costs and gross revenue follow the timeline tasks into
+fixed cashflow buckets; the Baseline Planning NPV discounts each bucket at its
+midpoint. The frontend Analysis workspace (Overview | Economics) renders the
+projection and edits explicit assumptions only, under the permanent
+"Synthetic planning economics" disclaimer. Non-scope: rule compliance and
+layout comparison economics (22C), external adapters (23B), IRR / tax /
+royalty / inflation, ventilation, haulage and capacity.
 
 ## How this list is used
 

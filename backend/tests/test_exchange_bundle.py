@@ -26,6 +26,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from minegen.api.deps import (
+    get_analysis_service,
     get_design_service,
     get_exchange_service,
     get_infrastructure_service,
@@ -57,6 +58,7 @@ from minegen.exchange.geometry.centerlines import development_entity_id
 from minegen.exchange.geometry.qa import MeshQa, mesh_qa
 from minegen.exchange.models import MINE_EXCHANGE_VERSION
 from minegen.main import create_app
+from minegen.services.analysis_service import AnalysisService
 from minegen.services.design_service import DesignService
 from minegen.services.exchange_service import ExchangeService
 from minegen.services.infrastructure_service import InfrastructureService
@@ -290,6 +292,7 @@ class TabularStack:
         app.dependency_overrides[get_exchange_service] = lambda: ExchangeService(
             self.store, self.worlds
         )
+        app.dependency_overrides[get_analysis_service] = lambda: AnalysisService(self.store)
         self.client = TestClient(app)
         self.client.__enter__()
         self.sid = ""

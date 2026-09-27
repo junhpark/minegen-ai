@@ -34,6 +34,8 @@ platform. Research prototype / proof of concept.
 | 17.1  | Scenario isolation / viewer stabilisation                    | done  |
 | 18    | Spatial Field Core (no block/SMU semantics, golden harness)  | done  |
 | 19    | Implicit Geological Orebody (WARPED_VEIN implicit solid)     | done  |
+| 20–21 | Layout v2, level access, shafts, capability, assessment, MineExchange, mining methods | done  |
+| 22A/B | Mine Analysis Core + Planning Economics (read-only analysis, economics.json) | done  |
 
 
 ## Layout
@@ -356,8 +358,14 @@ Scenario 3 — CUT_AND_FILL
 
 ## API
 
-See `docs/api.md` for the authoritative endpoint reference. Phase 12 adds
-the sensor placement baseline alongside Phase 11 communication:
+See `docs/api.md` for the authoritative endpoint reference. Phase 22A/B adds
+the read-only mine analysis and the planning-economics assumptions
+(`docs/analysis-economics.md`):
+
+    GET      /api/v1/scenarios/{id}/analysis
+    GET/PUT  /api/v1/scenarios/{id}/analysis/economics-config
+
+Phase 12 adds the sensor placement baseline alongside Phase 11 communication:
 
     POST/GET /api/v1/scenarios/{id}/infrastructure/communication
     POST/GET /api/v1/scenarios/{id}/infrastructure/sensors

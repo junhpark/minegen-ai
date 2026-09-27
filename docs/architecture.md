@@ -74,6 +74,15 @@ here. Per-phase decision records below keep their original wording.
                        READ-ONLY projection of the layout-v2 catalogue,
                        selection, ramp source and capability graph — never
                        persisted, never a design authority)
+      analysis/        Phase 22A/B mine analysis read model (rules 197–202):
+                       models (typed sections with AVAILABLE / NOT_AVAILABLE /
+                       NOT_CONFIGURED), integrity (READ ≠ TRUST cross-artifact
+                       checks → ANALYSIS_SOURCE_INCONSISTENT), builder (pure
+                       projection: development / production / schedule /
+                       ratios / economics), economics (user-authored
+                       economics.json beside the scenario, sha256 revision,
+                       rates), cashflow (bucket ledger, overlap allocation,
+                       mid-bucket NPV); never a derived artifact
       mining/          Phase 21A/21B/C mining-method core (rules 192–196): methods/registry.py
                        (plan_for — the ONE dispatch authority), methods/contracts.py
                        (MiningMethodPlan protocol, access patterns, production schedule spec),
@@ -1711,3 +1720,103 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
 - **Non-scope.** Sublevel Caving, Shrinkage Stoping, WARPED_VEIN production
   geometry, production-room walkthrough colliders, geotechnical pillar
   design.
+
+## Phase 22A/B — Mine Analysis Core + Planning Economics (rules 197–202)
+
+- **Position in the architecture.** A downstream READ-ONLY projection like
+  the Phase 20D.3 assessment: `services/analysis_service.py` takes ONE
+  `ArtifactReader` snapshot of `network.json`, `stopes.json` (the active
+  production artifact) and `timeline.json`, observes `economics.json` under
+  the same store lock, projects through the pure `analysis/builder.py`, then
+  re-observes every consumed source and answers `READ_SNAPSHOT_CHANGED` on
+  any movement. Nothing is generated, persisted or invalidated; no job runs;
+  no `derived/analysis.json` exists. Ramp / levels / shafts are not read —
+  the network is the development authority — so they are not part of the
+  consistency set.
+- **Sections and availability.** `MineAnalysisPayload {status, sources,
+  development, production, schedule, ratios, economics}`; each section carries
+  `availability` (AVAILABLE | NOT_AVAILABLE | NOT_CONFIGURED) and a backend
+  `reason`. An absent or FAILED source is a normal partial 200; a world that
+  is not generated makes every derived section NOT_AVAILABLE (derived files
+  are never trusted without a VALID world, AC-01F). A SUCCESS timeline whose
+  network or production owner is missing is `ANALYSIS_SOURCE_INCONSISTENT`,
+  never a partial section.
+- **Integrity boundary (`analysis/integrity.py`).** Network: unique node /
+  edge ids, endpoints exist, finite positive `length3d` and `analyticArea`,
+  declared `NetworkMetrics` counts exact and lengths within 1e-6 m of the
+  edge sums (never overwritten; residuals reported in `crossCheck`).
+  Production: method agreement with the scenario, unique unit ids, finite
+  non-negative quantities, and the Cut & Fill / Room & Pillar semantic
+  relations through the SAME `mining/methods/integrity.py` helpers the
+  timeline builder and MineExchange use. Timeline: unique task ids, `0 ≤
+  start ≤ end`, duration = end − start, dependencies exist, every
+  DEVELOPMENT target is a network edge with a metre basis equal to its
+  `length3d` and every edge has exactly one development task, every
+  production target is a production object with STOPING / MUCKING bases
+  equal to its tonnes, the method's required task types per unit (Longhole /
+  Room & Pillar: STOPING + MUCKING; Cut & Fill: + BACKFILL), and
+  `metrics.firstStopingDay` equal to the earliest STOPING start.
+- **Development (22A).** Categories in `EdgeType` order (RAMP, LEVEL_ACCESS,
+  DRIFT, CROSSCUT, RAISE, SHAFT, SHAFT_STATION_ACCESS) with edge count, total
+  length and `grossExcavationVolumeM3 = Σ length3d × analyticArea`; totals
+  named `grossDevelopmentVolumeM3` (junction overlap not unioned).
+- **Production (22A).** Method-generic summary (`productionObjectCount`,
+  `totalProductionVolumeM3`, `totalPlannedMinedTonnes`,
+  `weightedMeanGradeProxy` — informational) plus a discriminated `detail`:
+  Longhole `{stopeCount, levelIntervalCount}`, Cut & Fill `{cutCount,
+  liftCount, backfillCount, totalBackfillVolumeM3}` (backfill is not
+  production), Room & Pillar `{roomCount, extractionUnitCount, pillarCount,
+  headingCount, benchCount, retainedPillarVolumeM3,
+  retainedPillarTonnesEquivalent, geometricExtractionFraction}` (pillars are
+  retained material). No resource / reserve tonnage exists anywhere.
+- **Schedule and ratios (22A).** Task counts, `startDay`, `endDay`,
+  `mineDurationDays`, `rampCompletionDay`, `firstProductionDay` (earliest
+  STOPING start, generic); `developmentMetresPerKt` and
+  `grossDevelopmentM3PerKt` when planned mined tonnes > 0, else null with a
+  reason.
+- **Economics config (22B, `analysis/economics.py`).** `EconomicsConfig`
+  (version 1, `currencyCode ^[A-Z]{3}$`, six development rates per metre,
+  three production rates per tonne, processing / backfill / fixed-opex /
+  gross-revenue rates, initial capital, annual discount rate ≥ 0, bucket days
+  > 0; every float finite and non-negative) is persisted as
+  `data/scenarios/{id}/economics.json` by `publish_text` (atomic) with
+  revision `sha256(canonical JSON)`. It is not registered, not a fingerprint
+  input, not cascaded: `PUT …/analysis/economics-config` leaves every derived
+  file byte- and stat-identical (test B-5), and a scenario PUT does not
+  delete it. Absent → `{configured: false, revision: null, config: null}`;
+  malformed → 409 ARTIFACT_MALFORMED; invalid input → 422.
+- **Costs, cashflow, NPV (22B, `analysis/cashflow.py`).** Rule 202 fixes the
+  allocation and the discounting convention; `BucketLedger` holds one column
+  per cost / revenue kind, `allocate_linear` gives overlap fractions summing
+  to 1 (a zero-length interval is a point event; the last bucket is closed at
+  the mine end), `build_buckets` derives net / cumulative / discounted per
+  bucket. The summary's `totalCost` is the sum of its six components; bucket
+  columns reconcile with the summary; rate 0 ⇒ NPV = undiscounted net.
+- **Wire.** `GET …/analysis` (sync), `GET / PUT …/analysis/economics-config`;
+  new code 409 `ANALYSIS_SOURCE_INCONSISTENT` in the shared `api/errors.py`
+  table; `ArtifactMalformedError` / `ReadSnapshotChangedError` reused.
+- **Frontend.** `AnalysisWorkspace` (Overview | Economics) for the existing
+  `ANALYSIS` mode: `AnalysisPanel` runs two read-only react-query reads keyed
+  on the scenario epoch, the scene identity and the economics revision (a
+  response of a previous scenario / revision never populates the current
+  one) and one mutation (save assumptions → `setQueryData` +
+  `invalidateQueries(['mine-analysis'])`; no epoch bump, no scene clear,
+  no generation). `EconomicsConfigEditor` edits explicit strings under the
+  identity `scenarioId:economicsRevision` (`economicsDraft.ts`), validates
+  client-side only to enable Save (the backend 422 stays the authority) and
+  offers "Use demo assumptions — DEMO / SYNTHETIC ASSUMPTIONS" on an explicit
+  click. `CashflowTable` renders the backend buckets and an inline SVG (no
+  chart dependency). Labels: "Planned mined tonnes", "Gross development
+  volume", "Grade proxy", "Baseline duration", "Planning NPV"; the disclaimer
+  is always visible on the Economics tab.
+- **Tests.** `tests/analysis_support.py` (hand-built round-number mine),
+  `tests/test_analysis_builder.py` (A-1…A-11, B-2…B-4, B-6…B-20 with a
+  hand-calculated NPV), `tests/test_analysis_api.py` (e2e: partial 200,
+  config roundtrip / revision / 422, B-5 zero invalidation, Longhole / Cut &
+  Fill / Room & Pillar chains, determinism, corruption 409, snapshot race,
+  one config over three methods); frontend `AnalysisPanel.test.tsx`,
+  `economicsDraft.test.ts`, `workflowPreservation.test.ts`.
+- **Non-scope.** Rule compliance and layout comparison economics (22C),
+  IRR / tax / depreciation / royalty / inflation / sensitivity, candidate
+  what-if economics, ventilation / haulage / capacity, external adapters
+  (23B).

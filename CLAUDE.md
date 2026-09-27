@@ -2100,3 +2100,74 @@ code, the code and the rule win and the map is corrected.
      reads "Not implemented" and stays disabled. (f) MineExchange refuses a
      ragged / non-numeric flat coordinate list as a typed export error
      before any `reshape` (never a bare NumPy ValueError → 500).
+
+197. Mine analysis is a READ-ONLY downstream projection (Phase 22A,
+     `analysis/`, `GET …/analysis`). Its authorities are the persisted
+     artifacts — `scenario.json`, `network.json` (development), the active
+     production artifact `stopes.json`, `timeline.json` — read through the
+     validated `ArtifactReader` from ONE snapshot that is re-observed after
+     the projection (READ_SNAPSHOT_CHANGED on any movement, `economics.json`
+     included). It never generates, regenerates, repairs or persists a mine
+     artifact (no `derived/analysis.json`), runs synchronously (no job) and
+     re-verifies every cross-artifact relation it derives a number from
+     (unique ids, endpoints, finite positive lengths / areas, declared
+     `NetworkMetrics` ↔ edge sums, timeline targets ↔ edges / production
+     objects, scenario ↔ production ↔ timeline method, task basis ↔ geometric
+     quantity): a disagreement is the typed 409 ANALYSIS_SOURCE_INCONSISTENT,
+     a present unusable document ARTIFACT_MALFORMED, never a bare 500. An
+     ABSENT or FAILED source is a NORMAL partial 200 — the section reads
+     NOT_AVAILABLE with the backend reason. A SUCCESS timeline whose network
+     or production owner is absent is inconsistent, not partial.
+198. Tonnage authority. "Planned mined tonnes" come ONLY from production
+     geometry (stope / cut / extraction-unit solids × density, the persisted
+     `tonnes`); pillars are retained material and backfill is a semantic
+     record — both reported separately, never production. No resource /
+     reserve / recoverable tonnage is ever derived from the orebody, and the
+     words reserve, resource, recoverable, proven, economic grade and
+     optimized schedule appear nowhere in the analysis payload or UI. The
+     development volume is `Σ length3d × analyticArea`, named GROSS
+     (junction overlap is not unioned); the declared network metrics are
+     cross-checked, never overwritten.
+199. Grade is never a revenue authority. `weightedMeanGradeProxy` is the
+     tonnage-weighted Phase 09 planning proxy, informational only; the ONE
+     v0.1 revenue model is `plannedMinedTonnes × grossRevenuePerMinedTonne`
+     (`revenueModel = GROSS_REVENUE_PER_MINED_TONNE`). No metal price,
+     recovery, payability, smelter charge, grade unit or commodity exists.
+200. `economics.json` is a user-authored assumption document beside
+     `scenario.json` (`data/scenarios/{id}/economics.json`), NEVER a derived
+     artifact: it has no registry entry, no fingerprint role and no cascade —
+     writing it (`PUT …/analysis/economics-config`, validated → atomic
+     publication → `sha256(canonical JSON)` revision, no timestamp) leaves
+     every mine artifact byte- and stat-identical, and a scenario PUT does
+     not delete it. No scenario field carries an economic assumption and no
+     hidden default exists: an absent document is NOT_CONFIGURED, the
+     frontend's "Use demo assumptions" fills the editor only on an explicit
+     click and is labelled DEMO / SYNTHETIC ASSUMPTIONS. An economics change
+     is not a viewer revision (no epoch bump, no scene clear); the editor
+     draft is scoped to `scenarioId:economicsRevision`.
+201. Planning economics status. Every economics payload carries the fixed
+     disclaimer "Synthetic planning economics. Not a resource/reserve
+     estimate or feasibility study." and the names are "Planning Cashflow"
+     and "Baseline Planning NPV" — never feasibility, bankable, investment,
+     optimized, certified or statutory wording. Economics is AVAILABLE only
+     when the config AND development AND production AND schedule are
+     available (NOT_CONFIGURED / SOURCE_NOT_AVAILABLE otherwise); an NPV is
+     never produced without a timeline. No IRR, tax, depreciation, royalty,
+     inflation or sensitivity exists in v0.1, and only the ACTIVE design is
+     analysed (no candidate what-if).
+202. Geometry is the quantity authority, the timeline the timing authority
+     (Phase 22B). Development cost = `length3d × rate(edge type)` spread
+     linearly over the edge's development task (`basis.quantity ≈ length3d`,
+     unit "m", verified); production mining cost = tonnes × the ACTIVE
+     method's rate over STOPING, processing cost and gross revenue over
+     MUCKING, Cut & Fill backfill cost = backfill volume × rate over BACKFILL
+     (0 for every other method); PREP / CURE carry nothing; fixed operating
+     cost = mineDurationDays × rate linear over `[startDay, endDay]`; initial
+     capital in bucket 0. Buckets are fixed `cashflowBucketDays` intervals
+     from day 0 (the last one closed at the mine end), amounts allocated by
+     overlap fraction, a zero-length interval a point event; `net = revenue −
+     Σ costs`, cumulative running, `npv = Σ net / (1 + annualRate)^(midDay /
+     365.25)` (MID_BUCKET_MIDPOINT — rate 0 ⇒ NPV = undiscounted net). Bucket
+     columns reconcile exactly with the summary; the summary's `totalCost`
+     is the sum of its six components. Every check is deterministic (same
+     state + config → identical JSON).

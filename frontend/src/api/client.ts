@@ -7,6 +7,11 @@ import type {
   ScenarioRealizeRequest,
   ScenarioSummary,
 } from '@/types/api'
+import type {
+  EconomicsConfig,
+  EconomicsConfigResponse,
+  MineAnalysisPayload,
+} from '@/types/analysis'
 import type { Capability } from '@/types/enums'
 import type {
   AccessTargetsPayload,
@@ -251,6 +256,16 @@ export const api = {
       `/scenarios/${id}/design/capability-graph/path?${new URLSearchParams({ source, target, capability }).toString()}`,
     ),
   /** Synchronous Phase 07 network generation (reserved /network namespace). */
+  /** Phase 22A/B: the READ-ONLY mine analysis projection (no job, no
+   * persistence) and the user-authored planning-economics assumptions. */
+  getAnalysis: (id: string) => request<MineAnalysisPayload>(`/scenarios/${id}/analysis`),
+  getEconomicsConfig: (id: string) =>
+    request<EconomicsConfigResponse>(`/scenarios/${id}/analysis/economics-config`),
+  putEconomicsConfig: (id: string, config: EconomicsConfig) =>
+    request<EconomicsConfigResponse>(`/scenarios/${id}/analysis/economics-config`, {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    }),
   generateNetwork: (id: string) =>
     request<NetworkPayload>(`/scenarios/${id}/network/generate`, { method: 'POST' }),
   getNetwork: (id: string) => request<NetworkPayload>(`/scenarios/${id}/network`),

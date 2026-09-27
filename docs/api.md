@@ -49,6 +49,34 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      entities, one production omission group per
                                                      bundle; 409 MINE_EXCHANGE_EXPORT_FAILED on a
                                                      method-authority or payload-shape mismatch)
+    GET  /api/v1/scenarios/{id}/analysis             Phase 22A/B (rules 197–202): synchronous
+                                                     READ-ONLY mine analysis — development
+                                                     lengths / GROSS excavation volumes per edge
+                                                     type (MineNetwork authority), production
+                                                     summary + method detail (planned mined tonnes
+                                                     from geometry; pillars / backfill separate),
+                                                     schedule KPIs, planning ratios and planning
+                                                     economics (cost / gross-revenue summary,
+                                                     Planning Cashflow buckets, Baseline Planning
+                                                     NPV). Each section carries AVAILABLE /
+                                                     NOT_AVAILABLE / NOT_CONFIGURED + reason; an
+                                                     absent or FAILED source is a partial 200; a
+                                                     present inconsistent source is 409
+                                                     ANALYSIS_SOURCE_INCONSISTENT, malformed 409
+                                                     ARTIFACT_MALFORMED, a moving source 409
+                                                     READ_SNAPSHOT_CHANGED. Nothing is generated
+                                                     or persisted; no job.
+    GET  /api/v1/scenarios/{id}/analysis/economics-config
+                                                     the user-authored planning-economics
+                                                     assumptions (`economics.json` beside
+                                                     scenario.json — never a derived artifact);
+                                                     absent → {configured:false, revision:null,
+                                                     config:null}
+    PUT  /api/v1/scenarios/{id}/analysis/economics-config
+                                                     validate (422) → atomic write → content
+                                                     revision sha256(canonical JSON); invalidates
+                                                     NOTHING (every derived file byte- and
+                                                     stat-identical)
 
     Scenario documents are schemaVersion 2 (Phase 18): `fieldSampling
     {spacingX, spacingY, spacingZ}` replaces the v1 `blockModel {dx, dy, dz}`.
@@ -421,6 +449,7 @@ New error codes (all HTTP 409):
 | `ARTIFACT_STALE` | `code`, `message` | a provenance check failed and no rule-named stale code exists. Producers: `development_mesh.sources.rampSource` vs the active source, and (AC-01F.2 correction) a mesh pair whose INTERNAL publication sidecar does not name the report and GLB on disk — on `GET …/design/tunnel`, `GET …/design/development-mesh`, both `mesh.glb` routes and in the scene |
 | `WORLD_PUBLICATION_STALE` | `code`, `message` | **AC-01F.2 correction (B1).** `arrays.npz` exists, but `derived/world.json` — the world COMMIT RECORD — does not commit THIS `scenario.json` and THIS `arrays.npz`. It is a *_STALE code in the exact sense of `SHAFTS_STALE` / `CAPABILITY_GRAPH_STALE`: a published product whose own recorded inputs no longer match the live ones. Reachable states: a writer died between the document publication and the derived invalidation (a fresh process previously served that as **200** — NEW document beside an OLD world), a generation died after publishing `arrays.npz` and before its record, an input was replaced afterwards (a content-preserving `touch` counts — rule 60 is a stat identity), or a CROSS-PROCESS reader caught a live writer between the two publications. That last case is the reason the message does NOT claim a retry never succeeds; it is deliberately NOT folded into the bounded `READ_SNAPSHOT_CHANGED` retry, which exists for inputs that moved under ONE reader. The remedy named to the client is `POST …/world/generate`. `WORLD_NOT_GENERATED` (no `arrays.npz`) and `WORLD_ARTIFACT_INCOMPATIBLE` (a Phase-17 NPZ) both keep precedence over it |
 | `SCENE_ARTIFACT_INVALID` | `code`, `message`, `artifacts: [{artifact, state, code, message}]` | `GET …/scene` found at least one present-but-invalid artifact; EVERY failure of that snapshot is listed, each with its own specific code (`SHAFTS_STALE`, `LAYOUT_V2_CLEARANCE_MISMATCH`, `ARTIFACT_MALFORMED`, …). No filesystem path, traceback or exception repr is exposed |
+| `ANALYSIS_SOURCE_INCONSISTENT` | `code`, `message` | **Phase 22A (rule 197).** Two authoritative analysis sources — or one source and its own declared metrics — disagree: duplicate ids, dangling endpoints / targets / dependencies, non-positive lengths or areas, declared `NetworkMetrics` off the edge sums, a timeline whose method, task set or basis quantities do not match the scenario / production artifact, or a SUCCESS timeline without its network / production owner. The analysis refuses rather than guess; nothing is written |
 | `READ_SNAPSHOT_CHANGED` | `code`, `message` | **live from AC-01F commit 3.** It means "a coherent read snapshot could not be acquired because the scenario / artifact set kept changing; retry the read", and it is deliberately distinct from `JOB_INPUTS_CHANGED`, which is a GENERATION whose inputs moved (nothing is built or discarded by a read). Two producers: `WorldService._bound_scenario`, bounded internally at `SNAPSHOT_ATTEMPTS` (3), when `scenario.json` moves on every attempt; and `WorldService.load_bound`, which raises on FIRST detection when EITHER of its two inputs moved across the cold load — `arrays.npz` REPLACED between its stat and its `np.load`, or `scenario.json` replaced between the bound document read and the publish re-check (Stage D B1 made the two halves symmetric: the scenario re-check used to gate the CACHE PUBLISH only, while the `return` was unconditional, so the two world routes still served a body mixing the OLD document's orebody with the NEW world's terrain and fields) — only `GET …/scene` retries that producer (bounded at 3); `GET …/world` and `GET …/world/slice` answer the code on the first mismatch (a DELETED `arrays.npz` is `WORLD_NOT_GENERATED`, not this code). The surfaces this commit adds are **`GET …/scene`** (which additionally retries the whole bound load + lock-held artifact observation and only then answers this code), **`GET …/world`**, **`GET …/world/slice`** and **`POST …/world/generate`**'s pre-read binding — the generation's own post-build re-check stays `JOB_INPUTS_CHANGED`. Every other route that loads the world goes through the same `load_bound` (the eight `DesignService` builders and `POST …/design/layout-v2`'s world guard), so it can answer this code too; all four routers map it identically through the one `guard` table. The remaining `_bound_scenario` branch — `scenario.json` appearing between the stat and the read — is unreachable through the API: only `ScenarioStore.create` writes a fresh id and no client can name one before it exists |
 
 An existing domain-specific code always wins over a generic one: a stale shaft
