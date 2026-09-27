@@ -5,7 +5,12 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { ProductionSolid, ProductionUnitState } from './production'
-import { staticBatches, timelineBatches } from './productionBatches'
+import {
+  staticBatches,
+  stateRevisionAt,
+  timelineBatches,
+  transitionDays,
+} from './productionBatches'
 import { mergeSolids, prepareSolid, solidGeometry } from './solidGeometry'
 import type { SolidGeometry } from '@/types/scene'
 
@@ -111,5 +116,54 @@ describe('timelineBatches', () => {
     const out = timelineBatches([...solids, solid('U9', 'CUT')], units, 0)
     expect(out.unmapped).toEqual(['U9'])
     expect(out.batches.reduce((n, b) => n + b.solids.length, 0)).toBe(3)
+  })
+})
+
+describe('state revision (4D geometry lifecycle)', () => {
+  const units = new Map<string, ProductionUnitState>([
+    [
+      'U1',
+      {
+        unitId: 'U1',
+        initialState: 'PLANNED',
+        transitions: [
+          { day: 10, state: 'ACTIVE' },
+          { day: 30, state: 'MINED' },
+        ],
+      },
+    ],
+    ['U2', { unitId: 'U2', initialState: 'PLANNED', transitions: [{ day: 20, state: 'ACTIVE' }] }],
+  ])
+  const days = transitionDays(units.values())
+
+  it('collects the sorted unique transition days', () => {
+    expect(days).toEqual([10, 20, 30])
+  })
+
+  it('is constant between transitions and steps exactly at a transition day (<=)', () => {
+    expect(stateRevisionAt(days, -5)).toBe(0)
+    expect(stateRevisionAt(days, 9.999)).toBe(0)
+    expect(stateRevisionAt(days, 10)).toBe(1)
+    expect(stateRevisionAt(days, 10.01)).toBe(1)
+    expect(stateRevisionAt(days, 19.99)).toBe(1)
+    expect(stateRevisionAt(days, 20)).toBe(2)
+    expect(stateRevisionAt(days, 29.5)).toBe(2)
+    expect(stateRevisionAt(days, 30)).toBe(3)
+    expect(stateRevisionAt(days, 1e9)).toBe(3)
+    expect(stateRevisionAt([], 5)).toBe(0)
+  })
+
+  it('two days of one revision have identical batch membership', () => {
+    const solids = [solid('U1', 'BENCH'), solid('U2', 'BENCH'), solid('P1', 'PILLAR')]
+    const member = (day: number) =>
+      timelineBatches(solids, units, day).batches.map((b) => [b.state, b.solids.map((s) => s.id)])
+    // playback frames inside revision 1 (10 <= day < 20)
+    expect(member(10)).toEqual(member(14.37))
+    expect(member(14.37)).toEqual(member(19.99))
+    // the revision's own transition day is a valid representative
+    const rev = stateRevisionAt(days, 14.37)
+    expect(member(days[rev - 1] ?? -Infinity)).toEqual(member(14.37))
+    // and revision 2 differs
+    expect(member(20)).not.toEqual(member(19.99))
   })
 })

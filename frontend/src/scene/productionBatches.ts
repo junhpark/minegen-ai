@@ -80,3 +80,32 @@ export function timelineBatches(
   }
   return { batches: [...batches.values()], unmapped }
 }
+
+/**
+ * The sorted, de-duplicated days at which ANY production unit changes state
+ * (rule 84: a transition applies from `transition.day` inclusive). Between
+ * two consecutive entries the state MEMBERSHIP of every unit is constant.
+ */
+export function transitionDays(units: Iterable<ProductionUnitState>): number[] {
+  const days = new Set<number>()
+  for (const u of units) for (const t of u.transitions) days.add(t.day)
+  return [...days].sort((a, b) => a - b)
+}
+
+/**
+ * The state REVISION at `day`: the number of transition days `<= day`
+ * (binary search). Two days with the same revision have identical batch
+ * membership, so a merged geometry built for one is valid for the other —
+ * the 4D layer rebuilds its merged geometries only when this number changes,
+ * never per animation frame.
+ */
+export function stateRevisionAt(days: number[], day: number): number {
+  let lo = 0
+  let hi = days.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if ((days[mid] ?? Infinity) <= day) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}

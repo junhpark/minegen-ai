@@ -2089,7 +2089,12 @@ code, the code and the rule win and the map is corrected.
      per visual state (plus RETAINED pillars) in 4D — a concatenation of
      the persisted triangles with offset indices, never new geometry
      (measured on the default 7,322-solid Room & Pillar: 14,797 → 157 draw
-     calls per frame in Design, 14,744 → 106 in 4D). (e) A reserved method
+     calls per frame in Design, 14,744 → 106 in 4D). The 4D merged
+     geometries are keyed by the STATE REVISION (`stateRevisionAt` over the
+     sorted transition days: membership is constant between two transition
+     days), so a playback frame that crosses no transition rebuilds nothing,
+     and every replaced or unmounted merged geometry is `dispose()`d —
+     never a per-animation-frame rebuild, never a leaked buffer. (e) A reserved method
      has `productionKind = null` in the scene (never STOPES): the card
      edits the shared sublevel interval only and the Production action
      reads "Not implemented" and stays disabled. (f) MineExchange refuses a

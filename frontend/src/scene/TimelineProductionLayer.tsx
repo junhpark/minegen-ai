@@ -1,7 +1,12 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { productionSolids, productionUnitStates } from '@/scene/production'
-import { timelineBatches, type TimelineBatchState } from '@/scene/productionBatches'
+import {
+  stateRevisionAt,
+  timelineBatches,
+  transitionDays,
+  type TimelineBatchState,
+} from '@/scene/productionBatches'
 import { mergeSolids, prepareSolid, type PreparedSolid } from '@/scene/solidGeometry'
 import { useTimelineStore } from '@/stores/timelineStore'
 import type { ProductionPayload, TimelinePayload } from '@/types/scene'
@@ -30,9 +35,16 @@ const STATE_STYLE: Record<TimelineBatchState, { color: string; opacity: number }
  * are drawn without a state.
  *
  * BATCHED (review item 5): every solid is prepared once (transformed
- * positions + persisted indices); at each day the solids are grouped by
- * visual state and each group is ONE merged geometry + ONE material. The
- * per-day work is a buffer concatenation, never a re-sweep.
+ * positions + persisted indices); the solids are grouped by visual state and
+ * each group is ONE merged geometry + ONE material.
+ *
+ * Geometry LIFECYCLE (second review, blocker): playback drives `currentDay`
+ * from requestAnimationFrame, but batch MEMBERSHIP only changes at a unit's
+ * transition day. The merged geometries are therefore keyed by the STATE
+ * REVISION (`stateRevisionAt` over the sorted transition days) — a frame
+ * whose day crosses no transition reuses the previous geometries untouched —
+ * and every replaced or unmounted merged geometry is `dispose()`d, so the
+ * GPU buffers of a superseded batch never accumulate.
  */
 export function TimelineProductionLayer({
   timeline,
@@ -52,10 +64,17 @@ export function TimelineProductionLayer({
     () => new Map(productionUnitStates(timeline).map((u) => [u.unitId, u])),
     [timeline],
   )
+  const days = useMemo(() => transitionDays(unitById.values()), [unitById])
+  // the ONLY temporal input of the geometry: membership is constant between
+  // two transition days, so frames inside one revision rebuild nothing
+  const revision = stateRevisionAt(days, currentDay)
+  const revisionDay = days[revision - 1] ?? Number.NEGATIVE_INFINITY
 
   const meshes = useMemo(() => {
-    // an unmapped scheduled solid is dropped (fail closed, rule 117 analogue)
-    const { batches } = timelineBatches(solids, unitById, currentDay)
+    // evaluated at the revision's own transition day (same membership as any
+    // day of the revision); an unmapped scheduled solid is dropped (fail
+    // closed, rule 117 analogue)
+    const { batches } = timelineBatches(solids, unitById, revisionDay)
     return batches
       .map((b) => {
         const style = STATE_STYLE[b.state]
@@ -66,7 +85,15 @@ export function TimelineProductionLayer({
         return { key: b.key, style, geometry: mergeSolids(parts), count: parts.length }
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
-  }, [solids, prepared, unitById, currentDay])
+  }, [solids, prepared, unitById, revisionDay])
+
+  // release the GPU buffers of a superseded batch set (a revision change or
+  // an unmount); the mesh keys are stable so R3F does not do this for us
+  useEffect(() => {
+    return () => {
+      for (const m of meshes) m.geometry.dispose()
+    }
+  }, [meshes])
 
   return (
     <group>
@@ -75,7 +102,7 @@ export function TimelineProductionLayer({
           key={m.key}
           geometry={m.geometry}
           frustumCulled={false}
-          userData={{ batch: m.key, solids: m.count }}
+          userData={{ batch: m.key, solids: m.count, revision }}
         >
           <meshStandardMaterial
             color={m.style.color}

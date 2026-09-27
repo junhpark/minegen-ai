@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { productionSolids, type ProductionSolidKind } from '@/scene/production'
 import { staticBatches } from '@/scene/productionBatches'
@@ -38,6 +38,12 @@ export function ProductionLayer({ production }: { production: ProductionPayload 
       })),
     [production],
   )
+  // release the merged buffers when the payload changes or the layer unmounts
+  useEffect(() => {
+    return () => {
+      for (const b of batches) b.geometry.dispose()
+    }
+  }, [batches])
 
   return (
     <group>

@@ -1681,7 +1681,11 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
   validity) and per 4D state; measured on the default Room & Pillar
   scenario (7,322 solids, SwiftShader): Design 14,797 → 157 draw calls per
   frame and 638 → 213 ms per frame, 4D 14,744 → 106 draw calls and 619 →
-  199 ms, 20-step 4D scrub 75.7 s → 24.6 s. (5) A reserved method reports
+  199 ms, 20-step 4D scrub 75.7 s → 24.6 s. Second review round: the 4D
+  merged geometries are keyed by the state revision (`transitionDays` /
+  `stateRevisionAt`, membership constant between transition days) instead of
+  the day, and replaced / unmounted merged geometries are disposed — playback
+  frames inside one revision rebuild nothing. (5) A reserved method reports
   `productionKind = null`; the UI shows the sublevel interval only and a
   disabled "Not implemented" production action. (6) The exporter's
   `_flat_triples` guard turns a ragged / non-numeric coordinate list into a
