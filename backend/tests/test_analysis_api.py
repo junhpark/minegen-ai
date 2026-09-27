@@ -19,6 +19,9 @@ from fastapi.testclient import TestClient
 
 import minegen.services.analysis_service as analysis_service_module
 from minegen.core.artifacts import NETWORK_ARTIFACT, STOPES_ARTIFACT, TIMELINE_ARTIFACT
+from minegen.core.models import ScenarioCreate
+from minegen.services.artifact_reader import ArtifactReader
+from minegen.services.scenario_service import ScenarioStore
 from tests import analysis_support as fx
 from tests.test_exchange_bundle import TabularStack
 from tests.test_exchange_mining_method import _post
@@ -425,6 +428,81 @@ def test_a12_snapshot_race_is_read_snapshot_changed(
     monkeypatch.setattr(analysis_service_module, "build_analysis", real)
     _put_config(longhole, fx.config_doc())
     assert _analysis(longhole)["economics"]["availability"] == "AVAILABLE"
+
+
+def test_r5_scenario_put_between_bound_read_and_snapshot_is_read_snapshot_changed(
+    client: TestClient, store: ScenarioStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #48 review BLOCKING: the scenario document and the artifact snapshot
+    must be ONE revision. A same-id PUT landing after the bound document read
+    and before the artifact observation is refused with READ_SNAPSHOT_CHANGED
+    — the old document is never projected beside the new revision — and the
+    projection never runs."""
+    sid = _create(client)
+    assert client.post(f"/api/v1/scenarios/{sid}/world/generate").status_code == 200
+    original_snapshot = ArtifactReader.snapshot
+    raced = {"n": 0}
+
+    def racing_snapshot(self: ArtifactReader, scenario_id: str, *args: Any, **kw: Any) -> Any:
+        if raced["n"] == 0:
+            raced["n"] += 1
+            # the document moves AFTER the bound read, BEFORE the observation
+            doc = store.get(scenario_id)
+            body = doc.model_dump(exclude={"id", "schema_version"})
+            body["name"] = "renamed by a concurrent PUT"
+            store.replace(scenario_id, ScenarioCreate.model_validate(body))
+        return original_snapshot(self, scenario_id, *args, **kw)
+
+    projections = {"n": 0}
+    real_build = analysis_service_module.build_analysis
+
+    def counting_build(inputs: Any) -> Any:
+        projections["n"] += 1
+        return real_build(inputs)
+
+    monkeypatch.setattr(ArtifactReader, "snapshot", racing_snapshot)
+    monkeypatch.setattr(analysis_service_module, "build_analysis", counting_build)
+    r = client.get(f"/api/v1/scenarios/{sid}{ANALYSIS}")
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["code"] == "READ_SNAPSHOT_CHANGED"
+    assert raced["n"] == 1 and projections["n"] == 0
+    # the PUT that raced also un-committed the world (AC-01F.2 B1): the world
+    # guard now answers WORLD_PUBLICATION_STALE, never a projection of the
+    # old document
+    monkeypatch.setattr(ArtifactReader, "snapshot", original_snapshot)
+    r = client.get(f"/api/v1/scenarios/{sid}{ANALYSIS}")
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "WORLD_PUBLICATION_STALE"
+    assert projections["n"] == 0
+    # regenerated for the new revision, the document at rest binds and projects
+    assert client.post(f"/api/v1/scenarios/{sid}/world/generate").status_code == 200
+    doc = client.get(f"/api/v1/scenarios/{sid}{ANALYSIS}").json()
+    assert doc["status"] == "SUCCESS" and projections["n"] == 1
+    assert doc["development"]["reason"] == "network.json not generated"
+
+
+def test_r6_world_record_movement_during_the_projection_is_refused(
+    longhole: TabularStack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The world commit record is consumed by the world guard, so it is part
+    of the coherent set: a record re-published during the projection (same
+    content, new stat identity) is READ_SNAPSHOT_CHANGED."""
+    real = analysis_service_module.build_analysis
+    record = longhole.derived / "world.json"
+    tick = {"n": 0}
+
+    def racing(inputs: Any) -> Any:
+        out = real(inputs)
+        if tick["n"] == 0:
+            tick["n"] += 1
+            data = record.read_bytes()
+            record.write_bytes(data + b" ")  # same commit, new stat identity
+            record.write_bytes(data)
+        return out
+
+    monkeypatch.setattr(analysis_service_module, "build_analysis", racing)
+    _refused(longhole, "READ_SNAPSHOT_CHANGED")
+    monkeypatch.setattr(analysis_service_module, "build_analysis", real)
+    assert _analysis(longhole)["development"]["availability"] == "AVAILABLE"
 
 
 def test_cross_method_one_config_three_methods(

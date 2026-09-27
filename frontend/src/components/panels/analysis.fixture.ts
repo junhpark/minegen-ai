@@ -10,6 +10,7 @@ export const CONFIG: EconomicsConfig = {
     levelAccessPerM: 8,
     driftPerM: 6,
     crosscutPerM: 5,
+    raisePerM: 7,
     shaftPerM: 0,
     shaftStationAccessPerM: 0,
   },

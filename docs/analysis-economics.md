@@ -21,7 +21,11 @@ A world that is not generated makes every derived section `NOT_AVAILABLE`
 (derived files are never trusted without a valid world). Every consumed
 source — `scenario.json`, `arrays.npz`, the three artifacts and
 `economics.json` — is re-observed after the projection; any movement is
-409 `READ_SNAPSHOT_CHANGED`.
+409 `READ_SNAPSHOT_CHANGED`. The scenario document itself is the bound read
+(`ScenarioStore.get_bound`, stat → get → re-stat) and the artifact snapshot
+is taken with `expect_scenario_revision` = that revision, so a same-id
+scenario PUT between the document read and the snapshot is also
+`READ_SNAPSHOT_CHANGED`.
 
 ## What the numbers mean
 
@@ -60,7 +64,7 @@ production or timeline; a scenario PUT does not delete it.
 | --- | --- |
 | `version` | 1 |
 | `currencyCode` | `^[A-Z]{3}$`; a label only — no conversion |
-| `developmentCosts.{rampPerM, levelAccessPerM, driftPerM, crosscutPerM, shaftPerM, shaftStationAccessPerM}` | cost per metre by edge type |
+| `developmentCosts.{rampPerM, levelAccessPerM, driftPerM, crosscutPerM, raisePerM, shaftPerM, shaftStationAccessPerM}` | cost per metre by edge type (one per `EdgeType`; no generator emits a RAISE in v0.1, the rate exists so a typed edge is priced, never refused) |
 | `productionCosts.{longholeOpenStopingPerTonne, cutAndFillPerTonne, roomAndPillarPerTonne}` | mining cost per planned mined tonne; only the active method's rate is used |
 | `processingCostPerTonne` | per planned mined tonne |
 | `backfillCostPerM3` | Cut & Fill only (0 for other methods) |
@@ -83,7 +87,7 @@ Geometry is the quantity authority; the timeline is the timing authority.
 | production mining cost | `tonnes × active method rate` | `STOPING` |
 | processing cost | `tonnes × processingCostPerTonne` | `MUCKING` |
 | gross revenue | `tonnes × grossRevenuePerMinedTonne` | `MUCKING` |
-| backfill cost (Cut & Fill) | `backfillVolume × backfillCostPerM3` | `BACKFILL` |
+| backfill cost (Cut & Fill) | `backfillVolume × backfillCostPerM3` | `BACKFILL` (`basis.quantity ≈ backfill volume`, unit `m3`, verified) |
 | fixed operating cost | `mineDurationDays × rate` | `[startDay, endDay]` |
 | initial capital | `initialCapitalCost` | bucket 0 |
 

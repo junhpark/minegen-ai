@@ -140,6 +140,7 @@ def test_a7_ratios_and_null_when_tonnes_are_zero() -> None:
     for s in st["stopes"]:
         s["tonnes"] = 0.0
     st["metrics"]["totalTonnes"] = 0.0
+    st["metrics"]["weightedMeanGradeProxy"] = None  # no mass → no weighted proxy
     tl = fx.timeline_doc()
     for t in tl["tasks"]:
         if t["taskType"] in ("STOPING", "MUCKING"):
@@ -400,3 +401,104 @@ def test_b_economics_requires_every_source_and_never_npv_without_timeline() -> N
     assert e.currency_code == "USD"  # the config itself is echoed
     e = build_analysis(fx.inputs_without_config()).economics
     assert e.availability == "NOT_CONFIGURED" and e.summary is None
+
+
+# --------------------------------------------------------------------------- #
+# PR #48 review round: BACKFILL basis, metrics self-consistency, RAISE rate
+# --------------------------------------------------------------------------- #
+
+
+def test_r1_backfill_basis_is_verified_against_the_backfill_volume() -> None:
+    tl = fx.timeline_doc()
+    backfill = next(t for t in tl["tasks"] if t["taskType"] == "BACKFILL")
+    backfill["basis"]["quantity"] += 1.0
+    with pytest.raises(AnalysisSourceInconsistentError, match="backfill volume"):
+        build_analysis(fx.inputs(timeline=tl))
+    tl = fx.timeline_doc()
+    backfill = next(t for t in tl["tasks"] if t["taskType"] == "BACKFILL")
+    backfill["basis"]["quantityUnit"] = "t"
+    with pytest.raises(AnalysisSourceInconsistentError, match="backfill volume"):
+        build_analysis(fx.inputs(timeline=tl))
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "pattern"),
+    [
+        ("stopeCount", 3, "stopeCount"),
+        ("levelIntervalCount", 2, "levelIntervalCount"),
+        ("totalTonnes", 4001.0, "totalTonnes"),
+        ("totalGeometricVolumeM3", 1600.5, "totalGeometricVolumeM3"),
+        ("weightedMeanGradeProxy", 2.6, "weightedMeanGradeProxy"),
+        ("weightedMeanGradeProxy", None, "weightedMeanGradeProxy"),
+    ],
+)
+def test_r2_persisted_production_metrics_must_agree_with_the_records(
+    field: str, value: Any, pattern: str
+) -> None:
+    st = fx.stopes_doc()
+    st["metrics"][field] = value
+    with pytest.raises(AnalysisSourceInconsistentError, match=pattern):
+        build_analysis(fx.inputs(stopes=st, with_timeline=False))
+
+
+def _with_raise(net: dict[str, Any], tl: dict[str, Any]) -> None:
+    """Add one 20 m × 4 m² RAISE edge (X1 → R1) with its DEVELOP_RAISE task."""
+    net["nodes"].append({"id": "R1", "type": "JUNCTION", "position": [9.0, 0.0, 5.0]})
+    net["edges"].append(
+        {
+            "id": "RAISE:1",
+            "type": "RAISE",
+            "fromNode": "X1",
+            "toNode": "R1",
+            "length3d": 20.0,
+            "meanGradientSigned": None,
+            "maxAbsGradient": None,
+            "orientation": "VERTICAL",
+            "verticalDrop": 20.0,
+            "crossSection": {"width": 2.0, "height": 2.0, "analyticArea": 4.0},
+            "effectiveSource": "ANALYTIC",
+            "fieldCost": 20.0,
+            "geometryRef": {"artifact": "raises.json", "segmentIndex": 0},
+            "simulation": {},
+        }
+    )
+    net["metrics"]["edgeCount"] += 1
+    tl["tasks"].append(
+        {
+            "id": "TASK:DEVELOP:RAISE:1",
+            "taskType": "DEVELOP_RAISE",
+            "targetKind": "DEVELOPMENT",
+            "targetId": "RAISE:1",
+            "durationDays": 5.0,
+            "startDay": 45.0,
+            "endDay": 50.0,
+            "dependencies": [],
+            "basis": {"quantity": 20.0, "quantityUnit": "m", "rate": 4.0, "rateUnit": "m/day"},
+        }
+    )
+    tl["metrics"]["taskCount"] += 1
+    tl["metrics"]["developmentTaskCount"] += 1
+    tl["metrics"]["developmentObjectCount"] += 1
+    tl["metrics"]["totalDevelopmentLength3d"] += 20.0
+
+
+def test_r3_a_raise_edge_is_priced_with_its_own_rate_never_refused() -> None:
+    net, tl = fx.network_doc(), fx.timeline_doc()
+    _with_raise(net, tl)
+    p = build_analysis(fx.inputs(network=net, timeline=tl))
+    raise_cat = next(c for c in p.development.categories if c.edge_type is EdgeType.RAISE)
+    assert (raise_cat.edge_count, raise_cat.total_length_m) == (1, 20.0)
+    assert raise_cat.gross_excavation_volume_m3 == 80.0
+    assert p.development.totals is not None
+    assert p.development.totals.total_development_length_m == 250.0
+    assert p.economics.summary is not None
+    assert p.economics.summary.development_cost == DEV_COST + 20.0 * 7.0
+    # the raise task window (45–50) lands in bucket 1
+    assert math.isclose(p.economics.cashflow[1].development_cost, 290.0 + 140.0)
+
+
+def test_r4_config_requires_the_raise_rate() -> None:
+    doc = fx.config_doc()
+    del doc["developmentCosts"]["raisePerM"]
+    with pytest.raises(ValueError):
+        EconomicsConfig.model_validate(doc)

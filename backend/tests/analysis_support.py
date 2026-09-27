@@ -263,7 +263,7 @@ def timeline_doc() -> dict[str, Any]:
 
 
 def config_doc() -> dict[str, Any]:
-    """Round rates: dev 10/8/6/5 per m (shaft 0), Longhole 2/t, processing
+    """Round rates: dev 10/8/6/5 per m (raise 7, shaft 0), Longhole 2/t, processing
     1/t, backfill 0.5/m³, fixed 10/day, capex 500, revenue 5/t, 10 %."""
     return {
         "version": 1,
@@ -273,6 +273,7 @@ def config_doc() -> dict[str, Any]:
             "levelAccessPerM": 8.0,
             "driftPerM": 6.0,
             "crosscutPerM": 5.0,
+            "raisePerM": 7.0,
             "shaftPerM": 0.0,
             "shaftStationAccessPerM": 0.0,
         },

@@ -20,9 +20,12 @@ from typing import Any, ClassVar
 from minegen.core.enums import EdgeType, MiningMethodType, TaskType
 from minegen.mining.methods.integrity import cut_fill_integrity, room_pillar_integrity
 from minegen.mining.models import (
+    CutFillMetrics,
     CutFillPayload,
     ProductionPayload,
+    RoomPillarMetrics,
     RoomPillarPayload,
+    StopesMetrics,
     StopesPayload,
 )
 from minegen.network.models import NetworkPayload
@@ -37,6 +40,7 @@ __all__ = [
     "production_units",
     "verify_network",
     "verify_production",
+    "verify_production_metrics",
     "verify_timeline",
 ]
 
@@ -252,6 +256,130 @@ def verify_production(
         defect = None
     if defect is not None:
         raise AnalysisSourceInconsistentError(f"stopes.json {defect}")
+    verify_production_metrics(payload)
+
+
+def _weighted_grade(units: list[ProductionUnit]) -> float | None:
+    graded = [(u.grade_proxy, u.tonnes) for u in units if u.grade_proxy is not None]
+    if not graded:
+        return None
+    mass = math.fsum(t for _, t in graded)
+    return math.fsum(g * t for g, t in graded) / mass if mass > 0 else None
+
+
+def _same_optional(a: float | None, b: float | None) -> bool:
+    if a is None or b is None:
+        return a is None and b is None
+    return _close(a, b)
+
+
+def verify_production_metrics(payload: ProductionPayload) -> None:
+    """The persisted aggregate ``metrics`` block agrees with the entities it
+    summarises (PR #48 review hardening): every count, total volume / tonnes
+    and the tonnage-weighted grade proxy are re-derived from the records the
+    analysis also consumes. Aggregates that need the orebody
+    (``geometricExtractionFractionOfOrebody``) or the layout
+    (``stationsPerInterval``) are not re-derivable here and stay as
+    persisted."""
+    metrics = payload.metrics
+    if metrics is None:
+        raise AnalysisSourceInconsistentError("stopes.json is SUCCESS but carries no metrics")
+    units = production_units(payload)
+    counts: list[tuple[str, int, int]] = []
+    totals: list[tuple[str, float, float]] = []
+    if isinstance(payload, StopesPayload):
+        assert isinstance(metrics, StopesMetrics)
+        pairs = {(s.upper_level_id, s.lower_level_id) for s in payload.stopes}
+        counts += [
+            ("stopeCount", metrics.stope_count, len(payload.stopes)),
+            ("levelIntervalCount", metrics.level_interval_count, len(pairs)),
+        ]
+        totals += [
+            (
+                "totalGeometricVolumeM3",
+                metrics.total_geometric_volume_m3,
+                math.fsum(u.volume_m3 for u in units),
+            ),
+            ("totalTonnes", metrics.total_tonnes, math.fsum(u.tonnes for u in units)),
+        ]
+    elif isinstance(payload, CutFillPayload):
+        assert isinstance(metrics, CutFillMetrics)
+        cut_ids = {c.id for c in payload.cuts}
+        lift_cuts = [cid for lift in payload.lifts for cid in lift.cut_ids]
+        if sorted(lift_cuts) != sorted(cut_ids):
+            raise AnalysisSourceInconsistentError(
+                "stopes.json lifts do not partition the cuts (cutIds ≠ cuts)"
+            )
+        lift_by_index = {lift.lift_index: lift for lift in payload.lifts}
+        for c in payload.cuts:
+            lift = lift_by_index.get(c.lift_index)
+            if lift is None or c.id not in lift.cut_ids:
+                raise AnalysisSourceInconsistentError(
+                    f"stopes.json cut {c.id} is not listed by lift {c.lift_index}"
+                )
+        pairs = {(lift.lower_level_id, lift.upper_level_id) for lift in payload.lifts}
+        counts += [
+            ("cutCount", metrics.cut_count, len(payload.cuts)),
+            ("backfillCount", metrics.backfill_count, len(payload.backfills)),
+            ("liftCount", metrics.lift_count, len(payload.lifts)),
+            ("levelIntervalCount", metrics.level_interval_count, len(pairs)),
+        ]
+        totals += [
+            (
+                "totalGeometricVolumeM3",
+                metrics.total_geometric_volume_m3,
+                math.fsum(u.volume_m3 for u in units),
+            ),
+            ("totalTonnes", metrics.total_tonnes, math.fsum(u.tonnes for u in units)),
+        ]
+    else:
+        assert isinstance(metrics, RoomPillarMetrics)
+        mined_v = math.fsum(u.volume_m3 for u in units)
+        pillar_v = math.fsum(p.geometric_volume_m3 for p in payload.pillars)
+        counts += [
+            ("roomCount", metrics.room_count, len(payload.rooms)),
+            ("extractionUnitCount", metrics.extraction_unit_count, len(payload.extraction_units)),
+            ("pillarCount", metrics.pillar_count, len(payload.pillars)),
+            (
+                "headingCount",
+                metrics.heading_count,
+                sum(1 for u in payload.extraction_units if u.bench_index == 0),
+            ),
+            (
+                "benchCount",
+                metrics.bench_count,
+                sum(1 for u in payload.extraction_units if u.bench_index > 0),
+            ),
+        ]
+        totals += [
+            ("totalMinedVolumeM3", metrics.total_mined_volume_m3, mined_v),
+            ("totalPillarVolumeM3", metrics.total_pillar_volume_m3, pillar_v),
+            ("totalMinedTonnes", metrics.total_mined_tonnes, math.fsum(u.tonnes for u in units)),
+            (
+                "geometricExtractionFraction",
+                metrics.geometric_extraction_fraction,
+                mined_v / metrics.panel_volume_m3 if metrics.panel_volume_m3 > 0 else 0.0,
+            ),
+        ]
+    for name, declared_count, derived_count in counts:
+        if declared_count != derived_count:
+            raise AnalysisSourceInconsistentError(
+                f"stopes.json metrics.{name} = {declared_count} but the records give "
+                f"{derived_count}"
+            )
+    for name, declared_total, derived_total in totals:
+        if not _close(declared_total, derived_total):
+            raise AnalysisSourceInconsistentError(
+                f"stopes.json metrics.{name} = {declared_total!r} but the records give "
+                f"{derived_total!r}"
+            )
+    declared_grade = metrics.weighted_mean_grade_proxy
+    derived_grade = _weighted_grade(units)
+    if not _same_optional(declared_grade, derived_grade):
+        raise AnalysisSourceInconsistentError(
+            f"stopes.json metrics.weightedMeanGradeProxy = {declared_grade!r} but the records "
+            f"give {derived_grade!r}"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -346,6 +474,14 @@ def verify_timeline(
             f"{timeline_method}"
         )
     units = {u.id: u for u in production_units(payload)}
+    # the BACKFILL basis is the backfill VOLUME: the persisted backfill record
+    # for a Cut & Fill cut, the stope's own geometric volume for Longhole
+    # (PR #48 review: the CF backfill quantity was unverified)
+    backfill_volume: dict[str, float] = (
+        {b.source_cut_id: b.volume_m3 for b in payload.backfills}
+        if isinstance(payload, CutFillPayload)
+        else {u.id: u.volume_m3 for u in units.values()}
+    )
     per_unit: dict[str, dict[TaskType, TimelineTask]] = {u: {} for u in units}
     for t in tasks:
         if t.target_kind == "DEVELOPMENT":
@@ -368,6 +504,18 @@ def verify_timeline(
                 f"timeline.json task {t.id} basis {t.basis.quantity!r} "
                 f"{t.basis.quantity_unit} ≠ production tonnes {unit.tonnes!r} t"
             )
+        if t.task_type is TaskType.BACKFILL:
+            volume = backfill_volume.get(t.target_id)
+            if volume is None:
+                raise AnalysisSourceInconsistentError(
+                    f"timeline.json BACKFILL task {t.id} targets {t.target_id} which has no "
+                    "backfill volume"
+                )
+            if t.basis.quantity_unit != "m3" or not _close(t.basis.quantity, volume):
+                raise AnalysisSourceInconsistentError(
+                    f"timeline.json task {t.id} basis {t.basis.quantity!r} "
+                    f"{t.basis.quantity_unit} ≠ backfill volume {volume!r} m3"
+                )
     required = REQUIRED_PRODUCTION_TASK_TYPES.get(scenario_method, ())
     for unit_id, present in per_unit.items():
         for ttype in required:

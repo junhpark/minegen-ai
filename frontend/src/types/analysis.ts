@@ -168,6 +168,7 @@ export interface DevelopmentCostRates {
   levelAccessPerM: number
   driftPerM: number
   crosscutPerM: number
+  raisePerM: number
   shaftPerM: number
   shaftStationAccessPerM: number
 }

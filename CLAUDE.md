@@ -2105,15 +2105,26 @@ code, the code and the rule win and the map is corrected.
      `analysis/`, `GET …/analysis`). Its authorities are the persisted
      artifacts — `scenario.json`, `network.json` (development), the active
      production artifact `stopes.json`, `timeline.json` — read through the
-     validated `ArtifactReader` from ONE snapshot that is re-observed after
-     the projection (READ_SNAPSHOT_CHANGED on any movement, `economics.json`
-     included). It never generates, regenerates, repairs or persists a mine
+     validated `ArtifactReader` from ONE snapshot: the scenario document is
+     the bound read (`ScenarioStore.get_bound`, stat → get → re-stat — the
+     same protocol `WorldService` uses, never a second implementation) and
+     the artifact snapshot is taken with `expect_scenario_revision` = that
+     revision, so the document object and every observation are one
+     revision (a same-id PUT in between is READ_SNAPSHOT_CHANGED, never an
+     old document projected beside new artifacts); the whole consumed set —
+     scenario, arrays, the world commit record, the three artifacts and
+     `economics.json` — is re-observed after the projection
+     (READ_SNAPSHOT_CHANGED on any movement). It never generates, regenerates, repairs or persists a mine
      artifact (no `derived/analysis.json`), runs synchronously (no job) and
      re-verifies every cross-artifact relation it derives a number from
      (unique ids, endpoints, finite positive lengths / areas, declared
-     `NetworkMetrics` ↔ edge sums, timeline targets ↔ edges / production
-     objects, scenario ↔ production ↔ timeline method, task basis ↔ geometric
-     quantity): a disagreement is the typed 409 ANALYSIS_SOURCE_INCONSISTENT,
+     `NetworkMetrics` ↔ edge sums, persisted production `metrics` ↔ the
+     entity records (counts, level intervals, lift partition, volumes,
+     tonnes, weighted grade proxy, extraction fraction), timeline targets ↔
+     edges / production objects, scenario ↔ production ↔ timeline method,
+     task basis ↔ geometric quantity — STOPING / MUCKING tonnes AND the
+     BACKFILL volume): a disagreement is the typed 409
+     ANALYSIS_SOURCE_INCONSISTENT,
      a present unusable document ARTIFACT_MALFORMED, never a bare 500. An
      ABSENT or FAILED source is a NORMAL partial 200 — the section reads
      NOT_AVAILABLE with the backend reason. A SUCCESS timeline whose network
@@ -2158,7 +2169,8 @@ code, the code and the rule win and the map is corrected.
 202. Geometry is the quantity authority, the timeline the timing authority
      (Phase 22B). Development cost = `length3d × rate(edge type)` spread
      linearly over the edge's development task (`basis.quantity ≈ length3d`,
-     unit "m", verified); production mining cost = tonnes × the ACTIVE
+     unit "m", verified) — every `EdgeType` member has a rate, RAISE
+     included, so a typed edge is priced and never refused; production mining cost = tonnes × the ACTIVE
      method's rate over STOPING, processing cost and gross revenue over
      MUCKING, Cut & Fill backfill cost = backfill volume × rate over BACKFILL
      (0 for every other method); PREP / CURE carry nothing; fixed operating

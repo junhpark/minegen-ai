@@ -59,6 +59,10 @@ class DevelopmentCostRates(ApiModel):
     level_access_per_m: float = Field(ge=0.0)
     drift_per_m: float = Field(ge=0.0)
     crosscut_per_m: float = Field(ge=0.0)
+    #: ``EdgeType.RAISE`` is a typed network edge (no generator emits one in
+    #: v0.1); the rate exists so a RAISE edge is priced, never refused as an
+    #: inconsistency (PR #48 review)
+    raise_per_m: float = Field(ge=0.0)
     shaft_per_m: float = Field(ge=0.0)
     shaft_station_access_per_m: float = Field(ge=0.0)
 
@@ -168,6 +172,7 @@ _DEVELOPMENT_RATE_FIELD: dict[EdgeType, str] = {
     EdgeType.LEVEL_ACCESS: "level_access_per_m",
     EdgeType.DRIFT: "drift_per_m",
     EdgeType.CROSSCUT: "crosscut_per_m",
+    EdgeType.RAISE: "raise_per_m",
     EdgeType.SHAFT: "shaft_per_m",
     EdgeType.SHAFT_STATION_ACCESS: "shaft_station_access_per_m",
 }
@@ -180,8 +185,9 @@ _PRODUCTION_RATE_FIELD: dict[MiningMethodType, str] = {
 
 
 def development_rate(config: EconomicsConfig, edge_type: EdgeType) -> float | None:
-    """The per-metre rate of an edge type, ``None`` for a type the config
-    carries no rate for (RAISE — never emitted by the network builder)."""
+    """The per-metre rate of an edge type — every ``EdgeType`` member has
+    one; ``None`` only for a member added to the enum without a rate (a
+    programming error the analysis reports as a typed inconsistency)."""
     field = _DEVELOPMENT_RATE_FIELD.get(edge_type)
     if field is None:
         return None

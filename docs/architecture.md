@@ -1724,12 +1724,18 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
 ## Phase 22A/B — Mine Analysis Core + Planning Economics (rules 197–202)
 
 - **Position in the architecture.** A downstream READ-ONLY projection like
-  the Phase 20D.3 assessment: `services/analysis_service.py` takes ONE
-  `ArtifactReader` snapshot of `network.json`, `stopes.json` (the active
-  production artifact) and `timeline.json`, observes `economics.json` under
-  the same store lock, projects through the pure `analysis/builder.py`, then
-  re-observes every consumed source and answers `READ_SNAPSHOT_CHANGED` on
-  any movement. Nothing is generated, persisted or invalidated; no job runs;
+  the Phase 20D.3 assessment: `services/analysis_service.py` binds the
+  scenario document through `ScenarioStore.get_bound` (the stat → get →
+  re-stat protocol extracted from `WorldService._bound_scenario`, which now
+  delegates to it — PR #48 review blocker), takes ONE `ArtifactReader`
+  snapshot of `network.json`, `stopes.json` (the active production
+  artifact) and `timeline.json` with `expect_scenario_revision` = the bound
+  revision (a same-id PUT between the two is `READ_SNAPSHOT_CHANGED`, never
+  an old document beside new artifacts), observes `economics.json` under the
+  same store lock, projects through the pure `analysis/builder.py`, then
+  re-observes every consumed source — scenario, arrays, the world commit
+  record, the three artifacts, `economics.json` — and answers
+  `READ_SNAPSHOT_CHANGED` on any movement. Nothing is generated, persisted or invalidated; no job runs;
   no `derived/analysis.json` exists. Ramp / levels / shafts are not read —
   the network is the development authority — so they are not part of the
   consistency set.
@@ -1746,14 +1752,22 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
   declared `NetworkMetrics` counts exact and lengths within 1e-6 m of the
   edge sums (never overwritten; residuals reported in `crossCheck`).
   Production: method agreement with the scenario, unique unit ids, finite
-  non-negative quantities, and the Cut & Fill / Room & Pillar semantic
+  non-negative quantities, the Cut & Fill / Room & Pillar semantic
   relations through the SAME `mining/methods/integrity.py` helpers the
-  timeline builder and MineExchange use. Timeline: unique task ids, `0 ≤
+  timeline builder and MineExchange use, and the persisted `metrics` block
+  re-derived from the records (`verify_production_metrics`: counts, level
+  intervals, the lift ↔ cut partition, total volume / tonnes, heading /
+  bench counts, retained pillar volume, the extraction fraction against
+  `panelVolumeM3`, the tonnage-weighted grade proxy; the orebody-relative
+  fraction and `stationsPerInterval` are not re-derivable and stay as
+  persisted). Timeline: unique task ids, `0 ≤
   start ≤ end`, duration = end − start, dependencies exist, every
   DEVELOPMENT target is a network edge with a metre basis equal to its
   `length3d` and every edge has exactly one development task, every
   production target is a production object with STOPING / MUCKING bases
-  equal to its tonnes, the method's required task types per unit (Longhole /
+  equal to its tonnes and a BACKFILL basis equal to the backfill volume
+  (the Cut & Fill backfill record, the Longhole stope volume; unit `m3`),
+  the method's required task types per unit (Longhole /
   Room & Pillar: STOPING + MUCKING; Cut & Fill: + BACKFILL), and
   `metrics.firstStopingDay` equal to the earliest STOPING start.
 - **Development (22A).** Categories in `EdgeType` order (RAMP, LEVEL_ACCESS,
@@ -1775,7 +1789,8 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
   `grossDevelopmentM3PerKt` when planned mined tonnes > 0, else null with a
   reason.
 - **Economics config (22B, `analysis/economics.py`).** `EconomicsConfig`
-  (version 1, `currencyCode ^[A-Z]{3}$`, six development rates per metre,
+  (version 1, `currencyCode ^[A-Z]{3}$`, seven development rates per metre —
+  one per `EdgeType`, RAISE included —,
   three production rates per tonne, processing / backfill / fixed-opex /
   gross-revenue rates, initial capital, annual discount rate ≥ 0, bucket days
   > 0; every float finite and non-negative) is persisted as

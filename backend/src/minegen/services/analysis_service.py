@@ -4,11 +4,18 @@ persisted or invalidated; ``economics.json`` is the only file this service
 ever writes, and it is a user-authored assumption document beside
 ``scenario.json`` (never a derived artifact, never a fingerprint input).
 
-Snapshot consistency (directive §10): the sources actually consumed —
-``scenario.json``, ``arrays.npz`` (world binding), ``network.json``,
-``stopes.json``, ``timeline.json`` and ``economics.json`` — are observed
-under the store lock BEFORE the projection and re-observed AFTER it; any
-movement is ``READ_SNAPSHOT_CHANGED``. Ramp / levels / shafts are not read
+Snapshot consistency (directive §10; PR #48 review blocker): the scenario
+document is read through the ONE bound read (``ScenarioStore.get_bound``,
+stat → get → re-stat) and the artifact snapshot is taken with
+``expect_scenario_revision`` = that revision, so the document object and
+every observation are ONE ``scenario.json`` revision — a same-id PUT
+between the two is ``READ_SNAPSHOT_CHANGED``, never an old document
+projected beside new artifacts. The sources actually consumed —
+``scenario.json``, ``arrays.npz`` and the world commit record (world
+binding), ``network.json``, ``stopes.json``, ``timeline.json`` and
+``economics.json`` — are observed under the store lock BEFORE the
+projection and re-observed AFTER it; any movement is
+``READ_SNAPSHOT_CHANGED``. Ramp / levels / shafts are not read
 (the network is the development authority), so they are not part of the
 consistency set.
 """
@@ -82,6 +89,9 @@ class AnalysisService:
         return (
             snapshot.scenario_revision,
             snapshot.arrays_revision,
+            # the world commit record is consumed by ``require_world`` and is
+            # therefore part of the coherent set (PR #48 review)
+            (snapshot.world_record.present, snapshot.world_record.revision),
             tuple(
                 (name, obs.present, obs.revision) for name, obs in sorted(snapshot.files.items())
             ),
@@ -89,10 +99,14 @@ class AnalysisService:
         )
 
     def analyze(self, scenario_id: str) -> MineAnalysisPayload:
-        scenario = self.store.get(scenario_id)
-        snapshot = self._reader.snapshot(scenario_id, ANALYSIS_ARTIFACTS)
+        # the bound document read and the artifact observation are ONE
+        # scenario revision (a PUT in between → READ_SNAPSHOT_CHANGED)
+        scenario, scenario_revision = self.store.get_bound(scenario_id)
+        snapshot = self._reader.snapshot(
+            scenario_id, ANALYSIS_ARTIFACTS, expect_scenario_revision=scenario_revision
+        )
         economics = observe_economics(self.store, scenario_id)
-        assert snapshot.scenario_revision is not None  # store.get succeeded
+        assert snapshot.scenario_revision == scenario_revision  # bound above
         # the world guard decides whether derived artifacts may be read at all
         # (AC-01F: never trusted without a VALID committed world); a missing
         # world is a NORMAL partial analysis here, never a refusal
@@ -107,7 +121,7 @@ class AnalysisService:
         payload = build_analysis(
             AnalysisInputs(
                 scenario=scenario,
-                scenario_revision=snapshot.scenario_revision,
+                scenario_revision=scenario_revision,
                 world_generated=world_generated,
                 network=network,
                 production=production,
