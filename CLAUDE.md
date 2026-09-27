@@ -1934,11 +1934,18 @@ code, the code and the rule win and the map is corrected.
      `stopes.json` with the rule 78 reason — explicitly, never longhole
      geometry under another name; a new method enters ONLY as its own
      registered plan. The longhole algorithm is a migration target, never
-     rewritten: its `levels.json` / `stopes.json` outputs are canonical-JSON
-     identical to the committed pre-migration parity fixture
-     (`tests/fixtures/phase21a/longhole_parity.json`,
-     `tests/test_mining_method_parity.py`) and goldens are unchanged; a
-     longhole golden change under this rule is BLOCKING, never regenerated.
+     rewritten: its `levels.json` / `stopes.json` outputs match the
+     committed pre-migration parity fixture
+     (`tests/fixtures/phase21a/longhole_parity.json`, captured on the pinned
+     HEAD, `tests/test_mining_method_parity.py`) under a TWO-TIER gate —
+     HARD: status, method, ids, counts, station indices, ordering, topology
+     and every string / int / bool exact; NUMERIC: lengths, coordinates,
+     volumes, tonnes, grade within 1e-10 (relative and absolute), orders
+     below any engineering resolution and above the measured cross-CI-runner
+     last-digit float noise (≈ 3e-13); the full canonical-JSON digests are
+     an ADVISORY record, never a gate — and goldens are unchanged. A
+     longhole golden or parity change under this rule is BLOCKING, never
+     regenerated and never absorbed by widening the tolerance.
      MineExchange 1.1 PROJECTS the method and the stopes, it never creates
      them: `semantics/mining_method.json` (registry status, always present),
      `production/stopes.json` + one authoritative closed prism per stope with

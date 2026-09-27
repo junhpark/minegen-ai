@@ -1544,13 +1544,19 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
   `plan_for(method).generate_production(...)`. No method `if` remains in
   either consumer (`tests/test_mining_method_registry.py` scans the sources).
 - **Longhole parity gate.** `tests/test_mining_method_parity.py` compares the
-  migrated `levels.json` / `stopes.json` against canonical-JSON digests and
-  structural summaries captured on the pre-migration HEAD
+  migrated `levels.json` / `stopes.json` against structural summaries and
+  canonical-JSON digests captured on the pinned pre-migration HEAD 39c293e
   (`tests/fixtures/phase21a/longhole_parity.json`, written once by
-  `scripts/phase21a_capture_parity.py`): TABULAR legacy (34 stopes), TABULAR
-  layout-v2, CUT_AND_FILL (generic backbone, UNSUPPORTED_METHOD, FAILED
-  stopes) and WARPED-301 (the rule 135 `ExactDistanceRequiredError` typed
-  boundary). All byte-identical; goldens untouched. No new persisted artifact
+  `scripts/phase21a_capture_parity.py`, which refuses any other HEAD):
+  TABULAR legacy (34 stopes), TABULAR layout-v2, CUT_AND_FILL (generic
+  backbone, UNSUPPORTED_METHOD, FAILED stopes) and WARPED-301 (the rule 135
+  `ExactDistanceRequiredError` typed boundary). The gate is two-tier
+  (`phase21a_parity_support.py::parity_differences`): HARD — structure,
+  ids, counts, station indices, ordering, strings, bools exact; NUMERIC —
+  floats within 1e-10 rel / abs (the same code printed
+  `1085.4613279254309` on one CI runner and `…306` on another; byte
+  identity across CPUs is not a Longhole invariant). The full digests are
+  recorded as an advisory property, never asserted. Goldens untouched. No new persisted artifact
   (no `mining_method_plan.json`), `Stope.method` stays the
   `LONGHOLE_OPEN_STOPING` literal, every pre-21A failure string is preserved.
 - **MineExchange 1.1** (`docs/mine-exchange.md`): `stopes.json` joins the

@@ -1,10 +1,26 @@
 """Phase 21A Longhole parity support (directive §14 / §39 / §40).
 
-Builds the three boundary cases the mining-method migration must leave
-bit-for-bit unchanged and reduces every payload to (a) its canonical JSON
-digest and (b) a readable structural summary. ``capture`` wrote the
-committed fixture on the PRE-migration code; ``tests/test_mining_method_parity.py``
-rebuilds the same cases on the current code and compares.
+Builds the boundary cases the mining-method migration must leave unchanged
+and reduces every payload to (a) its canonical JSON digest and (b) a
+readable structural summary. ``capture`` wrote the committed fixture on the
+PRE-migration code; ``tests/test_mining_method_parity.py`` rebuilds the same
+cases on the current code and compares in TWO tiers (PR #46 review):
+
+  HARD parity     status, method, ids, counts, station indices, ordering,
+                  topology, every string / int / bool / null — EXACT.
+  NUMERIC parity  lengths, coordinates, volumes, tonnes, grade — every
+                  float within ``PARITY_REL_TOL`` / ``PARITY_ABS_TOL``.
+  ADVISORY        the full canonical-JSON digests: recorded, never a gate
+                  (the same code prints 1085.4613279254309 on one CI CPU and
+                  1085.4613279254306 on another — a 3e-13 last-digit
+                  difference that byte identity across runners cannot
+                  distinguish from a real change).
+
+The tolerance is orders of magnitude below every engineering resolution the
+pipeline uses (1e-6 m welds, 0.05 m radius tolerance) and orders above the
+observed cross-runner floating-point noise, so a genuine Longhole change
+(a moved station, a different lattice, a re-derived coordinate) still fails
+the gate. The fixture itself is never regenerated for such noise.
 
 Cases
   TABULAR_LEGACY   small scenario, synthetic legacy ramp segments (the
@@ -22,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from typing import Any
 
 from minegen.core.enums import MiningMethodType
@@ -34,6 +51,65 @@ from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_a
 from minegen.world.synthetic_world import SyntheticWorld
 
 REV = "phase21a-parity"
+#: NUMERIC parity tolerance (relative AND absolute, `math.isclose`) —
+#: cross-runner floating-point noise measured at ≈ 3e-13 absolute on
+#: ≈ 1e3 m lengths; engineering resolutions start at 1e-6 m.
+PARITY_REL_TOL = 1e-10
+PARITY_ABS_TOL = 1e-10
+
+
+def parity_differences(
+    expected: Any,
+    actual: Any,
+    path: str = "$",
+    *,
+    rel_tol: float = PARITY_REL_TOL,
+    abs_tol: float = PARITY_ABS_TOL,
+) -> list[str]:
+    """Recursive two-tier comparison. Returns one readable line per
+    difference (JSON path, expected, actual); an empty list means parity.
+
+    Structure (dict keys, list lengths), strings, booleans, ``None`` and
+    integers are compared EXACTLY; floats within the tolerance. A float is
+    compared numerically against an int only when the baseline holds a float
+    (an int baseline — a count, an index — is a HARD field)."""
+    out: list[str] = []
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return [f"{path}: expected object, got {type(actual).__name__}"]
+        missing = sorted(set(expected) - set(actual))
+        extra = sorted(set(actual) - set(expected))
+        if missing:
+            out.append(f"{path}: missing keys {missing}")
+        if extra:
+            out.append(f"{path}: unexpected keys {extra}")
+        for key in sorted(set(expected) & set(actual)):
+            out.extend(
+                parity_differences(
+                    expected[key], actual[key], f"{path}.{key}", rel_tol=rel_tol, abs_tol=abs_tol
+                )
+            )
+        return out
+    if isinstance(expected, list):
+        if not isinstance(actual, list):
+            return [f"{path}: expected array, got {type(actual).__name__}"]
+        if len(expected) != len(actual):
+            return [f"{path}: length {len(expected)} != {len(actual)}"]
+        for i, (e, a) in enumerate(zip(expected, actual, strict=True)):
+            out.extend(parity_differences(e, a, f"{path}[{i}]", rel_tol=rel_tol, abs_tol=abs_tol))
+        return out
+    if isinstance(expected, bool) or expected is None or isinstance(expected, str | int):
+        # HARD tier: exact (bool before int — True is an int in Python)
+        if type(expected) is not type(actual) or expected != actual:
+            out.append(f"{path}: {expected!r} != {actual!r}")
+        return out
+    if isinstance(expected, float):
+        if isinstance(actual, bool) or not isinstance(actual, int | float):
+            return [f"{path}: expected number, got {actual!r}"]
+        if not math.isclose(expected, float(actual), rel_tol=rel_tol, abs_tol=abs_tol):
+            out.append(f"{path}: {expected!r} != {actual!r} (|Δ| = {abs(expected - actual):.3e})")
+        return out
+    return [f"{path}: unsupported baseline type {type(expected).__name__}"]
 
 
 def canonical(payload: Any) -> str:
