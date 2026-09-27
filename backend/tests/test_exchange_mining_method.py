@@ -168,7 +168,17 @@ def test_x2_longhole_stopes_are_exported_as_independent_closed_solids(
     assert prod["sourceArtifact"] == STOPES_ARTIFACT
     assert prod["method"] == "LONGHOLE_OPEN_STOPING"
     assert [s["stopeId"] for s in prod["stopes"]] == ids
-    assert prod["metrics"] == src["metrics"]
+    # typed external metrics (review B2): every field projected explicitly
+    assert set(prod["metrics"]) == {
+        "stopeCount",
+        "levelIntervalCount",
+        "stationsPerInterval",
+        "totalGeometricVolumeM3",
+        "totalTonnes",
+        "geometricExtractionFractionOfOrebody",
+        "weightedMeanGradeProxy",
+    }
+    assert prod["metrics"] == {k: src["metrics"][k] for k in prod["metrics"]}
 
     by_id = {str(s["id"]): s for s in src["stopes"]}
     for ent, row in zip(stope_entities, prod["stopes"], strict=True):
@@ -220,7 +230,13 @@ def test_x2_longhole_stopes_are_exported_as_independent_closed_solids(
     assert mm["production"]["entityIds"] == [stope_entity_id(s) for s in ids]
     assert mm["production"]["sourceArtifact"] == STOPES_ARTIFACT
     f = b.files["semantics/mining_method.json"]
-    assert f["sourceArtifact"] == f"scenario.json,{LEVELS_ARTIFACT},{STOPES_ARTIFACT}"
+    # singular provenance (review S1): the scenario is the primary authority;
+    # levels / stopes provenance is carried by the typed nested blocks
+    assert f["sourceArtifact"] == "scenario.json"
+    assert f["sourceRevision"] == b.manifest["sourceSnapshot"]["scenarioRevision"]
+    assert (
+        pd["sourceRevision"] == b.manifest["sourceSnapshot"]["artifactRevisions"][LEVELS_ARTIFACT]
+    )
     assert set(f["sourceEntityIds"]) == set(crosscuts) | set(mm["production"]["entityIds"])
     # nothing new in the manifest vocabulary beyond the declared 1.1 additions
     kinds = {e["kind"] for e in b.manifest["entities"]}
@@ -329,6 +345,75 @@ def test_x4_method_authority_mismatch_is_a_typed_409(
         path.write_bytes(original)
     assert export(longhole.client, longhole.sid).files  # healthy again
     assert export(cut_and_fill.client, cut_and_fill.sid).files
+
+
+def test_x9_unsupported_method_with_longhole_crosscuts_is_refused(
+    longhole: TabularStack, cut_and_fill: TabularStack
+) -> None:
+    """PR #46 review B1: a structurally VALID levels.json that declares
+    UNSUPPORTED_METHOD yet carries longhole CROSSCUT developments must never
+    be exported (the crosscuts would become entities while mining_method.json
+    says "not implemented"). The typed status is not evidence; the
+    developments and every station-lattice count are."""
+    levels_path = cut_and_fill.derived / LEVELS_ARTIFACT
+    stopes_path = cut_and_fill.derived / STOPES_ARTIFACT
+    levels_original, stopes_original = levels_path.read_bytes(), stopes_path.read_bytes()
+    lst, sst = levels_path.stat(), stopes_path.stat()
+    # a schema-valid CROSSCUT taken from the real longhole chain
+    donor = next(
+        d for d in longhole.artifact(LEVELS_ARTIFACT)["developments"] if d["kind"] == "CROSSCUT"
+    )
+    base = json.loads(levels_original)
+    assert base["productionDevelopment"]["status"] == "UNSUPPORTED_METHOD"
+    assert not any(d["kind"] == "CROSSCUT" for d in base["developments"])
+    try:
+        # the FAILED stopes artifact is bound to the levels revision; remove it
+        # so the refusal below can only come from the method-authority guard
+        stopes_path.unlink()
+
+        def refused(mutate: Any) -> str:
+            doc = json.loads(levels_original)
+            mutate(doc)
+            _rewrite(levels_path, doc)
+            return _refused(cut_and_fill.client, cut_and_fill.sid, "MINE_EXCHANGE_EXPORT_FAILED")
+
+        def inject_crosscut(doc: dict[str, Any]) -> None:
+            cc = json.loads(json.dumps(donor))
+            cc["levelId"] = doc["levels"][0]["levelId"]
+            doc["developments"].append(cc)
+
+        msg = refused(inject_crosscut)
+        assert "CROSSCUT" in msg and "UNSUPPORTED_METHOD" in msg
+
+        def lattice_metrics(doc: dict[str, Any]) -> None:
+            doc["metrics"]["crosscutCount"] = 3
+
+        assert "metrics.crosscutCount" in refused(lattice_metrics)
+
+        def stations(doc: dict[str, Any]) -> None:
+            doc["metrics"]["stationsPerLevel"] = 2
+
+        assert "metrics.stationsPerLevel" in refused(stations)
+
+        def level_count(doc: dict[str, Any]) -> None:
+            doc["levels"][0]["crosscutCount"] = 1
+
+        assert "crosscutCount = 1" in refused(level_count)
+        # the untouched artifact still exports (typed UNSUPPORTED_METHOD outcomes)
+        levels_path.write_bytes(levels_original)
+        b = export(cut_and_fill.client, cut_and_fill.sid)
+        assert b.json("semantics/mining_method.json")["implementationStatus"] == (
+            "UNSUPPORTED_METHOD"
+        )
+        assert not any(e["kind"] == "CROSSCUT" for e in b.manifest["entities"])
+    finally:
+        levels_path.write_bytes(levels_original)
+        os.utime(levels_path, ns=(lst.st_atime_ns, lst.st_mtime_ns))
+        stopes_path.write_bytes(stopes_original)
+        os.utime(stopes_path, ns=(sst.st_atime_ns, sst.st_mtime_ns))
+    assert export(cut_and_fill.client, cut_and_fill.sid).omissions()["STOPES"] == (
+        "SOURCE_NOT_SUCCESS"
+    )
 
 
 def test_x5_stope_geometry_corruption_is_refused_never_trusted(longhole: TabularStack) -> None:

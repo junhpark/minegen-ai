@@ -27,12 +27,20 @@ from tests.conftest import small_scenario
 from tests.phase21a_parity_support import layout_chain, legacy_chain, reduce, with_method
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "phase21a" / "longhole_parity.json"
+#: the pre-migration main HEAD the baseline was captured on (PR #45 merge).
+#: Pinned so the baseline can never be silently re-captured on a later HEAD
+#: (PR #46 review S3): a new baseline is an explicit, reviewed decision.
+PRE_MIGRATION_HEAD = "39c293e71790b6ec490275a24bb8735631334e4e"
 
 
 @pytest.fixture(scope="module")
 def baseline() -> dict[str, Any]:
     doc: dict[str, Any] = json.loads(FIXTURE.read_text(encoding="utf-8"))
     assert doc["metadata"]["phase"] == "21A pre-migration"
+    assert doc["metadata"]["capturedAtHead"] == PRE_MIGRATION_HEAD, (
+        "the longhole parity baseline must stay the one captured on the pre-migration "
+        f"HEAD {PRE_MIGRATION_HEAD}; re-capturing it is never an implicit step"
+    )
     return doc["cases"]
 
 

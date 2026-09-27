@@ -31,12 +31,22 @@ from minegen.services.scenario_realizer import realize_scenario  # noqa: E402
 from minegen.world.synthetic_world import generate_world  # noqa: E402
 
 OUT = BACKEND / "tests" / "fixtures" / "phase21a" / "longhole_parity.json"
+#: the ONLY HEAD this baseline may be captured on (tests/test_mining_method_parity.py
+#: pins the same value). Running anywhere else is refused: a new baseline is an
+#: explicit, reviewed decision, never a re-run.
+PRE_MIGRATION_HEAD = "39c293e71790b6ec490275a24bb8735631334e4e"
 
 
 def main() -> None:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
     ).stdout.strip()
+    if head != PRE_MIGRATION_HEAD:
+        raise SystemExit(
+            f"refusing to capture the longhole parity baseline on {head}: it is pinned to the "
+            f"pre-migration HEAD {PRE_MIGRATION_HEAD} (edit PRE_MIGRATION_HEAD here AND in "
+            "tests/test_mining_method_parity.py only as an explicit, reviewed baseline change)"
+        )
     # the legacy chain uses the DEFAULT scenario exactly as tests/test_stopes.py
     # does (three synthetic Phase 05 segments → 2 intervals × 17 stations)
     dsc = Scenario(**ScenarioCreate(name="phase21a-default").model_dump())

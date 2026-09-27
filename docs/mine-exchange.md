@@ -70,7 +70,7 @@ through `glb.storedVertexFrame`, `glb.sceneFrame`, `glb.sourceFrame` and
 
 | GLB kind | files | stored vertices | scene frame | root transform |
 | --- | --- | --- | --- | --- |
-| exporter-created | `terrain/terrain_surface.glb`, `orebody/orebody.glb`, `geology/faults.glb` | `LOCAL_ENU_Z_UP` | `GLTF_Y_UP` | mine → glTF rotation as the **root node matrix** (column-major `[1,0,0,0, 0,0,-1,0, 0,1,0,0, 0,0,0,1]`, i.e. `(x, y, z) → (x, z, −y)`, the orientation the viewer applies), recorded as `transformMatrix` |
+| exporter-created | `terrain/terrain_surface.glb`, `orebody/orebody.glb`, `geology/faults.glb`, `production/stopes/<stope>.glb` (1.1) | `LOCAL_ENU_Z_UP` | `GLTF_Y_UP` | mine → glTF rotation as the **root node matrix** (column-major `[1,0,0,0, 0,0,-1,0, 0,1,0,0, 0,0,0,1]`, i.e. `(x, y, z) → (x, z, −y)`, the orientation the viewer applies), recorded as `transformMatrix` |
 | copied production render | `excavations/render/tunnel.glb`, `excavations/render/development.glb` | `LOCAL_ENU_Z_UP` | `LOCAL_ENU_Z_UP` | none — `transformMatrix = null`; the production bytes are copied **verbatim** and the consumer applies the rotation itself |
 
 The copied render GLBs' `geometry.junctionApertures` is read from the
@@ -355,13 +355,20 @@ it, resolved through the ONE backend mining-method registry
                                sourceArtifact stopes.json, sourceRevision, stopeCount, entityIds[] = STOPE entities }
 
 It references the exported CROSSCUT / STOPE entities and duplicates no
-geometry. Three authorities must agree or the export is a typed
-`409 MINE_EXCHANGE_EXPORT_FAILED` (`builder.py::check_method_authority`):
-the scenario's requested method, `levels.json → productionDevelopment.method
-/ status` (against the registry's implementation status) and `stopes.json →
-method`; a SUCCESS `stopes.json` under a method the registry does not
-implement is refused — longhole geometry is never exported under another
-method's name. An unsupported method (CUT_AND_FILL, ROOM_AND_PILLAR,
+geometry. Its manifest entry carries singular provenance — `sourceArtifact =
+scenario.json`, `sourceRevision = scenarioRevision` (the primary authority);
+the `levels.json` / `stopes.json` provenance lives in the nested
+`productionDevelopment` / `production` blocks. Three authorities must agree
+or the export is a typed `409 MINE_EXCHANGE_EXPORT_FAILED`
+(`builder.py::check_method_authority`): the scenario's requested method,
+`levels.json → productionDevelopment.method / status` (against the registry's
+implementation status) and `stopes.json → method`; a SUCCESS `stopes.json`
+under a method the registry does not implement is refused. The typed status
+is not taken as evidence on its own: under an unsupported method a
+`levels.json` that carries ANY CROSSCUT development, a non-zero
+`metrics.crosscutCount` / `stationsPerLevel` or a level `crosscutCount` is
+refused the same way — longhole production geometry is never exported under
+another method's name, whatever the status field claims. An unsupported method (CUT_AND_FILL, ROOM_AND_PILLAR,
 SUBLEVEL_CAVING, SHRINKAGE_STOPING) exports `implementationStatus =
 UNSUPPORTED_METHOD`, `productionDevelopment.status = UNSUPPORTED_METHOD`
 with the builder's reason, no CROSSCUT entities, a FAILED `production`
@@ -386,7 +393,12 @@ DTO rows carry identity (`entityId`, `stopeId`, `method`, `stationIndex`,
 link to the network — a stope is a production VOLUME, never a network edge),
 local bounds, dimensions and the planning quantities `geometricVolumeM3`,
 `tonnes`, `meanGradeProxy` — deterministic planning numbers, never reserves
-or resources. Stopes export **without** a network (world + levels + stopes
+or resources. The document's `metrics` block is the typed
+`ExchangeStopesMetrics` projection (stope count, level-interval count,
+stations per interval, total geometric volume, total tonnes, geometric
+extraction fraction, weighted grade proxy) — never the internal
+`stopes.json` metrics passed through, so an internal refactor cannot change
+the external contract without a version change. Stopes export **without** a network (world + levels + stopes
 is a valid partial bundle); when the network IS present, both access node
 ids must be exported nodes or the export is refused. Multi-body / unioned
 stope files and the future kinds `DRAWPOINT`, `PILLAR`, `BACKFILL_VOLUME`,

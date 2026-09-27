@@ -84,6 +84,7 @@ from minegen.exchange.models import (
     ExchangeRequiredPath,
     ExchangeStope,
     ExchangeStopeBounds,
+    ExchangeStopesMetrics,
     GeometryQa,
     GlbFrame,
     MultiBodyComponent,
@@ -1398,6 +1399,37 @@ def check_method_authority(inputs: ExchangeInputs) -> None:
                 f"development {pd.get('status')!r} but the registry implements "
                 f"{requested.value} as {plan.implementation_status}"
             )
+    if isinstance(levels, dict) and plan.implementation_status != "IMPLEMENTED":
+        # PR #46 review B1: an unsupported method must never carry longhole
+        # production geometry. The typed status alone is not evidence — the
+        # developments themselves and every count that would betray a
+        # station lattice are checked, and any trace fails the export closed.
+        crosscuts = [
+            str(d.get("id"))
+            for d in levels.get("developments", [])
+            if isinstance(d, dict) and str(d.get("kind")) == "CROSSCUT"
+        ]
+        if crosscuts:
+            raise ExchangeExportError(
+                f"{LEVELS_ARTIFACT} carries {len(crosscuts)} CROSSCUT development(s) "
+                f"({crosscuts[0]}, …) although {requested.value} is {plan.implementation_status}"
+                " — longhole production geometry is never exported under an unsupported method"
+            )
+        metrics = levels.get("metrics")
+        if isinstance(metrics, dict):
+            for key in ("crosscutCount", "stationsPerLevel"):
+                if metrics.get(key) not in (None, 0):
+                    raise ExchangeExportError(
+                        f"{LEVELS_ARTIFACT} metrics.{key} = {metrics.get(key)!r} although "
+                        f"{requested.value} is {plan.implementation_status}"
+                    )
+        for lvl in levels.get("levels", []):
+            if isinstance(lvl, dict) and lvl.get("crosscutCount") not in (None, 0):
+                raise ExchangeExportError(
+                    f"{LEVELS_ARTIFACT} level {lvl.get('levelId')!r} reports "
+                    f"crosscutCount = {lvl.get('crosscutCount')!r} although "
+                    f"{requested.value} is {plan.implementation_status}"
+                )
     stopes = inputs.stopes.document if inputs.stopes is not None else None
     if isinstance(stopes, dict):
         if str(stopes.get("method")) != requested.value:
@@ -1614,7 +1646,7 @@ def _stopes(
         source_revision=revision,
         method=str(doc["method"]),
         stopes=exported,
-        metrics=doc.get("metrics"),
+        metrics=_stopes_metrics(doc.get("metrics")),
         notes=[
             "one authoritative closed prism per stope; vertically adjacent stopes share a "
             "boundary face; no union, no aggregate body",
@@ -1638,6 +1670,25 @@ def _stopes(
         )
     )
     return ids
+
+
+def _stopes_metrics(metrics: object) -> ExchangeStopesMetrics | None:
+    """Explicit internal → external projection of the stope metrics (review
+    B2): every field is named here, nothing is passed through."""
+    if not isinstance(metrics, dict):
+        return None
+    grade = metrics.get("weightedMeanGradeProxy")
+    return ExchangeStopesMetrics(
+        stope_count=int(metrics["stopeCount"]),
+        level_interval_count=int(metrics["levelIntervalCount"]),
+        stations_per_interval=int(metrics["stationsPerInterval"]),
+        total_geometric_volume_m3=float(metrics["totalGeometricVolumeM3"]),
+        total_tonnes=float(metrics["totalTonnes"]),
+        geometric_extraction_fraction_of_orebody=float(
+            metrics["geometricExtractionFractionOfOrebody"]
+        ),
+        weighted_mean_grade_proxy=float(grade) if grade is not None else None,
+    )
 
 
 def _mining_method(
@@ -1728,16 +1779,11 @@ def _mining_method(
             "MINING_METHOD",
             "DOCUMENT",
             [*crosscut_ids, *stope_ids],
-            ",".join(
-                a
-                for a, present in (
-                    ("scenario.json", True),
-                    (LEVELS_ARTIFACT, inputs.levels is not None),
-                    (STOPES_ARTIFACT, inputs.stopes is not None),
-                )
-                if present
-            ),
-            None,
+            # singular provenance (review S1): the scenario is the primary
+            # authority of this document; levels / stopes provenance lives in
+            # the typed nested productionDevelopment / production blocks
+            "scenario.json",
+            inputs.scenario_revision,
             False,
         )
     )

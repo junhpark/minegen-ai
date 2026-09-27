@@ -35,6 +35,7 @@ __all__ = [
     "ExchangeProductionStopes",
     "ExchangeRequiredPath",
     "ExchangeStope",
+    "ExchangeStopesMetrics",
     "GeometryQa",
     "GlbFrame",
     "MultiBodyComponent",
@@ -426,6 +427,22 @@ class ExchangeStope(ApiModel):
     files: list[str]
 
 
+class ExchangeStopesMetrics(ApiModel):
+    """External projection of the internal stope metrics (PR #46 review
+    B2): an explicit typed 1.1 contract, never the internal ``StopesMetrics``
+    document passed through — an internal refactor cannot change this file
+    without a MineExchange version change. Planning quantities only, never
+    reserves or resources."""
+
+    stope_count: int
+    level_interval_count: int
+    stations_per_interval: int
+    total_geometric_volume_m3: float
+    total_tonnes: float
+    geometric_extraction_fraction_of_orebody: float
+    weighted_mean_grade_proxy: float | None
+
+
 class ExchangeProductionStopes(ApiModel):
     """``production/stopes.json`` — the semantic document of the exported
     stopes (authority: ``stopes.json``); geometry lives in the per-stope
@@ -438,5 +455,5 @@ class ExchangeProductionStopes(ApiModel):
     source_revision: str
     method: str
     stopes: list[ExchangeStope]
-    metrics: dict[str, Any] | None
+    metrics: ExchangeStopesMetrics | None
     notes: list[str] = []

@@ -802,7 +802,7 @@ function MiningView(p: DesignPanelBodyProps) {
           title="Mining method"
           tone={implemented ? 'ACTIVE' : 'INACTIVE'}
           statusLabel={implemented ? 'Implemented' : 'Not implemented'}
-          info="The scenario's requested mining method, as the backend mining-method registry resolves it. Longhole open stoping is implemented; the other methods are reserved and receive only the generic level development — never longhole geometry under another name. The method is a scenario parameter and is not edited here."
+          info="Shows whether the current backend implements the mining method this scenario requests, as its mining-method registry resolves it. A method that is not implemented still receives level access and the generic footwall drift, but no production development or stopes are substituted from another method. The method is a scenario parameter and is not edited here."
           summary={<span data-testid="mining-method-name">{miningMethod.displayName}</span>}
           notice={
             implemented
