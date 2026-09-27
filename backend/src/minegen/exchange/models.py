@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from pydantic import SerializerFunctionWrapHandler, model_serializer
+
 from minegen.core.models import ApiModel
 
 __all__ = [
@@ -45,8 +47,12 @@ __all__ = [
 #: the external contract version (semantic); NOT an internal artifact version.
 #: 1.1.0 (Phase 21A): mining-method semantics + longhole stope export — an
 #: ADDITIVE 1.x extension (new files, semantic types, entity kind, omission
-#: outcomes); every 1.0.0 meaning, id and coordinate contract is unchanged
-MINE_EXCHANGE_VERSION = "1.1.0"
+#: outcomes); every 1.0.0 meaning, id and coordinate contract is unchanged.
+#: 1.2.0 (Phase 21B/C): Cut & Fill (CUT / BACKFILL) and Room & Pillar
+#: (ROOM / BENCH / PILLAR) production exports, typed method-parameter DTOs
+#: and per-active-method production omission groups — again additive: every
+#: 1.1.0 file, id and meaning is unchanged.
+MINE_EXCHANGE_VERSION = "1.2.0"
 #: MineGen canonical frame: X East, Y North, Z Up, metres (CLAUDE.md rule 3)
 COORDINATE_FRAME = "LOCAL_ENU_Z_UP"
 #: glTF scene convention after the explicit root transform (x, z, −y)
@@ -80,6 +86,12 @@ SemanticType = Literal[
     "MINING_METHOD",
     "PRODUCTION_STOPES",
     "STOPE_SOLID",
+    # 1.2.0 (Phase 21B/C)
+    "PRODUCTION_CUT_FILL",
+    "CUT_SOLID",
+    "PRODUCTION_ROOM_PILLAR",
+    "BENCH_SOLID",
+    "PILLAR_SOLID",
 ]
 Representation = Literal[
     "DOCUMENT",
@@ -111,6 +123,15 @@ EntityKind = Literal[
     "SHAFT_STATION_ACCESS",
     # 1.1.0: a planned production volume (stopes.json), never a development
     "STOPE",
+    # 1.2.0: Cut & Fill — a mined cut (solid) and its 1:1 backfill (semantic,
+    # references the cut void; no geometry file of its own)
+    "CUT",
+    "BACKFILL",
+    # 1.2.0: Room & Pillar — the room cell (semantic parent, no geometry), its
+    # extraction units (HEADING / BENCH_n solids) and the retained pillars
+    "ROOM",
+    "BENCH",
+    "PILLAR",
 ]
 
 
@@ -207,6 +228,10 @@ class ExchangeOmission(ApiModel):
         "RENDER_GLB",
         "SHAFTS",
         "STOPES",
+        # 1.2.0: the production group of the ACTIVE method (exactly one of
+        # STOPES / CUT_FILL / ROOM_PILLAR is ever reported)
+        "CUT_FILL",
+        "ROOM_PILLAR",
         "TIMELINE",
         "FIELD_LATTICE",
     ]
@@ -342,10 +367,46 @@ class ExchangeCapability(ApiModel):
 # --------------------------------------------------------------------------- #
 
 
+class ExchangeCutFillParameters(ApiModel):
+    """Typed 1.2.0 projection of ``mining.methodParameters`` (CUT_AND_FILL)."""
+
+    kind: Literal["CUT_AND_FILL"] = "CUT_AND_FILL"
+    lift_height_m: float
+    cut_length_m: float
+
+
+class ExchangeRoomPillarParameters(ApiModel):
+    """Typed 1.2.0 projection of ``mining.methodParameters`` (ROOM_AND_PILLAR)."""
+
+    kind: Literal["ROOM_AND_PILLAR"] = "ROOM_AND_PILLAR"
+    room_width_m: float
+    pillar_width_m: float
+    heading_height_m: float
+    bench_count: int
+    boundary_pillar_m: float
+
+
+ExchangeMethodParameters = ExchangeCutFillParameters | ExchangeRoomPillarParameters
+
+
 class ExchangeMiningParameters(ApiModel):
+    """The configured mining parameters. The three Longhole planning
+    parameters are always present (1.1.0 contract); ``methodParameters`` is
+    the typed method-specific block (1.2.0) and is OMITTED when the active
+    method declares none (Longhole, reserved methods) so the 1.1.0 document
+    shape is unchanged for them — never a dict passthrough."""
+
     sublevel_interval: float
     stope_length: float
     minimum_pillar: float
+    method_parameters: ExchangeMethodParameters | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_method_parameters(self, handler: SerializerFunctionWrapHandler) -> Any:
+        data = handler(self)
+        if isinstance(data, dict) and data.get("methodParameters") is None:
+            data.pop("methodParameters", None)
+        return data
 
 
 class ExchangeProductionDevelopmentStatus(ApiModel):
@@ -362,14 +423,26 @@ class ExchangeProductionDevelopmentStatus(ApiModel):
     entity_ids: list[str]
 
 
+ProductionKind = Literal["STOPES", "CUT_FILL", "ROOM_PILLAR"]
+
+
 class ExchangeProductionStatus(ApiModel):
+    """The ACTIVE production artifact's outcome. ``stopeCount`` keeps its
+    1.1.0 meaning (exported STOPE entities; 0 for every other method);
+    1.2.0 adds the active production kind and the count of exported primary
+    production units (stopes / cuts / extraction units)."""
+
     status: Literal["SUCCESS", "FAILED", "NOT_GENERATED"]
     failure_reason: str | None = None
     source_artifact: str | None
     source_revision: str | None
     stope_count: int
-    #: exported STOPE entity ids in bundle order
+    #: exported production entity ids in bundle order (every production kind)
     entity_ids: list[str]
+    #: 1.2.0: the production semantics document / omission group of the method
+    production_kind: ProductionKind
+    #: 1.2.0: exported primary units (STOPE / CUT / BENCH entities)
+    unit_count: int
 
 
 class ExchangeMiningMethod(ApiModel):
@@ -456,4 +529,180 @@ class ExchangeProductionStopes(ApiModel):
     method: str
     stopes: list[ExchangeStope]
     metrics: ExchangeStopesMetrics | None
+    notes: list[str] = []
+
+
+# --------------------------------------------------------------------------- #
+# Cut & Fill + Room & Pillar production (1.2.0, Phase 21B/C)
+# --------------------------------------------------------------------------- #
+
+#: the (u strike, v down-dip, w thickness) local-frame bounds of one solid
+ExchangeLocalBounds = ExchangeStopeBounds
+
+
+class ExchangePlanBounds(ApiModel):
+    u_min: float
+    u_max: float
+    v_min: float
+    v_max: float
+
+
+class ExchangeCutFillLift(ApiModel):
+    lift_index: int
+    lower_level_id: str
+    upper_level_id: str
+    v_min: float
+    v_max: float
+    vertical_height: float
+    cut_entity_ids: list[str]
+
+
+class ExchangeCut(ApiModel):
+    """One planned Cut & Fill cut: the authoritative ``stopes.json`` record
+    (identity, lift, level pair, production access) and its solid files.
+    Planning quantities only, never reserves or resources."""
+
+    entity_id: str
+    cut_id: str
+    method: str
+    lift_index: int
+    cut_index: int
+    lower_level_id: str
+    upper_level_id: str
+    #: the production access CROSSCUT development id (levels.json / network)
+    access_development_id: str
+    #: the exported CROSSCUT entity id of that access when it is in the bundle
+    access_entity_id: str | None
+    backfill_entity_id: str
+    local_bounds: ExchangeLocalBounds
+    strike_length: float
+    down_dip_span: float
+    vertical_height: float
+    thickness: float
+    geometric_volume_m3: float
+    tonnes: float
+    mean_grade_proxy: float | None
+    planned_state: str
+    files: list[str]
+
+
+class ExchangeBackfill(ApiModel):
+    """A 1:1 backfill of one cut: SEMANTIC only — it fills the cut's void and
+    references the cut's solid; it owns no geometry file (no duplication)."""
+
+    entity_id: str
+    backfill_id: str
+    source_cut_id: str
+    source_cut_entity_id: str
+    volume_m3: float
+
+
+class ExchangeCutFillMetrics(ApiModel):
+    cut_count: int
+    backfill_count: int
+    lift_count: int
+    level_interval_count: int
+    total_geometric_volume_m3: float
+    total_tonnes: float
+    geometric_extraction_fraction_of_orebody: float
+    weighted_mean_grade_proxy: float | None
+    actual_mean_lift_height: float
+    actual_mean_cut_length: float
+
+
+class ExchangeProductionCutFill(ApiModel):
+    """``production/cut_fill.json`` — the semantic document of the exported
+    Cut & Fill production (authority: the active production artifact);
+    cut geometry lives in ``production/cut_fill/cuts/``, one closed prism
+    each, never unioned; backfills reference their cut."""
+
+    mine_exchange_version: str
+    semantic_type: Literal["PRODUCTION_CUT_FILL"] = "PRODUCTION_CUT_FILL"
+    coordinate_frame: str = COORDINATE_FRAME
+    source_artifact: str
+    source_revision: str
+    method: str
+    parameters: ExchangeCutFillParameters
+    lifts: list[ExchangeCutFillLift]
+    cuts: list[ExchangeCut]
+    backfills: list[ExchangeBackfill]
+    metrics: ExchangeCutFillMetrics | None
+    notes: list[str] = []
+
+
+class ExchangeRoom(ApiModel):
+    """A Room & Pillar room cell: the semantic parent of its extraction
+    units; it owns no geometry file."""
+
+    entity_id: str
+    room_id: str
+    row_index: int
+    column_index: int
+    local_plan_bounds: ExchangePlanBounds
+    access_development_id: str
+    access_entity_id: str | None
+    extraction_unit_entity_ids: list[str]
+
+
+class ExchangeBench(ApiModel):
+    """One Room & Pillar extraction unit (HEADING / BENCH_1 / BENCH_2) and its
+    solid files."""
+
+    entity_id: str
+    unit_id: str
+    room_entity_id: str
+    stage: str
+    bench_index: int
+    local_bounds: ExchangeLocalBounds
+    geometric_volume_m3: float
+    tonnes: float
+    mean_grade_proxy: float | None
+    planned_state: str
+    files: list[str]
+
+
+class ExchangePillar(ApiModel):
+    """A retained pillar: planning geometry of material left in place; never a
+    geotechnical design or certification and never scheduled."""
+
+    entity_id: str
+    pillar_id: str
+    row_index: int
+    column_index: int
+    local_bounds: ExchangeLocalBounds
+    geometric_volume_m3: float
+    tonnes_equivalent: float
+    mean_grade_proxy: float | None
+    files: list[str]
+
+
+class ExchangeRoomPillarMetrics(ApiModel):
+    room_count: int
+    extraction_unit_count: int
+    pillar_count: int
+    heading_count: int
+    bench_count: int
+    total_mined_volume_m3: float
+    total_pillar_volume_m3: float
+    panel_volume_m3: float
+    total_mined_tonnes: float
+    geometric_extraction_fraction: float
+    weighted_mean_grade_proxy: float | None
+
+
+class ExchangeProductionRoomPillar(ApiModel):
+    """``production/room_pillar.json`` — rooms (semantic), benches and
+    pillars (solids under ``production/room_pillar/benches|pillars/``)."""
+
+    mine_exchange_version: str
+    semantic_type: Literal["PRODUCTION_ROOM_PILLAR"] = "PRODUCTION_ROOM_PILLAR"
+    coordinate_frame: str = COORDINATE_FRAME
+    source_artifact: str
+    source_revision: str
+    method: str
+    parameters: ExchangeRoomPillarParameters
+    rooms: list[ExchangeRoom]
+    extraction_units: list[ExchangeBench]
+    pillars: list[ExchangePillar]
+    metrics: ExchangeRoomPillarMetrics | None
     notes: list[str] = []

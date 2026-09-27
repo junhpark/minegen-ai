@@ -418,6 +418,49 @@ proxy moved from ≈ 3.99 (Phase-17 cell weighting) to the value recorded in
 STOPE_ACCESS anchors are the link (rule 76), and Phase 10 owns temporal
 states beyond `plannedState = PLANNED` (rule 80).
 
+## Phase 21B/C — Cut & Fill and Room & Pillar production (`mining/methods/`, rules 193–196)
+
+Both methods are TABULAR-only planning geometries built over shared prism
+helpers (`methods/solids.py`): `equal_partition(lo, hi, target)` → `n =
+ceil(span / target)` equal pieces (never a residual sliver), `build_solid`
+(8-corner prism in the analytic u / v / w frame → world vertices, the Phase 09
+hard QA: closed manifold, analytic ↔ mesh volume within 1e-6, ≤ 5 m hard
+samples through the crosscut-context evaluator, finite) and the rule 130
+grade proxy. `MAX_PRODUCTION_SOLIDS = 8000` is a typed complexity limit.
+
+**Cut & Fill** (`methods/cut_fill.py`). For every adjacent completed level
+pair (bottom interval first) the down-dip interval `[v_lo, v_hi]` is
+partitioned into lifts of ≈ `liftHeightM` VERTICAL height — the local
+down-dip target is `liftHeightM / |v_z|`, so the partition is dip-aware —
+and the strike extent into cuts of ≈ `cutLengthM`. Cut order is the mining
+sequence: lifts bottom → top, cuts along strike in a snake (even lifts
+−u → +u, odd lifts +u → −u). Every cut spans the full thickness; its
+backfill is a 1:1 semantic record (`BACKFILL:<suffix>` → `sourceCutId`,
+`volumeM3`) — the backfill IS the cut void, no second geometry. The
+production access is the lower level's central CROSSCUT
+(`CROSSCUT:<level>:S+00`, the `FixedAccessPattern`).
+
+**Room & Pillar** (`methods/room_pillar.py`). The panel is the orebody
+extent inset by `boundaryPillarM`; along u and v alternating bands of
+`roomWidthM` / `pillarWidthM` are laid so that u = 0 and v = 0 fall in a ROOM
+band (`band_intervals`). A cell is ROOM iff its u-band OR its v-band is a
+room band — the rooms form a grid of intersecting drives — otherwise it is a
+PILLAR. Rooms are semantic parents; the extraction units are
+`thickness_stages`: HEADING of `headingHeightM` from the footwall side and
+`benchCount` benches sharing the remaining thickness (a heading ≥ thickness →
+one HEADING). Pillars are retained solids (`tonnesEquivalent`) built without
+the excavation evaluator and are never scheduled; nothing here is a
+geotechnical pillar design.
+
+**Schedules** (`production_schedule`, executed by `scheduling/builder.py`).
+Cut & Fill: PREP → STOPING → MUCKING → BACKFILL → CURE per cut with the Phase
+10 rates, one conservative chain (PREP after the access development task
+and the previous cut's CURE). Room & Pillar: PREP → STOPING → MUCKING per
+extraction unit, HEADING → BENCH_1 → BENCH_2 within a cell, cells ordered by
+Manhattan index distance from the central cell (the cell containing u = v =
+0), then row, then column; one front. Both are deterministic sequencing
+BASELINES (rule 82), never resource optimizations.
+
 The volumetric level-development mesh is deliberately DEFERRED: independent
 capped tubes overlapped at T-junctions would leave false internal walls at
 every crosscut mouth; junction openings belong to a later mesh/walkthrough

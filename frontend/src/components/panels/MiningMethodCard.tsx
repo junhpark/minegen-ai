@@ -1,0 +1,197 @@
+import { useState } from 'react'
+import { ActionButton } from '@/components/ui/ActionButton'
+import { Metrics } from '@/components/ui/MetricRow'
+import { WorkflowCard } from '@/components/ui/WorkflowCard'
+import type { MethodParameters, MiningConfig } from '@/types/api'
+import type { MiningMethodType } from '@/types/enums'
+import type { AvailableMethod, MiningMethodSummary } from '@/types/scene'
+import {
+  IMPLEMENTATION_LABEL,
+  miningDraftFor,
+  miningDraftIsDirty,
+  persistedMining,
+} from './miningDraft'
+
+const FIELD =
+  'w-full rounded-sm border border-rock-700 bg-rock-900 px-1.5 py-0.5 text-[11px] text-chalk focus:border-lamp focus:outline-none'
+
+interface Props {
+  summary: MiningMethodSummary
+  pending: boolean
+  enabled: boolean
+  onApply: (mining: MiningConfig) => void
+}
+
+/**
+ * Phase 21B/C Mining-method card: a selector over the registry's method
+ * table (every method listed with its Implemented / Not implemented status),
+ * the explicit parameters of the selected method and one "Apply" action that
+ * submits the edited MiningConfig. Applying rewrites the scenario document,
+ * which clears EVERY derived artifact (rule 40) and regenerates the world.
+ * The card computes nothing: statuses, defaults and validation are the
+ * backend's.
+ */
+export function MiningMethodCard({ summary, pending, enabled, onApply }: Props) {
+  const persisted = persistedMining(summary)
+  const [draft, setDraft] = useState<MiningConfig>(persisted)
+  const selected: AvailableMethod | undefined = summary.availableMethods.find(
+    (m) => m.method === draft.method,
+  )
+  const implemented =
+    (selected?.implementationStatus ?? summary.implementationStatus) === 'IMPLEMENTED'
+  const activeImplemented = summary.implementationStatus === 'IMPLEMENTED'
+  const dirty = miningDraftIsDirty(draft, persisted)
+  const num = (label: string, value: number, set: (v: number) => void, step = 1) => (
+    <label key={label} className="block">
+      <span className="mb-0.5 block text-[10px] text-mute">{label}</span>
+      <input
+        type="number"
+        className={FIELD}
+        value={value}
+        step={step}
+        min={0}
+        onChange={(e) => {
+          const v = Number(e.target.value)
+          if (Number.isFinite(v)) set(v)
+        }}
+      />
+    </label>
+  )
+  const setParams = (patch: Partial<MethodParameters>) =>
+    setDraft((d) =>
+      d.methodParameters
+        ? { ...d, methodParameters: { ...d.methodParameters, ...patch } as MethodParameters }
+        : d,
+    )
+  const mp = draft.methodParameters
+  return (
+    <WorkflowCard
+      title="Mining method"
+      tone={activeImplemented ? 'ACTIVE' : 'INACTIVE'}
+      statusLabel={IMPLEMENTATION_LABEL[summary.implementationStatus]}
+      info="The mining method is a scenario parameter. The backend registry decides which methods this version implements: Longhole Open Stoping, Cut & Fill and Room & Pillar plan production geometry and a schedule; a method that is not implemented still receives level access and the generic footwall drift, and nothing is substituted from another method. Applying a change rewrites the scenario, clears every derived design artifact and regenerates the world from the same seed."
+      summary={<span data-testid="mining-method-name">{summary.displayName}</span>}
+      notice={
+        activeImplemented
+          ? null
+          : `${summary.displayName} production is not implemented in this version. Level access and the generic footwall drift are still designed.`
+      }
+      action={
+        <div className="flex flex-col gap-1.5">
+          <label className="block">
+            <span className="mb-0.5 block text-[10px] text-mute">Method</span>
+            <select
+              data-testid="mining-method-select"
+              className={FIELD}
+              value={draft.method}
+              disabled={!enabled || pending}
+              onChange={(e) =>
+                setDraft((d) => miningDraftFor(summary, e.target.value as MiningMethodType, d))
+              }
+            >
+              {summary.availableMethods.map((m) => (
+                <option key={m.method} value={m.method}>
+                  {m.displayName} — {IMPLEMENTATION_LABEL[m.implementationStatus]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!implemented && selected ? (
+            <p className="text-[10px] text-mute">
+              {selected.displayName} is not implemented: applying it designs level access and the
+              generic drift only.
+            </p>
+          ) : null}
+          <div className="grid grid-cols-2 gap-1.5" data-testid="mining-parameters">
+            {num('Sublevel interval (m)', draft.sublevelInterval, (v) =>
+              setDraft((d) => ({ ...d, sublevelInterval: v })),
+            )}
+            {mp === undefined
+              ? [
+                  num('Stope length (m)', draft.stopeLength, (v) =>
+                    setDraft((d) => ({ ...d, stopeLength: v })),
+                  ),
+                  num('Minimum pillar (m)', draft.minimumPillar, (v) =>
+                    setDraft((d) => ({ ...d, minimumPillar: v })),
+                  ),
+                ]
+              : null}
+            {mp?.kind === 'CUT_AND_FILL'
+              ? [
+                  num('Lift height (m)', mp.liftHeightM, (v) => setParams({ liftHeightM: v }), 0.5),
+                  num('Cut length (m)', mp.cutLengthM, (v) => setParams({ cutLengthM: v })),
+                ]
+              : null}
+            {mp?.kind === 'ROOM_AND_PILLAR'
+              ? [
+                  num('Room width (m)', mp.roomWidthM, (v) => setParams({ roomWidthM: v })),
+                  num('Pillar width (m)', mp.pillarWidthM, (v) => setParams({ pillarWidthM: v })),
+                  num('Heading height (m)', mp.headingHeightM, (v) =>
+                    setParams({ headingHeightM: v }),
+                  ),
+                  <label key="bench" className="block">
+                    <span className="mb-0.5 block text-[10px] text-mute">Bench mode</span>
+                    <select
+                      data-testid="bench-mode-select"
+                      className={FIELD}
+                      value={mp.benchCount === 2 ? 'double' : 'single'}
+                      onChange={(e) =>
+                        setParams({ benchCount: e.target.value === 'double' ? 2 : 1 })
+                      }
+                    >
+                      <option value="single">single</option>
+                      <option value="double">double</option>
+                    </select>
+                  </label>,
+                  num('Boundary pillar (m)', mp.boundaryPillarM, (v) =>
+                    setParams({ boundaryPillarM: v }),
+                  ),
+                ]
+              : null}
+          </div>
+          <ActionButton
+            variant={dirty ? 'primary' : 'secondary'}
+            disabled={!enabled || pending || !dirty}
+            onClick={() => onApply(draft)}
+            title="Rewrites the scenario: every derived artifact is cleared and the world is regenerated"
+          >
+            {pending ? 'Applying method…' : 'Apply method'}
+          </ActionButton>
+        </div>
+      }
+      details={
+        <Metrics
+          rows={[
+            { label: 'Persisted method', value: summary.displayName },
+            { label: 'Export group', value: summary.productionKind },
+            { label: 'Sublevel interval', value: `${summary.sublevelInterval} m` },
+            summary.methodParameters === null
+              ? { label: 'Stope length', value: `${summary.stopeLength} m` }
+              : null,
+            summary.methodParameters === null
+              ? { label: 'Minimum pillar', value: `${summary.minimumPillar} m` }
+              : null,
+            ...parameterRows(summary.methodParameters),
+          ]}
+        />
+      }
+    />
+  )
+}
+
+function parameterRows(mp: MethodParameters | null): { label: string; value: string }[] {
+  if (!mp) return []
+  if (mp.kind === 'CUT_AND_FILL') {
+    return [
+      { label: 'Lift height', value: `${mp.liftHeightM} m` },
+      { label: 'Cut length', value: `${mp.cutLengthM} m` },
+    ]
+  }
+  return [
+    { label: 'Room width', value: `${mp.roomWidthM} m` },
+    { label: 'Pillar width', value: `${mp.pillarWidthM} m` },
+    { label: 'Heading height', value: `${mp.headingHeightM} m` },
+    { label: 'Bench mode', value: mp.benchCount === 2 ? 'double' : 'single' },
+    { label: 'Boundary pillar', value: `${mp.boundaryPillarM} m` },
+  ]
+}

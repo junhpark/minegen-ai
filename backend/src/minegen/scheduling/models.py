@@ -12,9 +12,9 @@ forecast or optimized schedule.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, SerializerFunctionWrapHandler, model_serializer
 
 from minegen.core.enums import ObjectState, TaskType
 from minegen.core.models import ApiModel
@@ -30,10 +30,17 @@ class TaskBasis(ApiModel):
     rate_unit: str
 
 
+#: production target kinds — STOPE (Longhole, Phase 10), CUT (Cut & Fill,
+#: Phase 21B) and ROOM_EXTRACTION (Room & Pillar, Phase 21C). Pillars are
+#: never a target: they are retained material, not a task.
+ProductionTargetKind = Literal["STOPE", "CUT", "ROOM_EXTRACTION"]
+TargetKind = Literal["DEVELOPMENT", "STOPE", "CUT", "ROOM_EXTRACTION"]
+
+
 class TimelineTask(ApiModel):
     id: str
     task_type: TaskType
-    target_kind: Literal["DEVELOPMENT", "STOPE"]
+    target_kind: TargetKind
     target_id: str
     duration_days: float
     start_day: float
@@ -94,6 +101,28 @@ class StopeTimeline(ApiModel):
     transitions: list[StateTransition]
 
 
+class ProductionUnitTimeline(ApiModel):
+    """Temporal state machine of one non-Longhole production unit (a Cut & Fill
+    cut or a Room & Pillar extraction unit). Geometry stays with the production
+    artifact; this references it by id only (rule 81)."""
+
+    unit_id: str
+    initial_state: ObjectState = ObjectState.PLANNED
+    transitions: list[StateTransition]
+
+
+class ProductionTimeline(ApiModel):
+    """Phase 21B/C generic production block — present ONLY for a
+    non-Longhole active method (the Longhole payload keeps ``stopes``)."""
+
+    method: str
+    target_kind: ProductionTargetKind
+    units: list[ProductionUnitTimeline]
+
+
+_OPTIONAL_PRODUCTION_KEYS = ("productionTaskCount", "productionObjectCount", "productionTargetKind")
+
+
 class TimelineMetrics(ApiModel):
     task_count: int
     development_task_count: int
@@ -105,6 +134,27 @@ class TimelineMetrics(ApiModel):
     ramp_completion_day: float
     first_stoping_day: float | None
     end_day: float
+    #: Phase 21B/C: counts of the non-Longhole production block; OMITTED from
+    #: serialization when absent so the Longhole payload is unchanged
+    production_task_count: int | None = None
+    production_object_count: int | None = None
+    production_target_kind: ProductionTargetKind | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_production(self, handler: SerializerFunctionWrapHandler) -> Any:
+        out = handler(self)
+        if isinstance(out, dict):
+            for key in _OPTIONAL_PRODUCTION_KEYS:
+                if key in out and out[key] is None:
+                    del out[key]
+            for key in (
+                "production_task_count",
+                "production_object_count",
+                "production_target_kind",
+            ):
+                if key in out and out[key] is None:
+                    del out[key]
+        return out
 
 
 class TimelinePayload(ApiModel):
@@ -117,3 +167,14 @@ class TimelinePayload(ApiModel):
     developments: list[DevelopmentTimeline]
     stopes: list[StopeTimeline]
     metrics: TimelineMetrics | None
+    #: Phase 21B/C generic production block (Cut & Fill cuts / Room & Pillar
+    #: extraction units); ``None`` — and OMITTED from serialization — for the
+    #: Longhole method, whose ``stopes`` block is unchanged
+    production: ProductionTimeline | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_production(self, handler: SerializerFunctionWrapHandler) -> Any:
+        out = handler(self)
+        if isinstance(out, dict) and out.get("production") is None:
+            out.pop("production", None)
+        return out

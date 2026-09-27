@@ -10,7 +10,7 @@
  * so the three states the existing API lets us distinguish are
  * included / not generated / failed.
  */
-import type { WorldScene } from '@/types/scene'
+import type { ProductionKind, WorldScene } from '@/types/scene'
 
 export type ExportLayerState = 'INCLUDED' | 'NOT_GENERATED' | 'FAILED'
 
@@ -67,10 +67,22 @@ export function describeExportContents(
     },
     { key: 'network', label: 'Network', state: stateOf(scene.network) },
     { key: 'capability', label: 'Capability', state: stateOf(scene.capabilityGraph) },
-    // MineExchange 1.1: planned stope solids (stopes.json)
-    { key: 'stopes', label: 'Stopes', state: stateOf(scene.stopes) },
+    // MineExchange 1.1 / 1.2: the ACTIVE method's production solids
+    // (stopes / cuts / rooms-benches-pillars) — one production kind per bundle
+    {
+      key: 'stopes',
+      label: PRODUCTION_LABEL[scene.miningMethod.productionKind],
+      state: stateOf(scene.stopes),
+    },
   )
   return layers
+}
+
+/** the bundle group of each production kind, as MineExchange names it */
+export const PRODUCTION_LABEL: Record<ProductionKind, string> = {
+  STOPES: 'Stopes',
+  CUT_FILL: 'Cut & Fill production',
+  ROOM_PILLAR: 'Room & Pillar production',
 }
 
 export const STATE_TEXT: Record<ExportLayerState, string> = {

@@ -366,7 +366,9 @@ def test_every_artifact_reads_valid_on_the_hand_written_stack(
         assert read.state == "VALID", (name, read.error)
         assert read.raw == json.loads((derived / name).read_text(encoding="utf-8"))
         assert read.revision == expected_revision(derived / name)
-        assert (read.model is not None) == (READ_SPECS[name].model is not None)
+        spec = READ_SPECS[name]
+        # a typed model OR a Phase 21B/C structural parser yields a model
+        assert (read.model is not None) == (spec.model is not None or spec.parser is not None)
 
 
 def test_every_artifact_reads_absent_when_the_file_is_gone(

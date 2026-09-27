@@ -21,11 +21,11 @@ import { DevelopmentMeshLayer } from './DevelopmentMeshLayer'
 import { LevelDevelopmentLayer } from './LevelDevelopmentLayer'
 import { NetworkLayer } from './NetworkLayer'
 import { ShaftLayer } from './ShaftLayer'
-import { StopeLayer } from './StopeLayer'
+import { ProductionLayer } from './ProductionLayer'
 import { TimelineDevelopmentLayer } from './TimelineDevelopmentLayer'
 import { TemporalExcavationLayer } from './TemporalExcavationLayer'
 import { excavationMountPlan } from '@/timeline/excavationReveal'
-import { TimelineStopeLayer } from './TimelineStopeLayer'
+import { TimelineProductionLayer } from './TimelineProductionLayer'
 import { CommunicationRouterLayer } from './CommunicationRouterLayer'
 import { CommunicationCoverageLayer } from './CommunicationCoverageLayer'
 import { communicationLayersActive, sensorLayersActive } from '@/infrastructure/view'
@@ -230,10 +230,10 @@ export function MineScene() {
         />
       ) : null}
       {timelineActive && scene?.timeline && scene.stopes ? (
-        <TimelineStopeLayer timeline={scene.timeline} stopes={scene.stopes} />
+        <TimelineProductionLayer timeline={scene.timeline} production={scene.stopes} />
       ) : null}
       {showStatic && scene?.stopes && visible.has('stopes') ? (
-        <StopeLayer stopes={scene.stopes} />
+        <ProductionLayer production={scene.stopes} />
       ) : null}
       {showStatic && scene?.smoothedDecline && visible.has('smoothedDecline') ? (
         <SmoothedDeclineLayer smoothed={scene.smoothedDecline} />

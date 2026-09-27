@@ -44,7 +44,7 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
       { id: 'tunnelMesh', label: 'Ramp tunnel mesh', phase: 6 },
       { id: 'developmentMesh', label: 'Development mesh (access · drift · crosscut)', phase: 20 },
       { id: 'ramp', label: 'Ramp', phase: 6 },
-      { id: 'stopes', label: 'Stopes', phase: 9 },
+      { id: 'stopes', label: 'Production (stopes · cuts · rooms)', phase: 9 },
       { id: 'backfill', label: 'Backfill', phase: 10 },
       { id: 'networkGraph', label: 'Network graph', phase: 7 },
     ],

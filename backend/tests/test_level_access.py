@@ -442,11 +442,16 @@ def test_cut_and_fill_gets_generic_level_access_and_backbone_but_no_longhole_lat
     )
     assert payload.status == "SUCCESS", payload.failure_reason
     assert payload.production_development is not None
-    assert payload.production_development.status == "UNSUPPORTED_METHOD"
-    assert "CUT_AND_FILL" in (payload.production_development.reason or "")
-    kinds = {d.kind.value for d in payload.developments}
-    assert kinds == {"DRIFT"}  # generic backbone only — no longhole crosscut lattice
-    assert payload.metrics is not None and payload.metrics.crosscut_count == 0
+    # Phase 21B/C: CUT_AND_FILL is IMPLEMENTED — the generic backbone plus ONE
+    # central production access per level; never the longhole station lattice
+    assert payload.production_development.status == "IMPLEMENTED"
+    assert payload.production_development.method == "CUT_AND_FILL"
+    crosscuts = [d for d in payload.developments if d.kind.value == "CROSSCUT"]
+    assert {d.station_index for d in crosscuts} == {0}
+    assert len(crosscuts) == len(payload.levels)
+    assert payload.metrics is not None
+    assert payload.metrics.crosscut_count == len(payload.levels)
+    assert payload.metrics.stations_per_level == 1 and payload.metrics.station_pitch == 0.0
     # the network still has the full generic route PORTAL → RAMP → RAMP_JUNCTION →
     # LEVEL_ACCESS → LEVEL_ENTRY → DRIFT, and no shortcut from the ramp to the drift
     net = (
@@ -478,8 +483,8 @@ def test_cut_and_fill_generic_backbone_is_independent_of_longhole_parameters(
 ) -> None:
     """Rule 159 regression: ``stope_length`` / ``minimum_pillar`` are LONGHOLE
     production parameters. Changing them must not move the CUT_AND_FILL
-    generic backbone drift (same pieces, same extent, same length), while the
-    production portion stays UNSUPPORTED_METHOD with zero crosscuts."""
+    generic backbone drift (same extent, same length) nor its single central
+    production access (Phase 21B/C: IMPLEMENTED, one crosscut per level)."""
     sc, world = tabular
 
     def scenario_with(stope_length: float, minimum_pillar: float) -> Scenario:
@@ -506,8 +511,9 @@ def test_cut_and_fill_generic_backbone_is_independent_of_longhole_parameters(
         )
         assert payload.status == "SUCCESS", payload.failure_reason
         assert payload.production_development is not None
-        assert payload.production_development.status == "UNSUPPORTED_METHOD"
-        assert payload.metrics is not None and payload.metrics.crosscut_count == 0
+        assert payload.production_development.status == "IMPLEMENTED"
+        assert payload.metrics is not None
+        assert payload.metrics.crosscut_count == len(payload.levels)
         return payload
 
     a = generic_levels(scenario_with(20.0, 5.0))

@@ -22,14 +22,20 @@ const unique = (src: string, re: RegExp) => [...new Set(src.match(re) ?? [])].so
 const designPanel = read(join(HERE, 'DesignPanel.tsx'))
 
 describe('the mine-development endpoints are unchanged', () => {
-  it('calls exactly the eight pre-20E generation endpoints — no more, no fewer', () => {
+  it('calls exactly the declared generation endpoints — no more, no fewer', () => {
+    // Phase 21B/C: the Longhole-only stopes route is replaced by the
+    // method-generic production route, and the method card's apply action is
+    // the scenario PUT followed by world regeneration + a scene reload
     expect(unique(designPanel, /api\.[a-zA-Z0-9]+/g)).toEqual([
       'api.generateCapabilityGraph',
       'api.generateLevels',
       'api.generateNetwork',
+      'api.generateProduction',
       'api.generateShafts',
-      'api.generateStopes',
       'api.generateTimeline',
+      'api.generateWorld',
+      'api.getScene',
+      'api.replaceScenario',
       'api.submitDevelopmentMesh',
       'api.submitTunnel',
     ])
@@ -63,7 +69,7 @@ describe('the mine-development endpoints are unchanged', () => {
     for (const [handler, call] of [
       ['onGenerateLevels', 'api.generateLevels'],
       ['onGenerateNetwork', 'api.generateNetwork'],
-      ['onGenerateStopes', 'api.generateStopes'],
+      ['onGenerateProduction', 'api.generateProduction'],
       ['onGenerateTimeline', 'api.generateTimeline'],
       ['onGenerateShafts', 'api.generateShafts'],
       ['onGenerateCapabilityGraph', 'api.generateCapabilityGraph'],

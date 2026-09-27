@@ -62,8 +62,7 @@ from minegen.levels.models import (
     ProductionDevelopment,
 )
 from minegen.mining.methods.contracts import (
-    ProductionLattice,
-    station_margin,
+    ProductionAccessPattern,
     station_pitch,
 )
 from minegen.mining.methods.registry import plan_for
@@ -264,12 +263,19 @@ class LevelDevelopmentBuilder:
         return station_pitch(self.scenario.mining)
 
     def station_us(self, orebody: TabularOrebody) -> list[float]:
-        """The plan's production lattice mapped onto the strike coordinate:
-        symmetric about the orebody ``u = 0``, every planned stope-length
-        proxy plus its end pillar inside the strike extent. Empty for a
-        method without a production lattice."""
-        lattice = self.plan.production_lattice(self.scenario)
-        return lattice.offsets(orebody.half_length) if lattice is not None else []
+        """The plan's production access pattern mapped onto the strike
+        coordinate (symmetric about the orebody ``u = 0``): the Longhole
+        station lattice, the single central access of Cut & Fill / Room &
+        Pillar, or nothing for a method without production access."""
+        pattern = self.plan.production_access_pattern(self.scenario)
+        return pattern.offsets(orebody.half_length) if pattern is not None else []
+
+    def _reported_pitch(self, pattern: ProductionAccessPattern | None) -> float:
+        """The persisted ``LevelsMetrics.stationPitch``: the pattern's pitch
+        (Longhole lattice = ``stope_length + minimum_pillar``; a fixed access
+        pattern reports 0.0 — there is no lattice) or, for a method without
+        production access, the historic scenario echo of rule 72."""
+        return pattern.pitch if pattern is not None else self.station_pitch()
 
     @staticmethod
     def generic_backbone_extent(orebody: TabularOrebody) -> tuple[float, float]:
@@ -354,7 +360,7 @@ class LevelDevelopmentBuilder:
         # requires is the plan's answer; WHERE it is built and whether it is
         # valid stays here
         production = self.plan.production_development(self.scenario)
-        lattice = self.plan.production_lattice(self.scenario)
+        pattern = self.plan.production_access_pattern(self.scenario)
         # Phase 20C.2A dispatch — by the AVAILABLE development-geometry
         # contract, not by orebody type: entries carrying curved anchors
         # (non-null traceChainage) are developed along the section-trace
@@ -370,7 +376,7 @@ class LevelDevelopmentBuilder:
                     "trace anchors with straight rule 43 anchors — one selection "
                     "cannot carry two backbone contracts",
                 )
-            return self._build_curved(entries, source_revision, entry_source, production, lattice)
+            return self._build_curved(entries, source_revision, entry_source, production, pattern)
         if not isinstance(self.orebody, TabularOrebody):
             return _failed(
                 source_revision,
@@ -397,16 +403,14 @@ class LevelDevelopmentBuilder:
         g = float(self.scenario.ramp.level_drift_gradient)
         drift_dir = np.array([u_hat[0], u_hat[1], -g])
         drift_dir /= float(np.linalg.norm(drift_dir))
-        longhole = lattice is not None
-        stations = lattice.offsets(ob.half_length) if lattice is not None else []
-        pitch = self.station_pitch()
-        if longhole and not stations:
-            margin = station_margin(self.scenario.mining)
+        has_access = pattern is not None
+        stations = pattern.offsets(ob.half_length) if pattern is not None else []
+        pitch = self._reported_pitch(pattern)
+        if pattern is not None and not stations:
             return _failed(
                 source_revision,
                 "orebody strike extent cannot accommodate one planned "
-                f"stope-access station (half-length {ob.half_length:g} m < "
-                f"stope_length/2 + minimum_pillar = {margin:g} m, rule 72)",
+                f"{pattern.describe_empty(ob.half_length)}",
             )
 
         developments: list[Development] = []
@@ -431,11 +435,17 @@ class LevelDevelopmentBuilder:
                 p: FloatArray = _entry + (u - _u0) * u_hat + np.array([0.0, 0.0, -g * (u - _u0)])
                 return p
 
-            # breakpoints: stations ∪ entry (merged within weld tolerance). A
-            # method without a production lattice develops the generic
-            # backbone drift over the strike extent minus a fixed end
-            # clearance — never a stope / pillar margin (rule 159).
-            breakpoints = sorted(stations) if longhole else list(self.generic_backbone_extent(ob))
+            # breakpoints: stations ∪ entry (merged within weld tolerance). The
+            # Longhole lattice DEFINES the drift extent (first → last station);
+            # a fixed access pattern (Cut & Fill / Room & Pillar) and a method
+            # without production access develop the generic backbone drift
+            # over the strike extent minus a fixed end clearance — never a
+            # stope / pillar margin (rule 159) — the fixed accesses only add
+            # breakpoints.
+            if has_access and pattern is not None and pattern.defines_drift_extent:
+                breakpoints = sorted(stations)
+            else:
+                breakpoints = sorted(set(self.generic_backbone_extent(ob)) | set(stations))
             if not any(abs(u_entry - s) <= WELD_TOLERANCE for s in breakpoints):
                 breakpoints = sorted([*breakpoints, u_entry])
             level_valid = True
@@ -485,7 +495,8 @@ class LevelDevelopmentBuilder:
             # -- crosscuts (one per planned station, rule 72) ---------------- #
             crosscut_count = 0
             for u_s in stations:
-                k = round(u_s / pitch)
+                assert pattern is not None  # stations exist only with a pattern
+                k = pattern.station_index(u_s)
                 start = drift_point(u_s)
                 w_s = float(np.dot(start - ob.center, ob.w))
                 t = (ob.half_thickness - w_s) / d_dot_w
@@ -621,7 +632,7 @@ class LevelDevelopmentBuilder:
         source_revision: str,
         entry_source: Literal["LEGACY_RAMP_SEGMENT", "LEVEL_ACCESS"],
         production: ProductionDevelopment,
-        lattice: ProductionLattice | None,
+        pattern: ProductionAccessPattern | None,
     ) -> LevelsPayload:
         """Level development along the curved SECTION_FOOTWALL_OFFSET_TRACE
         backbone (Phase 20C.2A A4). The offset trace is rebuilt
@@ -677,9 +688,8 @@ class LevelDevelopmentBuilder:
             return _failed(source_revision, "no footwall reference track for this orebody")
         by_id = {lv.level_id: lv for lv in levels}
         g = float(sc.ramp.level_drift_gradient)
-        longhole = lattice is not None
-        pitch = self.station_pitch()
-        margin = lattice.margin if lattice is not None else station_margin(sc.mining)
+        has_access = pattern is not None
+        pitch = self._reported_pitch(pattern)
 
         developments: list[Development] = []
         summaries: list[LevelSummary] = []
@@ -729,16 +739,15 @@ class LevelDevelopmentBuilder:
             clearance = min(GENERIC_BACKBONE_END_CLEARANCE, 0.25 * span)
             mid = 0.5 * span
             planned: list[float] = []
-            if lattice is not None:
-                # the plan's lattice about the trace midpoint (exact Phase
-                # 20C.2A arithmetic: mid + k·pitch)
-                planned = [mid + off for off in lattice.offsets(mid)]
+            if pattern is not None:
+                # the plan's access pattern about the trace midpoint (exact
+                # Phase 20C.2A arithmetic for the lattice: mid + k·pitch)
+                planned = [mid + off for off in pattern.offsets(mid)]
                 if not planned:
                     return _failed(
                         source_revision,
                         f"offset trace span {span:.1f} m at level {level_id} cannot "
-                        "accommodate one planned stope-access station "
-                        f"(span/2 < stope_length/2 + minimum_pillar = {margin:g} m)",
+                        f"accommodate one planned {pattern.describe_empty(mid)}",
                     )
             # rule 180 station confirmation (rule 141 precedent, PR #24
             # follow-up): a planned station where NEITHER horizontal
@@ -752,7 +761,8 @@ class LevelDevelopmentBuilder:
             required: list[tuple[float, int, FloatArray, _InwardResult]] = []
             excluded: list[ExcludedStation] = []
             for c_s in planned:
-                k = round((c_s - mid) / pitch)
+                assert pattern is not None
+                k = pattern.station_index(c_s - mid)
                 start = self._curved_drift_points(off, c_s, c_s, c_entry, float(entry[2]), g)[0]
                 tangent = off.tangent_at(c_s)
                 # bounded deterministic probe: the trace's own contact
@@ -771,14 +781,17 @@ class LevelDevelopmentBuilder:
                     )
                     continue
                 required.append((c_s, k, start, decided))
-            if longhole and planned and not required:
+            if has_access and planned and not required:
                 return _failed(
                     source_revision,
                     f"level {level_id}: every planned crosscut station lacks "
                     f"perpendicular ore support ({len(excluded)} stations excluded)",
                 )
             station_chainages = [c for c, _, _, _ in required]
-            breakpoints = sorted(station_chainages) if longhole else [clearance, span - clearance]
+            if has_access and pattern is not None and pattern.defines_drift_extent:
+                breakpoints = sorted(station_chainages)
+            else:
+                breakpoints = sorted({clearance, span - clearance, *station_chainages})
             if not any(abs(c_entry - s) <= WELD_TOLERANCE for s in breakpoints):
                 breakpoints = sorted([*breakpoints, c_entry])
             level_valid = True
@@ -913,7 +926,7 @@ class LevelDevelopmentBuilder:
             crosscut_count=len(crosscuts),
             station_pitch=pitch,
             stations_per_level=(
-                max((s.crosscut_count for s in summaries), default=0) if longhole else 0
+                max((s.crosscut_count for s in summaries), default=0) if has_access else 0
             ),
             total_drift_length3d=float(math.fsum(d.length3d for d in drifts)),
             total_crosscut_length3d=float(math.fsum(d.length3d for d in crosscuts)),

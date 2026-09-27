@@ -18,8 +18,15 @@ import numpy as np
 import numpy.typing as npt
 
 from minegen.config import CANONICAL_COORDINATE_SYSTEM
-from minegen.core.models import Scenario
-from minegen.mining.methods.registry import plan_for
+from minegen.core.enums import MiningMethodType
+from minegen.core.models import METHOD_PARAMETER_CLASSES, Scenario
+from minegen.mining.methods.registry import all_plans, plan_for
+from minegen.mining.models import (
+    CutFillPayload,
+    RoomPillarPayload,
+    StopesPayload,
+    production_payload_class,
+)
 from minegen.world.field_grid import FieldGrid
 from minegen.world.orebody import AnalyticOrebody, Orebody
 from minegen.world.synthetic_world import SyntheticWorld
@@ -161,12 +168,18 @@ def slice_payload(
 
 
 def mining_method_summary(scenario: Scenario) -> dict[str, Any]:
-    """Phase 21A read-only method card (rule 192): the requested method, the
-    registry's implementation status and the explicit scenario parameters.
-    The registry is the single authority — the frontend never maps a method
-    to a status itself and there is no method selector."""
+    """The Mining-tab method card (rule 192 → Phase 21B/C): the requested
+    method, the registry's implementation status, the explicit scenario
+    parameters, the persisted method-specific ``methodParameters`` (``None``
+    for Longhole / reserved methods), the production kind of the active
+    method and the registry's full method table with each method's canonical
+    default parameters. The registry is the single authority — the frontend
+    never maps a method to a status, never invents a default and performs no
+    method engineering; it edits explicit parameters and submits them
+    (rule 124)."""
     mining = scenario.mining
     plan = plan_for(mining.method)
+    mp = mining.method_parameters
     return {
         "method": mining.method.value,
         "displayName": plan.display_name,
@@ -174,7 +187,37 @@ def mining_method_summary(scenario: Scenario) -> dict[str, Any]:
         "sublevelInterval": float(mining.sublevel_interval),
         "stopeLength": float(mining.stope_length),
         "minimumPillar": float(mining.minimum_pillar),
+        "methodParameters": mp.model_dump(mode="json", by_alias=True) if mp is not None else None,
+        "productionKind": PRODUCTION_KIND[production_payload_class(mining.method)],
+        "availableMethods": [
+            {
+                "method": m.value,
+                "displayName": p.display_name,
+                "implementationStatus": p.implementation_status,
+                "productionKind": PRODUCTION_KIND[production_payload_class(m)],
+                "defaultParameters": _default_parameters(m),
+            }
+            for m, p in all_plans().items()
+        ],
     }
+
+
+def _default_parameters(method: MiningMethodType) -> dict[str, Any] | None:
+    """The method's canonical default ``methodParameters`` (the same values
+    ``MiningConfig(method=…)`` resolves), ``None`` for methods without one."""
+    cls = METHOD_PARAMETER_CLASSES.get(method)
+    if cls is None:
+        return None
+    return cls().model_dump(mode="json", by_alias=True)
+
+
+#: the production semantics kind of each typed payload class (mirrors the
+#: MineExchange omission groups)
+PRODUCTION_KIND: dict[type, str] = {
+    StopesPayload: "STOPES",
+    CutFillPayload: "CUT_FILL",
+    RoomPillarPayload: "ROOM_PILLAR",
+}
 
 
 def build_scene(scenario: Scenario, world: SyntheticWorld) -> dict[str, Any]:

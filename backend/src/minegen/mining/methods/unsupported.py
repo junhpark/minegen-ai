@@ -12,7 +12,9 @@ from minegen.core.enums import MiningMethodType
 from minegen.levels.models import ProductionDevelopment
 from minegen.mining.methods.contracts import (
     ImplementationStatus,
-    ProductionLattice,
+    ProductionAccessPattern,
+    ProductionScheduleContext,
+    ProductionScheduleSpec,
     unsupported_method_payload,
 )
 from minegen.mining.models import StopesPayload
@@ -43,7 +45,7 @@ class UnsupportedMethodPlan:
             ),
         )
 
-    def production_lattice(self, scenario: Scenario) -> ProductionLattice | None:
+    def production_access_pattern(self, scenario: Scenario) -> ProductionAccessPattern | None:
         return None
 
     def generate_production(
@@ -55,3 +57,17 @@ class UnsupportedMethodPlan:
         source_revision: str,
     ) -> StopesPayload:
         return unsupported_method_payload(self.method, source_revision)
+
+    def production_identity(self, production_payload: dict[str, Any]) -> tuple[list[str], str]:
+        return [], "production unit"
+
+    def production_schedule(
+        self,
+        scenario: Scenario,
+        production_payload: dict[str, Any],
+        ctx: ProductionScheduleContext,
+    ) -> ProductionScheduleSpec | str:
+        return (
+            f"UNSUPPORTED_METHOD: {self.method.value} has no production schedule — the method "
+            "is reserved and not implemented (rule 78)"
+        )

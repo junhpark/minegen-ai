@@ -1956,3 +1956,108 @@ code, the code and the rule win and the map is corrected.
      read-only (Mining method card, export contents rows) and offers no
      method selector: an unsupported method is a feature boundary, not a
      mine failure.
+
+193. Cut & Fill and Room & Pillar are first-class registered methods
+     (Phase 21B/C). The registry table is LONGHOLE_OPEN_STOPING IMPLEMENTED,
+     CUT_AND_FILL IMPLEMENTED (`methods/cut_fill.py::CutFillPlan`),
+     ROOM_AND_PILLAR IMPLEMENTED (`methods/room_pillar.py::RoomPillarPlan`),
+     SUBLEVEL_CAVING / SHRINKAGE_STOPING UNSUPPORTED_METHOD. `plan_for` stays
+     the ONLY method authority: the level builder consumes the plan's
+     `production_access_pattern()` (a `StationLatticeAccessPattern` for
+     Longhole — the exact Phase 08 arithmetic — or a `FixedAccessPattern`
+     with one central production CROSSCUT per level at offset 0 for Cut &
+     Fill / Room & Pillar; `None` for reserved methods), the timeline
+     builder consumes `production_identity()` / `production_schedule()`, the
+     scene projects `mining_method_summary` and MineExchange dispatches on
+     the TYPED payload class; no `if method ==` branch exists in levels,
+     DesignService, scheduling, scene or exchange (the source scan in
+     `tests/test_mining_method_registry.py` is the gate). The new methods are
+     NEW implementations (`methods/solids.py` shared prism helpers): the
+     longhole algorithm is untouched and its `levels.json`, `stopes.json`,
+     `network.json` and `timeline.json` outputs are proven unchanged against
+     `tests/fixtures/phase21bc/longhole_baseline.json` (captured on the
+     pinned pre-migration HEAD 7052606 by
+     `scripts/phase21bc_capture_baseline.py`, which refuses any other HEAD;
+     `tests/test_longhole_baseline_21bc.py`, two-tier gate of rule 192) —
+     a Longhole change under this rule is BLOCKING, never regenerated. The
+     rule 192 parity fixture is never regenerated either; its CUT_AND_FILL
+     case is a historical record of the reserved boundary, explicitly
+     superseded by `tests/test_mining_method_parity.py`.
+194. ONE active production artifact, method-typed. `derived/stopes.json` is
+     the legacy PATH of the active production artifact for every method
+     (documented compatibility; no `cut_fill.json` / `room_pillar.json`,
+     no second registry key). Its payload is the discriminated union
+     `ProductionPayload = StopesPayload | CutFillPayload |
+     RoomPillarPayload` (`mining/models.py::parse_production_payload`, by
+     `method`); `Stope.method` keeps its Longhole literal and Cut & Fill /
+     Room & Pillar geometry never enters the `Stope` model. The
+     `ArtifactReader` parses it through the generic `ReadSpec.parser`
+     (structural only; READ ≠ TRUST). `POST/GET …/design/production` is the
+     method-generic route; `…/design/stopes` stays the Longhole-only route
+     and answers 409 PRODUCTION_METHOD_MISMATCH for any other active
+     method. `MiningConfig.methodParameters` is the typed union
+     `CutFillParameters | RoomPillarParameters` (canonical defaults resolve
+     when omitted, a block for a method without one is 422, a mismatched
+     kind is 422; omitted from serialization for Longhole so its document is
+     unchanged). Cut & Fill lifts / cuts and Room & Pillar bands are EQUAL
+     PARTITIONS (`n = ceil(span / target)`, `actual = span / n`) — never a
+     residual sliver. A production count above `MAX_PRODUCTION_SOLIDS`
+     (8000, measured: default-scenario Room & Pillar 7,322) is the typed
+     PRODUCTION_COMPLEXITY_LIMIT failure, never a silent decimation.
+195. Cut & Fill / Room & Pillar geometry contract. Both are TABULAR-only in
+     v0.1: any other orebody is the typed METHOD_GEOMETRY_NOT_IMPLEMENTED
+     failure, never a fallback. Cut & Fill: lifts partition every adjacent
+     level interval to ≈ `liftHeightM` VERTICAL (dip-aware, `dv =
+     liftHeight / |v_z|`), cuts partition the strike extent to ≈
+     `cutLengthM`, ordered lowest lift first and along strike in a snake
+     (even lifts −u → +u, odd +u → −u); every cut is an 8-corner prism
+     under the Phase 09 hard QA (closed solid, volume agreement, hard
+     samples, finite) with the rule 130 grade proxy; backfills are 1:1
+     SEMANTIC records referencing `sourceCutId` (no duplicate geometry:
+     the backfill IS the cut void); no partial SUCCESS. Room & Pillar:
+     alternating room / pillar bands along u and v with pitch `roomWidth +
+     pillarWidth`, u = 0 / v = 0 a ROOM band, the panel inset by
+     `boundaryPillarM`, a cell is ROOM iff its u-band OR v-band is a room
+     band, else PILLAR; non-overlapping cells; a `RoomCell` is a semantic
+     parent (no geometry) of its extraction units HEADING / BENCH_1 /
+     BENCH_2 (a heading ≥ thickness → one HEADING); pillars are retained
+     material with geometry and `tonnesEquivalent`, never scheduled and
+     never a geotechnical design or certification — every suitability text
+     is advisory. Volume / tonnes / grade proxy stay planning quantities.
+196. Plan-driven production schedule; Longhole timeline unchanged. The
+     timeline builder keeps the development schedule and executes the
+     plan's `ProductionScheduleSpec` (tasks with transparent `TaskBasis`
+     from `scenario.schedule` rates, per-unit state transitions bound to
+     task boundaries, `tasks_per_unit` aggregate contract); the Longhole
+     spec is the Phase 10 stope chain moved VERBATIM (ids, order, bases,
+     dependencies, states — bytes unchanged, rule 193 gate). Cut & Fill:
+     PREP → STOPING → MUCKING → BACKFILL → CURE per cut in persisted order,
+     the first PREP after the cut's `accessDevelopmentId` development task,
+     ONE conservative chain (next cut after the previous CURE, hence the
+     next lift after the previous lift's last cure), states PLANNED →
+     ACTIVE → MINED → VOID → BACKFILLED, `targetKind = CUT`. Room & Pillar:
+     PREP → STOPING → MUCKING per extraction unit, HEADING → BENCH_1 →
+     BENCH_2 inside a cell, cells outward from the central cell by
+     Manhattan index distance then row then column, a single front (next
+     unit after the previous MUCKING), states PLANNED → ACTIVE → MINED →
+     VOID, `targetKind = ROOM_EXTRACTION`, pillars never scheduled. The
+     payload carries the generic `production {method, targetKind, units}`
+     block and `production*` metrics ONLY for a non-Longhole method; the
+     Longhole payload keeps `stopes` and gains no null field. The frontend
+     renders both blocks through one adapter (`scene/production.ts`) and
+     computes no state itself. MineExchange 1.2.0 (additive): typed method
+     parameter DTOs, `production/cut_fill.json` + `cut_fill/cuts/<id>.*`
+     (CUT solids, BACKFILL semantic entities without geometry files),
+     `production/room_pillar.json` + `room_pillar/{benches,pillars}/<id>.*`
+     (ROOM semantic parents, BENCH and PILLAR solids), exactly ONE
+     production omission group per bundle (STOPES / CUT_FILL / ROOM_PILLAR
+     — the active method's), the authority guard extended to the payload
+     SHAPE (a Longhole-shaped document under a Cut & Fill scenario is a
+     typed 409) and the rule 192 crosscut guard now applying to reserved
+     methods only. The frontend method card edits explicit parameters only
+     (defaults from the registry table in the scene, never a client
+     constant); applying is the scenario PUT (rule 40 full invalidation)
+     followed by world regeneration from the same seed (rule 119). Not
+     implemented: Sublevel Caving, Shrinkage Stoping, WARPED_VEIN
+     production geometry, production-room walkthrough colliders, any
+     geotechnical pillar design.

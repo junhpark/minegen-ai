@@ -1,4 +1,4 @@
-# MineExchange v1 — canonical interoperability bundle (Phase 23A, 1.1 in Phase 21A)
+# MineExchange v1 — canonical interoperability bundle (Phase 23A, 1.1 in Phase 21A, 1.2 in Phase 21B/C)
 
 MineExchange is MineGen's **versioned, read-only projection** of existing
 authoritative state into a downloadable, deterministic bundle. It exists so
@@ -22,11 +22,15 @@ capability stay separate files with separate meanings.
 
 ## Version
 
-`manifest.json → mineExchangeVersion = "1.1.0"` (semantic versioning). 1.1
+`manifest.json → mineExchangeVersion = "1.2.0"` (semantic versioning). 1.1
 (Phase 21A) is an ADDITIVE minor version over 1.0: the mining-method
 semantics document, the production stopes and the `STOPE` entity kind
 (see "Mining method and production stopes"); every 1.0 file, id and meaning
-is unchanged. The
+is unchanged. 1.2 (Phase 21B/C) is again additive: typed method-parameter
+DTOs, the Cut & Fill and Room & Pillar production documents and solids, the
+`CUT`, `BACKFILL`, `ROOM`, `BENCH`, `PILLAR` entity kinds and the `CUT_FILL` /
+`ROOM_PILLAR` omission groups (see "Cut & Fill and Room & Pillar production");
+every 1.1 file, id and meaning is unchanged. The
 manifest version is the **external** contract authority; internal artifact
 versions (scenario `schemaVersion`, per-artifact `sourceRevision`) are only
 quoted as provenance. Additive fields are minor versions; a change in the
@@ -37,7 +41,7 @@ meaning of an existing field is a major version.
     POST /api/v1/scenarios/{scenario_id}/export/mine-exchange
       → 200 application/zip
         Content-Disposition: attachment; filename="minegen_<safeScenarioId>_mineexchange_v1.zip"
-        X-MineExchange-Version: 1.1.0
+        X-MineExchange-Version: 1.2.0
         X-MineExchange-Generated-At: <ISO time, NON-authoritative>
       → 404 SCENARIO_NOT_FOUND
       → 409 WORLD_NOT_GENERATED            (the world is the only prerequisite)
@@ -109,6 +113,11 @@ not. It is never assumed.
                                         parameters, production-development / production status (ALWAYS present)
       production/stopes.json            1.1 — planned stopes DTO (authority: stopes.json), planning quantities
       production/stopes/<stope>.{stl,obj,glb}  1.1 — one AUTHORITATIVE closed prism per stope (never unioned)
+      production/cut_fill.json          1.2 — Cut & Fill lifts / cuts / backfills DTO (ACTIVE method CUT_AND_FILL)
+      production/cut_fill/cuts/<cut>.{stl,obj,glb}  1.2 — one authoritative closed prism per cut
+      production/room_pillar.json       1.2 — Room & Pillar rooms / extraction units / pillars DTO
+      production/room_pillar/benches/<unit>.{stl,obj,glb}  1.2 — one closed prism per extraction unit
+      production/room_pillar/pillars/<pillar>.{stl,obj,glb} 1.2 — one closed prism per retained pillar
 
 A world-only scenario yields `terrain/`, `orebody/`, `geology/` and
 `semantics/mining_method.json` (the scenario is its first authority) and
@@ -121,7 +130,7 @@ gap. Four situations are kept distinct:
 | source state | export outcome |
 | --- | --- |
 | absent | omission `ARTIFACT_ABSENT` for that group |
-| present, VALID, status `FAILED` (optional source: level accesses, levels, shafts, network, capability graph, render meshes, stopes) | omission `SOURCE_NOT_SUCCESS` with the artifact, its status and `failureReason` in `detail`; the rest of the bundle is unaffected |
+| present, VALID, status `FAILED` (optional source: level accesses, levels, shafts, network, capability graph, render meshes, the active production artifact) | omission `SOURCE_NOT_SUCCESS` with the artifact, its status and `failureReason` in `detail`; the rest of the bundle is unaffected |
 | present but STALE | typed refusal with the artifact's own code (e.g. `CAPABILITY_GRAPH_STALE`, `LAYOUT_V2_SELECTION_STALE`) — never treated as absent |
 | present but MALFORMED | typed refusal `ARTIFACT_MALFORMED` |
 
@@ -139,9 +148,9 @@ safe paths, every `entities[].files` entry present, every non-null
 resolving to an entity, and every exported network edge's
 `geometryEntityId` resolving.
 
-## Manifest schema (1.1.0)
+## Manifest schema (1.2.0)
 
-    mineExchangeVersion   "1.1.0"
+    mineExchangeVersion   "1.2.0"
     scenarioId, scenarioName
     coordinateSystem      { name, crs, axes, axisOrder, verticalAxis, handedness, unit }
     units                 { length, angle, volume }
@@ -188,6 +197,11 @@ reused; new ids follow a documented deterministic rule
 | crosscut | `crosscut:<levelId>:<station>` | `crosscut:L01:S+00` |
 | shaft | `shaft:<shaftId>` (aggregate, kind `SHAFT`); axis segments `shaft:<centerlineId>` (kind `SHAFT_SEGMENT`, parent `shaft:<shaftId>`); station drives `shaft-station-access:<centerlineId>` | `shaft:SHAFT-01`, `shaft:SHAFT:SHAFT-01:SEG00` |
 | stope (1.1) | `stope:<stopeId>` (kind `STOPE`, `sourceArtifact = stopes.json`, `sourceId = stopeId`, no parent) | `stope:STOPE:L01-L02:S+00` |
+| cut (1.2) | `cut:<cutId>` (kind `CUT`, `sourceArtifact = stopes.json`, `levelId` = lower level, no parent) | `cut:CUT:L02-L01:LF00:C03` |
+| backfill (1.2) | `backfill:<backfillId>` (kind `BACKFILL`, semantic, `parentEntityId = cut:<cutId>`, files = the document only) | `backfill:BACKFILL:L02-L01:LF00:C03` |
+| room (1.2) | `room:<roomId>` (kind `ROOM`, semantic parent, `sourceMemberIds` = its extraction unit ids, files = the document only) | `room:ROOM:R000:C002` |
+| bench (1.2) | `bench:<unitId>` (kind `BENCH`, `parentEntityId = room:<roomId>`) | `bench:ROOM:R000:C002:HEADING` |
+| pillar (1.2) | `pillar:<pillarId>` (kind `PILLAR`, no parent, retained material) | `pillar:PILLAR:R001:C001` |
 
 **Aggregates** (`ramp:main`, `drift:<levelId>`, `shaft:<shaftId>`) are parent
 entities. Provenance is by kind:
@@ -401,8 +415,55 @@ extraction fraction, weighted grade proxy) — never the internal
 the external contract without a version change. Stopes export **without** a network (world + levels + stopes
 is a valid partial bundle); when the network IS present, both access node
 ids must be exported nodes or the export is refused. Multi-body / unioned
-stope files and the future kinds `DRAWPOINT`, `PILLAR`, `BACKFILL_VOLUME`,
-`ROOM`, `CUT`, `BENCH` are NOT emitted in 1.1.
+stope files and the kinds `DRAWPOINT`, `PILLAR`, `BACKFILL_VOLUME`, `ROOM`,
+`CUT`, `BENCH` are NOT emitted in 1.1; 1.2 declares `CUT`, `BACKFILL`, `ROOM`,
+`BENCH`, `PILLAR` (below).
+
+## Cut & Fill and Room & Pillar production (1.2, Phase 21B/C)
+
+The active production artifact stays at the legacy path `stopes.json`, but its
+payload is method-typed (`StopesPayload | CutFillPayload | RoomPillarPayload`,
+CLAUDE.md rule 194). The exporter dispatches on that TYPED payload class —
+never on a method string of its own — and emits exactly ONE production kind
+per bundle; the omission group is the active method's (`STOPES`, `CUT_FILL` or
+`ROOM_PILLAR`, `ARTIFACT_ABSENT` / `SOURCE_NOT_SUCCESS`), the inactive kinds
+are not listed. `semantics/mining_method.json` gains
+`parameters.methodParameters` (typed `ExchangeCutFillParameters` /
+`ExchangeRoomPillarParameters`, OMITTED for Longhole and reserved methods so
+the 1.1 shape is unchanged) and `production.productionKind` / `unitCount`
+(`stopeCount` keeps its 1.1 meaning: STOPE entities, 0 otherwise).
+
+`production/cut_fill.json` (`PRODUCTION_CUT_FILL`): the typed parameters,
+`lifts[]` (index, level pair, down-dip span, `cutEntityIds`), `cuts[]` (one
+per persisted cut, mining order — lifts bottom → top, cuts along strike in a
+snake — with lift / cut indices, level pair, `accessDevelopmentId` and the
+exported CROSSCUT `accessEntityId` when the levels are in the bundle,
+`backfillEntityId`, local bounds, planning quantities, files) and
+`backfills[]` (`sourceCutId`, `sourceCutEntityId`, `volumeM3`). Every `CUT`
+entity owns one closed prism under `production/cut_fill/cuts/` (`CUT_SOLID`,
+`AUTHORITATIVE_CLOSED_MESH`, exported vertices verbatim, independent
+closed-solid QA + volume agreement, the backfill volume checked against its
+cut). A `BACKFILL` entity is SEMANTIC: it fills its cut's void 1:1, its parent
+is the cut and it owns no geometry file. `metrics` is the typed
+`ExchangeCutFillMetrics`.
+
+`production/room_pillar.json` (`PRODUCTION_ROOM_PILLAR`): `rooms[]` (semantic
+parents — row / column, plan bounds, access, `extractionUnitEntityIds`; files =
+the document only), `extractionUnits[]` (`BENCH` entities, one closed prism
+each under `production/room_pillar/benches/`, `stage` HEADING / BENCH_1 /
+BENCH_2, parent = the room) and `pillars[]` (`PILLAR` entities, one closed
+prism each under `production/room_pillar/pillars/`, `tonnesEquivalent` —
+retained material, planning geometry, never a geotechnical pillar design and
+never scheduled). Room ↔ unit membership, duplicate ids and orphan units are
+verified; `metrics` is the typed `ExchangeRoomPillarMetrics` (the extraction
+fraction is mined / panel geometry, never a recovery prediction).
+
+`check_method_authority` (1.1) additionally proves the payload SHAPE: the
+document must parse as the scenario method's payload class — a
+Longhole-shaped document under a Cut & Fill scenario (or vice versa) is a
+typed 409, never re-interpreted; the 1.1 "no CROSSCUT under an unsupported
+method" guard now applies to reserved methods only (Cut & Fill and Room &
+Pillar develop one central production crosscut per level).
 
 ## Determinism and integrity
 
@@ -442,16 +503,17 @@ Grade / rock quality lattices (never a block model), GeoTIFF / real CRS /
 `.prj`, a terrain-closed `model_block.stl`, Boolean unions (including a
 unioned or multi-body stope file), timeline / production scheduling /
 economics, drawpoint / pillar / backfill / room / cut / bench entities (the
-Phase 21B / 21C methods that own them are not implemented), application
-adapters (Phase 23B), import and write-back. Stopes and the mining-method
-semantics were NOT_IN_V1 in 1.0 and are part of the bundle since 1.1.
+drawpoints — no implemented method owns them), application adapters
+(Phase 23B), import and write-back. Stopes and the mining-method semantics
+were NOT_IN_V1 in 1.0 and are part of the bundle since 1.1; Cut & Fill and
+Room & Pillar production since 1.2.
 
 ## Versioning policy
 
 - 1.x: additive files, fields, omission groups and entity kinds only;
   existing meanings, ids and coordinate contract unchanged. 1.1 declared
-  `STOPE`; the remaining reserved future entity kinds (PRODUCTION_DRIFT,
-  DRAWPOINT, PILLAR, BACKFILL_VOLUME, ROOM, CUT, BENCH) are documented here,
-  not pre-declared in the enum.
+  `STOPE`; 1.2 declared `CUT`, `BACKFILL`, `ROOM`, `BENCH`, `PILLAR`; the
+  remaining reserved future entity kinds (PRODUCTION_DRIFT, DRAWPOINT) are
+  documented here, not pre-declared in the enum.
 - 2.0: any change to the coordinate contract, entity identity rule or the
   meaning of an existing manifest field.

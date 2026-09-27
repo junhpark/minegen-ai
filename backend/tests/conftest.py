@@ -53,6 +53,9 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     # Phase 21A MineExchange 1.1 over the REAL LAYOUT_V2 longhole chain + stopes
     # and a CUT_AND_FILL chain (two module-scoped stacks: minutes)
     "test_exchange_mining_method": ("e2e",),
+    # Phase 21B/C MineExchange 1.2 over REAL Cut & Fill / Room & Pillar chains
+    # (two module-scoped API stacks with a layout search each)
+    "test_exchange_production_methods": ("e2e",),
     "test_layout_v2_golden_smoke": ("golden",),
     # Phase 20B.x: the GEOMETRY-STRESS feasibility oracle (one full layout-v2 search)
     "test_geometry_stress_oracle": ("slow",),

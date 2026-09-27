@@ -30,6 +30,7 @@ import type {
   SliceField,
   SlicePayload,
   SmoothedDeclinePayload,
+  ProductionPayload,
   StopesPayload,
   TimelinePayload,
   DevelopmentMeshReport,
@@ -209,10 +210,16 @@ export const api = {
   generateLevels: (id: string) =>
     request<LevelsPayload>(`/scenarios/${id}/design/levels`, { method: 'POST' }),
   getLevels: (id: string) => request<LevelsPayload>(`/scenarios/${id}/design/levels`),
-  /** Synchronous Phase 09 planned stopes (rules 75–80). */
+  /** Synchronous Phase 09 planned stopes (rules 75–80) — the Longhole-only
+   * route; any other active method answers a typed 409. */
   generateStopes: (id: string) =>
     request<StopesPayload>(`/scenarios/${id}/design/stopes`, { method: 'POST' }),
   getStopes: (id: string) => request<StopesPayload>(`/scenarios/${id}/design/stopes`),
+  /** Phase 21B/C: the method-generic production route — the ACTIVE method's
+   * typed payload (stopes / cuts + backfills / rooms + benches + pillars). */
+  generateProduction: (id: string) =>
+    request<ProductionPayload>(`/scenarios/${id}/design/production`, { method: 'POST' }),
+  getProduction: (id: string) => request<ProductionPayload>(`/scenarios/${id}/design/production`),
   /** Synchronous Phase 12 sensor baseline (rules 93–98). */
   generateSensors: (id: string) =>
     request<SensorPayload>(`/scenarios/${id}/infrastructure/sensors`, { method: 'POST' }),

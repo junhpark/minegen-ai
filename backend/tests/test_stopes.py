@@ -47,12 +47,12 @@ def test_unsupported_method_fails_explicitly() -> None:
     plan whose production is the typed FAILED payload — never a silent
     fallback to longhole."""
     assert plan_for(MiningMethodType.LONGHOLE_OPEN_STOPING).implementation_status == "IMPLEMENTED"
-    for m in MiningMethodType:
-        if m is MiningMethodType.LONGHOLE_OPEN_STOPING:
-            continue
+    # Phase 21B/C: CUT_AND_FILL and ROOM_AND_PILLAR are implemented plans now;
+    # the reserved boundary is SUBLEVEL_CAVING / SHRINKAGE_STOPING
+    for m in (MiningMethodType.SUBLEVEL_CAVING, MiningMethodType.SHRINKAGE_STOPING):
         plan = plan_for(m)
         assert plan.implementation_status == "UNSUPPORTED_METHOD" and plan.method is m
-        assert plan.production_lattice(None) is None  # type: ignore[arg-type]
+        assert plan.production_access_pattern(None) is None  # type: ignore[arg-type]
         payload = unsupported_method_payload(m, "rev")
         assert payload.status == "FAILED"
         assert payload.failure_reason is not None

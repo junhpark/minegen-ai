@@ -143,22 +143,31 @@ def test_tabular_layout_chain_is_unchanged(
     _assert_case(baseline["TABULAR_LAYOUT"], actual, "TABULAR_LAYOUT", record_property)
 
 
-def test_cut_and_fill_boundary_is_unchanged(
-    baseline: dict[str, Any],
-    small: tuple[Scenario, SyntheticWorld],
-    record_property: Callable[[str, object], None],
+def test_cut_and_fill_unsupported_boundary_is_superseded_by_phase_21bc(
+    baseline: dict[str, Any], small: tuple[Scenario, SyntheticWorld]
 ) -> None:
+    """RETIRED assertion (directive 21B/C §39). The Phase 21A fixture recorded
+    CUT_AND_FILL as the reserved-method boundary (generic backbone,
+    UNSUPPORTED_METHOD, FAILED stopes). Phase 21B implements Cut & Fill, so
+    that behaviour is INTENTIONALLY superseded: the historical record stays in
+    the fixture (never rewritten), the current behaviour is pinned by
+    ``tests/test_cut_fill.py``, and this test documents the hand-over —
+    the reserved boundary itself moved to SUBLEVEL_CAVING / SHRINKAGE_STOPING
+    (``tests/test_mining_method_registry.py``)."""
+    historical = baseline["CUT_AND_FILL"]
+    assert historical["levels"]["productionDevelopment"]["status"] == "UNSUPPORTED_METHOD"
+    assert historical["stopes"]["status"] == "FAILED"
     sc, world = small
-    actual = reduce(layout_chain(with_method(sc, MiningMethodType.CUT_AND_FILL), world))
-    levels = actual["levels"]
+    current = layout_chain(with_method(sc, MiningMethodType.CUT_AND_FILL), world)
+    levels = current["levels"]
     assert levels["status"] == "SUCCESS"
-    assert levels["productionDevelopment"]["status"] == "UNSUPPORTED_METHOD"
-    assert levels["metrics"]["crosscutCount"] == 0 and levels["metrics"]["stationsPerLevel"] == 0
-    assert all(d["id"].startswith("DRIFT:") for d in levels["stations"])
-    assert actual["stopes"]["status"] == "FAILED"
-    assert actual["stopes"]["failureReason"].startswith("UNSUPPORTED_METHOD")
-    assert actual["stopes"]["stopes"] == []
-    _assert_case(baseline["CUT_AND_FILL"], actual, "CUT_AND_FILL", record_property)
+    assert levels["productionDevelopment"]["status"] == "IMPLEMENTED"
+    assert levels["metrics"]["stationsPerLevel"] == 1 and levels["metrics"]["stationPitch"] == 0.0
+    production = current["stopes"]  # the active production payload (CutFillPayload)
+    assert production["status"] == "SUCCESS" and production["method"] == "CUT_AND_FILL"
+    assert production["cuts"] and "stopes" not in production
+    # the Longhole cases of the same fixture stay the live gate
+    assert baseline["TABULAR_LAYOUT"]["levels"]["productionDevelopment"]["status"] == "IMPLEMENTED"
 
 
 def test_warped_longhole_levels_are_unchanged_and_the_stope_boundary_stays_typed(

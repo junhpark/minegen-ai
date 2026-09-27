@@ -1,8 +1,10 @@
 """Mining-method registry (Phase 21A, rule 192) — the ONE authority that
 resolves a requested ``MiningMethodType`` to its ``MiningMethodPlan``.
 
-Every enum member resolves EXPLICITLY: implemented methods to their plan,
-reserved methods to an ``UnsupportedMethodPlan``. There is no ``None``
+Every enum member resolves EXPLICITLY: implemented methods
+(LONGHOLE_OPEN_STOPING, CUT_AND_FILL, ROOM_AND_PILLAR — Phase 21A / 21B / 21C)
+to their plan, reserved methods (SUBLEVEL_CAVING, SHRINKAGE_STOPING) to an
+``UnsupportedMethodPlan``. There is no ``None``
 result for a caller to interpret and no path on which an unregistered
 method could fall back to LONGHOLE_OPEN_STOPING. ``levels/builder.py`` and
 ``services/design_service.py`` consume this registry; neither selects a
@@ -13,7 +15,9 @@ from __future__ import annotations
 
 from minegen.core.enums import MiningMethodType
 from minegen.mining.methods.contracts import MiningMethodPlan
+from minegen.mining.methods.cut_fill import CutFillPlan
 from minegen.mining.methods.longhole import LongholeOpenStopingPlan
+from minegen.mining.methods.room_pillar import RoomPillarPlan
 from minegen.mining.methods.unsupported import UnsupportedMethodPlan
 
 __all__ = ["DISPLAY_NAMES", "UnknownMiningMethodError", "all_plans", "plan_for"]
@@ -36,12 +40,8 @@ class UnknownMiningMethodError(LookupError):
 
 _REGISTRY: dict[MiningMethodType, MiningMethodPlan] = {
     MiningMethodType.LONGHOLE_OPEN_STOPING: LongholeOpenStopingPlan(),
-    MiningMethodType.CUT_AND_FILL: UnsupportedMethodPlan(
-        MiningMethodType.CUT_AND_FILL, DISPLAY_NAMES[MiningMethodType.CUT_AND_FILL]
-    ),
-    MiningMethodType.ROOM_AND_PILLAR: UnsupportedMethodPlan(
-        MiningMethodType.ROOM_AND_PILLAR, DISPLAY_NAMES[MiningMethodType.ROOM_AND_PILLAR]
-    ),
+    MiningMethodType.CUT_AND_FILL: CutFillPlan(),
+    MiningMethodType.ROOM_AND_PILLAR: RoomPillarPlan(),
     MiningMethodType.SUBLEVEL_CAVING: UnsupportedMethodPlan(
         MiningMethodType.SUBLEVEL_CAVING, DISPLAY_NAMES[MiningMethodType.SUBLEVEL_CAVING]
     ),

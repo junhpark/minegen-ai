@@ -26,13 +26,19 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from minegen.core.enums import MiningMethodType
+from minegen.core.enums import MiningMethodType, ObjectState, TaskType
 from minegen.core.models import Scenario
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.levels.models import ProductionDevelopment
 from minegen.mining.methods.contracts import (
     ImplementationStatus,
-    ProductionLattice,
+    ProductionAccessPattern,
+    ProductionScheduleContext,
+    ProductionScheduleSpec,
+    ProductionStateSpec,
+    ProductionTaskSpec,
+    ProductionUnitSpec,
+    StationLatticeAccessPattern,
     station_margin,
     station_pitch,
 )
@@ -44,6 +50,7 @@ from minegen.mining.models import (
     StopesMetrics,
     StopesPayload,
 )
+from minegen.scheduling.models import TaskBasis
 from minegen.world.orebody import TabularOrebody
 from minegen.world.synthetic_world import SyntheticWorld
 
@@ -475,8 +482,8 @@ class LongholeOpenStopingPlan:
     def production_development(self, scenario: Scenario) -> ProductionDevelopment:
         return ProductionDevelopment(method=self.method.value, status="IMPLEMENTED")
 
-    def production_lattice(self, scenario: Scenario) -> ProductionLattice | None:
-        return ProductionLattice(
+    def production_access_pattern(self, scenario: Scenario) -> ProductionAccessPattern | None:
+        return StationLatticeAccessPattern(
             pitch=station_pitch(scenario.mining), margin=station_margin(scenario.mining)
         )
 
@@ -490,4 +497,178 @@ class LongholeOpenStopingPlan:
     ) -> StopesPayload:
         return LongholeOpenStopingStrategy().generate(
             scenario, world, levels_payload, hard_evaluator, source_revision
+        )
+
+    def production_identity(self, production_payload: dict[str, Any]) -> tuple[list[str], str]:
+        return [s["id"] for s in production_payload["stopes"]], "stope"
+
+    def production_schedule(
+        self,
+        scenario: Scenario,
+        production_payload: dict[str, Any],
+        ctx: ProductionScheduleContext,
+    ) -> ProductionScheduleSpec | str:
+        """The Phase 10 stope chains (rules 84–85), moved VERBATIM from the
+        timeline builder in Phase 21B/C: stope preparation requires BOTH
+        Phase 09 STOPE_ACCESS crosscuts (semantic anchor correspondence),
+        then STOPING → MUCKING → BACKFILL → CURE. Task ids, order, durations,
+        bases, dependencies and state transitions are unchanged."""
+        sch = ctx.schedule
+        nodes = ctx.nodes
+        cc_task_by_access = ctx.crosscut_tasks_by_access_node
+        stopes = production_payload["stopes"]
+        tasks: list[ProductionTaskSpec] = []
+        units: list[ProductionUnitSpec] = []
+        for s in stopes:
+            # -- semantic anchor correspondence (blocker 1): existence is not
+            # enough — the referenced STOPE_ACCESS must be THIS stope's
+            # station on THIS stope's levels, not any real anchor elsewhere.
+            if s["upperAccessNodeId"] == s["lowerAccessNodeId"]:
+                return (
+                    f"stope {s['id']} upper and lower access anchors must differ, "
+                    f"both are {s['upperAccessNodeId']}"
+                )
+            deps_access: list[str] = []
+            anchor_specs = (
+                ("upper", s["upperAccessNodeId"], s["upperLevelId"]),
+                ("lower", s["lowerAccessNodeId"], s["lowerLevelId"]),
+            )
+            for side, anchor, expected_level in anchor_specs:
+                node = nodes.get(anchor)
+                if node is None:
+                    return (
+                        f"stope {s['id']} references access anchor {anchor} that does "
+                        "not exist in the network"
+                    )
+                if node.get("type") != "STOPE_ACCESS":
+                    return (
+                        f"{side} anchor {anchor} of stope {s['id']} is type "
+                        f"{node.get('type')!r}, not STOPE_ACCESS"
+                    )
+                if node.get("levelId") != expected_level:
+                    return (
+                        f"{side} anchor {anchor} of stope {s['id']} lies on level "
+                        f"{node.get('levelId')!r}, expected {expected_level!r}"
+                    )
+                if node.get("stationIndex") != s["stationIndex"]:
+                    return (
+                        f"{side} anchor {anchor} of stope {s['id']} has stationIndex "
+                        f"{node.get('stationIndex')!r}, expected {s['stationIndex']!r}"
+                    )
+                station_u = node.get("stationU")
+                if station_u is None or abs(float(station_u) - float(s["stationU"])) > 1e-6:
+                    return (
+                        f"{side} anchor {anchor} of stope {s['id']} has stationU "
+                        f"{station_u!r}, expected {float(s['stationU'])!r} within 1e-6"
+                    )
+                cc = cc_task_by_access.get(anchor, [])
+                if len(cc) != 1:
+                    return (
+                        f"access anchor {anchor} of stope {s['id']} must terminate "
+                        f"exactly one CROSSCUT development, found {len(cc)}"
+                    )
+                deps_access.append(cc[0])
+            if deps_access[0] == deps_access[1]:
+                return (
+                    f"stope {s['id']} upper and lower access crosscut tasks must be "
+                    f"distinct, both resolved to {deps_access[0]}"
+                )
+            tonnes = float(s["tonnes"])
+            volume = float(s["geometricVolumeM3"])
+            sid = s["id"]
+            chain_spec = [
+                (
+                    f"TASK:PREP:{sid}",
+                    TaskType.STOPE_PREPARATION,
+                    float(sch.stope_preparation_days),
+                    TaskBasis(
+                        quantity=float(sch.stope_preparation_days),
+                        quantity_unit="day",
+                        rate=1.0,
+                        rate_unit="day/day",
+                    ),
+                    sorted(deps_access),
+                ),
+                (
+                    f"TASK:STOPING:{sid}",
+                    TaskType.STOPING,
+                    tonnes / float(sch.stoping_tonnes_per_day),
+                    TaskBasis(
+                        quantity=tonnes,
+                        quantity_unit="t",
+                        rate=float(sch.stoping_tonnes_per_day),
+                        rate_unit="t/day",
+                    ),
+                    [f"TASK:PREP:{sid}"],
+                ),
+                (
+                    f"TASK:MUCKING:{sid}",
+                    TaskType.MUCKING,
+                    tonnes / float(sch.mucking_tonnes_per_day),
+                    TaskBasis(
+                        quantity=tonnes,
+                        quantity_unit="t",
+                        rate=float(sch.mucking_tonnes_per_day),
+                        rate_unit="t/day",
+                    ),
+                    [f"TASK:STOPING:{sid}"],
+                ),
+                (
+                    f"TASK:BACKFILL:{sid}",
+                    TaskType.BACKFILL,
+                    volume / float(sch.backfill_m3_per_day),
+                    TaskBasis(
+                        quantity=volume,
+                        quantity_unit="m3",
+                        rate=float(sch.backfill_m3_per_day),
+                        rate_unit="m3/day",
+                    ),
+                    [f"TASK:MUCKING:{sid}"],
+                ),
+                (
+                    f"TASK:CURE:{sid}",
+                    TaskType.CURE_BACKFILL,
+                    float(sch.backfill_cure_days),
+                    TaskBasis(
+                        quantity=float(sch.backfill_cure_days),
+                        quantity_unit="day",
+                        rate=1.0,
+                        rate_unit="day/day",
+                    ),
+                    [f"TASK:BACKFILL:{sid}"],
+                ),
+            ]
+            for tid, ttype, duration, basis, deps in chain_spec:
+                if not (duration > 0.0 and math.isfinite(duration)):
+                    return f"non-positive duration for {tid}"
+                tasks.append(
+                    ProductionTaskSpec(
+                        id=tid,
+                        task_type=ttype,
+                        target_kind="STOPE",
+                        target_id=sid,
+                        duration_days=duration,
+                        basis=basis,
+                        dependencies=list(deps),
+                    )
+                )
+            units.append(
+                ProductionUnitSpec(
+                    unit_id=sid,
+                    transitions=[
+                        ProductionStateSpec(f"TASK:PREP:{sid}", "start", ObjectState.DEVELOPING),
+                        ProductionStateSpec(f"TASK:STOPING:{sid}", "start", ObjectState.ACTIVE),
+                        ProductionStateSpec(f"TASK:STOPING:{sid}", "end", ObjectState.MINED),
+                        ProductionStateSpec(f"TASK:MUCKING:{sid}", "end", ObjectState.VOID),
+                        ProductionStateSpec(f"TASK:BACKFILL:{sid}", "end", ObjectState.BACKFILLED),
+                        ProductionStateSpec(f"TASK:CURE:{sid}", "end", ObjectState.CLOSED),
+                    ],
+                )
+            )
+        return ProductionScheduleSpec(
+            target_kind="STOPE",
+            tasks=tasks,
+            units=units,
+            tasks_per_unit=5,
+            scheduled_tonnes=float(math.fsum(float(s["tonnes"]) for s in stopes)),
         )

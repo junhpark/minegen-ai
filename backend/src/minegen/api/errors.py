@@ -63,6 +63,7 @@ from minegen.services.artifact_errors import (
     LevelAccessesNotGeneratedError,
     LevelsNotGeneratedError,
     NetworkNotFoundError,
+    ProductionMethodMismatchError,
     ReadSnapshotChangedError,
     SceneArtifactInvalidError,
     SensorsNotGeneratedError,
@@ -151,6 +152,7 @@ CODE_LADDER: Final[tuple[tuple[type[Exception], str], ...]] = (
     (CapabilityGraphStaleError, "CAPABILITY_GRAPH_STALE"),
     (UnknownNetworkNodeError, "UNKNOWN_NETWORK_NODE"),
     (StopesNotGeneratedError, "STOPES_NOT_GENERATED"),
+    (ProductionMethodMismatchError, "PRODUCTION_METHOD_MISMATCH"),
     (NetworkNotFoundError, "NETWORK_NOT_GENERATED"),
     (TimelineNotGeneratedError, "TIMELINE_NOT_GENERATED"),
     (LayoutV2NotGeneratedError, "LAYOUT_V2_NOT_GENERATED"),
@@ -246,6 +248,7 @@ ERRORS: Final[dict[str, ErrorSpec]] = {
         "scenario '{scenario_id}' has no planned stopes; POST …/design/stopes first",
         "api/design.py:157-162",
     ),
+    "PRODUCTION_METHOD_MISMATCH": ErrorSpec(409, None, "Phase 21B/C api/design.py production"),
     "NETWORK_NOT_GENERATED": ErrorSpec(
         409,  # 404 on api/network.py — see ROUTER_OVERRIDES
         "scenario '{scenario_id}' has no MineNetwork; POST …/network/generate first",

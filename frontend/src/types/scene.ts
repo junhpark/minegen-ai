@@ -1,4 +1,5 @@
-import type { AssetType, Capability } from '@/types/enums'
+import type { MethodParameters } from '@/types/api'
+import type { AssetType, Capability, MiningMethodType } from '@/types/enums'
 
 // Scene / world payloads mirroring backend/src/minegen/export/scene_manifest.py.
 // Coordinates ENU Z-up meters. Converted only in scene/ components.
@@ -1070,7 +1071,7 @@ export interface StateTransition {
 export interface TimelineTask {
   id: string
   taskType: TaskTypeId
-  targetKind: 'DEVELOPMENT' | 'STOPE'
+  targetKind: 'DEVELOPMENT' | ProductionTargetKind
   targetId: string
   durationDays: number
   startDay: number
@@ -1103,6 +1104,25 @@ export interface StopeTimeline {
   transitions: StateTransition[]
 }
 
+/** Phase 21B/C: the production target kind of the ACTIVE method's units. */
+export type ProductionTargetKind = 'STOPE' | 'CUT' | 'ROOM_EXTRACTION'
+
+/** One non-Longhole production unit's temporal state machine (a cut or a
+ * room extraction unit); geometry stays in the production artifact. */
+export interface ProductionUnitTimeline {
+  unitId: string
+  initialState: ObjectStateId
+  transitions: StateTransition[]
+}
+
+/** Phase 21B/C generic production block — present only for a non-Longhole
+ * method; the Longhole payload keeps `stopes` unchanged. */
+export interface ProductionTimeline {
+  method: string
+  targetKind: ProductionTargetKind
+  units: ProductionUnitTimeline[]
+}
+
 export interface TimelineMetrics {
   taskCount: number
   developmentTaskCount: number
@@ -1114,6 +1134,10 @@ export interface TimelineMetrics {
   rampCompletionDay: number
   firstStopingDay: number | null
   endDay: number
+  /** Phase 21B/C (non-Longhole methods only; absent for Longhole) */
+  productionTaskCount?: number
+  productionObjectCount?: number
+  productionTargetKind?: ProductionTargetKind
 }
 
 export interface TimelinePayload {
@@ -1126,6 +1150,8 @@ export interface TimelinePayload {
   developments: DevelopmentTimeline[]
   stopes: StopeTimeline[]
   metrics: TimelineMetrics | null
+  /** Phase 21B/C generic production block (absent for Longhole) */
+  production?: ProductionTimeline | null
 }
 
 export interface StopeReport {
@@ -1171,7 +1197,9 @@ export interface StopesPayload {
   status: 'SUCCESS' | 'FAILED'
   failureReason: string | null
   sourceRevision: string
-  method: string
+  /** the Longhole payload; reserved methods persist this shape as their
+   * typed FAILED boundary (never a substitute geometry) */
+  method: 'LONGHOLE_OPEN_STOPING' | 'SUBLEVEL_CAVING' | 'SHRINKAGE_STOPING'
   stopes: Stope[]
   metrics: {
     stopeCount: number
@@ -1183,6 +1211,166 @@ export interface StopesPayload {
     weightedMeanGradeProxy: number | null
   } | null
 }
+
+// --------------------------------------------------------------------------- //
+// Phase 21B/C — Cut & Fill / Room & Pillar production payloads. ONE active
+// production artifact per scenario (`derived/stopes.json`, legacy path),
+// typed by `method`. Geometry is backend world-space vertices assembled
+// verbatim (rule 80); the frontend performs no production engineering.
+// --------------------------------------------------------------------------- //
+
+export interface LocalBounds {
+  uMin: number
+  uMax: number
+  vMin: number
+  vMax: number
+  wMin: number
+  wMax: number
+}
+
+export interface SolidGeometry {
+  vertices: number[]
+  triangleIndices: number[]
+}
+
+export interface ProductionReport {
+  hardInvalidSamples: number
+  meshClosedSolid: boolean
+  meshVolumeM3: number
+  volumeAgreement: boolean
+  finite: boolean
+  valid: boolean
+  failureReason: string | null
+}
+
+export interface CutFillLift {
+  liftIndex: number
+  lowerLevelId: string
+  upperLevelId: string
+  vMin: number
+  vMax: number
+  verticalHeight: number
+  cutIds: string[]
+}
+
+export interface CutFillCut {
+  id: string
+  method: 'CUT_AND_FILL'
+  liftIndex: number
+  cutIndex: number
+  lowerLevelId: string
+  upperLevelId: string
+  accessDevelopmentId: string
+  localBounds: LocalBounds
+  geometry: SolidGeometry
+  strikeLength: number
+  downDipSpan: number
+  verticalHeight: number
+  thickness: number
+  geometricVolumeM3: number
+  tonnes: number
+  meanGradeProxy: number | null
+  plannedState: 'PLANNED'
+  report: ProductionReport
+}
+
+export interface CutFillBackfill {
+  id: string
+  sourceCutId: string
+  volumeM3: number
+}
+
+export interface CutFillMetrics {
+  cutCount: number
+  backfillCount: number
+  liftCount: number
+  levelIntervalCount: number
+  totalGeometricVolumeM3: number
+  totalTonnes: number
+  geometricExtractionFractionOfOrebody: number
+  weightedMeanGradeProxy: number | null
+  actualMeanLiftHeight: number
+  actualMeanCutLength: number
+}
+
+export interface CutFillPayload {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  sourceRevision: string
+  method: 'CUT_AND_FILL'
+  lifts: CutFillLift[]
+  cuts: CutFillCut[]
+  backfills: CutFillBackfill[]
+  metrics: CutFillMetrics | null
+}
+
+export interface RoomCell {
+  id: string
+  rowIndex: number
+  columnIndex: number
+  localPlanBounds: { uMin: number; uMax: number; vMin: number; vMax: number }
+  accessDevelopmentId: string
+  extractionUnitIds: string[]
+}
+
+export type ExtractionStage = 'HEADING' | 'BENCH_1' | 'BENCH_2'
+
+export interface RoomExtractionUnit {
+  id: string
+  roomId: string
+  stage: ExtractionStage
+  benchIndex: number
+  localBounds: LocalBounds
+  geometry: SolidGeometry
+  geometricVolumeM3: number
+  tonnes: number
+  meanGradeProxy: number | null
+  plannedState: 'PLANNED'
+  report: ProductionReport
+}
+
+export interface Pillar {
+  id: string
+  rowIndex: number
+  columnIndex: number
+  localBounds: LocalBounds
+  geometry: SolidGeometry
+  geometricVolumeM3: number
+  tonnesEquivalent: number
+  meanGradeProxy: number | null
+  report: ProductionReport
+}
+
+export interface RoomPillarMetrics {
+  roomCount: number
+  extractionUnitCount: number
+  pillarCount: number
+  headingCount: number
+  benchCount: number
+  totalMinedVolumeM3: number
+  totalPillarVolumeM3: number
+  panelVolumeM3: number
+  totalMinedTonnes: number
+  geometricExtractionFraction: number
+  weightedMeanGradeProxy: number | null
+}
+
+export interface RoomPillarPayload {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  sourceRevision: string
+  method: 'ROOM_AND_PILLAR'
+  rooms: RoomCell[]
+  extractionUnits: RoomExtractionUnit[]
+  pillars: Pillar[]
+  metrics: RoomPillarMetrics | null
+}
+
+/** The ACTIVE production payload, discriminated by `method`. `StopesPayload`
+ * is the Longhole payload AND the typed FAILED boundary of reserved methods. */
+export type ProductionPayload = StopesPayload | CutFillPayload | RoomPillarPayload
+
+export type ProductionKind = 'STOPES' | 'CUT_FILL' | 'ROOM_PILLAR'
 
 export interface LevelDevelopmentReport {
   startWeldError: number
@@ -1487,6 +1675,22 @@ export interface MiningMethodSummary {
   sublevelInterval: number
   stopeLength: number
   minimumPillar: number
+  /** Phase 21B/C: the persisted method-specific parameters (null for Longhole
+   * and reserved methods) */
+  methodParameters: MethodParameters | null
+  /** the production semantics kind of the ACTIVE method */
+  productionKind: ProductionKind
+  /** the registry's whole method table with canonical default parameters —
+   * the ONLY source of selector options, statuses and defaults (rule 124) */
+  availableMethods: AvailableMethod[]
+}
+
+export interface AvailableMethod {
+  method: MiningMethodType
+  displayName: string
+  implementationStatus: 'IMPLEMENTED' | 'UNSUPPORTED_METHOD'
+  productionKind: ProductionKind
+  defaultParameters: MethodParameters | null
 }
 
 export interface WorldScene {
@@ -1530,7 +1734,8 @@ export interface WorldScene {
   network: NetworkPayload | null
   /** Phase 20C.2B capability semantics over the network (network → capability) */
   capabilityGraph?: CapabilityGraphPayload | null
-  stopes: StopesPayload | null
+  /** the ACTIVE production artifact (`derived/stopes.json`), typed by method */
+  stopes: ProductionPayload | null
   timeline: TimelinePayload | null
   communication: CommunicationPayload | null
   sensors: SensorPayload | null

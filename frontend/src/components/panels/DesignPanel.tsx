@@ -9,6 +9,14 @@ import { ActionButton } from '@/components/ui/ActionButton'
 import { artifactTone, nextActionVariant } from '@/components/ui/presentation'
 import { Metrics } from '@/components/ui/MetricRow'
 import { WorkflowCard } from '@/components/ui/WorkflowCard'
+import { MiningMethodCard } from '@/components/panels/MiningMethodCard'
+import {
+  PRODUCTION_ACTION,
+  PRODUCTION_UNIT_NOUN,
+  productionKindOf,
+  productionSummary,
+} from '@/scene/production'
+import { activateScenario } from '@/stores/scenarioSession'
 import {
   afterCapabilityGraphRegen,
   afterDevelopmentMeshRegen,
@@ -20,6 +28,7 @@ import {
 } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
+import type { MiningConfig, ScenarioCreate } from '@/types/api'
 import type {
   CapabilityGraphPayload,
   DevelopmentMeshReport,
@@ -27,8 +36,8 @@ import type {
   LevelsPayload,
   MiningMethodSummary,
   NetworkPayload,
+  ProductionPayload,
   ShaftsPayload,
-  StopesPayload,
   TimelinePayload,
   TunnelMeshReport,
 } from '@/types/scene'
@@ -56,6 +65,7 @@ export function DesignPanel({ view }: { view: DesignTab }) {
   const jobs = useScenarioStore((s) => s.jobs)
   const setJob = useScenarioStore((s) => s.setJob)
   const setLayerVisible = useViewerStore((s) => s.setLayerVisible)
+  const setScene = useScenarioStore((s) => s.setScene)
   // Phase 20A: `smoothedDecline` is the ACTIVE effective ramp (legacy or layout-v2)
   const smoothed = scene?.smoothedDecline ?? null
   const rampSource = scene?.rampSource.activeSource ?? 'LEGACY'
@@ -127,17 +137,45 @@ export function DesignPanel({ view }: { view: DesignTab }) {
     }
   }, [devMeshJob.data, epoch, applyScene, setLayerVisible])
 
-  // Phase 09 stopes: synchronous planned-stope generation (rules 75–80).
-  const stopes = scene?.stopes ?? null
+  // Phase 09 → 21B/C production: ONE active production artifact for the
+  // scenario's mining method (stopes / cuts + backfills / rooms + pillars),
+  // generated through the method-generic route (rules 75–80).
+  const production = scene?.stopes ?? null
   const miningMethod = scene?.miningMethod ?? null
-  const generateStopes = useMutation({
+  const generateProduction = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('generate levels first')
-      return api.generateStopes(scene.scenarioId)
+      return api.generateProduction(scene.scenarioId)
     },
-    onSuccess: (payload: StopesPayload) => {
+    onSuccess: (payload: ProductionPayload) => {
       applyScene(epoch, (current) => afterStopesRegen(current, payload))
       setLayerVisible('stopes', true)
+    },
+  })
+
+  // Phase 21B/C method change = scenario PUT (rule 40: every derived artifact
+  // is invalidated by the backend) followed by world regeneration — the world
+  // is a pure function of the persisted document (rule 119), so the same seed
+  // reproduces it — and a scene reload. The frontend submits explicit
+  // parameters only (rule 124).
+  const applyMethod = useMutation({
+    mutationFn: async (mining: MiningConfig) => {
+      if (!scene || !scenarioDoc) throw new Error('load a scenario first')
+      const id = scenarioDoc.id
+      const { methodParameters, ...miningBase } = mining
+      // the persisted document minus its identity fields is the PUT body
+      const body: Record<string, unknown> = {
+        ...scenarioDoc,
+        mining: methodParameters ? { ...miningBase, methodParameters } : miningBase,
+      }
+      delete body.id
+      delete body.schemaVersion
+      const updated = await api.replaceScenario(id, body as unknown as ScenarioCreate)
+      const started = activateScenario(updated) // same id → same epoch, derived state cleared
+      await api.generateWorld(id)
+      const next = await api.getScene(id)
+      setScene(next, started)
+      return updated
     },
   })
 
@@ -211,7 +249,10 @@ export function DesignPanel({ view }: { view: DesignTab }) {
     message(generateTunnel.error) ??
     message(generateShafts.error)
   const networkError = message(generateNetwork.error) ?? message(generateCapabilityGraph.error)
-  const miningError = message(generateStopes.error) ?? message(generateTimeline.error)
+  const miningError =
+    message(generateProduction.error) ??
+    message(applyMethod.error) ??
+    message(generateTimeline.error)
 
   return (
     <DesignPanelBody
@@ -259,19 +300,27 @@ export function DesignPanel({ view }: { view: DesignTab }) {
       }
       onGenerateCapabilityGraph={() => generateCapabilityGraph.mutate()}
       miningMethod={miningMethod}
-      stopes={stopes}
-      stopesPending={generateStopes.isPending}
-      stopesEnabled={levelsReady && !generateStopes.isPending && !generateLevels.isPending}
-      onGenerateStopes={() => generateStopes.mutate()}
+      methodPending={applyMethod.isPending}
+      methodEnabled={scenarioDoc !== null && scene !== null && !applyMethod.isPending}
+      onApplyMethod={(mining) => applyMethod.mutate(mining)}
+      production={production}
+      productionPending={generateProduction.isPending}
+      productionEnabled={
+        levelsReady &&
+        !generateProduction.isPending &&
+        !generateLevels.isPending &&
+        !applyMethod.isPending
+      }
+      onGenerateProduction={() => generateProduction.mutate()}
       timeline={timeline}
       timelinePending={generateTimeline.isPending}
       timelineEnabled={
         network !== null &&
         network.status !== 'FAILED' &&
-        stopes !== null &&
-        stopes.status !== 'FAILED' &&
+        production !== null &&
+        production.status !== 'FAILED' &&
         !generateTimeline.isPending &&
-        !generateStopes.isPending &&
+        !generateProduction.isPending &&
         !generateNetwork.isPending
       }
       onGenerateTimeline={() => generateTimeline.mutate()}
@@ -322,12 +371,16 @@ export interface DesignPanelBodyProps {
   capabilityEnabled: boolean
   onGenerateCapabilityGraph: () => void
 
-  /** Phase 21A read-only method card (null only while no scene is loaded) */
+  /** Phase 21B/C method card (null only while no scene is loaded) */
   miningMethod: MiningMethodSummary | null
-  stopes: StopesPayload | null
-  stopesPending: boolean
-  stopesEnabled: boolean
-  onGenerateStopes: () => void
+  methodPending: boolean
+  methodEnabled: boolean
+  onApplyMethod: (mining: MiningConfig) => void
+  /** the ACTIVE production artifact, typed by method */
+  production: ProductionPayload | null
+  productionPending: boolean
+  productionEnabled: boolean
+  onGenerateProduction: () => void
 
   timeline: TimelinePayload | null
   timelinePending: boolean
@@ -786,86 +839,45 @@ function NetworkView(p: DesignPanelBodyProps) {
 }
 
 function MiningView(p: DesignPanelBodyProps) {
-  const { stopes, timeline, miningMethod } = p
-  const sm = stopes?.metrics ?? null
+  const { production, timeline, miningMethod } = p
   const tm = timeline?.metrics ?? null
-  const implemented = miningMethod?.implementationStatus === 'IMPLEMENTED'
+  // the production KIND comes from the payload's own method when one exists,
+  // else from the scenario's persisted method (both backend discriminators)
+  const kind = production
+    ? productionKindOf(production)
+    : (miningMethod?.productionKind ?? 'STOPES')
+  const summary =
+    production && production.status === 'SUCCESS' ? productionSummary(production) : null
   return (
     <>
       <NoDesignNotice rampReady={p.rampReady} />
       <ErrorLine text={p.miningError} />
-      {/* Phase 21A: READ-ONLY method card (rule 192). The backend registry
-          decides the implementation status; there is no method selector and
-          an unsupported method is a feature boundary, not a mine failure. */}
       {miningMethod ? (
-        <WorkflowCard
-          title="Mining method"
-          tone={implemented ? 'ACTIVE' : 'INACTIVE'}
-          statusLabel={implemented ? 'Implemented' : 'Not implemented'}
-          info="Shows whether the current backend implements the mining method this scenario requests, as its mining-method registry resolves it. A method that is not implemented still receives level access and the generic footwall drift, but no production development or stopes are substituted from another method. The method is a scenario parameter and is not edited here."
-          summary={<span data-testid="mining-method-name">{miningMethod.displayName}</span>}
-          notice={
-            implemented
-              ? null
-              : `${miningMethod.displayName} production development and stopes are not implemented in this version. Level access and the generic footwall drift are still designed.`
-          }
-          details={
-            <Metrics
-              rows={[
-                { label: 'Sublevel interval', value: `${miningMethod.sublevelInterval} m` },
-                { label: 'Stope length', value: `${miningMethod.stopeLength} m` },
-                { label: 'Minimum pillar', value: `${miningMethod.minimumPillar} m` },
-              ]}
-            />
-          }
+        <MiningMethodCard
+          key={`${miningMethod.method}:${JSON.stringify(miningMethod.methodParameters)}`}
+          summary={miningMethod}
+          pending={p.methodPending}
+          enabled={p.methodEnabled}
+          onApply={p.onApplyMethod}
         />
       ) : null}
 
       <WorkflowCard
-        title="Stopes"
-        tone={artifactTone(stopes, p.stopesPending)}
-        info="Planned longhole production volumes: orebody-aligned prisms spanning an adjacent level pair at one station, anchored on the two crosscut terminals that reach them. Volume, tonnes and the grade proxy are deterministic planning quantities — never resources, reserves or a feasibility grade."
-        summary={
-          sm ? (
-            <>
-              {sm.stopeCount} stopes · {sm.levelIntervalCount} intervals × {sm.stationsPerInterval}{' '}
-              stations
-            </>
-          ) : null
-        }
-        failure={stopes && stopes.status !== 'SUCCESS' ? stopes.failureReason : null}
+        title="Production"
+        tone={artifactTone(production, p.productionPending)}
+        info="The planned production volumes of the scenario's mining method — longhole stopes between adjacent levels, Cut & Fill lifts of cuts with their 1:1 backfills, or Room & Pillar rooms (heading and benches) with retained pillars — as orebody-aligned prisms the backend generated from the level development. Volume, tonnes and the grade proxy are deterministic planning quantities — never resources, reserves, a feasibility grade or a geotechnical pillar design."
+        summary={summary}
+        failure={production && production.status !== 'SUCCESS' ? production.failureReason : null}
         action={
           <ActionButton
-            variant={nextActionVariant(stopes !== null, p.stopesEnabled)}
-            disabled={!p.stopesEnabled}
-            onClick={p.onGenerateStopes}
+            variant={nextActionVariant(production !== null, p.productionEnabled)}
+            disabled={!p.productionEnabled}
+            onClick={p.onGenerateProduction}
           >
-            {p.stopesPending ? 'Planning stopes…' : stopes ? 'Replan stopes' : 'Plan stopes'}
+            {p.productionPending ? 'Generating…' : PRODUCTION_ACTION[kind]}
           </ActionButton>
         }
-        details={
-          stopes ? (
-            <Metrics
-              rows={[
-                sm
-                  ? {
-                      label: 'Geometric volume',
-                      value: `${(sm.totalGeometricVolumeM3 / 1e6).toFixed(2)} Mm³`,
-                    }
-                  : null,
-                sm
-                  ? { label: 'Tonnes (planning)', value: `${(sm.totalTonnes / 1e6).toFixed(2)} Mt` }
-                  : null,
-                sm
-                  ? {
-                      label: 'Grade proxy',
-                      value: sm.weightedMeanGradeProxy?.toFixed(2) ?? '—',
-                    }
-                  : null,
-              ]}
-            />
-          ) : null
-        }
+        details={production ? <Metrics rows={productionRows(production)} /> : null}
       />
 
       <WorkflowCard
@@ -898,7 +910,12 @@ function MiningView(p: DesignPanelBodyProps) {
             <Metrics
               rows={[
                 tm ? { label: 'Development tasks', value: tm.developmentTaskCount } : null,
-                tm ? { label: 'Stope tasks', value: tm.stopeTaskCount } : null,
+                tm
+                  ? {
+                      label: `Production tasks (${PRODUCTION_UNIT_NOUN[kind]})`,
+                      value: tm.productionTaskCount ?? tm.stopeTaskCount,
+                    }
+                  : null,
                 tm
                   ? {
                       label: 'First stoping',
@@ -913,4 +930,45 @@ function MiningView(p: DesignPanelBodyProps) {
       />
     </>
   )
+}
+
+/** Detailed production numbers per kind — every value is a backend metric. */
+function productionRows(
+  production: ProductionPayload,
+): ({ label: string; value: string } | null)[] {
+  const m = production.metrics
+  if (!m) return []
+  const mm3 = (v: number) => `${(v / 1e6).toFixed(2)} Mm³`
+  const mt = (v: number) => `${(v / 1e6).toFixed(2)} Mt`
+  if (production.method === 'CUT_AND_FILL' && 'cutCount' in m) {
+    return [
+      { label: 'Cuts / backfills', value: `${m.cutCount} / ${m.backfillCount}` },
+      { label: 'Lifts', value: `${m.liftCount} over ${m.levelIntervalCount} intervals` },
+      { label: 'Mean lift height', value: `${m.actualMeanLiftHeight.toFixed(2)} m` },
+      { label: 'Mean cut length', value: `${m.actualMeanCutLength.toFixed(2)} m` },
+      { label: 'Geometric volume', value: mm3(m.totalGeometricVolumeM3) },
+      { label: 'Tonnes (planning)', value: mt(m.totalTonnes) },
+      { label: 'Grade proxy', value: m.weightedMeanGradeProxy?.toFixed(2) ?? '—' },
+    ]
+  }
+  if (production.method === 'ROOM_AND_PILLAR' && 'roomCount' in m) {
+    return [
+      { label: 'Rooms', value: `${m.roomCount}` },
+      { label: 'Headings / benches', value: `${m.headingCount} / ${m.benchCount}` },
+      { label: 'Pillars (retained)', value: `${m.pillarCount}` },
+      { label: 'Mined volume', value: mm3(m.totalMinedVolumeM3) },
+      { label: 'Pillar volume', value: mm3(m.totalPillarVolumeM3) },
+      { label: 'Extraction fraction (geometric)', value: m.geometricExtractionFraction.toFixed(2) },
+      { label: 'Tonnes (planning)', value: mt(m.totalMinedTonnes) },
+      { label: 'Grade proxy', value: m.weightedMeanGradeProxy?.toFixed(2) ?? '—' },
+    ]
+  }
+  if ('stopeCount' in m) {
+    return [
+      { label: 'Geometric volume', value: mm3(m.totalGeometricVolumeM3) },
+      { label: 'Tonnes (planning)', value: mt(m.totalTonnes) },
+      { label: 'Grade proxy', value: m.weightedMeanGradeProxy?.toFixed(2) ?? '—' },
+    ]
+  }
+  return []
 }

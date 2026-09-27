@@ -74,10 +74,13 @@ here. Per-phase decision records below keep their original wording.
                        READ-ONLY projection of the layout-v2 catalogue,
                        selection, ramp source and capability graph — never
                        persisted, never a design authority)
-      mining/          Phase 21A mining-method core (rule 192): methods/registry.py
+      mining/          Phase 21A/21B/C mining-method core (rules 192–196): methods/registry.py
                        (plan_for — the ONE dispatch authority), methods/contracts.py
-                       (MiningMethodPlan protocol, ProductionLattice), methods/longhole.py
-                       (longhole open stoping strategy + plan), methods/unsupported.py
+                       (MiningMethodPlan protocol, access patterns, production schedule spec),
+                       methods/longhole.py (longhole open stoping strategy + plan),
+                       methods/cut_fill.py, methods/room_pillar.py (Phase 21B/C plans),
+                       methods/solids.py (shared prism / QA / grade helpers),
+                       methods/schedule_support.py, methods/unsupported.py
                        (explicit UNSUPPORTED_METHOD plans), stope models
       scheduling/      MineTask, dependencies, scheduler, timeline state
       infrastructure/  shared network domain, candidate sites, demand points,
@@ -146,7 +149,7 @@ Design tab contents:
 | Layout | Mine layout (candidates, selection, activation), Design assessment, Legacy decline (Hybrid-A\*) — Advanced |
 | Develop | Level development, Development mesh, Ramp tunnel mesh, Shafts |
 | Network | Mine network, Capabilities (two separate cards: geometry ≠ topology ≠ capability) |
-| Mining | Mining method (read-only registry card, Phase 21A — no selector), Stopes, Schedule |
+| Mining | Mining method (registry selector + explicit method parameters, Phase 21B/C — Apply = scenario PUT + world regeneration), Production (method-generic action), Schedule |
 
 Every card follows one layout: `title + ⓘ` and a status badge, then the key
 metrics, then the action, then `Details ▸`. Status, key metrics and any
@@ -258,8 +261,8 @@ go under `geology`, not at the scenario root.
   ShaftsPayload — the validated geometry artifact owning shaft axes,
   stations and station drives, rule 182; optional), `capability_graph.json`
   (Phase 20C.2B typed CapabilityGraphPayload — capability semantics over
-  MineNetwork ids, no geometry, rule 185), `stopes.json` (Phase 09 typed StopesPayload —
-  planned stope prisms in the analytic orebody frame, rule 75), `network.json` (Phase 07/08 typed
+  MineNetwork ids, no geometry, rule 185), `stopes.json` (the ACTIVE production artifact — Phase 09 StopesPayload / Phase 21B/C
+  CutFillPayload / RoomPillarPayload, one method-typed union at the legacy path, rules 75, 194), `network.json` (Phase 07/08 typed
   NetworkPayload — deterministic serialization of the typed contract, never
   a raw NetworkX dump), `timeline.json` (Phase 10 typed TimelinePayload —
   deterministic precedence-only planning baseline owning time/task/state
@@ -1576,5 +1579,102 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
   contents readout gains the "Mining method" and "Stopes" rows. `PanelTabs`
   arrow / Home / End keys now move DOM focus with the selection
   (`ui/interaction.ts::focusTab`, Phase 20E §37 follow-up).
-- **Non-scope.** Cut & Fill (21B) and Room & Pillar (21C) production
-  geometry, drawpoint / pillar / backfill / room / cut / bench entities.
+- **Non-scope (at 21A).** Cut & Fill (21B) and Room & Pillar (21C) production
+  geometry, drawpoint / pillar / backfill / room / cut / bench entities —
+  delivered by Phase 21B/C below.
+
+## Phase 21B/C — Cut & Fill + Room & Pillar production methods (rules 193–196)
+
+- **Registry table.** `plan_for` now resolves CUT_AND_FILL to
+  `methods/cut_fill.py::CutFillPlan` and ROOM_AND_PILLAR to
+  `methods/room_pillar.py::RoomPillarPlan` (both IMPLEMENTED); SUBLEVEL_CAVING
+  and SHRINKAGE_STOPING stay `UnsupportedMethodPlan`s. The plan protocol grew
+  three members every consumer uses INSTEAD of the method:
+  `production_access_pattern(scenario)` — `StationLatticeAccessPattern`
+  (Longhole, the exact Phase 08 arithmetic, defines the drift extent) or
+  `FixedAccessPattern` (one central production CROSSCUT per level at offset
+  0, drift extent from the generic backbone) — consumed by
+  `levels/builder.py`; `production_identity(payload)` and
+  `production_schedule(scenario, payload, ctx)` consumed by
+  `scheduling/builder.py`. The source scan in
+  `tests/test_mining_method_registry.py` keeps every consumer free of
+  `if method ==`.
+- **One production artifact.** `derived/stopes.json` is the legacy path of
+  the ACTIVE production artifact; its payload is the `method`-discriminated
+  union `ProductionPayload = StopesPayload | CutFillPayload |
+  RoomPillarPayload` (`mining/models.py`), parsed structurally by the
+  `ArtifactReader` through the new generic `ReadSpec.parser`. `POST/GET
+  …/design/production` is the method-generic route (`DesignService.
+  generate_production` / `production`); `…/design/stopes` stays Longhole-only
+  and answers 409 `PRODUCTION_METHOD_MISMATCH` otherwise. The scene's
+  `stopes` slot carries the union and `miningMethod` grows
+  `methodParameters`, `productionKind` and the registry's `availableMethods`
+  table with canonical `defaultParameters`.
+- **Parameters.** `MiningConfig.methodParameters` is the typed union
+  `CutFillParameters (liftHeightM 4, cutLengthM 15) | RoomPillarParameters
+  (roomWidthM 8, pillarWidthM 6, headingHeightM 5, benchCount 1|2,
+  boundaryPillarM 6)`: resolved to canonical defaults when omitted for a
+  method that has one, 422 for a block under a method without one or of the
+  wrong kind, omitted from serialization for Longhole (document unchanged).
+- **Cut & Fill geometry** (`methods/cut_fill.py`, TABULAR-only, typed
+  `METHOD_GEOMETRY_NOT_IMPLEMENTED` otherwise): per adjacent level interval,
+  lifts are the equal partition of the down-dip span into ≈ `liftHeightM`
+  vertical slices (`dv = liftHeight / |v_z|`), cuts the equal partition of
+  the strike extent into ≈ `cutLengthM`; order is lowest lift first, cuts in a
+  snake (even lifts −u → +u, odd +u → −u); each cut is an 8-corner prism in the
+  analytic frame under the Phase 09 hard QA (`methods/solids.py::build_solid`:
+  closed solid, volume agreement, hard samples, finite) with the rule 130
+  grade proxy; backfills are 1:1 semantic records (`sourceCutId`, volume);
+  the access is the lower level's central CROSSCUT. No partial SUCCESS.
+- **Room & Pillar geometry** (`methods/room_pillar.py`, TABULAR-only):
+  alternating room / pillar bands along u and v with pitch `roomWidth +
+  pillarWidth` centred so u = 0 / v = 0 fall in a room band, the panel inset
+  by `boundaryPillarM`; a cell is ROOM iff its u-band OR v-band is a room
+  band, else PILLAR; `RoomCell` is a semantic parent of its extraction units
+  HEADING / BENCH_1 / BENCH_2 (`thickness_stages`: a heading ≥ thickness →
+  one HEADING); pillars are retained solids (`tonnesEquivalent`, no
+  evaluator, never scheduled); access = the level nearest the cell's v
+  centroid. Metrics are geometric planning quantities (extraction fraction =
+  mined / panel). `MAX_PRODUCTION_SOLIDS = 8000` (default scenario: 7,322)
+  is the typed complexity limit.
+- **Timeline.** `MineTimelineBuilder` keeps the development schedule and
+  executes the plan's `ProductionScheduleSpec` (tasks + `TaskBasis`, per-unit
+  transitions bound to task boundaries, `tasks_per_unit` aggregate check);
+  the Longhole spec is the Phase 10 stope chain moved verbatim (bytes
+  unchanged). Cut & Fill: one conservative chain PREP → STOPING → MUCKING →
+  BACKFILL → CURE per cut after its access task and the previous cut's CURE
+  (`targetKind = CUT`, states ACTIVE / MINED / VOID / BACKFILLED). Room &
+  Pillar: PREP → STOPING → MUCKING per extraction unit, HEADING → benches in a
+  cell, cells outward from the central cell by Manhattan index distance
+  (`targetKind = ROOM_EXTRACTION`, states ACTIVE / MINED / VOID), pillars
+  never scheduled. `TimelinePayload.production {method, targetKind, units}`
+  and `production*` metrics exist only for non-Longhole methods.
+- **Longhole regression gate.** `tests/fixtures/phase21bc/longhole_baseline.json`
+  (LEGACY default 34 stopes / LEGACY welded 105 edges, 275 tasks / LAYOUT
+  small 15 stopes, 49 edges, 124 tasks / WARPED typed boundary) captured on
+  the pinned HEAD 7052606 by `scripts/phase21bc_capture_baseline.py`;
+  `tests/test_longhole_baseline_21bc.py` compares levels, stopes, network and
+  timeline under the rule 192 two-tier gate. The rule 192 parity fixture is
+  untouched; its CUT_AND_FILL case is retained as a historical record and
+  explicitly superseded.
+- **MineExchange 1.2.0** (`docs/mine-exchange.md`): typed method-parameter
+  DTOs in `semantics/mining_method.json`, `production/cut_fill.json` +
+  `production/cut_fill/cuts/<id>.{stl,obj,glb}` (CUT solids, BACKFILL
+  semantic entities referencing their cut, no geometry file),
+  `production/room_pillar.json` + `production/room_pillar/{benches,pillars}/`
+  (ROOM semantic parents, BENCH / PILLAR solids), one production omission
+  group per bundle (the active method's), the shared `_export_prism`
+  exporter (verbatim vertices, independent closed-solid QA, volume
+  agreement), and `check_method_authority` extended to the payload SHAPE.
+- **Frontend.** `MiningMethodCard` (selector over `availableMethods` with
+  Implemented / Not implemented labels, method-specific parameter inputs,
+  Apply = `PUT /scenarios/{id}` → `POST world/generate` → scene reload),
+  the generic Production card (`Generate Stopes / Cut & Fill / Room &
+  Pillar`, kind-specific details), `scene/production.ts` adapter,
+  `ProductionLayer` (kind colours: stope / cut / bench / pillar) and
+  `TimelineProductionLayer` (states from the backend transitions; pillars
+  drawn as retained material), the Layers row "Production", export-contents
+  row named after the active production kind.
+- **Non-scope.** Sublevel Caving, Shrinkage Stoping, WARPED_VEIN production
+  geometry, production-room walkthrough colliders, geotechnical pillar
+  design.

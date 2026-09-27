@@ -158,11 +158,37 @@ export interface DesignConfig {
   portalFootwallDistance: number
 }
 
+/** Phase 21B Cut & Fill production parameters (synthetic planning
+ * assumptions; equal partitions of the interval / strike, never fill design). */
+export interface CutFillParameters {
+  kind: 'CUT_AND_FILL'
+  liftHeightM: number
+  cutLengthM: number
+}
+
+/** Phase 21C Room & Pillar production parameters (band-grid planning
+ * geometry; never a geotechnical pillar design). */
+export interface RoomPillarParameters {
+  kind: 'ROOM_AND_PILLAR'
+  roomWidthM: number
+  pillarWidthM: number
+  headingHeightM: number
+  benchCount: 1 | 2
+  boundaryPillarM: number
+}
+
+export type MethodParameters = CutFillParameters | RoomPillarParameters
+
 export interface MiningConfig {
   method: MiningMethodType
   sublevelInterval: number
   stopeLength: number
   minimumPillar: number
+  /** Phase 21B/C: the method-specific typed block — present (resolved by the
+   * backend) for CUT_AND_FILL / ROOM_AND_PILLAR, absent for every other
+   * method. The frontend edits explicit values only; defaults come from the
+   * backend registry table (rule 124). */
+  methodParameters?: MethodParameters
 }
 
 /** Phase 10 temporal planning parameters (rules 81–86): transparent
