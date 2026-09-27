@@ -4,6 +4,7 @@ import { useTimelineStore } from './timelineStore'
 import { useScenarioStore } from './scenarioStore'
 import { temporalSessionIdentity } from '@/walkthrough/temporalPlan'
 import type { WalkthroughNavigationMode } from '@/walkthrough/navigation'
+import type { DesignTab, SystemsTab } from '@/components/panels/workflowTabs'
 
 export type CameraMode = 'orbit' | 'walkthrough'
 export type WalkthroughContext = 'STATIC_FINAL' | 'TIMELINE_SNAPSHOT'
@@ -25,6 +26,16 @@ export interface ViewerState {
   /** ephemeral navigation proxy (Phase 16 §3); never persisted */
   navigationMode: WalkthroughNavigationMode
   setNavigationMode: (mode: WalkthroughNavigationMode) => void
+  /**
+   * Phase 20E §19/§20 — which secondary workflow tab the left panel shows.
+   * Presentation state only: it is frontend-local, survives panel rerenders
+   * and a scenario change (like `mode`), is never written to a scenario and
+   * never triggers a generation, mutation or layer reset.
+   */
+  designTab: DesignTab
+  systemsTab: SystemsTab
+  setDesignTab: (tab: DesignTab) => void
+  setSystemsTab: (tab: SystemsTab) => void
 
   setMode: (mode: AppMode) => void
   setCameraMode: (cameraMode: CameraMode) => void
@@ -34,8 +45,9 @@ export interface ViewerState {
   isLayerVisible: (layer: LayerId) => boolean
   /**
    * Phase 17.1 §1: drop the viewer state that names objects of the previous
-   * scenario. `visibleLayers`, `mode` and `navigationMode` are user
-   * PREFERENCES, not derived state, and deliberately survive.
+   * scenario. `visibleLayers`, `mode`, `navigationMode` and the Phase 20E
+   * workflow tabs are user PREFERENCES, not derived state, and deliberately
+   * survive.
    */
   resetScenarioScopedState: () => void
 }
@@ -80,6 +92,11 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   selectedObjectId: null,
   visibleLayers: new Set(DEFAULT_VISIBLE),
   walkthroughEnabled: false,
+
+  designTab: 'LAYOUT',
+  systemsTab: 'COMMUNICATION',
+  setDesignTab: (designTab) => set({ designTab }),
+  setSystemsTab: (systemsTab) => set({ systemsTab }),
 
   setNavigationMode: (navigationMode) => set({ navigationMode }),
   setMode: (mode) =>

@@ -64,9 +64,13 @@ describe('scenario builder model (Phase 17, rule 124)', () => {
     expect(designSupported({ orebody: { orebodyType: 'TABULAR' } } as never)).toBe(true)
     expect(designSupported({ orebody: { orebodyType: 'ELLIPSOID' } } as never)).toBe(false)
     expect(designSupported({ orebody: { orebodyType: 'WARPED_VEIN' } } as never)).toBe(false)
-    expect(DESIGN_UNSUPPORTED_NOTICE).toContain('Phase 20')
-    expect(DESIGN_UNSUPPORTED_NOTICE).toContain('Parametric Layout Family Search')
-    expect(DESIGN_UNSUPPORTED_NOTICE).not.toContain('Phase 18')
+    // the notice must name the LEGACY chain as the restricted one and point
+    // at the workflow that does support this orebody, never imply that
+    // world generation or the layout workflow are unavailable
+    expect(DESIGN_UNSUPPORTED_NOTICE).toContain('legacy')
+    expect(DESIGN_UNSUPPORTED_NOTICE).toContain('mine-layout workflow')
+    // Phase 20E §12: no implementation-phase number in user-facing copy
+    expect(DESIGN_UNSUPPORTED_NOTICE).not.toMatch(/Phase \d/)
   })
 })
 

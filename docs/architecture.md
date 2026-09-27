@@ -119,6 +119,53 @@ implements numerics.
 The frontend never computes mine engineering quantities
 (CLAUDE.md rule 17, 32).
 
+## UI information architecture (Phase 20E)
+
+Top-level application modes (the `AppMode` enum is unchanged; the
+`INFRASTRUCTURE` value is labelled "Systems"):
+
+    Design | Systems | 4D | Walkthrough | Analysis
+
+Left panel:
+
+    Scenario                     summary + ⓘ, Details / New scenario /
+                                 Saved scenarios disclosures, MineExchange
+                                 export and its current-contents readout
+    workflow tabs                Design:  Layout → Develop → Network → Mining
+                                 Systems: Communication | Sensors
+    Layers                       viewer control, always reachable, collapsed
+                                 by default (SliceControls stays mounted)
+
+Design tab contents:
+
+| Tab | Cards |
+| --- | --- |
+| Layout | Mine layout (candidates, selection, activation), Design assessment, Legacy decline (Hybrid-A\*) — Advanced |
+| Develop | Level development, Development mesh, Ramp tunnel mesh, Shafts |
+| Network | Mine network, Capabilities (two separate cards: geometry ≠ topology ≠ capability) |
+| Mining | Stopes, Schedule (a mining-method card joins them in Phase 21A) |
+
+Every card follows one layout: `title + ⓘ` and a status badge, then the key
+metrics, then the action, then `Details ▸`. Status, key metrics and any
+backend `failureReason` are ALWAYS visible; only detailed numbers move into
+`Details`, and only legacy / diagnostic controls move into `Advanced`.
+Technical explanations live in the ⓘ popover
+(`components/ui/InfoPopover.tsx`), never as paragraphs in the primary view,
+and an ⓘ never holds an action.
+
+The primitives are `components/ui/`: `InfoPopover`, `PanelTabs`,
+`StatusBadge`, `Disclosure`, `ActionButton`, `MetricRow` / `Metrics` and the
+composing `WorkflowCard`, with the presentation mappings (`artifactTone`,
+`nextActionVariant`) in `presentation.ts` and the pure interaction rules in
+`interaction.ts`. `StatusBadge` is a PRESENTATION MAPPING of the backend
+artifact status — no new status vocabulary exists.
+
+Tab identity is frontend-local viewer state (`viewerStore.designTab` /
+`systemsTab`): it is never persisted to a scenario, and switching a tab
+issues no request. Every panel stays MOUNTED for every tab and renders only
+in its own context (`active` / `view` props), so each job poll, query and
+effect keeps its pre-20E lifetime.
+
 ## Decline design (decision record)
 
 The decline is a **chained Hybrid-A\*** over per-level access targets, not a

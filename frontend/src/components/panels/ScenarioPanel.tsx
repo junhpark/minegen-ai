@@ -17,6 +17,10 @@ import {
   type ScenarioPreset,
 } from '@/types/api'
 import { PanelSection } from '@/components/layout/PanelSection'
+import { ActionButton } from '@/components/ui/ActionButton'
+import { nextActionVariant } from '@/components/ui/presentation'
+import { Disclosure } from '@/components/ui/Disclosure'
+import { StatusBadge } from '@/components/ui/StatusBadge'
 import { ExportContents } from '@/components/panels/ExportContents'
 import { describeExportContents } from '@/components/panels/exportContents'
 import { activateScenario, scenarioEpoch } from '@/stores/scenarioSession'
@@ -42,6 +46,9 @@ export function ScenarioPanel() {
   const [realized, setRealized] = useState<ScenarioCreate | null>(null)
   const [draft, setDraft] = useState<ScenarioCreate | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  // Phase 20E §7: creating a mine is the primary action until one exists;
+  // afterwards the form collapses so the summary leads the panel
+  const [newOpen, setNewOpen] = useState(true)
   // Phase 17 (rule 119): the panel never draws random numbers — it asks the
   // backend to realize preset+seed and shows/creates the result verbatim
 
@@ -87,6 +94,7 @@ export function ScenarioPanel() {
     onSuccess: (s) => {
       // one scenario-identity transition clears everything derived (§1)
       activateScenario(s)
+      setNewOpen(false)
       void qc.invalidateQueries({ queryKey: ['scenarios'] })
     },
   })
@@ -98,6 +106,7 @@ export function ScenarioPanel() {
       await loadScene(id, epoch)
       return s
     },
+    onSuccess: () => setNewOpen(false),
   })
 
   const generate = useMutation({
@@ -128,9 +137,65 @@ export function ScenarioPanel() {
   const input =
     'w-full rounded-sm border border-rock-700 bg-rock-900 px-2 py-1 text-chalk focus:border-lamp focus:outline-none'
 
+  // Phase 20E §7: the export state stays one click away with its count on
+  // the trigger, so the workflow tabs are not pushed below the fold
+  const exportLayers = describeExportContents(scene, (scenario?.shafts?.specs.length ?? 0) > 0)
+
+  const design = scene?.rampSource.available
+    ? scene.rampSource.activeSource === 'LAYOUT_V2'
+      ? 'Layout v2'
+      : 'Legacy decline'
+    : 'no design yet'
+
   return (
-    <>
-      <PanelSection title="Scenario" tag="Phase 02">
+    <PanelSection
+      title="Scenario"
+      info="A synthetic mine: terrain, an authoritative orebody solid and seeded numerical rock-quality and grade fields, plus the declared fault planes. Every stochastic parameter is drawn once by the backend when you randomize, then persisted resolved, so the same scenario always reproduces the same world. It is a synthetic sandbox — never a measured, estimated or imported orebody."
+      status={
+        scenario ? (
+          <StatusBadge
+            tone={scene ? 'READY' : 'NOT_GENERATED'}
+            label={scene ? 'World ready' : 'No world'}
+          />
+        ) : null
+      }
+    >
+      {scenario ? (
+        <div className="mb-2">
+          <div className="truncate text-[13px] text-chalk" title={scenario.name}>
+            {scenario.name}
+          </div>
+          <div className="readout text-[11px] text-mute">
+            {scenario.orebody.orebodyType} · seed {scenario.seed} · {design}
+          </div>
+        </div>
+      ) : (
+        <p className="mb-2 text-[11px] text-mute">
+          No scenario yet — create a synthetic mine below, then generate its world.
+        </p>
+      )}
+
+      <ActionButton
+        variant={nextActionVariant(scene !== null, scenario !== null && !generate.isPending)}
+        disabled={!scenario || generate.isPending}
+        onClick={() => generate.mutate()}
+      >
+        {generate.isPending ? 'Generating world…' : scene ? 'Regenerate world' : 'Generate world'}
+      </ActionButton>
+
+      {errorText ? (
+        <p role="alert" className="mt-2 text-[11px] text-danger">
+          {errorText}
+        </p>
+      ) : null}
+
+      {scenario ? (
+        <Disclosure label="Details">
+          <ParametersPanel scenario={scenario} />
+        </Disclosure>
+      ) : null}
+
+      <Disclosure label="New scenario" open={newOpen} onToggle={() => setNewOpen((v) => !v)}>
         <label className="mb-2 block">
           <span className="mb-1 block text-[11px] text-chalk-dim">Name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} className={input} />
@@ -220,35 +285,12 @@ export function ScenarioPanel() {
         >
           {create.isPending ? 'Creating…' : 'New synthetic mine'}
         </button>
+      </Disclosure>
 
-        <button
-          type="button"
-          onClick={() => generate.mutate()}
-          disabled={!scenario || generate.isPending}
-          className="plate mt-2 w-full rounded-sm bg-lamp px-3 py-1.5 text-[13px] text-rock-950 hover:bg-lamp-deep hover:text-chalk disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {generate.isPending ? 'Generating world…' : scene ? 'Regenerate world' : 'Generate world'}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => exportExchange.mutate()}
-          disabled={!scenario || !scene || exportExchange.isPending}
-          title="Download the MineExchange v1 bundle of the currently available mine state (a world-only export is valid; missing layers are recorded in the manifest)"
-          className="plate mt-2 w-full rounded-sm border border-rock-700 bg-rock-800 px-3 py-1.5 text-[13px] text-chalk hover:bg-rock-700 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {exportExchange.isPending ? 'Preparing export…' : 'Export MineExchange (.zip)'}
-        </button>
-        <ExportContents
-          layers={describeExportContents(scene, (scenario?.shafts?.specs.length ?? 0) > 0)}
-        />
-
-        {errorText ? (
-          <p role="alert" className="mt-2 text-[11px] text-danger">
-            {errorText}
-          </p>
-        ) : null}
-
+      <Disclosure
+        label="Saved scenarios"
+        hint={list.isSuccess ? String(list.data.length) : undefined}
+      >
         {list.isSuccess && list.data.length > 0 ? (
           <div className="mt-3">
             <span className="mb-1 block text-[11px] text-chalk-dim">Saved scenarios</span>
@@ -271,21 +313,41 @@ export function ScenarioPanel() {
             </ul>
           </div>
         ) : null}
-      </PanelSection>
+      </Disclosure>
 
-      <ParametersPanel scenario={scenario} />
-    </>
+      <div className="mt-3 border-t border-rock-700 pt-2">
+        <ActionButton
+          variant="secondary"
+          disabled={!scenario || !scene || exportExchange.isPending}
+          title="Download the MineExchange v1 bundle of the currently available mine state (a world-only export is valid; missing layers are recorded in the manifest)"
+          onClick={() => exportExchange.mutate()}
+        >
+          {exportExchange.isPending ? 'Preparing export…' : 'Export MineExchange (.zip)'}
+        </ActionButton>
+        <Disclosure
+          label="Export contents"
+          hint={
+            exportLayers.length > 0
+              ? `${String(exportLayers.filter((l) => l.state === 'INCLUDED').length)} / ${String(exportLayers.length)}`
+              : undefined
+          }
+        >
+          <ExportContents layers={exportLayers} />
+        </Disclosure>
+      </div>
+    </PanelSection>
   )
 }
 
 /**
  * Scenario parameter readout (Phase 17.1 §4). Split out of `ScenarioPanel`
  * so the two-column layout is directly testable; it is presentational only
- * and echoes the backend document without computing anything.
+ * and echoes the backend document without computing anything. Phase 20E
+ * renders it inside the Scenario section's "Details" disclosure (§7).
  */
 export function ParametersPanel({ scenario }: { scenario: Scenario | null }) {
   return (
-    <PanelSection title="Parameters">
+    <>
       {scenario ? (
         /* Phase 17.1 §4: a fixed label column. `auto` sized itself to the
            longest label — the synthetic-RMR disclaimer — and squeezed
@@ -361,6 +423,6 @@ export function ParametersPanel({ scenario }: { scenario: Scenario | null }) {
           No scenario loaded. Create one, then generate its world.
         </p>
       )}
-    </PanelSection>
+    </>
   )
 }

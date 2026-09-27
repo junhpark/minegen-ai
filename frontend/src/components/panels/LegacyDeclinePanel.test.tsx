@@ -102,14 +102,17 @@ describe('LegacyDeclineBody', () => {
     expect(html).not.toContain('role="radiogroup"')
   })
 
-  it('expanded: the advanced source switch and the Phase 03–05 chain are available', () => {
+  it('expanded: the advanced source switch and the legacy chain are available', () => {
     const html = render(scene({}), true)
     expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('role="radiogroup"')
     expect(html).toContain('Legacy (Hybrid-A*)')
-    expect(html).toContain('Generate access targets (Phase 03)')
-    expect(html).toContain('Generate decline (Hybrid-A*, Phase 04)')
-    expect(html).toContain('Smooth decline (Phase 05)')
+    // Phase 20E §12: the three legacy actions keep their behaviour; the
+    // implementation-phase numbers are gone from the user-facing labels
+    expect(html).toContain('Generate access targets')
+    expect(html).toContain('Generate decline (Hybrid-A*)')
+    expect(html).toContain('Smooth decline')
+    expect(html).not.toMatch(/Phase 0[345]/)
     // LAYOUT_V2 cannot be switched to without a selection
     const idx = html.indexOf('>Layout v2</button>')
     expect(html.slice(html.lastIndexOf('<button', idx), idx)).toContain(' disabled=""')

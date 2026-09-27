@@ -86,6 +86,18 @@ Deferred deployment item (not scheduled):
 Phases 01–20D and 23A are described in `docs/architecture.md`; the
 invariants they established are `CLAUDE.md` rules 1–190.
 
+## Phase 20E — UI/UX consolidation (frontend only)
+
+Information-architecture pass before Phase 21A: the long Design panel
+becomes workflow tabs (Layout → Develop → Network → Mining), infrastructure
+becomes Systems (Communication | Sensors), technical paragraphs move into ⓘ
+popovers, detailed numbers into `Details`, the legacy Hybrid-A* chain stays
+one `Advanced` section, status and button hierarchy are unified, and the
+left panel widens to 320 px with Layers collapsed at the bottom. The Mining
+tab is shaped so Phase 21A can add its mining-method card above Stopes; no
+method selector ships in 20E. API, artifacts, invalidation, geometry and
+goldens are unchanged (CLAUDE.md rule 191).
+
 ## How this list is used
 
 - A phase is implemented only when it is the requested phase. Nothing in

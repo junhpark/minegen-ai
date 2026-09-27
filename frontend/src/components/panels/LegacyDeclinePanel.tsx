@@ -21,18 +21,21 @@ import type {
 
 export const LEGACY_SECTION_TITLE = 'Legacy decline (Hybrid-A*) — Advanced'
 export const LEGACY_SECTION_NOTE =
-  'Not required for Layout v2. The Phase 03–05 access-target → Hybrid-A* → smoothing chain ' +
+  'Not required for the mine-layout workflow. The access-target → Hybrid-A* → smoothing chain ' +
   'is kept for the legacy workflow, goldens and comparisons.'
 
 /**
- * Closeout v3 §1: the legacy Phase 03–05 decline workflow (access targets,
- * raw Hybrid-A* decline, Phase 05 smoothing) and the explicit ramp-source
- * switch, grouped as ONE collapsed "Advanced" section. It auto-expands only
+ * The legacy decline workflow (access targets, raw Hybrid-A* decline,
+ * pose-preserving smoothing) and the explicit ramp-source switch, grouped as
+ * ONE collapsed "Advanced" section of the Layout tab. It auto-expands only
  * for a scenario that actually uses the legacy chain (LEGACY active AND a
  * legacy artifact present); the user can always toggle it. Backend, API,
  * artifacts and goldens are untouched — this is UI hierarchy only.
+ *
+ * Phase 20E: `active` decides only whether the section RENDERS; every hook
+ * above the gate keeps its pre-20E lifetime for all Design tabs (§19).
  */
-export function LegacyDeclinePanel() {
+export function LegacyDeclinePanel({ active = true }: { active?: boolean } = {}) {
   const scenario = useScenarioStore((s) => s.scenario)
   const scene = useScenarioStore((s) => s.scene)
   const applyScene = useScenarioStore((s) => s.applyScene)
@@ -117,6 +120,7 @@ export function LegacyDeclinePanel() {
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
 
+  if (!active) return null
   return (
     <LegacyDeclineBody
       scenario={scenario}
@@ -172,7 +176,6 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
   return (
     <PanelSection
       title={LEGACY_SECTION_TITLE}
-      tag="Phase 03–05"
       collapsible
       open={p.open}
       onToggle={p.onToggle}
@@ -243,8 +246,8 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
         {p.targetsPending
           ? 'Generating…'
           : targets
-            ? 'Regenerate access targets (Phase 03)'
-            : 'Generate access targets (Phase 03)'}
+            ? 'Regenerate access targets'
+            : 'Generate access targets'}
       </button>
       {p.errorText ? (
         <p role="alert" className="mt-2 text-[11px] text-danger">
@@ -296,7 +299,7 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
           ? 'Generating decline…'
           : decline
             ? 'Regenerate decline (Hybrid-A*)'
-            : 'Generate decline (Hybrid-A*, Phase 04)'}
+            : 'Generate decline (Hybrid-A*)'}
       </button>
       {declineJobShown ? <JobProgress job={declineJobShown} /> : null}
       {decline ? (
@@ -330,7 +333,7 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
             ))}
           </ul>
           <div className="mt-1 text-mute">
-            raw Hybrid-A* centerline · not an engineering design (rule 11)
+            Raw search centerline — never a final engineering design.
           </div>
         </div>
       ) : null}
@@ -345,7 +348,7 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
           ? 'Smoothing decline…'
           : legacySmoothed
             ? 'Re-smooth decline'
-            : 'Smooth decline (Phase 05)'}
+            : 'Smooth decline'}
       </button>
       {smoothJobShown ? <JobProgress job={smoothJobShown} /> : null}
       {active === 'LAYOUT_V2' ? (
@@ -403,7 +406,7 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
             ))}
           </ul>
           <div className="mt-1 text-mute">
-            validated effective centerline · Phase 06 tunnel input (rule 64)
+            Validated effective centerline — the input the ramp tunnel mesh is swept on.
           </div>
         </div>
       ) : null}

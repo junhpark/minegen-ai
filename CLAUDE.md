@@ -1886,3 +1886,25 @@ code, the code and the rule win and the map is corrected.
      removed triangles), never the mere existence of junctions; every
      projection defect is a typed 409 MINE_EXCHANGE_EXPORT_FAILED, never a
      bare 500 or a silent null.
+
+191. UI consolidation is presentation only (Phase 20E). The left panel is
+     Scenario summary → workflow tabs → Layers: Design is
+     `Layout | Develop | Network | Mining`, Systems (the user-facing label
+     of the unchanged `INFRASTRUCTURE` mode) is
+     `Communication | Sensors`, and Layers stays reachable at the bottom,
+     collapsed. Every feature card reads `title + ⓘ` / status / key metrics
+     / action / `Details ▸`: the status, the key metrics and any backend
+     `failureReason` are ALWAYS visible, detailed result numbers live in
+     `Details`, technical explanations live in the ⓘ popover (never a
+     control inside it, never a hover-only tooltip) and only legacy or
+     diagnostic controls live in `Advanced`. Implementation-phase and rule
+     numbers stay in code and docs, never in user-facing copy. `StatusBadge`
+     is a PRESENTATION MAPPING of the backend artifact status and
+     introduces no new status vocabulary; a button's variant decides style
+     only and never its enabled condition. Switching a tab is a
+     presentation event: tab identity is frontend-local viewer state, is
+     never persisted to a scenario, and performs no generation, mutation,
+     regeneration or layer reset — every panel stays MOUNTED and renders
+     only in its own context, so each job poll, query and effect keeps its
+     lifetime. The API, DTOs, artifacts, invalidation chain, geometry and
+     goldens are untouched.
