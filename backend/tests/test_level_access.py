@@ -519,23 +519,32 @@ def test_cut_and_fill_generic_backbone_is_independent_of_longhole_parameters(
     a = generic_levels(scenario_with(20.0, 5.0))
     b = generic_levels(scenario_with(50.0, 15.0))
     assert [d.id for d in a.developments] == [d.id for d in b.developments]
+    # every development — the backbone DRIFT pieces AND the single central
+    # production CROSSCUT per level — is identical under both parameter sets
     for da, db in zip(a.developments, b.developments, strict=True):
-        assert da.kind.value == "DRIFT" and db.kind.value == "DRIFT"
+        assert da.kind == db.kind and da.kind.value in ("DRIFT", "CROSSCUT")
+        assert da.station_index == db.station_index
         assert math.isclose(da.from_u, db.from_u, abs_tol=1e-9)
         assert math.isclose(da.to_u, db.to_u, abs_tol=1e-9)
         assert math.isclose(da.length3d, db.length3d, abs_tol=1e-9)
         np.testing.assert_allclose(da.centerline.points, db.centerline.points, atol=1e-9)
+    kinds = {d.kind.value for d in a.developments}
+    assert kinds == {"DRIFT", "CROSSCUT"}
+    crosscuts = [d for d in a.developments if d.kind.value == "CROSSCUT"]
+    assert len(crosscuts) == len(a.levels) and {d.station_index for d in crosscuts} == {0}
     assert a.metrics is not None and b.metrics is not None
     assert math.isclose(a.metrics.total_drift_length3d, b.metrics.total_drift_length3d)
+    assert math.isclose(a.metrics.total_crosscut_length3d, b.metrics.total_crosscut_length3d)
     # the generic extent is the strike extent minus the fixed end clearance —
     # never ``stope_length/2 + minimum_pillar``
     ob = world.orebody
     lo, hi = LevelDevelopmentBuilder.generic_backbone_extent(ob)  # type: ignore[arg-type]
     assert math.isclose(lo, -ob.half_length + 5.0) and math.isclose(hi, ob.half_length - 5.0)  # type: ignore[attr-defined]
-    for d in a.developments:
+    drifts = [d for d in a.developments if d.kind.value == "DRIFT"]
+    for d in drifts:
         assert lo - 1e-9 <= d.from_u <= d.to_u <= hi + 1e-9
-    assert min(d.from_u for d in a.developments) == pytest.approx(lo)
-    assert max(d.to_u for d in a.developments) == pytest.approx(hi)
+    assert min(d.from_u for d in drifts) == pytest.approx(lo)
+    assert max(d.to_u for d in drifts) == pytest.approx(hi)
     # LONGHOLE remains parameter-dependent: its lattice is production geometry
     longhole = sc.model_copy(
         update={
