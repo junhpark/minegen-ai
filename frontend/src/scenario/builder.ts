@@ -102,8 +102,8 @@ export function designSupported(scenario: Pick<Scenario, 'orebody'> | null): boo
 
 export const DESIGN_UNSUPPORTED_NOTICE =
   'This orebody type is not supported by the legacy decline/access layout. ' +
-  'World generation and visualization work; generalized layout arrives in ' +
-  'Phase 20 — Parametric Layout Family Search.'
+  'World generation, visualization and the mine-layout workflow all work — ' +
+  'only this legacy chain is restricted to a tabular orebody.'
 
 /** Orebody geometries a user may switch a draft INTO by hand. Reserved enum
  * members (PIPE, LENS) are deliberately NOT offered, and neither is

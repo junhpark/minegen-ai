@@ -62,7 +62,7 @@ export function TimelineControl() {
   if (!active) {
     return (
       <div className="flex h-full items-center px-3 text-[11px] text-mute">
-        Timeline — generate the Phase 10 planning timeline to enable 4D playback
+        Timeline — schedule the mine development to enable 4D playback
       </div>
     )
   }

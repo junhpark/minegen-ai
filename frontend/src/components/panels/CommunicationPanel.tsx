@@ -1,17 +1,23 @@
 import { useMutation } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import { PanelSection } from '@/components/layout/PanelSection'
+import { ActionButton } from '@/components/ui/ActionButton'
+import { artifactTone, nextActionVariant } from '@/components/ui/presentation'
+import { Disclosure } from '@/components/ui/Disclosure'
+import { Metrics } from '@/components/ui/MetricRow'
+import { WorkflowCard } from '@/components/ui/WorkflowCard'
 import { canGenerateCommunication } from '@/infrastructure/view'
 import { afterCommunicationRegen } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 
 /**
- * Phase 11 communication planning panel (rules 87–92). Independent
- * component by design (Phase-10 UI review): infrastructure features must be
- * movable during the final UI redesign without touching DesignPanel.
+ * Communication planning panel. Independent component by design:
+ * infrastructure features are movable without touching DesignPanel.
+ *
+ * Phase 20E: `active` decides only whether the panel RENDERS; the hooks above
+ * the gate keep their pre-20E lifetime for both Systems tabs (§19).
  */
-export function CommunicationPanel() {
+export function CommunicationPanel({ active = true }: { active?: boolean } = {}) {
   const scene = useScenarioStore((s) => s.scene)
   const scenario = useScenarioStore((s) => s.scenario)
   // §1: epoch-guarded store-internal write — never a captured `scene` copy
@@ -38,87 +44,81 @@ export function CommunicationPanel() {
 
   const metrics = communication?.status === 'SUCCESS' ? communication.metrics : null
 
+  const canGenerate = canGenerateCommunication(network)
+  if (!active) return null
   return (
-    <PanelSection title="Communication">
-      {config ? (
-        <div className="readout text-[11px] text-chalk-dim">
-          <div className="flex justify-between">
-            <span className="text-mute">asset</span>
-            <span>{config.assetType}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-mute">candidate / demand spacing</span>
-            <span>
-              {config.candidateSpacingM} / {config.demandSpacingM} m
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-mute">coverage / backhaul range</span>
-            <span>
-              {config.coverageRangeM} / {config.backhaulRangeM} m
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-mute">required coverage</span>
-            <span>{(config.requiredCoverageFraction * 100).toFixed(0)}%</span>
-          </div>
-        </div>
-      ) : null}
-
-      <button
-        type="button"
-        onClick={() => generate.mutate()}
-        disabled={!canGenerateCommunication(network) || generate.isPending}
-        className="plate mt-2 w-full rounded-sm border border-lamp px-3 py-1.5 text-[13px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {generate.isPending
-          ? 'Planning…'
-          : communication
-            ? 'Regenerate communication'
-            : 'Generate communication'}
-      </button>
-      {!canGenerateCommunication(network) ? (
-        <div className="mt-1 text-[11px] text-mute">requires a SUCCESS MineNetwork</div>
-      ) : null}
-      {generate.error ? (
-        <div className="mt-1 text-[11px] text-danger">{String(generate.error)}</div>
-      ) : null}
-
-      {communication ? (
-        <div className="readout mt-2 text-[11px]">
-          <div className="flex justify-between text-chalk-dim">
-            <span className={communication.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
-              {communication.status}
-            </span>
-            {metrics ? (
-              <span>{metrics.selectedAssetCount} routers (connected-greedy baseline)</span>
-            ) : null}
-          </div>
+    <WorkflowCard
+      title="Communication"
+      tone={artifactTone(communication, generate.isPending)}
+      info="Underground mesh-router placement and backhaul planning. Coverage and backhaul are measured along the physical mine network, never straight through rock, and every selected router is connected back to the portal. It is an explicit planning proxy — not a calibrated radio prediction, not a globally optimal design, and router installation timing is not modelled."
+      summary={
+        metrics ? (
+          <>
+            {metrics.selectedAssetCount} routers · covered {metrics.coveredDemandCount}/
+            {metrics.demandCount} ({(metrics.coverageFraction * 100).toFixed(1)}%)
+          </>
+        ) : null
+      }
+      failure={
+        communication && communication.status !== 'SUCCESS' ? communication.failureReason : null
+      }
+      notice={canGenerate ? null : <>Requires a successful mine network.</>}
+      action={
+        <ActionButton
+          variant={nextActionVariant(communication !== null, canGenerate && !generate.isPending)}
+          disabled={!canGenerate || generate.isPending}
+          onClick={() => generate.mutate()}
+        >
+          {generate.isPending
+            ? 'Planning…'
+            : communication
+              ? 'Replan communication'
+              : 'Plan communication'}
+        </ActionButton>
+      }
+      progress={
+        generate.error ? (
+          <p role="alert" className="mt-1 text-[11px] text-danger">
+            {String(generate.error)}
+          </p>
+        ) : null
+      }
+      details={
+        <>
           {metrics ? (
-            <>
-              <div className="mt-1 flex justify-between text-chalk-dim">
-                <span>
-                  covered {metrics.coveredDemandCount} / {metrics.demandCount}
-                </span>
-                <span>{(metrics.coverageFraction * 100).toFixed(1)}%</span>
-              </div>
-              <div className="mt-1 flex justify-between text-mute">
-                <span>
-                  serving mean {metrics.meanServingDistanceM?.toFixed(1) ?? '—'} m · max{' '}
-                  {metrics.maxServingDistanceM?.toFixed(1) ?? '—'} m
-                </span>
-                <span>{metrics.maxBackhaulHopCount} hops</span>
-              </div>
-            </>
-          ) : (
-            <div className="mt-1 text-danger">{communication.failureReason}</div>
-          )}
-          <div className="mt-1 text-mute">
-            Network-distance communication planning proxy. Not a calibrated RF prediction or
-            globally optimal design.
-          </div>
-        </div>
-      ) : null}
-    </PanelSection>
+            <Metrics
+              rows={[
+                {
+                  label: 'Serving distance',
+                  value: `mean ${metrics.meanServingDistanceM?.toFixed(1) ?? '—'} m · max ${metrics.maxServingDistanceM?.toFixed(1) ?? '—'} m`,
+                },
+                { label: 'Backhaul hops', value: metrics.maxBackhaulHopCount },
+              ]}
+            />
+          ) : null}
+          {config ? (
+            <Disclosure label="Planning inputs">
+              <Metrics
+                rows={[
+                  { label: 'Asset', value: config.assetType },
+                  {
+                    label: 'Candidate / demand spacing',
+                    value: `${config.candidateSpacingM} / ${config.demandSpacingM} m`,
+                  },
+                  {
+                    label: 'Coverage / backhaul range',
+                    value: `${config.coverageRangeM} / ${config.backhaulRangeM} m`,
+                  },
+                  {
+                    label: 'Required coverage',
+                    value: `${(config.requiredCoverageFraction * 100).toFixed(0)} %`,
+                  },
+                ]}
+              />
+            </Disclosure>
+          ) : null}
+        </>
+      }
+    />
   )
 }

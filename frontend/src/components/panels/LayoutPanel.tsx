@@ -6,6 +6,11 @@ import { PanelSection } from '@/components/layout/PanelSection'
 import { assessmentKey } from '@/components/panels/assessmentKey'
 import { AlternativesTable, DesignAssessmentList } from '@/components/panels/DesignAssessment'
 import { compareCandidates } from '@/components/panels/layoutOrder'
+import { ActionButton } from '@/components/ui/ActionButton'
+import { artifactTone, nextActionVariant } from '@/components/ui/presentation'
+import { Disclosure } from '@/components/ui/Disclosure'
+import { Metrics } from '@/components/ui/MetricRow'
+import { StatusBadge } from '@/components/ui/StatusBadge'
 import { afterLayoutActivate, afterLayoutRegen, afterLayoutSelect } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
@@ -19,14 +24,18 @@ import type {
 } from '@/types/scene'
 
 /**
- * Phase 20A/20B — parametric whole-mine layout (layout-v2): the PRIMARY
- * design workflow (closeout v3 §1). Display + intent only: the backend
- * enumerates, validates, scores, ranks, materializes and resolves the
- * active source; this panel never computes any of it. The explicit
- * LEGACY ⇄ LAYOUT_V2 source switch is an Advanced action in the legacy
- * decline section; here "Activate" makes a candidate the current design.
+ * Parametric whole-mine layout (layout-v2): the PRIMARY design workflow.
+ * Display + intent only: the backend enumerates, validates, scores, ranks,
+ * materializes and resolves the active source; this panel never computes any
+ * of it. The explicit LEGACY ⇄ LAYOUT_V2 source switch is an Advanced action
+ * in the legacy decline section; here "Activate" makes a candidate the
+ * current design.
+ *
+ * Phase 20E: `active` decides only whether the panel RENDERS. Every hook
+ * above the gate keeps running for every Design tab, so the design-assessment
+ * query and the layout job behave exactly as before the tab split (§19).
  */
-export function LayoutPanel() {
+export function LayoutPanel({ active = true }: { active?: boolean } = {}) {
   const scene = useScenarioStore((s) => s.scene)
   const applyScene = useScenarioStore((s) => s.applyScene)
   const epoch = useScenarioStore((s) => s.epoch)
@@ -123,6 +132,7 @@ export function LayoutPanel() {
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
 
+  if (!active) return null
   return (
     <LayoutPanelBody
       scene={scene}
@@ -182,7 +192,11 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
   const layoutActive = active === 'LAYOUT_V2' && (rampSource?.available ?? false)
 
   return (
-    <PanelSection title="Layout v2 — whole-mine layout" tag="Phase 20A/20B">
+    <PanelSection
+      title="Mine layout"
+      info="Enumerates a finite declared grid of ramp families (spiral, longitudinal, switchback) from the authoritative portal, validates every delivered centerline against every required level, and ranks the feasible ones. Hard constraints stay hard: a violated constraint makes a candidate infeasible and is never turned into a score penalty. The Development / Geology / Geometry scores are planning comparators, not a cost estimate and not an optimality claim."
+      status={catalogue ? <StatusBadge tone={artifactTone(catalogue, running)} /> : null}
+    >
       <div className="readout mb-2 text-[11px]" aria-label="current design">
         <div className="flex justify-between">
           <span className="text-mute">Current design</span>
@@ -203,18 +217,17 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
         ) : null}
       </div>
 
-      <button
-        type="button"
+      <ActionButton
+        variant={nextActionVariant(catalogue !== null, !(!scene || p.busy))}
         onClick={p.onGenerate}
         disabled={!scene || p.busy}
-        className="plate w-full rounded-sm bg-lamp px-3 py-1.5 text-[13px] text-rock-950 hover:bg-lamp-deep hover:text-chalk disabled:cursor-not-allowed disabled:opacity-40"
       >
         {p.generating
           ? 'Searching layout families…'
           : catalogue
             ? 'Regenerate candidates'
-            : 'Generate candidates (SPIRAL / LONGITUDINAL / SWITCHBACK)'}
-      </button>
+            : 'Generate candidates'}
+      </ActionButton>
       {job && (running || job.status === 'FAILED') ? <JobProgress job={job} /> : null}
       {p.errorText ? (
         <p role="alert" className="mt-2 text-[11px] text-danger">
@@ -232,30 +245,36 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
               {catalogue.feasibleCount} feasible / {catalogue.candidateCount} enumerated
             </span>
           </div>
-          <div className="mt-1 flex justify-between text-mute">
-            <span>
-              {catalogue.serviceableLevelCount}/{catalogue.requiredLevels.length} levels with ore
-            </span>
-            <span>
-              clearance {catalogue.clearanceBasis}
-              {catalogue.clearanceBasis !== 'EXACT'
-                ? ` (−${catalogue.clearanceErrorBound.toFixed(1)} m)`
-                : ''}{' '}
-              ≥ {catalogue.requiredClearance.toFixed(1)} m
-            </span>
+          <div className="mt-1 text-mute">
+            {catalogue.serviceableLevelCount}/{catalogue.requiredLevels.length} levels with ore
           </div>
-          <div className="mt-1 flex justify-between text-mute">
-            <span>reach {catalogue.accessReach.toFixed(0)} m</span>
-            <span>{(catalogue.performance.totalSeconds ?? 0).toFixed(1)} s</span>
-            <label className="flex items-center gap-1">
+          <Disclosure label="Search details">
+            <Metrics
+              rows={[
+                {
+                  label: 'Clearance basis',
+                  value: `${catalogue.clearanceBasis}${
+                    catalogue.clearanceBasis !== 'EXACT'
+                      ? ` (−${catalogue.clearanceErrorBound.toFixed(1)} m)`
+                      : ''
+                  } ≥ ${catalogue.requiredClearance.toFixed(1)} m`,
+                },
+                { label: 'Access reach', value: `${catalogue.accessReach.toFixed(0)} m` },
+                {
+                  label: 'Search time',
+                  value: `${(catalogue.performance.totalSeconds ?? 0).toFixed(1)} s`,
+                },
+              ]}
+            />
+            <label className="mt-1 flex items-center gap-1 text-mute">
               <input
                 type="checkbox"
                 checked={p.showAll}
                 onChange={(e) => p.onShowAll(e.target.checked)}
               />
-              show infeasible
+              show infeasible candidates
             </label>
-          </div>
+          </Disclosure>
           <ul className="mt-1 max-h-56 overflow-y-auto" aria-label="layout candidates">
             {candidates.map((c) => (
               <li key={c.candidateId}>
@@ -305,9 +324,13 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
             ))}
           </ul>
           {picked ? (
-            <CandidateDetail
-              candidate={catalogue.candidates.find((c) => c.candidateId === picked) ?? null}
-            />
+            /* §28: the per-candidate metric block is DETAIL — the ranked list
+               above already says which candidate wins and why */
+            <Disclosure label="Candidate details" hint={shortPick(catalogue, picked)}>
+              <CandidateDetail
+                candidate={catalogue.candidates.find((c) => c.candidateId === picked) ?? null}
+              />
+            </Disclosure>
           ) : null}
           <div className="mt-2 flex gap-1">
             <button
@@ -327,16 +350,11 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
               {p.activating ? 'Activating…' : 'Activate as ramp source'}
             </button>
           </div>
-          <div className="mt-1 text-mute">
-            finite declared grid · hard constraints stay hard · scores are Development / Geology /
-            Geometry group totals (§26) · not an optimizer
-          </div>
         </div>
       ) : (
         <p className="mt-2 text-[11px] text-mute">
-          Enumerates SPIRAL, LONGITUDINAL and SWITCHBACK ramp families from the authoritative
-          portal, validates the delivered centerline against every required level, and ranks
-          feasible candidates. Works for every orebody type.
+          Generate candidate ramp layouts, then select or activate one to make it the design. Works
+          for every orebody type.
         </p>
       )}
       {/* Phase 20D.3 (PR #43 correction): the assessment is shown for EVERY
@@ -449,6 +467,12 @@ function CandidateDetail({ candidate }: { candidate: LayoutCandidateSummary | nu
       </ul>
     </div>
   )
+}
+
+/** rank of the inspected candidate, shown on the Details trigger */
+function shortPick(catalogue: LayoutV2Catalogue, id: string): string | undefined {
+  const c = catalogue.candidates.find((x) => x.candidateId === id)
+  return c?.rank != null ? `#${String(c.rank)}` : undefined
 }
 
 function isFeasible(catalogue: LayoutV2Catalogue, id: string): boolean {

@@ -10,11 +10,16 @@ import {
 import { useTimelineStore } from '@/stores/timelineStore'
 import { APP_MODES, type AppMode } from '@/types/enums'
 
+/**
+ * Phase 20E §3 — user-facing mode labels. The AppMode enum, the store state
+ * and every rendering gate keep the internal `INFRASTRUCTURE` value; only its
+ * label reads "Systems".
+ */
 const MODE_LABELS: Record<AppMode, string> = {
   DESIGN: 'Design',
-  INFRASTRUCTURE: 'Infra',
+  INFRASTRUCTURE: 'Systems',
   '4D': '4D',
-  WALKTHROUGH: 'Walk',
+  WALKTHROUGH: 'Walkthrough',
   ANALYSIS: 'Analysis',
 }
 
@@ -40,7 +45,7 @@ export function TopBar() {
       </div>
       <span className="readout ml-3 text-[10px] text-mute">v0.1</span>
 
-      <nav className="ml-8 flex gap-1" aria-label="application mode">
+      <nav className="ml-6 flex gap-0.5" aria-label="application mode">
         {APP_MODES.map((m) => {
           const active = m === mode
           const walkDisabled = m === 'WALKTHROUGH' && readiness !== 'READY'
@@ -53,7 +58,7 @@ export function TopBar() {
               disabled={walkDisabled}
               title={m === 'WALKTHROUGH' ? walkTooltip : undefined}
               className={[
-                'plate rounded-sm px-3 py-1 text-[13px] transition-colors',
+                'plate rounded-sm px-2.5 py-1 text-[13px] whitespace-nowrap transition-colors',
                 active
                   ? 'bg-rock-700 text-lamp shadow-[inset_0_-2px_0_0_var(--color-lamp)]'
                   : 'text-chalk-dim hover:bg-rock-700/60 hover:text-chalk',

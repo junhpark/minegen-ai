@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { PanelSection } from '@/components/layout/PanelSection'
@@ -53,7 +53,7 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
     // closeout v3 §1.C: legacy diagnostic layers, default OFF
     title: 'Legacy decline (advanced)',
     rows: [
-      { id: 'accessTargets', label: 'Access targets (Phase 03)', phase: 3 },
+      { id: 'accessTargets', label: 'Access targets (legacy)', phase: 3 },
       // §2: default OFF, and suppressed outright in 4D / TIMELINE_SNAPSHOT
       { id: 'rawSearchPath', label: 'Raw Hybrid-A* search path', phase: 4 },
     ],
@@ -82,13 +82,24 @@ const FIELDS: { id: SliceField; label: string }[] = [
 ]
 const AXES: SliceAxis[] = ['x', 'y', 'z']
 
+/**
+ * Phase 20E §6 — viewer layer visibility.
+ *
+ * Layers are a viewer control independent of the current workflow, so the
+ * section stays at the bottom of the left panel and is always reachable, but
+ * it is COLLAPSED by default so it no longer dominates the panel. The layer
+ * visibility state and the store contract are unchanged, and `SliceControls`
+ * stays mounted while collapsed so the field-slice fetch keeps running
+ * independently of visibility.
+ */
 export function LayerPanel() {
   const visible = useViewerStore((s) => s.visibleLayers)
   const toggle = useViewerStore((s) => s.toggleLayer)
+  const [open, setOpen] = useState(false)
 
   return (
     <>
-      <PanelSection title="Layers">
+      <PanelSection title="Layers" collapsible open={open} onToggle={() => setOpen((v) => !v)}>
         {LAYER_GROUPS.map((g) => (
           <div key={g.title} className="mb-3 last:mb-0">
             <div className="readout mb-1 text-[10px] text-mute">{g.title}</div>
@@ -124,13 +135,15 @@ export function LayerPanel() {
           </div>
         ))}
       </PanelSection>
-      <SliceControls />
+      <SliceControls active={open} />
     </>
   )
 }
 
-/** Field / axis / index picker for the spatial-field slice layer. */
-function SliceControls() {
+/** Field / axis / index picker for the spatial-field slice layer. `active`
+ * decides only whether it RENDERS: the slice query stays mounted so slice
+ * COMPUTATION remains independent of slice VISIBILITY. */
+function SliceControls({ active }: { active: boolean }) {
   const scene = useScenarioStore((s) => s.scene)
   const { field, axis, index, slice, setField, setAxis, setIndex, setSlice } = useSliceStore()
   const scenarioId = scene?.scenarioId
@@ -164,7 +177,7 @@ function SliceControls() {
     if (q.data) setSlice(q.data)
   }, [q.data, setSlice])
 
-  if (!scene) return null
+  if (!scene || !active) return null
   const shown = slice ?? scene.rockQuality.defaultSlice
   const ramp = rampForField(shown.field)
   const stops = Array.from({ length: 12 }, (_, i) => ramp(i / 11))

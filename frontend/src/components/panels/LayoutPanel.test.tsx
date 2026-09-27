@@ -219,7 +219,10 @@ function render(scene: WorldScene | null): string {
 describe('LayoutPanel', () => {
   it('shows the empty state as the primary workflow, without a legacy switch', () => {
     const html = render(null)
-    expect(html).toContain('Layout v2')
+    // Phase 20E §12: the section is named for what it does, not for the
+    // implementation phase that built it
+    expect(html).toContain('Mine layout')
+    expect(html).not.toContain('Phase 20A')
     expect(html).toContain('Generate candidates')
     expect(html).toContain('Current design')
     // closeout v3 §1: the LEGACY / LAYOUT_V2 source switch is an Advanced
@@ -232,7 +235,10 @@ describe('LayoutPanel', () => {
     const html = render(sceneWith({}))
     expect(html).toContain('2 feasible / 68 enumerated')
     expect(html).toContain('1/2 levels with ore')
-    expect(html).toContain('clearance COARSE_CONSERVATIVE (−10.8 m) ≥ 10.6 m')
+    // Phase 20E §10: the clearance basis is a detail of the current result
+    // and moved into the Search details disclosure — same backend values
+    expect(html).toContain('Clearance basis')
+    expect(html).toContain('COARSE_CONSERVATIVE (−10.8 m) ≥ 10.6 m')
     expect(html).toContain('#1 ')
     expect(html).toContain('2.174')
     expect(html).toContain('D 1.23 · G 0.06 · M 0.88')
