@@ -71,7 +71,7 @@ from minegen.layout.results import CandidateStatus, LayoutSearchResult
 from minegen.layout.search import LayoutV2Search
 from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
 from minegen.levels.models import LevelsPayload
-from minegen.mining.methods.base import strategy_for, unsupported_method_payload
+from minegen.mining.methods.registry import plan_for
 from minegen.mining.models import StopesPayload
 from minegen.network.builder import MineNetworkBuilder
 from minegen.network.models import NetworkPayload
@@ -1054,9 +1054,9 @@ class DesignService:
     def generate_stopes(self, scenario_id: str) -> StopesPayload:
         """Synchronous Phase 09 stope generation (rules 75–80): consumes the
         validated levels artifact only, resolves the scenario mining method
-        through the explicit strategy factory (rule 78 — unsupported methods
-        fail, never silently substitute), and leaves tunnel/network untouched
-        (rule 79)."""
+        through the mining-method registry (rule 78 / 192 — unsupported
+        methods fail, never silently substitute), and leaves tunnel/network
+        untouched (rule 79)."""
         fingerprint = self.stopes_fingerprint(scenario_id)
         levels_payload = self.levels(scenario_id)  # 409 if not generated
         scenario, world, _ = self.evaluator(scenario_id)
@@ -1066,17 +1066,15 @@ class DesignService:
         source_revision = hashlib.sha256(
             json.dumps(fingerprint.entries, sort_keys=True).encode()
         ).hexdigest()[:16]
-        strategy = strategy_for(scenario.mining.method)
-        if strategy is None:
-            payload = unsupported_method_payload(scenario.mining.method, source_revision)
-        else:
-            payload = strategy.generate(
-                scenario,
-                world,
-                levels_payload.model_dump(mode="json", by_alias=True),
-                hard_ev,
-                source_revision,
-            )
+        # Phase 21A (rule 192): the SAME registry authority ``generate_levels``
+        # consumed — an unsupported method returns its typed FAILED payload
+        payload = plan_for(scenario.mining.method).generate_production(
+            scenario,
+            world,
+            levels_payload.model_dump(mode="json", by_alias=True),
+            hard_ev,
+            source_revision,
+        )
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):
             if self.stopes_fingerprint(scenario_id) != fingerprint:

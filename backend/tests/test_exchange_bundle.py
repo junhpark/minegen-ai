@@ -143,7 +143,7 @@ def assert_integrity(b: Bundle) -> None:
         assert not path.startswith("/") and ".." not in path.split("/") and "\\" not in path
     assert set(b.entries) - listed == {"manifest.json"}
     m = b.manifest
-    assert m["mineExchangeVersion"] == "1.0.0"
+    assert m["mineExchangeVersion"] == MINE_EXCHANGE_VERSION == "1.1.0"
     assert m["coordinateSystem"]["name"] == "LOCAL_ENU_Z_UP"
     assert m["coordinateSystem"]["crs"] == "LOCAL_SYNTHETIC"
     assert m["units"]["length"] == "metre"
@@ -172,13 +172,20 @@ def _derived_state(derived: Path) -> dict[str, tuple[int, int]]:
 def _world_only_checks(b: Bundle, orebody_type: str) -> None:
     assert_integrity(b)
     groups = {p.split("/", 1)[0] for p in b.files}
-    assert groups == {"README.txt", "terrain", "orebody", "geology"}
+    assert groups == {"README.txt", "terrain", "orebody", "geology", "semantics"}
     om = b.omissions()
     assert om["EXCAVATIONS"] == "ARTIFACT_ABSENT"
     assert om["NETWORK"] == "ARTIFACT_ABSENT"
     assert om["CAPABILITY"] == "ARTIFACT_ABSENT"
-    assert om["STOPES"] == "NOT_IN_V1"
+    assert om["STOPES"] == "ARTIFACT_ABSENT"
+    assert om["TIMELINE"] == "NOT_IN_V1"
     assert not any(p.startswith("excavations/") for p in b.entries)
+    assert not any(p.startswith("production/") for p in b.entries)
+    mm = b.json("semantics/mining_method.json")
+    assert mm["requestedMethod"] == "LONGHOLE_OPEN_STOPING"
+    assert mm["implementationStatus"] == "IMPLEMENTED"
+    assert mm["productionDevelopment"]["status"] == "NOT_GENERATED"
+    assert mm["production"]["status"] == "NOT_GENERATED"
     assert "terrain:surface" in b.entities and "orebody:primary" in b.entities
     assert not any(k in b.entities for k in ("ramp:main",))
     # T5 + terrain semantics
@@ -340,7 +347,7 @@ def test_e2e_full_bundle_is_deterministic_and_read_only(
     assert _derived_state(tabular.derived) == before  # no side effect, no new file
     assert_integrity(tabular_bundle)
     assert tabular_bundle.omissions() == {
-        "STOPES": "NOT_IN_V1",
+        "STOPES": "ARTIFACT_ABSENT",
         "TIMELINE": "NOT_IN_V1",
         "FIELD_LATTICE": "NOT_IN_V1",
     }

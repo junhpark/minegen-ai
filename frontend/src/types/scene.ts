@@ -1475,6 +1475,20 @@ export interface JobSubmission {
   kind: string
 }
 
+/**
+ * Phase 21A — read-only mining-method presentation. The backend registry is
+ * the single authority for `implementationStatus`; the frontend renders it
+ * and never maps a method to a status or offers a method selector.
+ */
+export interface MiningMethodSummary {
+  method: string
+  displayName: string
+  implementationStatus: 'IMPLEMENTED' | 'UNSUPPORTED_METHOD'
+  sublevelInterval: number
+  stopeLength: number
+  minimumPillar: number
+}
+
 export interface WorldScene {
   scenarioId: string
   coordinateSystem: 'ENU_Z_UP'
@@ -1488,6 +1502,8 @@ export interface WorldScene {
   terrain: TerrainPayload
   orebody: OrebodyPayload
   faults: FaultPayload[]
+  /** Phase 21A read-only method card data (registry authority, rule 192) */
+  miningMethod: MiningMethodSummary
   fieldGrid: FieldGridPayload
   rockQuality: { min: number; max: number; defaultSlice: SlicePayload }
   stats: WorldStats

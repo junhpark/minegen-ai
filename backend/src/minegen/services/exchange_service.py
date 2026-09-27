@@ -17,6 +17,7 @@ from minegen.core.artifacts import (
     LEVELS_ARTIFACT,
     NETWORK_ARTIFACT,
     SHAFTS_ARTIFACT,
+    STOPES_ARTIFACT,
     TUNNEL_MESH_ARTIFACT,
     TUNNEL_MESH_GLB,
 )
@@ -47,6 +48,9 @@ EXPORT_ARTIFACTS: tuple[str, ...] = tuple(
             CAPABILITY_GRAPH_ARTIFACT,
             TUNNEL_MESH_ARTIFACT,
             DEVELOPMENT_MESH_ARTIFACT,
+            # 1.1.0 (Phase 21A): stopes are part of the coherent snapshot — a
+            # stopes.json that moves during the export is READ_SNAPSHOT_CHANGED
+            STOPES_ARTIFACT,
         ]
     )
 )
@@ -123,6 +127,7 @@ class ExchangeService:
         shafts = self._optional(snapshot, SHAFTS_ARTIFACT)
         network = self._optional(snapshot, NETWORK_ARTIFACT)
         capability = self._optional(snapshot, CAPABILITY_GRAPH_ARTIFACT)
+        stopes = self._optional(snapshot, STOPES_ARTIFACT)
         tunnel = self._optional(snapshot, TUNNEL_MESH_ARTIFACT)
         development = self._optional(snapshot, DEVELOPMENT_MESH_ARTIFACT)
         tunnel_glb = snapshot.observation(TUNNEL_MESH_GLB)
@@ -141,6 +146,7 @@ class ExchangeService:
             shafts=self._input(shafts),
             network=self._input(network),
             capability=self._input(capability),
+            stopes=self._input(stopes),
             tunnel_report=self._input(tunnel),
             tunnel_glb=tunnel_glb.data if tunnel is not None and tunnel_glb is not None else None,
             development_report=self._input(development),

@@ -25,6 +25,7 @@ import type {
   DevelopmentMeshReport,
   JobRecord,
   LevelsPayload,
+  MiningMethodSummary,
   NetworkPayload,
   ShaftsPayload,
   StopesPayload,
@@ -128,6 +129,7 @@ export function DesignPanel({ view }: { view: DesignTab }) {
 
   // Phase 09 stopes: synchronous planned-stope generation (rules 75–80).
   const stopes = scene?.stopes ?? null
+  const miningMethod = scene?.miningMethod ?? null
   const generateStopes = useMutation({
     mutationFn: async () => {
       if (!scene) throw new Error('generate levels first')
@@ -256,6 +258,7 @@ export function DesignPanel({ view }: { view: DesignTab }) {
         !generateNetwork.isPending
       }
       onGenerateCapabilityGraph={() => generateCapabilityGraph.mutate()}
+      miningMethod={miningMethod}
       stopes={stopes}
       stopesPending={generateStopes.isPending}
       stopesEnabled={levelsReady && !generateStopes.isPending && !generateLevels.isPending}
@@ -319,6 +322,8 @@ export interface DesignPanelBodyProps {
   capabilityEnabled: boolean
   onGenerateCapabilityGraph: () => void
 
+  /** Phase 21A read-only method card (null only while no scene is loaded) */
+  miningMethod: MiningMethodSummary | null
   stopes: StopesPayload | null
   stopesPending: boolean
   stopesEnabled: boolean
@@ -781,15 +786,40 @@ function NetworkView(p: DesignPanelBodyProps) {
 }
 
 function MiningView(p: DesignPanelBodyProps) {
-  const { stopes, timeline } = p
+  const { stopes, timeline, miningMethod } = p
   const sm = stopes?.metrics ?? null
   const tm = timeline?.metrics ?? null
+  const implemented = miningMethod?.implementationStatus === 'IMPLEMENTED'
   return (
     <>
       <NoDesignNotice rampReady={p.rampReady} />
       <ErrorLine text={p.miningError} />
-      {/* Phase 21A adds the mining-method card here, above Stopes (§21).
-          Phase 20E ships no method selector: only the real features below. */}
+      {/* Phase 21A: READ-ONLY method card (rule 192). The backend registry
+          decides the implementation status; there is no method selector and
+          an unsupported method is a feature boundary, not a mine failure. */}
+      {miningMethod ? (
+        <WorkflowCard
+          title="Mining method"
+          tone={implemented ? 'ACTIVE' : 'INACTIVE'}
+          statusLabel={implemented ? 'Implemented' : 'Not implemented'}
+          info="The scenario's requested mining method, as the backend mining-method registry resolves it. Longhole open stoping is implemented; the other methods are reserved and receive only the generic level development — never longhole geometry under another name. The method is a scenario parameter and is not edited here."
+          summary={<span data-testid="mining-method-name">{miningMethod.displayName}</span>}
+          notice={
+            implemented
+              ? null
+              : `${miningMethod.displayName} production development and stopes are not implemented in this version. Level access and the generic footwall drift are still designed.`
+          }
+          details={
+            <Metrics
+              rows={[
+                { label: 'Sublevel interval', value: `${miningMethod.sublevelInterval} m` },
+                { label: 'Stope length', value: `${miningMethod.stopeLength} m` },
+                { label: 'Minimum pillar', value: `${miningMethod.minimumPillar} m` },
+              ]}
+            />
+          }
+        />
+      ) : null}
 
       <WorkflowCard
         title="Stopes"

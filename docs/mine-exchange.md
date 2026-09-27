@@ -1,4 +1,4 @@
-# MineExchange v1 — canonical interoperability bundle (Phase 23A)
+# MineExchange v1 — canonical interoperability bundle (Phase 23A, 1.1 in Phase 21A)
 
 MineExchange is MineGen's **versioned, read-only projection** of existing
 authoritative state into a downloadable, deterministic bundle. It exists so
@@ -22,7 +22,11 @@ capability stay separate files with separate meanings.
 
 ## Version
 
-`manifest.json → mineExchangeVersion = "1.0.0"` (semantic versioning). The
+`manifest.json → mineExchangeVersion = "1.1.0"` (semantic versioning). 1.1
+(Phase 21A) is an ADDITIVE minor version over 1.0: the mining-method
+semantics document, the production stopes and the `STOPE` entity kind
+(see "Mining method and production stopes"); every 1.0 file, id and meaning
+is unchanged. The
 manifest version is the **external** contract authority; internal artifact
 versions (scenario `schemaVersion`, per-artifact `sourceRevision`) are only
 quoted as provenance. Additive fields are minor versions; a change in the
@@ -33,7 +37,7 @@ meaning of an existing field is a major version.
     POST /api/v1/scenarios/{scenario_id}/export/mine-exchange
       → 200 application/zip
         Content-Disposition: attachment; filename="minegen_<safeScenarioId>_mineexchange_v1.zip"
-        X-MineExchange-Version: 1.0.0
+        X-MineExchange-Version: 1.1.0
         X-MineExchange-Generated-At: <ISO time, NON-authoritative>
       → 404 SCENARIO_NOT_FOUND
       → 409 WORLD_NOT_GENERATED            (the world is the only prerequisite)
@@ -41,7 +45,8 @@ meaning of an existing field is a major version.
       → 409 <artifact refusal>             (STALE / MALFORMED present artifact:
                                             CAPABILITY_GRAPH_STALE, LAYOUT_V2_SELECTION_STALE,
                                             SHAFTS_STALE, ARTIFACT_MALFORMED, …)
-      → 409 MINE_EXCHANGE_EXPORT_FAILED    (a mandatory entity failed its QA)
+      → 409 MINE_EXCHANGE_EXPORT_FAILED    (a mandatory entity failed its QA, or the
+                                            mining-method authorities disagree — 1.1)
 
 The export is **synchronous and read-only**: nothing is generated, nothing is
 written under `derived/`, no registry entry, no invalidation cascade. There is
@@ -100,9 +105,14 @@ not. It is never assumed.
       topology/network.json             MineNetwork DTO (authority for topology)
       topology/nodes.csv, edges.csv     convenience tables
       semantics/capability.json         capability DTO (edge capabilities, required paths, egress advisory)
+      semantics/mining_method.json      1.1 — requested method, registry implementation status,
+                                        parameters, production-development / production status (ALWAYS present)
+      production/stopes.json            1.1 — planned stopes DTO (authority: stopes.json), planning quantities
+      production/stopes/<stope>.{stl,obj,glb}  1.1 — one AUTHORITATIVE closed prism per stope (never unioned)
 
-A world-only scenario yields `terrain/`, `orebody/`, `geology/` and records
-everything else under `manifest.omissions[]` (`ARTIFACT_ABSENT`). Partial
+A world-only scenario yields `terrain/`, `orebody/`, `geology/` and
+`semantics/mining_method.json` (the scenario is its first authority) and
+records everything else under `manifest.omissions[]` (`ARTIFACT_ABSENT`). Partial
 exports (world-only, world + ramp, world + ramp + levels, …) are the normal
 case: the bundle is a portable snapshot of the currently valid authoritative
 state, and the exporter never generates or recomputes a design to fill a
@@ -111,12 +121,13 @@ gap. Four situations are kept distinct:
 | source state | export outcome |
 | --- | --- |
 | absent | omission `ARTIFACT_ABSENT` for that group |
-| present, VALID, status `FAILED` (optional source: level accesses, levels, shafts, network, capability graph, render meshes) | omission `SOURCE_NOT_SUCCESS` with the artifact, its status and `failureReason` in `detail`; the rest of the bundle is unaffected |
+| present, VALID, status `FAILED` (optional source: level accesses, levels, shafts, network, capability graph, render meshes, stopes) | omission `SOURCE_NOT_SUCCESS` with the artifact, its status and `failureReason` in `detail`; the rest of the bundle is unaffected |
 | present but STALE | typed refusal with the artifact's own code (e.g. `CAPABILITY_GRAPH_STALE`, `LAYOUT_V2_SELECTION_STALE`) — never treated as absent |
 | present but MALFORMED | typed refusal `ARTIFACT_MALFORMED` |
 
 Files are never faked; `NOT_IN_V1` omissions name what v1 deliberately leaves
-out (stopes, timeline, field lattice). A defect in the exporter's own
+out (timeline, field lattice — stopes joined the bundle in 1.1 and now follow
+the `ARTIFACT_ABSENT` / `SOURCE_NOT_SUCCESS` semantics above). A defect in the exporter's own
 projection — an unresolvable network geometry reference, a duplicated entity
 id or bundle path, a dangling parent, an unrecognised development id, a
 closed-solid QA failure — is a typed `409 MINE_EXCHANGE_EXPORT_FAILED`
@@ -128,9 +139,9 @@ safe paths, every `entities[].files` entry present, every non-null
 resolving to an entity, and every exported network edge's
 `geometryEntityId` resolving.
 
-## Manifest schema (1.0.0)
+## Manifest schema (1.1.0)
 
-    mineExchangeVersion   "1.0.0"
+    mineExchangeVersion   "1.1.0"
     scenarioId, scenarioName
     coordinateSystem      { name, crs, axes, axisOrder, verticalAxis, handedness, unit }
     units                 { length, angle, volume }
@@ -152,10 +163,13 @@ Semantic types: `MANIFEST, README, TERRAIN_GRID, TERRAIN_SURFACE,
 OREBODY_MODEL, OREBODY, FAULT_MODEL, FAULT_SURFACE, EXCAVATION_ENTITIES,
 EXCAVATION_CENTERLINES, EXCAVATION_SOLID, EXCAVATION_MULTI_BODY,
 EXCAVATION_RENDER_SURFACE, MINE_NETWORK, MINE_NETWORK_NODES,
-MINE_NETWORK_EDGES, CAPABILITY`. Representations: `DOCUMENT, TABLE,
+MINE_NETWORK_EDGES, CAPABILITY` and, since 1.1, `MINING_METHOD,
+PRODUCTION_STOPES, STOPE_SOLID`. Representations: `DOCUMENT, TABLE,
 NODE_GRID, ESRI_ASCII_GRID, SURFACE_MESH, DERIVED_SURFACE_OF_SOLID,
 PLANAR_POLYGONS, POLYLINES, CLOSED_LOGICAL_SWEEP, MULTI_BODY_CONCATENATION,
-RENDER_SURFACE`.
+RENDER_SURFACE` and, since 1.1, `AUTHORITATIVE_CLOSED_MESH` (a closed mesh
+that IS the authority's own geometry — the stope prism — not a derived
+surface and not a sweep).
 
 ## Stable entity identity
 
@@ -173,6 +187,7 @@ reused; new ids follow a documented deterministic rule
 | drift | `drift:<levelId>` (aggregate + solid) / `drift:<levelId>:<piece>` (pieces) | `drift:L01`, `drift:L01:00` |
 | crosscut | `crosscut:<levelId>:<station>` | `crosscut:L01:S+00` |
 | shaft | `shaft:<shaftId>` (aggregate, kind `SHAFT`); axis segments `shaft:<centerlineId>` (kind `SHAFT_SEGMENT`, parent `shaft:<shaftId>`); station drives `shaft-station-access:<centerlineId>` | `shaft:SHAFT-01`, `shaft:SHAFT:SHAFT-01:SEG00` |
+| stope (1.1) | `stope:<stopeId>` (kind `STOPE`, `sourceArtifact = stopes.json`, `sourceId = stopeId`, no parent) | `stope:STOPE:L01-L02:S+00` |
 
 **Aggregates** (`ramp:main`, `drift:<levelId>`, `shaft:<shaftId>`) are parent
 entities. Provenance is by kind:
@@ -323,6 +338,60 @@ Geometry ≠ topology ≠ capability: a DXF polyline does not mean connected, a
 network edge does not mean personnel-capable, a capability does not mean a
 legal certification.
 
+## Mining method and production stopes (1.1, Phase 21A)
+
+`semantics/mining_method.json` (`MINING_METHOD`, always present) projects the
+scenario's **requested** method and what this MineGen version implements for
+it, resolved through the ONE backend mining-method registry
+(`mining/methods/registry.py::plan_for`, CLAUDE.md rule 192):
+
+    requestedMethod          scenario.mining.method (configuration authority)
+    displayName              registry presentation name
+    implementationStatus     IMPLEMENTED | UNSUPPORTED_METHOD (registry authority)
+    parameters               { sublevelInterval, stopeLength, minimumPillar }
+    productionDevelopment    { status IMPLEMENTED | UNSUPPORTED_METHOD | NOT_GENERATED, reason,
+                               sourceArtifact levels.json, sourceRevision, entityIds[] = CROSSCUT entities }
+    production               { status SUCCESS | FAILED | NOT_GENERATED, failureReason,
+                               sourceArtifact stopes.json, sourceRevision, stopeCount, entityIds[] = STOPE entities }
+
+It references the exported CROSSCUT / STOPE entities and duplicates no
+geometry. Three authorities must agree or the export is a typed
+`409 MINE_EXCHANGE_EXPORT_FAILED` (`builder.py::check_method_authority`):
+the scenario's requested method, `levels.json → productionDevelopment.method
+/ status` (against the registry's implementation status) and `stopes.json →
+method`; a SUCCESS `stopes.json` under a method the registry does not
+implement is refused — longhole geometry is never exported under another
+method's name. An unsupported method (CUT_AND_FILL, ROOM_AND_PILLAR,
+SUBLEVEL_CAVING, SHRINKAGE_STOPING) exports `implementationStatus =
+UNSUPPORTED_METHOD`, `productionDevelopment.status = UNSUPPORTED_METHOD`
+with the builder's reason, no CROSSCUT entities, a FAILED `production`
+block and a `STOPES / SOURCE_NOT_SUCCESS` omission carrying the typed
+`UNSUPPORTED_METHOD: …` failure reason — a feature boundary, never a mine
+failure and never a fallback.
+
+`production/stopes.json` (`PRODUCTION_STOPES`) and the per-stope files
+(`STOPE_SOLID`, `AUTHORITATIVE_CLOSED_MESH`) project a **SUCCESS**
+`stopes.json`: one `STOPE` entity per planned stope in **sorted stope-id
+order** (never list order), with the artifact's own 8-vertex / 12-triangle
+prism written to STL, OBJ and an exporter-created GLB (glTF Y-up root
+matrix, like the orebody). The geometry is the authority's — never
+re-derived, never moved, never unioned (`unioned = false`; vertically
+adjacent stopes share a boundary face by construction) — and every body is
+QA'd INDEPENDENTLY: finite, valid indices, non-degenerate, edge-manifold,
+watertight, outward, positive signed volume agreeing with the artifact's
+`geometricVolumeM3` within 1e-6 relative, exactly 8 / 12, unique ids. A
+defect is a typed refusal, never trusted from the source report. The stope
+DTO rows carry identity (`entityId`, `stopeId`, `method`, `stationIndex`,
+`stationU`, level pair), the two MineNetwork `STOPE_ACCESS` node ids (the
+link to the network — a stope is a production VOLUME, never a network edge),
+local bounds, dimensions and the planning quantities `geometricVolumeM3`,
+`tonnes`, `meanGradeProxy` — deterministic planning numbers, never reserves
+or resources. Stopes export **without** a network (world + levels + stopes
+is a valid partial bundle); when the network IS present, both access node
+ids must be exported nodes or the export is refused. Multi-body / unioned
+stope files and the future kinds `DRAWPOINT`, `PILLAR`, `BACKFILL_VOLUME`,
+`ROOM`, `CUT`, `BENCH` are NOT emitted in 1.1.
+
 ## Determinism and integrity
 
 The same authoritative snapshot yields the same bytes: lexicographic entry
@@ -337,7 +406,7 @@ not self-listed) and nothing unlisted is packed.
 
 The service takes ONE validated snapshot of every source (scenario, arrays,
 ramp source, both ramp owners, level accesses, levels, shafts, network,
-capability graph, tunnel / development reports and GLB bytes), checks the
+capability graph, stopes (1.1), tunnel / development reports and GLB bytes), checks the
 world binding against it, builds the bundle, then re-snapshots and refuses
 with `READ_SNAPSHOT_CHANGED` if any revision or presence changed meanwhile.
 A bundle never mixes revisions.
@@ -350,22 +419,27 @@ button is never disabled because a design layer is missing. Beneath it,
 "Current export contents" (`components/panels/exportContents.ts`) lists each
 layer as included / not generated / failed, read from the already-loaded
 scene snapshot only — no generation endpoint is called and nothing is
-inferred — with the helper text "MineExchange exports the currently available
+inferred — including, since 1.1, the always-included "Mining method" row and
+the "Stopes" row (`scene.stopes` status) — with the helper text "MineExchange exports the currently available
 mine state. Layers not yet generated are omitted and recorded in the
 manifest." The manifest remains the authority on the bundle's content.
 
 ## Exclusions in v1 (`NOT_IN_V1` / non-scope)
 
-Stopes and the mining-method plan (Phase 21A.2 extension), grade / rock
-quality lattices (never a block model), GeoTIFF / real CRS / `.prj`, a
-terrain-closed `model_block.stl`, Boolean unions, timeline / production /
-economics, application adapters (Phase 23B), import and write-back.
+Grade / rock quality lattices (never a block model), GeoTIFF / real CRS /
+`.prj`, a terrain-closed `model_block.stl`, Boolean unions (including a
+unioned or multi-body stope file), timeline / production scheduling /
+economics, drawpoint / pillar / backfill / room / cut / bench entities (the
+Phase 21B / 21C methods that own them are not implemented), application
+adapters (Phase 23B), import and write-back. Stopes and the mining-method
+semantics were NOT_IN_V1 in 1.0 and are part of the bundle since 1.1.
 
 ## Versioning policy
 
 - 1.x: additive files, fields, omission groups and entity kinds only;
-  existing meanings, ids and coordinate contract unchanged. Reserved future
-  entity kinds (STOPE, PRODUCTION_DRIFT, DRAWPOINT, PILLAR, BACKFILL_VOLUME)
-  are documented here, not pre-declared in the enum.
+  existing meanings, ids and coordinate contract unchanged. 1.1 declared
+  `STOPE`; the remaining reserved future entity kinds (PRODUCTION_DRIFT,
+  DRAWPOINT, PILLAR, BACKFILL_VOLUME, ROOM, CUT, BENCH) are documented here,
+  not pre-declared in the enum.
 - 2.0: any change to the coordinate contract, entity identity rule or the
   meaning of an existing manifest field.

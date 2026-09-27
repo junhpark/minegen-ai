@@ -34,7 +34,18 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  /api/v1/scenarios/{id}/scene                web scene manifest (terrain heightmap,
                                                      orebody mesh, fault polygons, fieldGrid
                                                      lattice description, default rock-quality
-                                                     slice, stats)
+                                                     slice, stats, and — Phase 21A — the read-only
+                                                     "miningMethod" block {method, displayName,
+                                                     implementationStatus IMPLEMENTED |
+                                                     UNSUPPORTED_METHOD, sublevelInterval,
+                                                     stopeLength, minimumPillar} resolved by the
+                                                     backend mining-method registry, rule 192)
+    POST /api/v1/scenarios/{id}/export/mine-exchange MineExchange bundle (docs/mine-exchange.md);
+                                                     X-MineExchange-Version 1.1.0 since Phase 21A
+                                                     (semantics/mining_method.json, production
+                                                     stopes, STOPE entities; 409
+                                                     MINE_EXCHANGE_EXPORT_FAILED on a method-
+                                                     authority mismatch)
 
     Scenario documents are schemaVersion 2 (Phase 18): `fieldSampling
     {spacingX, spacingY, spacingZ}` replaces the v1 `blockModel {dx, dy, dz}`.

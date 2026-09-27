@@ -39,7 +39,6 @@ from typing import Any, Literal
 import numpy as np
 import numpy.typing as npt
 
-from minegen.core.enums import MiningMethodType
 from minegen.core.models import Scenario
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.design.profile import boundary_points, build_profile, required_clearance
@@ -62,6 +61,12 @@ from minegen.levels.models import (
     LevelSummary,
     ProductionDevelopment,
 )
+from minegen.mining.methods.contracts import (
+    ProductionLattice,
+    station_margin,
+    station_pitch,
+)
+from minegen.mining.methods.registry import plan_for
 from minegen.world.orebody import Orebody, TabularOrebody
 
 FloatArray = npt.NDArray[np.float64]
@@ -247,19 +252,24 @@ class LevelDevelopmentBuilder:
         self.drift_ev = drift_evaluator
         self.crosscut_ev = crosscut_evaluator
         self.shape = build_profile(scenario.ramp, scenario.tunnel_profile)
+        # Phase 21A (rule 192): the method's declarative intent comes from the
+        # registry — the builder constructs and validates geometry, it never
+        # decides which method a scenario gets
+        self.plan = plan_for(scenario.mining.method)
 
     # -- station lattice (rule 72) ------------------------------------------ #
 
     def station_pitch(self) -> float:
-        return float(self.scenario.mining.stope_length + self.scenario.mining.minimum_pillar)
+        """The persisted ``stationPitch`` metric (scenario parameter echo)."""
+        return station_pitch(self.scenario.mining)
 
     def station_us(self, orebody: TabularOrebody) -> list[float]:
-        """Symmetric about the orebody ``u = 0``; every planned stope-length
-        proxy plus its end pillar must fit inside the strike extent."""
-        pitch = self.station_pitch()
-        margin = self.scenario.mining.stope_length / 2.0 + self.scenario.mining.minimum_pillar
-        k_max = math.floor((orebody.half_length - margin) / pitch + 1e-9)
-        return [k * pitch for k in range(-k_max, k_max + 1)]
+        """The plan's production lattice mapped onto the strike coordinate:
+        symmetric about the orebody ``u = 0``, every planned stope-length
+        proxy plus its end pillar inside the strike extent. Empty for a
+        method without a production lattice."""
+        lattice = self.plan.production_lattice(self.scenario)
+        return lattice.offsets(orebody.half_length) if lattice is not None else []
 
     @staticmethod
     def generic_backbone_extent(orebody: TabularOrebody) -> tuple[float, float]:
@@ -340,20 +350,11 @@ class LevelDevelopmentBuilder:
         if not entries:
             return _failed(source_revision, "no level entries to develop")
 
-        method = self.scenario.mining.method
-        if method is MiningMethodType.LONGHOLE_OPEN_STOPING:
-            production = ProductionDevelopment(method=method.value, status="IMPLEMENTED")
-        else:
-            production = ProductionDevelopment(
-                method=method.value,
-                status="UNSUPPORTED_METHOD",
-                reason=(
-                    f"{method.value} production development (ore drives, lift / fill "
-                    "accesses, raises) is reserved and not implemented; only the generic "
-                    "footwall backbone drift is developed — no longhole crosscut lattice "
-                    "is substituted (rule 159)"
-                ),
-            )
+        # Phase 21A (rule 192): WHAT production development the method
+        # requires is the plan's answer; WHERE it is built and whether it is
+        # valid stays here
+        production = self.plan.production_development(self.scenario)
+        lattice = self.plan.production_lattice(self.scenario)
         # Phase 20C.2A dispatch — by the AVAILABLE development-geometry
         # contract, not by orebody type: entries carrying curved anchors
         # (non-null traceChainage) are developed along the section-trace
@@ -369,7 +370,7 @@ class LevelDevelopmentBuilder:
                     "trace anchors with straight rule 43 anchors — one selection "
                     "cannot carry two backbone contracts",
                 )
-            return self._build_curved(entries, source_revision, entry_source, production)
+            return self._build_curved(entries, source_revision, entry_source, production, lattice)
         if not isinstance(self.orebody, TabularOrebody):
             return _failed(
                 source_revision,
@@ -396,11 +397,11 @@ class LevelDevelopmentBuilder:
         g = float(self.scenario.ramp.level_drift_gradient)
         drift_dir = np.array([u_hat[0], u_hat[1], -g])
         drift_dir /= float(np.linalg.norm(drift_dir))
-        longhole = production.status == "IMPLEMENTED"
-        stations = self.station_us(ob) if longhole else []
+        longhole = lattice is not None
+        stations = lattice.offsets(ob.half_length) if lattice is not None else []
         pitch = self.station_pitch()
         if longhole and not stations:
-            margin = self.scenario.mining.stope_length / 2.0 + self.scenario.mining.minimum_pillar
+            margin = station_margin(self.scenario.mining)
             return _failed(
                 source_revision,
                 "orebody strike extent cannot accommodate one planned "
@@ -620,6 +621,7 @@ class LevelDevelopmentBuilder:
         source_revision: str,
         entry_source: Literal["LEGACY_RAMP_SEGMENT", "LEVEL_ACCESS"],
         production: ProductionDevelopment,
+        lattice: ProductionLattice | None,
     ) -> LevelsPayload:
         """Level development along the curved SECTION_FOOTWALL_OFFSET_TRACE
         backbone (Phase 20C.2A A4). The offset trace is rebuilt
@@ -675,9 +677,9 @@ class LevelDevelopmentBuilder:
             return _failed(source_revision, "no footwall reference track for this orebody")
         by_id = {lv.level_id: lv for lv in levels}
         g = float(sc.ramp.level_drift_gradient)
-        longhole = production.status == "IMPLEMENTED"
+        longhole = lattice is not None
         pitch = self.station_pitch()
-        station_margin = sc.mining.stope_length / 2.0 + sc.mining.minimum_pillar
+        margin = lattice.margin if lattice is not None else station_margin(sc.mining)
 
         developments: list[Development] = []
         summaries: list[LevelSummary] = []
@@ -727,15 +729,16 @@ class LevelDevelopmentBuilder:
             clearance = min(GENERIC_BACKBONE_END_CLEARANCE, 0.25 * span)
             mid = 0.5 * span
             planned: list[float] = []
-            if longhole:
-                k_max = math.floor((mid - station_margin) / pitch + 1e-9)
-                planned = [mid + k * pitch for k in range(-k_max, k_max + 1)] if k_max >= 0 else []
+            if lattice is not None:
+                # the plan's lattice about the trace midpoint (exact Phase
+                # 20C.2A arithmetic: mid + k·pitch)
+                planned = [mid + off for off in lattice.offsets(mid)]
                 if not planned:
                     return _failed(
                         source_revision,
                         f"offset trace span {span:.1f} m at level {level_id} cannot "
                         "accommodate one planned stope-access station "
-                        f"(span/2 < stope_length/2 + minimum_pillar = {station_margin:g} m)",
+                        f"(span/2 < stope_length/2 + minimum_pillar = {margin:g} m)",
                     )
             # rule 180 station confirmation (rule 141 precedent, PR #24
             # follow-up): a planned station where NEITHER horizontal

@@ -378,12 +378,21 @@ developments (220 drift pieces + 221 crosscuts), network 455 nodes / 454
 edges (13 RAMP + 220 DRIFT + 221 CROSSCUT), single component, max weld
 1.4e-14 m, every underground node at one surface path.
 
-## Phase 09 — stopes & mining method (`mining/`, rules 75–80)
+## Phase 09 — stopes & mining method (`mining/`, rules 75–80, 192)
 
-Stope generation goes through the explicit MiningMethodStrategy factory:
-v0.1 implements LONGHOLE_OPEN_STOPING; every other reserved method returns a
-typed UNSUPPORTED_METHOD failure — never a silent longhole substitute
-(rule 78). The generator consumes the validated Phase 08 `levels.json` ONLY
+Stope generation goes through the ONE mining-method registry (Phase 21A,
+rule 192): `mining/methods/registry.py::plan_for(method)` resolves every
+`MiningMethodType` explicitly to a `MiningMethodPlan` —
+`LongholeOpenStopingPlan` (IMPLEMENTED, wrapping the unchanged
+`LongholeOpenStopingStrategy`) or an `UnsupportedMethodPlan` whose
+`generate_production` returns the typed UNSUPPORTED_METHOD failure — never a
+silent longhole substitute (rule 78) and never a `None` a caller could
+default. The same plan tells the level builder WHAT production development
+the method needs (`production_development`) and the station lattice it uses
+(`ProductionLattice(pitch = stope_length + minimum_pillar, margin =
+stope_length / 2 + minimum_pillar)`; `None` → generic backbone only), so
+Phase 08 and Phase 09 read one declaration. The level builder owns WHERE
+and validity. The generator consumes the validated Phase 08 `levels.json` ONLY
 (the station lattice is never recomputed): for every adjacent completed
 level pair and station index, the paired CROSSCUT terminals — gated onto the
 footwall face and station plane within 1e-6 m — anchor an orebody-aligned

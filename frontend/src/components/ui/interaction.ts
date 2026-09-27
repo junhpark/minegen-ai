@@ -62,3 +62,27 @@ export function isOutside(container: ContainsNode | null, target: unknown): bool
   if (target === null || typeof target !== 'object') return true
   return !container.contains(target)
 }
+
+/** Structural view of the one document call the roving tab focus needs. */
+interface TabDocument {
+  getElementById(id: string): { focus(): void } | null
+}
+
+/** The DOM id `PanelTabs` gives every tab button — ONE definition. */
+export function tabElementId(panelId: string, id: string): string {
+  return `${panelId}-tab-${id}`
+}
+
+/**
+ * Phase 21A (§37): after a keyboard tab move the roving tabindex alone does
+ * not move focus — `aria-selected` and `tabIndex` change, but the focused
+ * element stays the old tab. Move DOM focus to the newly active tab; a
+ * missing element (not mounted, no DOM) is a no-op. Returns whether focus
+ * was moved, so the behaviour is testable without a DOM global.
+ */
+export function focusTab(doc: TabDocument | null, panelId: string, id: string): boolean {
+  const el = doc?.getElementById(tabElementId(panelId, id)) ?? null
+  if (!el) return false
+  el.focus()
+  return true
+}

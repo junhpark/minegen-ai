@@ -6,7 +6,15 @@
  * rendered states are pinned in their own markup tests.
  */
 import { describe, expect, it } from 'vitest'
-import { isActivateKey, isDismissKey, isOutside, nextTabId, toggled } from './interaction'
+import {
+  focusTab,
+  isActivateKey,
+  isDismissKey,
+  isOutside,
+  nextTabId,
+  tabElementId,
+  toggled,
+} from './interaction'
 
 describe('isDismissKey', () => {
   it('Escape closes an open popover or disclosure', () => {
@@ -88,5 +96,22 @@ describe('isOutside', () => {
 
   it('with no container there is nothing to close', () => {
     expect(isOutside(null, null)).toBe(false)
+  })
+})
+
+describe('focusTab (§37 roving focus follows the keyboard move)', () => {
+  it('focuses the element PanelTabs renders for the new active tab', () => {
+    const focused: string[] = []
+    const doc = {
+      getElementById: (id: string) => ({ focus: () => focused.push(id) }),
+    }
+    expect(focusTab(doc, 'design', 'MINING')).toBe(true)
+    expect(focused).toEqual([tabElementId('design', 'MINING')])
+    expect(tabElementId('design', 'MINING')).toBe('design-tab-MINING')
+  })
+
+  it('is a no-op without a document or when the tab is not mounted', () => {
+    expect(focusTab(null, 'design', 'MINING')).toBe(false)
+    expect(focusTab({ getElementById: () => null }, 'design', 'MINING')).toBe(false)
   })
 })

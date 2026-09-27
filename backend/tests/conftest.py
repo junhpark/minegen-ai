@@ -50,6 +50,9 @@ from minegen.world.synthetic_world import SyntheticWorld, generate_world
 
 #: module → markers (every test in the module)
 MODULE_MARKERS: dict[str, tuple[str, ...]] = {
+    # Phase 21A MineExchange 1.1 over the REAL LAYOUT_V2 longhole chain + stopes
+    # and a CUT_AND_FILL chain (two module-scoped stacks: minutes)
+    "test_exchange_mining_method": ("e2e",),
     "test_layout_v2_golden_smoke": ("golden",),
     # Phase 20B.x: the GEOMETRY-STRESS feasibility oracle (one full layout-v2 search)
     "test_geometry_stress_oracle": ("slow",),

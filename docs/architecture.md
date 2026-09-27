@@ -74,8 +74,11 @@ here. Per-phase decision records below keep their original wording.
                        READ-ONLY projection of the layout-v2 catalogue,
                        selection, ramp source and capability graph — never
                        persisted, never a design authority)
-      mining/          MiningMethod strategy interface, longhole open stoping,
-                       stope generator, typed unsupported-method failure
+      mining/          Phase 21A mining-method core (rule 192): methods/registry.py
+                       (plan_for — the ONE dispatch authority), methods/contracts.py
+                       (MiningMethodPlan protocol, ProductionLattice), methods/longhole.py
+                       (longhole open stoping strategy + plan), methods/unsupported.py
+                       (explicit UNSUPPORTED_METHOD plans), stope models
       scheduling/      MineTask, dependencies, scheduler, timeline state
       infrastructure/  shared network domain, candidate sites, demand points,
                        coverage models, placement solver
@@ -143,7 +146,7 @@ Design tab contents:
 | Layout | Mine layout (candidates, selection, activation), Design assessment, Legacy decline (Hybrid-A\*) — Advanced |
 | Develop | Level development, Development mesh, Ramp tunnel mesh, Shafts |
 | Network | Mine network, Capabilities (two separate cards: geometry ≠ topology ≠ capability) |
-| Mining | Stopes, Schedule (a mining-method card joins them in Phase 21A) |
+| Mining | Mining method (read-only registry card, Phase 21A — no selector), Stopes, Schedule |
 
 Every card follows one layout: `title + ⓘ` and a status badge, then the key
 metrics, then the action, then `Details ▸`. Status, key metrics and any
@@ -1515,3 +1518,57 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
   server-declared filename; the Scenario panel button is enabled once a world
   exists and shows `Preparing export…`; the backend manifest is the only
   authority on what the bundle contains.
+
+## Phase 21A — Mining Method Core, Longhole migration, MineExchange 1.1 (rule 192)
+
+- **One registry.** `mining/methods/registry.py::plan_for(method)` is the
+  single authority that maps a `MiningMethodType` to its `MiningMethodPlan`
+  (`mining/methods/contracts.py`, a Protocol: `method`,
+  `implementation_status`, `display_name`, `production_development(scenario)`,
+  `production_lattice(scenario)`, `generate_production(...)`). Every enum
+  member is registered EXPLICITLY — `LongholeOpenStopingPlan`
+  (`methods/longhole.py`, IMPLEMENTED) wraps the untouched
+  `LongholeOpenStopingStrategy`; CUT_AND_FILL, ROOM_AND_PILLAR,
+  SUBLEVEL_CAVING and SHRINKAGE_STOPING are `UnsupportedMethodPlan`s
+  (`methods/unsupported.py`). `plan_for` never returns `None` and an
+  unregistered member is a typed `UnknownMiningMethodError`, so no path can
+  fall back to longhole geometry. `methods/base.py` (`strategy_for`) is gone.
+- **WHAT vs WHERE.** The plan owns the declarative intent: the
+  `ProductionDevelopment` status / reason the level builder records, the
+  station lattice (`ProductionLattice(pitch = stope_length + minimum_pillar,
+  margin = stope_length / 2 + minimum_pillar)` — the exact Phase 08 / 20C.2A
+  arithmetic, `None` for an unsupported method) and the production generator.
+  `levels/builder.py::LevelDevelopmentBuilder` keeps WHERE and validity: it
+  asks `self.plan` for the lattice offsets and develops the generic backbone
+  drift for every method; `services/design_service.py::generate_stopes` calls
+  `plan_for(method).generate_production(...)`. No method `if` remains in
+  either consumer (`tests/test_mining_method_registry.py` scans the sources).
+- **Longhole parity gate.** `tests/test_mining_method_parity.py` compares the
+  migrated `levels.json` / `stopes.json` against canonical-JSON digests and
+  structural summaries captured on the pre-migration HEAD
+  (`tests/fixtures/phase21a/longhole_parity.json`, written once by
+  `scripts/phase21a_capture_parity.py`): TABULAR legacy (34 stopes), TABULAR
+  layout-v2, CUT_AND_FILL (generic backbone, UNSUPPORTED_METHOD, FAILED
+  stopes) and WARPED-301 (the rule 135 `ExactDistanceRequiredError` typed
+  boundary). All byte-identical; goldens untouched. No new persisted artifact
+  (no `mining_method_plan.json`), `Stope.method` stays the
+  `LONGHOLE_OPEN_STOPING` literal, every pre-21A failure string is preserved.
+- **MineExchange 1.1** (`docs/mine-exchange.md`): `stopes.json` joins the
+  export snapshot; `semantics/mining_method.json` (always present),
+  `production/stopes.json` + one authoritative closed prism per stope
+  (STL / OBJ / GLB, independent closed-solid QA, volume agreement), the
+  `STOPE` entity kind, STOPES omission semantics `ARTIFACT_ABSENT` /
+  `SOURCE_NOT_SUCCESS` (TIMELINE stays `NOT_IN_V1`), and
+  `check_method_authority` (scenario ↔ levels ↔ stopes method agreement, a
+  typed 409). Stopes export without a network; with one, access node ids are
+  cross-checked. The export projects; it never creates.
+- **Frontend.** `build_scene` adds the read-only `miningMethod` block
+  (method, display name, implementation status, parameters) computed from
+  the registry; the Mining tab shows it as a `WorkflowCard` above Stopes
+  (Implemented / Not implemented, parameters in Details, no selector — an
+  unsupported method is a feature boundary, not a mine failure). The export
+  contents readout gains the "Mining method" and "Stopes" rows. `PanelTabs`
+  arrow / Home / End keys now move DOM focus with the selection
+  (`ui/interaction.ts::focusTab`, Phase 20E §37 follow-up).
+- **Non-scope.** Cut & Fill (21B) and Room & Pillar (21C) production
+  geometry, drawpoint / pillar / backfill / room / cut / bench entities.

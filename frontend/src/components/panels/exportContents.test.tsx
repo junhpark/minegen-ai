@@ -22,6 +22,7 @@ function scene(over: Partial<WorldScene> = {}): WorldScene {
     developmentMesh: null,
     network: null,
     capabilityGraph: null,
+    stopes: null,
     ...over,
   } as unknown as WorldScene
 }
@@ -41,12 +42,14 @@ describe('describeExportContents', () => {
       terrain: 'INCLUDED',
       orebody: 'INCLUDED',
       faults: 'INCLUDED',
+      miningMethod: 'INCLUDED',
       ramp: 'NOT_GENERATED',
       levels: 'NOT_GENERATED',
       tunnelMesh: 'NOT_GENERATED',
       developmentMesh: 'NOT_GENERATED',
       network: 'NOT_GENERATED',
       capability: 'NOT_GENERATED',
+      stopes: 'NOT_GENERATED',
     })
     expect(layers.find((l) => l.key === 'faults')?.label).toBe('Faults (2)')
     // an undeclared shaft is not a missing layer; LEGACY has no level accesses
@@ -74,6 +77,7 @@ describe('describeExportContents', () => {
     expect(byKey.developmentMesh).toBe('NOT_GENERATED')
     expect(byKey.network).toBe('NOT_GENERATED')
     expect(byKey.capability).toBe('NOT_GENERATED')
+    expect(byKey.stopes).toBe('NOT_GENERATED')
   })
 
   it('full: every layer included, a FAILED capability graph is failed (not omitted silently)', () => {
@@ -88,6 +92,7 @@ describe('describeExportContents', () => {
         developmentMesh: ok,
         network: ok,
         capabilityGraph: ok,
+        stopes: ok,
       }),
       true,
     )
@@ -96,6 +101,7 @@ describe('describeExportContents', () => {
       'terrain',
       'orebody',
       'faults',
+      'miningMethod',
       'ramp',
       'levelAccesses',
       'levels',
@@ -104,12 +110,20 @@ describe('describeExportContents', () => {
       'developmentMesh',
       'network',
       'capability',
+      'stopes',
     ])
     const withFailedCap = describeExportContents(
       scene({ smoothedDecline: ok, levels: ok, network: ok, capabilityGraph: failed }),
       false,
     )
     expect(withFailedCap.find((l) => l.key === 'capability')?.state).toBe('FAILED')
+  })
+
+  it('MineExchange 1.1: the method semantics are always included; FAILED stopes are failed', () => {
+    const layers = describeExportContents(scene({ stopes: failed }), false)
+    expect(layers.find((l) => l.key === 'miningMethod')?.state).toBe('INCLUDED')
+    expect(layers.find((l) => l.key === 'stopes')?.state).toBe('FAILED')
+    expect(layers.find((l) => l.key === 'stopes')?.label).toBe('Stopes')
   })
 })
 
