@@ -1,5 +1,5 @@
 /**
- * Phase 23A (PR #44 correction S3): what the MineExchange export will
+ * Phase 23A (PR #44 correction S3) + 21A (MineExchange 1.1): what the export will
  * contain RIGHT NOW, read from the already-loaded scene snapshot.
  *
  * This is a READ of existing status only. The panel never calls a
@@ -42,6 +42,9 @@ export function describeExportContents(
     { key: 'terrain', label: 'Terrain', state: 'INCLUDED' },
     { key: 'orebody', label: 'Orebody', state: 'INCLUDED' },
     { key: 'faults', label: `Faults (${scene.faults.length})`, state: 'INCLUDED' },
+    // MineExchange 1.1: the method semantics document is always present
+    // (the scenario is its first authority)
+    { key: 'miningMethod', label: 'Mining method', state: 'INCLUDED' },
     { key: 'ramp', label: 'Ramp', state: stateOf(scene.smoothedDecline) },
   ]
   if (scene.rampSource.activeSource === 'LAYOUT_V2') {
@@ -64,6 +67,8 @@ export function describeExportContents(
     },
     { key: 'network', label: 'Network', state: stateOf(scene.network) },
     { key: 'capability', label: 'Capability', state: stateOf(scene.capabilityGraph) },
+    // MineExchange 1.1: planned stope solids (stopes.json)
+    { key: 'stopes', label: 'Stopes', state: stateOf(scene.stopes) },
   )
   return layers
 }

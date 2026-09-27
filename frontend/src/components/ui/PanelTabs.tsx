@@ -1,4 +1,4 @@
-import { nextTabId } from './interaction'
+import { focusTab, nextTabId, tabElementId } from './interaction'
 
 export interface PanelTab<T extends string> {
   id: T
@@ -21,7 +21,8 @@ interface Props<T extends string> {
  * Switching a tab is a PRESENTATION event only (§19): it selects which
  * workflow context is shown and never posts, mutates, regenerates or resets
  * layer state. Tab identity is frontend-local UI state and is never
- * persisted to a scenario.
+ * persisted to a scenario. Arrow / Home / End keys move BOTH the selection
+ * and DOM focus (Phase 21A §37), so the roving tabindex stays usable.
  */
 export function PanelTabs<T extends string>({ tabs, active, onSelect, label, panelId }: Props<T>) {
   const ids = tabs.map((t) => t.id)
@@ -38,7 +39,7 @@ export function PanelTabs<T extends string>({ tabs, active, onSelect, label, pan
             key={t.id}
             type="button"
             role="tab"
-            id={`${panelId}-tab-${t.id}`}
+            id={tabElementId(panelId, t.id)}
             aria-selected={selected}
             aria-controls={panelId}
             tabIndex={selected ? 0 : -1}
@@ -48,6 +49,8 @@ export function PanelTabs<T extends string>({ tabs, active, onSelect, label, pan
               if (next === null) return
               e.preventDefault()
               onSelect(next)
+              // §37: the roving tabindex needs DOM focus to follow the move
+              focusTab(typeof document === 'undefined' ? null : document, panelId, next)
             }}
             className={[
               'plate flex-1 px-1 py-2 text-[12px] whitespace-nowrap transition-colors',

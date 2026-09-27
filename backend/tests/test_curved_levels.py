@@ -24,7 +24,7 @@ from minegen.layout.search import (
 )
 from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
 from minegen.levels.models import DevelopmentKind, LevelsPayload
-from minegen.mining.methods.base import strategy_for
+from minegen.mining.methods.registry import plan_for
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 from tests.conftest import small_scenario
 
@@ -154,9 +154,7 @@ class TestCurvedLevelDevelopment:
         # (WARPED stope geometry is future scope; STOPE_ACCESS anchors exist)
         sc, world = warped
         payload, _, _ = warped_levels
-        strategy = strategy_for(sc.mining.method)
-        assert strategy is not None
-        stopes = strategy.generate(
+        stopes = plan_for(sc.mining.method).generate_production(
             sc,
             world,
             payload.model_dump(mode="json", by_alias=True),

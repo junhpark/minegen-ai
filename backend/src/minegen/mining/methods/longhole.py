@@ -29,6 +29,13 @@ import numpy.typing as npt
 from minegen.core.enums import MiningMethodType
 from minegen.core.models import Scenario
 from minegen.design.cost_field import DesignCostEvaluator
+from minegen.levels.models import ProductionDevelopment
+from minegen.mining.methods.contracts import (
+    ImplementationStatus,
+    ProductionLattice,
+    station_margin,
+    station_pitch,
+)
 from minegen.mining.models import (
     Stope,
     StopeGeometry,
@@ -447,4 +454,40 @@ class LongholeOpenStopingStrategy:
             method=method,
             stopes=stopes,
             metrics=metrics,
+        )
+
+
+class LongholeOpenStopingPlan:
+    """The LONGHOLE_OPEN_STOPING ``MiningMethodPlan`` (Phase 21A).
+
+    Owns the method's MEANING — the production-development intent (a
+    crosscut station lattice at ``stope_length + minimum_pillar`` pitch,
+    every station keeping ``stope_length / 2 + minimum_pillar`` inside the
+    developed span) and the production generation, which delegates to the
+    validated ``LongholeOpenStopingStrategy`` geometry algorithm unchanged.
+    The level builder constructs and validates the geometry; this plan never
+    computes a polyline."""
+
+    method = MiningMethodType.LONGHOLE_OPEN_STOPING
+    implementation_status: ImplementationStatus = "IMPLEMENTED"
+    display_name = "Longhole Open Stoping"
+
+    def production_development(self, scenario: Scenario) -> ProductionDevelopment:
+        return ProductionDevelopment(method=self.method.value, status="IMPLEMENTED")
+
+    def production_lattice(self, scenario: Scenario) -> ProductionLattice | None:
+        return ProductionLattice(
+            pitch=station_pitch(scenario.mining), margin=station_margin(scenario.mining)
+        )
+
+    def generate_production(
+        self,
+        scenario: Scenario,
+        world: SyntheticWorld,
+        levels_payload: dict[str, Any],
+        hard_evaluator: DesignCostEvaluator,
+        source_revision: str,
+    ) -> StopesPayload:
+        return LongholeOpenStopingStrategy().generate(
+            scenario, world, levels_payload, hard_evaluator, source_revision
         )

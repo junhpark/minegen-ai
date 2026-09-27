@@ -10,7 +10,8 @@ Bundle tree (``mine_exchange/``)::
     excavations/ entities.json  centerlines.csv  centerlines.dxf
                  solids/<entity>.stl  mine_multibody.stl  render/{tunnel,development}.glb
     topology/    network.json  nodes.csv  edges.csv
-    semantics/   capability.json
+    semantics/   capability.json  mining_method.json
+    production/  stopes.json  stopes/<entity>.{stl,obj,glb}      (1.1.0)
 """
 
 from __future__ import annotations
@@ -25,7 +26,9 @@ import numpy as np
 from minegen.core.artifacts import (
     CAPABILITY_GRAPH_ARTIFACT,
     DEVELOPMENT_MESH_ARTIFACT,
+    LEVELS_ARTIFACT,
     NETWORK_ARTIFACT,
+    STOPES_ARTIFACT,
     TUNNEL_MESH_ARTIFACT,
 )
 from minegen.core.models import Scenario
@@ -69,16 +72,25 @@ from minegen.exchange.models import (
     ExchangeCapabilityNode,
     ExchangeEgressAdvisory,
     ExchangeEntity,
+    ExchangeMiningMethod,
+    ExchangeMiningParameters,
     ExchangeNetwork,
     ExchangeNetworkEdge,
     ExchangeNetworkNode,
     ExchangeOmission,
+    ExchangeProductionDevelopmentStatus,
+    ExchangeProductionStatus,
+    ExchangeProductionStopes,
     ExchangeRequiredPath,
+    ExchangeStope,
+    ExchangeStopeBounds,
+    ExchangeStopesMetrics,
     GeometryQa,
     GlbFrame,
     MultiBodyComponent,
     SourceSnapshot,
 )
+from minegen.mining.methods.registry import plan_for
 from minegen.network.geometry_refs import (
     OWNING_ARTIFACTS_BY_EDGE_TYPE,
     GeometryRefError,
@@ -131,6 +143,8 @@ class ExchangeInputs:
     shafts: ArtifactInput | None = None
     network: ArtifactInput | None = None
     capability: ArtifactInput | None = None
+    #: 1.1.0: the Phase 09 stopes artifact (longhole production geometry)
+    stopes: ArtifactInput | None = None
     tunnel_report: ArtifactInput | None = None
     tunnel_glb: bytes | None = None
     development_report: ArtifactInput | None = None
@@ -222,14 +236,19 @@ def build_exchange(inputs: ExchangeInputs) -> BundleSpec:
     omissions: list[ExchangeOmission] = []
     notes: list[str] = []
 
+    # authority consistency FIRST (1.1.0): scenario method vs the method the
+    # levels / stopes artifacts were produced for — a disagreement is a typed
+    # refusal before any stope byte is projected
+    check_method_authority(inputs)
     _terrain(inputs, files, entities)
     _orebody(inputs, files, entities)
     _faults(inputs, files, entities)
     centerlines = _excavations(inputs, files, entities, omissions)
-    geometry_refs = _topology(inputs, centerlines, files, omissions)
+    geometry_refs, node_ids = _topology(inputs, centerlines, files, omissions)
     _capability(inputs, files, omissions)
+    stope_ids = _stopes(inputs, files, entities, omissions, node_ids)
+    _mining_method(inputs, centerlines, stope_ids, files)
     for group, detail in (
-        ("STOPES", "planned stope geometry is a Phase 21A.2 MineExchange extension"),
         ("TIMELINE", "development / production scheduling is not part of MineExchange v1"),
         (
             "FIELD_LATTICE",
@@ -248,6 +267,11 @@ def build_exchange(inputs: ExchangeInputs) -> BundleSpec:
     )
     notes.append(
         "Dual-egress and required capability paths are design advisories, never statutory claims."
+    )
+    notes.append(
+        "Stope solids (production/stopes/) are the authoritative planned prisms, one closed "
+        "body each; vertically adjacent stopes share a boundary face and are never unioned; "
+        "volumes, tonnes and grade proxies are planning quantities, never reserves."
     )
     spec = BundleSpec(
         scenario_id=inputs.scenario.id,
@@ -648,7 +672,7 @@ def _faults(
 
 
 def _source_not_success(
-    group: Literal["EXCAVATIONS", "SHAFTS", "CAPABILITY", "RENDER_GLB", "NETWORK"],
+    group: Literal["EXCAVATIONS", "SHAFTS", "CAPABILITY", "RENDER_GLB", "NETWORK", "STOPES"],
     artifact: str,
     doc: dict[str, Any],
 ) -> ExchangeOmission:
@@ -1131,7 +1155,10 @@ def _topology(
     centerlines: list[CenterlineEntity],
     files: list[BundleFile],
     omissions: list[ExchangeOmission],
-) -> list[tuple[str, str]]:
+) -> tuple[list[tuple[str, str]], set[str] | None]:
+    """→ (edge geometry refs, exported node ids); node ids are ``None`` when
+    no network is exported, so a partial export never rejects stopes for a
+    reference it cannot check (directive §43)."""
     if inputs.network is None:
         omissions.append(
             ExchangeOmission(
@@ -1141,11 +1168,11 @@ def _topology(
                 source_artifact=NETWORK_ARTIFACT,
             )
         )
-        return []
+        return [], None
     net = inputs.network.document
     if net.get("status") != "SUCCESS":
         omissions.append(_source_not_success("NETWORK", NETWORK_ARTIFACT, net))
-        return []
+        return [], None
     doc = project_network(
         net,
         inputs.network.revision,
@@ -1228,7 +1255,10 @@ def _topology(
             False,
         )
     )
-    return [(e.id, e.geometry_entity_id) for e in edges if e.geometry_entity_id is not None]
+    return (
+        [(e.id, e.geometry_entity_id) for e in edges if e.geometry_entity_id is not None],
+        set(node_ids),
+    )
 
 
 def project_network(
@@ -1327,6 +1357,435 @@ def project_network(
         source_revision=revision,
         nodes=nodes,
         edges=edges,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# mining method + production (1.1.0, Phase 21A)
+# --------------------------------------------------------------------------- #
+
+STOPE_VERTEX_COUNT = 8
+STOPE_TRIANGLE_COUNT = 12
+#: the exporter's independent signed volume must agree with the artifact's
+#: geometric volume (both exact for a prism; tolerance covers float noise)
+STOPE_VOLUME_REL_TOLERANCE = 1e-6
+
+
+def stope_entity_id(stope_id: str) -> str:
+    """Deterministic, authoritative-id-based STOPE entity id (never an index)."""
+    return f"stope:{stope_id}"
+
+
+def check_method_authority(inputs: ExchangeInputs) -> None:
+    """Fail closed on a disagreement between the mining-method authorities
+    (directive §20): the scenario's requested method, the method
+    ``levels.json`` declares its production development for, and the method
+    ``stopes.json`` was generated for — including a SUCCESS stopes artifact
+    for a method the registry does not implement (longhole geometry must
+    never be exported under an unsupported method's name, §29)."""
+    requested = inputs.scenario.mining.method
+    plan = plan_for(requested)
+    levels = inputs.levels.document if inputs.levels is not None else None
+    pd = levels.get("productionDevelopment") if isinstance(levels, dict) else None
+    if isinstance(pd, dict):
+        if str(pd.get("method")) != requested.value:
+            raise ExchangeExportError(
+                f"mining-method authority mismatch: scenario requests {requested.value} but "
+                f"{LEVELS_ARTIFACT} declares production development for {pd.get('method')!r}"
+            )
+        if str(pd.get("status")) != plan.implementation_status:
+            raise ExchangeExportError(
+                f"mining-method authority mismatch: {LEVELS_ARTIFACT} records production "
+                f"development {pd.get('status')!r} but the registry implements "
+                f"{requested.value} as {plan.implementation_status}"
+            )
+    if isinstance(levels, dict) and plan.implementation_status != "IMPLEMENTED":
+        # PR #46 review B1: an unsupported method must never carry longhole
+        # production geometry. The typed status alone is not evidence — the
+        # developments themselves and every count that would betray a
+        # station lattice are checked, and any trace fails the export closed.
+        crosscuts = [
+            str(d.get("id"))
+            for d in levels.get("developments", [])
+            if isinstance(d, dict) and str(d.get("kind")) == "CROSSCUT"
+        ]
+        if crosscuts:
+            raise ExchangeExportError(
+                f"{LEVELS_ARTIFACT} carries {len(crosscuts)} CROSSCUT development(s) "
+                f"({crosscuts[0]}, …) although {requested.value} is {plan.implementation_status}"
+                " — longhole production geometry is never exported under an unsupported method"
+            )
+        metrics = levels.get("metrics")
+        if isinstance(metrics, dict):
+            for key in ("crosscutCount", "stationsPerLevel"):
+                if metrics.get(key) not in (None, 0):
+                    raise ExchangeExportError(
+                        f"{LEVELS_ARTIFACT} metrics.{key} = {metrics.get(key)!r} although "
+                        f"{requested.value} is {plan.implementation_status}"
+                    )
+        for lvl in levels.get("levels", []):
+            if isinstance(lvl, dict) and lvl.get("crosscutCount") not in (None, 0):
+                raise ExchangeExportError(
+                    f"{LEVELS_ARTIFACT} level {lvl.get('levelId')!r} reports "
+                    f"crosscutCount = {lvl.get('crosscutCount')!r} although "
+                    f"{requested.value} is {plan.implementation_status}"
+                )
+    stopes = inputs.stopes.document if inputs.stopes is not None else None
+    if isinstance(stopes, dict):
+        if str(stopes.get("method")) != requested.value:
+            raise ExchangeExportError(
+                f"mining-method authority mismatch: scenario requests {requested.value} but "
+                f"{STOPES_ARTIFACT} was generated for {stopes.get('method')!r}"
+            )
+        if stopes.get("status") == "SUCCESS" and plan.implementation_status != "IMPLEMENTED":
+            raise ExchangeExportError(
+                f"{STOPES_ARTIFACT} is SUCCESS for {requested.value}, which the registry does "
+                "not implement — stope geometry is never exported under an unsupported method"
+            )
+
+
+_STOPE_NOTES = (
+    "authoritative planned stope prism (stopes.json geometry, canonical frame); "
+    "shares a boundary face with its vertical neighbour; not unioned",
+    "planning volume, never a reserve or resource",
+)
+
+
+def _stope_file(
+    eid: str,
+    revision: str | None,
+    geometry: GeometryQa,
+    path: str,
+    data: bytes,
+    glb: GlbFrame | None = None,
+) -> BundleFile:
+    """One STOPE_SOLID bundle file (STL / OBJ / GLB share every attribute)."""
+    return BundleFile(
+        path,
+        data,
+        semantic_type="STOPE_SOLID",
+        representation="AUTHORITATIVE_CLOSED_MESH",
+        source_entity_ids=[eid],
+        source_artifact=STOPES_ARTIFACT,
+        source_revision=revision,
+        derived=False,
+        geometry=geometry,
+        glb=glb,
+        notes=list(_STOPE_NOTES),
+    )
+
+
+def _stopes(
+    inputs: ExchangeInputs,
+    files: list[BundleFile],
+    entities: list[ExchangeEntity],
+    omissions: list[ExchangeOmission],
+    network_node_ids: set[str] | None,
+) -> list[str]:
+    """Project a SUCCESS ``stopes.json`` into one STOPE entity + one closed
+    prism (STL / OBJ / GLB) per stope and the ``production/stopes.json``
+    semantic document. Returns the exported stope entity ids in bundle
+    order (sorted by authoritative stope id — never list order).
+
+    The geometry is the artifact's own ``StopeGeometry`` (8 vertices, 12
+    outward triangles) in the canonical frame — never re-derived, never
+    unioned. Every exported body is QA'd INDEPENDENTLY (finite, valid
+    indices, non-degenerate, manifold, watertight, outward, positive volume
+    agreeing with the artifact's geometric volume); a defect is a typed
+    refusal, never trusted from the source report."""
+    if inputs.stopes is None:
+        omissions.append(
+            ExchangeOmission(
+                group="STOPES",
+                reason_code="ARTIFACT_ABSENT",
+                detail="stopes.json is not generated",
+                source_artifact=STOPES_ARTIFACT,
+            )
+        )
+        return []
+    doc = inputs.stopes.document
+    if doc.get("status") != "SUCCESS":
+        omissions.append(_source_not_success("STOPES", STOPES_ARTIFACT, doc))
+        return []
+    revision = inputs.stopes.revision
+    records = sorted(doc.get("stopes", []), key=lambda s: str(s["id"]))
+    seen: set[str] = set()
+    exported: list[ExchangeStope] = []
+    for rec in records:
+        sid = str(rec["id"])
+        if sid in seen:
+            raise ExchangeExportError(f"{STOPES_ARTIFACT}: duplicate stope id {sid!r}")
+        seen.add(sid)
+        eid = stope_entity_id(sid)
+        geom = rec["geometry"]
+        positions = np.asarray(geom["vertices"], dtype=np.float64).reshape(-1, 3)
+        triangles = np.asarray(geom["triangleIndices"], dtype=np.int64).reshape(-1, 3)
+        if positions.shape[0] != STOPE_VERTEX_COUNT or triangles.shape[0] != STOPE_TRIANGLE_COUNT:
+            raise ExchangeExportError(
+                f"{eid}: stope prism must carry {STOPE_VERTEX_COUNT} vertices / "
+                f"{STOPE_TRIANGLE_COUNT} triangles, got {positions.shape[0]} / "
+                f"{triangles.shape[0]}"
+            )
+        qa = mesh_qa(positions, triangles)
+        if not qa.closed_solid:
+            raise ExchangeExportError(f"{eid}: closed-solid QA failed ({'; '.join(qa.problems)})")
+        declared = float(rec["geometricVolumeM3"])
+        if not np.isfinite(declared) or declared <= 0.0:
+            raise ExchangeExportError(f"{eid}: non-positive geometric volume {declared!r}")
+        if abs(qa.signed_volume - declared) > STOPE_VOLUME_REL_TOLERANCE * declared:
+            raise ExchangeExportError(
+                f"{eid}: exported mesh volume {qa.signed_volume:.6f} m³ disagrees with the "
+                f"artifact's geometric volume {declared:.6f} m³"
+            )
+        upper_node, lower_node = str(rec["upperAccessNodeId"]), str(rec["lowerAccessNodeId"])
+        if network_node_ids is not None:
+            for node in (upper_node, lower_node):
+                if node not in network_node_ids:
+                    raise ExchangeExportError(
+                        f"{eid}: access node {node!r} is not a node of the exported network"
+                    )
+        stem = entity_file_stem(eid)
+        stl_path = f"production/stopes/{stem}.stl"
+        obj_path = f"production/stopes/{stem}.obj"
+        glb_path = f"production/stopes/{stem}.glb"
+        geometry = GeometryQa(
+            closed=True,
+            watertight=True,
+            manifold=True,
+            unioned=False,
+            overlapping_at_junctions=False,
+            triangle_count=qa.triangle_count,
+            vertex_count=qa.vertex_count,
+            signed_volume_m3=qa.signed_volume,
+        )
+        files.append(
+            _stope_file(
+                eid,
+                revision,
+                geometry,
+                stl_path,
+                write_binary_stl(positions, triangles, f"MineExchange {eid} LOCAL_ENU_Z_UP m"),
+            )
+        )
+        files.append(
+            _stope_file(
+                eid,
+                revision,
+                geometry,
+                obj_path,
+                write_obj(positions, triangles, eid).encode("utf-8"),
+            )
+        )
+        files.append(
+            _stope_file(
+                eid,
+                revision,
+                geometry,
+                glb_path,
+                write_mesh_glb(
+                    positions,
+                    [(eid, triangles, {"entityId": eid, "kind": "STOPE", "stopeId": sid})],
+                    name=eid,
+                    node_extras={
+                        "mineExchangeVersion": MINE_EXCHANGE_VERSION,
+                        "sourceFrame": COORDINATE_FRAME,
+                        "sceneFrame": GLTF_FRAME,
+                        "sourceArtifact": STOPES_ARTIFACT,
+                    },
+                ),
+                glb=_glb_frame(),
+            )
+        )
+        stope_files = [stl_path, obj_path, glb_path, "production/stopes.json"]
+        entities.append(
+            ExchangeEntity(
+                entity_id=eid,
+                kind="STOPE",
+                level_id=None,
+                source_artifact=STOPES_ARTIFACT,
+                source_id=sid,
+                files=stope_files,
+            )
+        )
+        b = rec["localBounds"]
+        exported.append(
+            ExchangeStope(
+                entity_id=eid,
+                stope_id=sid,
+                method=str(rec["method"]),
+                station_index=int(rec["stationIndex"]),
+                station_u=float(rec["stationU"]),
+                upper_level_id=str(rec["upperLevelId"]),
+                lower_level_id=str(rec["lowerLevelId"]),
+                upper_access_node_id=upper_node,
+                lower_access_node_id=lower_node,
+                local_bounds=ExchangeStopeBounds(
+                    u_min=float(b["uMin"]),
+                    u_max=float(b["uMax"]),
+                    v_min=float(b["vMin"]),
+                    v_max=float(b["vMax"]),
+                    w_min=float(b["wMin"]),
+                    w_max=float(b["wMax"]),
+                ),
+                strike_length=float(rec["strikeLength"]),
+                down_dip_span=float(rec["downDipSpan"]),
+                vertical_height=float(rec["verticalHeight"]),
+                thickness=float(rec["thickness"]),
+                geometric_volume_m3=declared,
+                tonnes=float(rec["tonnes"]),
+                mean_grade_proxy=(
+                    float(rec["meanGradeProxy"]) if rec.get("meanGradeProxy") is not None else None
+                ),
+                planned_state=str(rec.get("plannedState", "PLANNED")),
+                files=stope_files,
+            )
+        )
+    doc_out = ExchangeProductionStopes(
+        mine_exchange_version=MINE_EXCHANGE_VERSION,
+        source_artifact=STOPES_ARTIFACT,
+        source_revision=revision,
+        method=str(doc["method"]),
+        stopes=exported,
+        metrics=_stopes_metrics(doc.get("metrics")),
+        notes=[
+            "one authoritative closed prism per stope; vertically adjacent stopes share a "
+            "boundary face; no union, no aggregate body",
+            "upper/lower access node ids are MineNetwork STOPE_ACCESS node ids (the link to "
+            "the network); a stope is a production volume, never a network edge",
+            "volume / tonnes / grade proxy are deterministic planning quantities, never "
+            "reserves or resources",
+        ],
+    )
+    ids = [st.entity_id for st in exported]
+    files.append(
+        BundleFile(
+            "production/stopes.json",
+            dumps(doc_out.model_dump(mode="json", by_alias=True)),
+            "PRODUCTION_STOPES",
+            "DOCUMENT",
+            ids,
+            STOPES_ARTIFACT,
+            revision,
+            False,
+        )
+    )
+    return ids
+
+
+def _stopes_metrics(metrics: object) -> ExchangeStopesMetrics | None:
+    """Explicit internal → external projection of the stope metrics (review
+    B2): every field is named here, nothing is passed through."""
+    if not isinstance(metrics, dict):
+        return None
+    grade = metrics.get("weightedMeanGradeProxy")
+    return ExchangeStopesMetrics(
+        stope_count=int(metrics["stopeCount"]),
+        level_interval_count=int(metrics["levelIntervalCount"]),
+        stations_per_interval=int(metrics["stationsPerInterval"]),
+        total_geometric_volume_m3=float(metrics["totalGeometricVolumeM3"]),
+        total_tonnes=float(metrics["totalTonnes"]),
+        geometric_extraction_fraction_of_orebody=float(
+            metrics["geometricExtractionFractionOfOrebody"]
+        ),
+        weighted_mean_grade_proxy=float(grade) if grade is not None else None,
+    )
+
+
+def _mining_method(
+    inputs: ExchangeInputs,
+    centerlines: list[CenterlineEntity],
+    stope_ids: list[str],
+    files: list[BundleFile],
+) -> None:
+    """``semantics/mining_method.json`` — always present (the scenario is its
+    first authority); production-development and production sections
+    reference the exported CROSSCUT / STOPE entities and duplicate no
+    geometry. ``check_method_authority`` has already refused mismatches."""
+    scenario = inputs.scenario
+    plan = plan_for(scenario.mining.method)
+    levels = inputs.levels.document if inputs.levels is not None else None
+    pd = levels.get("productionDevelopment") if isinstance(levels, dict) else None
+    crosscut_ids = [c.entity_id for c in centerlines if c.kind == "CROSSCUT"]
+    if isinstance(pd, dict) and inputs.levels is not None:
+        pd_status = str(pd["status"])
+        if pd_status not in ("IMPLEMENTED", "UNSUPPORTED_METHOD"):
+            raise ExchangeExportError(
+                f"levels.json productionDevelopment.status {pd_status!r} is not a known status"
+            )
+        development = ExchangeProductionDevelopmentStatus(
+            status="IMPLEMENTED" if pd_status == "IMPLEMENTED" else "UNSUPPORTED_METHOD",
+            reason=pd.get("reason"),
+            source_artifact=LEVELS_ARTIFACT,
+            source_revision=inputs.levels.revision,
+            entity_ids=crosscut_ids,
+        )
+    else:
+        development = ExchangeProductionDevelopmentStatus(
+            status="NOT_GENERATED",
+            reason=None,
+            source_artifact=LEVELS_ARTIFACT if inputs.levels is not None else None,
+            source_revision=inputs.levels.revision if inputs.levels is not None else None,
+            entity_ids=crosscut_ids,
+        )
+    stopes = inputs.stopes.document if inputs.stopes is not None else None
+    if isinstance(stopes, dict) and inputs.stopes is not None:
+        st_status = str(stopes["status"])
+        if st_status not in ("SUCCESS", "FAILED"):
+            raise ExchangeExportError(f"stopes.json status {st_status!r} is not a known status")
+        production = ExchangeProductionStatus(
+            status="SUCCESS" if st_status == "SUCCESS" else "FAILED",
+            failure_reason=stopes.get("failureReason"),
+            source_artifact=STOPES_ARTIFACT,
+            source_revision=inputs.stopes.revision,
+            stope_count=len(stope_ids),
+            entity_ids=stope_ids,
+        )
+    else:
+        production = ExchangeProductionStatus(
+            status="NOT_GENERATED",
+            failure_reason=None,
+            source_artifact=None,
+            source_revision=None,
+            stope_count=0,
+            entity_ids=[],
+        )
+    doc = ExchangeMiningMethod(
+        mine_exchange_version=MINE_EXCHANGE_VERSION,
+        requested_method=scenario.mining.method.value,
+        display_name=plan.display_name,
+        implementation_status=plan.implementation_status,
+        parameters=ExchangeMiningParameters(
+            sublevel_interval=float(scenario.mining.sublevel_interval),
+            stope_length=float(scenario.mining.stope_length),
+            minimum_pillar=float(scenario.mining.minimum_pillar),
+        ),
+        production_development=development,
+        production=production,
+        scenario_revision=inputs.scenario_revision,
+        notes=[
+            "requestedMethod is the scenario's persisted configuration authority; "
+            "implementationStatus is what this MineGen version implements for it",
+            "production development geometry is the exported CROSSCUT entities "
+            "(levels.json owns it); production geometry is the exported STOPE entities "
+            "(stopes.json owns it) — nothing is duplicated here",
+            "an unsupported method never receives longhole geometry; its production "
+            "artifacts are typed UNSUPPORTED_METHOD outcomes",
+        ],
+    )
+    files.append(
+        BundleFile(
+            "semantics/mining_method.json",
+            dumps(doc.model_dump(mode="json", by_alias=True)),
+            "MINING_METHOD",
+            "DOCUMENT",
+            [*crosscut_ids, *stope_ids],
+            # singular provenance (review S1): the scenario is the primary
+            # authority of this document; levels / stopes provenance lives in
+            # the typed nested productionDevelopment / production blocks
+            "scenario.json",
+            inputs.scenario_revision,
+            False,
+        )
     )
 
 

@@ -1,4 +1,4 @@
-"""MineExchange v1 DTOs — the EXTERNAL contract (semantic version 1.0.0).
+"""MineExchange v1 DTOs — the EXTERNAL contract (semantic version 1.1.0).
 
 Internal artifacts (``layout_v2.json``, ``network.json``,
 ``capability_graph.json``, …) are never exposed as-is: every document in the
@@ -27,19 +27,26 @@ __all__ = [
     "ExchangeEntity",
     "ExchangeFile",
     "ExchangeManifest",
+    "ExchangeMiningMethod",
     "ExchangeNetwork",
     "ExchangeNetworkEdge",
     "ExchangeNetworkNode",
     "ExchangeOmission",
+    "ExchangeProductionStopes",
     "ExchangeRequiredPath",
+    "ExchangeStope",
+    "ExchangeStopesMetrics",
     "GeometryQa",
     "GlbFrame",
     "MultiBodyComponent",
     "SourceSnapshot",
 ]
 
-#: the external contract version (semantic); NOT an internal artifact version
-MINE_EXCHANGE_VERSION = "1.0.0"
+#: the external contract version (semantic); NOT an internal artifact version.
+#: 1.1.0 (Phase 21A): mining-method semantics + longhole stope export — an
+#: ADDITIVE 1.x extension (new files, semantic types, entity kind, omission
+#: outcomes); every 1.0.0 meaning, id and coordinate contract is unchanged
+MINE_EXCHANGE_VERSION = "1.1.0"
 #: MineGen canonical frame: X East, Y North, Z Up, metres (CLAUDE.md rule 3)
 COORDINATE_FRAME = "LOCAL_ENU_Z_UP"
 #: glTF scene convention after the explicit root transform (x, z, −y)
@@ -69,6 +76,10 @@ SemanticType = Literal[
     "MINE_NETWORK_NODES",
     "MINE_NETWORK_EDGES",
     "CAPABILITY",
+    # 1.1.0 (Phase 21A)
+    "MINING_METHOD",
+    "PRODUCTION_STOPES",
+    "STOPE_SOLID",
 ]
 Representation = Literal[
     "DOCUMENT",
@@ -82,6 +93,8 @@ Representation = Literal[
     "CLOSED_LOGICAL_SWEEP",
     "MULTI_BODY_CONCATENATION",
     "RENDER_SURFACE",
+    # 1.1.0: the authoritative stope prism mesh itself (never re-derived)
+    "AUTHORITATIVE_CLOSED_MESH",
 ]
 EntityKind = Literal[
     "TERRAIN",
@@ -96,6 +109,8 @@ EntityKind = Literal[
     "SHAFT",
     "SHAFT_SEGMENT",
     "SHAFT_STATION_ACCESS",
+    # 1.1.0: a planned production volume (stopes.json), never a development
+    "STOPE",
 ]
 
 
@@ -218,9 +233,9 @@ class ExchangeManifest(ApiModel):
     entities: list[ExchangeEntity]
     files: list[ExchangeFile]
     omissions: list[ExchangeOmission]
-    #: reserved for later contract extensions (stopes / mining method are
-    #: Phase 21A.2, grade / rock-quality descriptors a later 1.x); the v1
-    #: enums are not pre-populated with them
+    #: reserved for later contract extensions (grade / rock-quality
+    #: descriptors, future production entities once they exist); the enums
+    #: are never pre-populated with meanings that have no authority yet
     extensions: dict[str, Any] = {}
     notes: list[str] = []
 
@@ -320,3 +335,125 @@ class ExchangeCapability(ApiModel):
     required_paths: list[ExchangeRequiredPath]
     egress_advisory: ExchangeEgressAdvisory | None
     validation: dict[str, Any] | None
+
+
+# --------------------------------------------------------------------------- #
+# mining method + production (1.1.0, Phase 21A)
+# --------------------------------------------------------------------------- #
+
+
+class ExchangeMiningParameters(ApiModel):
+    sublevel_interval: float
+    stope_length: float
+    minimum_pillar: float
+
+
+class ExchangeProductionDevelopmentStatus(ApiModel):
+    """The production-development intent recorded in ``levels.json`` —
+    IMPLEMENTED / UNSUPPORTED_METHOD — or NOT_GENERATED when no levels
+    artifact (or none declaring it) exists. Its geometry is the exported
+    CROSSCUT entities; nothing is duplicated here."""
+
+    status: Literal["IMPLEMENTED", "UNSUPPORTED_METHOD", "NOT_GENERATED"]
+    reason: str | None = None
+    source_artifact: str | None
+    source_revision: str | None
+    #: exported crosscut entity ids (the longhole production development)
+    entity_ids: list[str]
+
+
+class ExchangeProductionStatus(ApiModel):
+    status: Literal["SUCCESS", "FAILED", "NOT_GENERATED"]
+    failure_reason: str | None = None
+    source_artifact: str | None
+    source_revision: str | None
+    stope_count: int
+    #: exported STOPE entity ids in bundle order
+    entity_ids: list[str]
+
+
+class ExchangeMiningMethod(ApiModel):
+    """``semantics/mining_method.json`` — what was REQUESTED, whether MineGen
+    implements it, the configured parameters and references to the
+    production development / production entities that exist. Projected from
+    ``scenario.json`` + ``levels.json`` + ``stopes.json``; a disagreement
+    between those authorities is a typed export refusal, never normalized."""
+
+    mine_exchange_version: str
+    semantic_type: Literal["MINING_METHOD"] = "MINING_METHOD"
+    requested_method: str
+    display_name: str
+    implementation_status: Literal["IMPLEMENTED", "UNSUPPORTED_METHOD"]
+    parameters: ExchangeMiningParameters
+    production_development: ExchangeProductionDevelopmentStatus
+    production: ExchangeProductionStatus
+    scenario_revision: str
+    notes: list[str] = []
+
+
+class ExchangeStopeBounds(ApiModel):
+    u_min: float
+    u_max: float
+    v_min: float
+    v_max: float
+    w_min: float
+    w_max: float
+
+
+class ExchangeStope(ApiModel):
+    """One planned longhole stope: the authoritative ``stopes.json`` record
+    (identity, level pair, access anchors, station, planning quantities) and
+    the exported solid files. Volumes / tonnes / grade proxy are planning
+    quantities, never reserves or resources."""
+
+    entity_id: str
+    stope_id: str
+    method: str
+    station_index: int
+    station_u: float
+    upper_level_id: str
+    lower_level_id: str
+    upper_access_node_id: str
+    lower_access_node_id: str
+    local_bounds: ExchangeStopeBounds
+    strike_length: float
+    down_dip_span: float
+    vertical_height: float
+    thickness: float
+    geometric_volume_m3: float
+    tonnes: float
+    mean_grade_proxy: float | None
+    planned_state: str
+    files: list[str]
+
+
+class ExchangeStopesMetrics(ApiModel):
+    """External projection of the internal stope metrics (PR #46 review
+    B2): an explicit typed 1.1 contract, never the internal ``StopesMetrics``
+    document passed through — an internal refactor cannot change this file
+    without a MineExchange version change. Planning quantities only, never
+    reserves or resources."""
+
+    stope_count: int
+    level_interval_count: int
+    stations_per_interval: int
+    total_geometric_volume_m3: float
+    total_tonnes: float
+    geometric_extraction_fraction_of_orebody: float
+    weighted_mean_grade_proxy: float | None
+
+
+class ExchangeProductionStopes(ApiModel):
+    """``production/stopes.json`` — the semantic document of the exported
+    stopes (authority: ``stopes.json``); geometry lives in the per-stope
+    solid files, one closed prism each, never unioned."""
+
+    mine_exchange_version: str
+    semantic_type: Literal["PRODUCTION_STOPES"] = "PRODUCTION_STOPES"
+    coordinate_frame: str = COORDINATE_FRAME
+    source_artifact: str
+    source_revision: str
+    method: str
+    stopes: list[ExchangeStope]
+    metrics: ExchangeStopesMetrics | None
+    notes: list[str] = []

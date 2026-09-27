@@ -1908,3 +1908,51 @@ code, the code and the rule win and the map is corrected.
      only in its own context, so each job poll, query and effect keeps its
      lifetime. The API, DTOs, artifacts, invalidation chain, geometry and
      goldens are untouched.
+
+192. Mining-method registry is the single dispatch authority (Phase 21A).
+     `mining/methods/registry.py::plan_for(method)` resolves EVERY
+     `MiningMethodType` member explicitly to a `MiningMethodPlan`
+     (`methods/contracts.py`): `LongholeOpenStopingPlan` (IMPLEMENTED) or an
+     `UnsupportedMethodPlan` (UNSUPPORTED_METHOD) — never `None`, never a
+     silent fallback to longhole geometry, an unregistered member a typed
+     `UnknownMiningMethodError`. The plan owns WHAT: the declarative
+     production-development intent (`production_development`), the station
+     lattice (`ProductionLattice(pitch = stope_length + minimum_pillar,
+     margin = stope_length / 2 + minimum_pillar)`, `None` for a method
+     without production development) and production generation
+     (`generate_production`). Level development
+     (`levels/builder.py::LevelDevelopmentBuilder`) consumes that intent and
+     owns WHERE and validity (anchors, backbone, hard validation); it never
+     tests the method itself, and `services/design_service.py` dispatches
+     stope generation only through `plan_for`. Geometry ownership is
+     unchanged: `levels.json` owns level / production development,
+     `stopes.json` owns stope prisms; no `mining_method_plan.json` exists and
+     `Stope.method` stays the `LONGHOLE_OPEN_STOPING` literal. Reserved
+     methods (CUT_AND_FILL, ROOM_AND_PILLAR, SUBLEVEL_CAVING,
+     SHRINKAGE_STOPING) receive the generic footwall backbone, a typed
+     `productionDevelopment.status = UNSUPPORTED_METHOD` and a FAILED
+     `stopes.json` with the rule 78 reason — explicitly, never longhole
+     geometry under another name; a new method enters ONLY as its own
+     registered plan. The longhole algorithm is a migration target, never
+     rewritten: its `levels.json` / `stopes.json` outputs match the
+     committed pre-migration parity fixture
+     (`tests/fixtures/phase21a/longhole_parity.json`, captured on the pinned
+     HEAD, `tests/test_mining_method_parity.py`) under a TWO-TIER gate —
+     HARD: status, method, ids, counts, station indices, ordering, topology
+     and every string / int / bool exact; NUMERIC: lengths, coordinates,
+     volumes, tonnes, grade within 1e-10 (relative and absolute), orders
+     below any engineering resolution and above the measured cross-CI-runner
+     last-digit float noise (≈ 3e-13); the full canonical-JSON digests are
+     an ADVISORY record, never a gate — and goldens are unchanged. A
+     longhole golden or parity change under this rule is BLOCKING, never
+     regenerated and never absorbed by widening the tolerance.
+     MineExchange 1.1 PROJECTS the method and the stopes, it never creates
+     them: `semantics/mining_method.json` (registry status, always present),
+     `production/stopes.json` + one authoritative closed prism per stope with
+     independent QA, the `STOPE` entity kind, STOPES `ARTIFACT_ABSENT` /
+     `SOURCE_NOT_SUCCESS` omissions (TIMELINE stays NOT_IN_V1), and a typed
+     refusal when the scenario, `levels.json` and `stopes.json` method
+     authorities disagree. The frontend renders the registry's status
+     read-only (Mining method card, export contents rows) and offers no
+     method selector: an unsupported method is a feature boundary, not a
+     mine failure.

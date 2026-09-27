@@ -119,7 +119,7 @@ it is. Entry points are given as `file:line` at `d58c794`.
 | Section / anchor | `layout/{levels,sections,access}.py` | `required_levels():66`, `build_section_geometry():333`, `build_footwall_trace():583`, `build_offset_trace():770` |
 | Level development | `levels/{builder,models}.py` | `LevelDevelopmentBuilder:230`, `entries_from_level_accesses():113` |
 | Shaft | `shafts/{planner,models}.py` | `ShaftPlanner:222`, `level_breakpoints():193` |
-| Stope | `mining/methods/{longhole,base}.py`, `mining/models.py` | `LongholeOpenStopingStrategy:122`, `strategy_for():41`, `unsupported_method_payload():51` |
+| Stope | `mining/methods/{longhole,base}.py`, `mining/models.py` | `LongholeOpenStopingStrategy:122`, `strategy_for():41`, `unsupported_method_payload():51` — Phase 21A (rule 192) replaced `base.py` / `strategy_for` with `methods/registry.py::plan_for`, `methods/contracts.py` (plan protocol, `unsupported_method_payload`) and `methods/unsupported.py`; the strategy class is unchanged |
 | Topology | `network/{builder,models}.py` | `MineNetworkBuilder:151`, `GeometryRef:34` |
 | Capability | `capability/{builder,models}.py` | `CapabilityGraphBuilder:217`, `can_reach():162` |
 | Time | `scheduling/{builder,models}.py` | `MineTimelineBuilder:184`, `solve_earliest_start():83`, `_resolve_centerline():130` |

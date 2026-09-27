@@ -375,12 +375,10 @@ def test_network_refuses_failed_or_stale_shaft_artifacts(
 
 
 def _stopes(sc: Scenario, world: SyntheticWorld, levels: dict[str, Any]) -> dict[str, Any]:
-    from minegen.mining.methods.base import strategy_for
+    from minegen.mining.methods.registry import plan_for
 
-    strategy = strategy_for(sc.mining.method)
-    assert strategy is not None
     hard = DesignCostEvaluator(world, sc.design, DesignContext.crosscut(sc.design))
-    payload = strategy.generate(sc, world, levels, hard, "rev")
+    payload = plan_for(sc.mining.method).generate_production(sc, world, levels, hard, "rev")
     assert payload.status == "SUCCESS", payload.failure_reason
     return payload.model_dump(mode="json", by_alias=True)
 

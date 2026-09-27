@@ -19,6 +19,7 @@ import numpy.typing as npt
 
 from minegen.config import CANONICAL_COORDINATE_SYSTEM
 from minegen.core.models import Scenario
+from minegen.mining.methods.registry import plan_for
 from minegen.world.field_grid import FieldGrid
 from minegen.world.orebody import AnalyticOrebody, Orebody
 from minegen.world.synthetic_world import SyntheticWorld
@@ -159,6 +160,23 @@ def slice_payload(
     }
 
 
+def mining_method_summary(scenario: Scenario) -> dict[str, Any]:
+    """Phase 21A read-only method card (rule 192): the requested method, the
+    registry's implementation status and the explicit scenario parameters.
+    The registry is the single authority — the frontend never maps a method
+    to a status itself and there is no method selector."""
+    mining = scenario.mining
+    plan = plan_for(mining.method)
+    return {
+        "method": mining.method.value,
+        "displayName": plan.display_name,
+        "implementationStatus": plan.implementation_status,
+        "sublevelInterval": float(mining.sublevel_interval),
+        "stopeLength": float(mining.stope_length),
+        "minimumPillar": float(mining.minimum_pillar),
+    }
+
+
 def build_scene(scenario: Scenario, world: SyntheticWorld) -> dict[str, Any]:
     t = world.terrain
     verts, faces = world.orebody.mesh()
@@ -218,6 +236,8 @@ def build_scene(scenario: Scenario, world: SyntheticWorld) -> dict[str, Any]:
             "indices": faces.ravel().tolist(),
         },
         "faults": faults,
+        # Phase 21A: read-only mining-method presentation (registry authority)
+        "miningMethod": mining_method_summary(scenario),
         # numerical lattice description ONLY (rule 127): origin / spacing /
         # shape so the client can address slices — never blocks
         "fieldGrid": grid.to_dict(),

@@ -15,6 +15,7 @@ import numpy.typing as npt
 
 from minegen.design.glb_writer import write_glb
 from minegen.design.tunnel_mesh import RenderMesh, RenderPrimitive
+from minegen.exchange.models import MINE_EXCHANGE_VERSION
 
 FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
@@ -111,7 +112,7 @@ def write_mesh_glb(
     )
     return write_glb(
         mesh,
-        generator="minegen-mineexchange-1.0.0",
+        generator=f"minegen-mineexchange-{MINE_EXCHANGE_VERSION}",
         name=name,
         node_matrix=MINE_TO_GLTF_MATRIX if root_transform else None,
         node_extras=node_extras,
