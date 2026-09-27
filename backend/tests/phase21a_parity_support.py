@@ -245,7 +245,13 @@ def legacy_chain(
 
 
 def with_method(sc: Scenario, method: MiningMethodType) -> Scenario:
-    return sc.model_copy(update={"mining": sc.mining.model_copy(update={"method": method})})
+    """The scenario with another mining method — re-VALIDATED so the method's
+    canonical ``methodParameters`` resolve exactly as a client PUT would."""
+    from minegen.core.models import MiningConfig
+
+    mining = sc.mining.model_dump(by_alias=True, exclude={"method_parameters"})
+    mining["method"] = method.value
+    return sc.model_copy(update={"mining": MiningConfig.model_validate(mining)})
 
 
 def reduce(case: dict[str, Any]) -> dict[str, Any]:

@@ -15,7 +15,14 @@ import math
 import uuid
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 from pydantic.alias_generators import to_camel
 
 from minegen.core.enums import (
@@ -498,11 +505,117 @@ class TunnelProfile(ApiModel):
         return data
 
 
+class CutFillParameters(ApiModel):
+    """Phase 21B CUT_AND_FILL production parameters — SYNTHETIC planning
+    assumptions, never fill-strength, binder or geotechnical design values.
+    Lifts and cuts are DETERMINISTIC EQUAL PARTITIONS of the available span
+    (``n = ceil(span / target)``, ``actual = span / n``), so no tiny residual
+    lift / cut is ever produced at an edge."""
+
+    kind: Literal["CUT_AND_FILL"] = "CUT_AND_FILL"
+    #: target VERTICAL lift height (metres); the local down-dip span uses the dip
+    lift_height_m: PositiveFloat = Field(default=4.0, alias="liftHeightM")
+    #: target along-strike cut length (metres)
+    cut_length_m: PositiveFloat = Field(default=15.0, alias="cutLengthM")
+
+
+class RoomPillarParameters(ApiModel):
+    """Phase 21C ROOM_AND_PILLAR production parameters — SYNTHETIC planning
+    values. Pillar dimensions are NOT a geotechnical pillar design, a stress
+    analysis or a statutory requirement. ``benchCount`` selects HEADING +
+    one bench (1) or HEADING + two benches (2); the remaining thickness below
+    the heading is partitioned deterministically and equally."""
+
+    kind: Literal["ROOM_AND_PILLAR"] = "ROOM_AND_PILLAR"
+    room_width_m: PositiveFloat = Field(default=8.0, alias="roomWidthM")
+    pillar_width_m: PositiveFloat = Field(default=6.0, alias="pillarWidthM")
+    #: heading (first pass) height measured along the thickness normal
+    heading_height_m: PositiveFloat = Field(default=5.0, alias="headingHeightM")
+    bench_count: Literal[1, 2] = 1
+    #: unmined perimeter shell inside the orebody outline (plan inset)
+    boundary_pillar_m: NonNegativeFloat = Field(default=6.0, alias="boundaryPillarM")
+
+
+MethodParameters = CutFillParameters | RoomPillarParameters
+
+#: which typed parameter block each method takes (``None`` = the method
+#: carries no ``methodParameters``; Longhole keeps its historic flat fields)
+METHOD_PARAMETER_CLASSES: dict[MiningMethodType, type[ApiModel] | None] = {
+    MiningMethodType.LONGHOLE_OPEN_STOPING: None,
+    MiningMethodType.CUT_AND_FILL: CutFillParameters,
+    MiningMethodType.ROOM_AND_PILLAR: RoomPillarParameters,
+    MiningMethodType.SUBLEVEL_CAVING: None,
+    MiningMethodType.SHRINKAGE_STOPING: None,
+}
+
+
 class MiningConfig(ApiModel):
+    """Mining-method configuration. ``method`` + the three Longhole fields are
+    the Phase 09 contract and stay exactly as serialized before Phase 21B/C.
+
+    ``methodParameters`` (Phase 21B/C) is the OPTIONAL method-specific typed
+    block: REQUIRED-BY-DEFAULT for CUT_AND_FILL / ROOM_AND_PILLAR (an omitted
+    block resolves to that method's canonical defaults, so a client may change
+    the method alone and read the normalized document back), FORBIDDEN for
+    every other method (422), and mismatching the method (422). It is omitted
+    from serialization when ``None`` so every pre-21B/C scenario document
+    round-trips byte-for-byte."""
+
     method: MiningMethodType = MiningMethodType.LONGHOLE_OPEN_STOPING
     sublevel_interval: PositiveFloat = 25.0
     stope_length: PositiveFloat = 30.0
     minimum_pillar: NonNegativeFloat = 5.0
+    method_parameters: MethodParameters | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_method_parameters(cls, data: Any) -> Any:
+        """Parse ``methodParameters`` against the class the METHOD declares —
+        never by pydantic's left-to-right union guess (two all-default blocks
+        would otherwise be indistinguishable)."""
+        if not isinstance(data, dict):
+            return data
+        raw_method = data.get("method", MiningMethodType.LONGHOLE_OPEN_STOPING)
+        try:
+            method = MiningMethodType(raw_method)
+        except ValueError:
+            return data  # the field validator reports the bad enum value
+        key = "methodParameters" if "methodParameters" in data else "method_parameters"
+        raw = data.get(key)
+        expected = METHOD_PARAMETER_CLASSES[method]
+        if raw is None:
+            if expected is not None:
+                data = dict(data)
+                data[key] = expected()
+            return data
+        if expected is None:
+            raise ValueError(
+                f"methodParameters is not accepted for {method.value}: this method takes no "
+                "method-specific parameter block"
+            )
+        if isinstance(raw, ApiModel):
+            parsed: ApiModel = raw
+        elif isinstance(raw, dict):
+            parsed = expected.model_validate(raw)
+        else:
+            raise ValueError("methodParameters must be an object")
+        if not isinstance(parsed, expected):
+            raise ValueError(
+                f"methodParameters kind {type(parsed).__name__} does not match method "
+                f"{method.value} (expected {expected.__name__})"
+            )
+        data = dict(data)
+        data[key] = parsed
+        return data
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_parameters(self, handler: SerializerFunctionWrapHandler) -> Any:
+        out = handler(self)
+        if isinstance(out, dict):
+            for key in ("methodParameters", "method_parameters"):
+                if key in out and out[key] is None:
+                    del out[key]
+        return out
 
 
 # --------------------------------------------------------------------------- #

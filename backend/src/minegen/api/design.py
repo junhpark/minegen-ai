@@ -15,7 +15,7 @@ from minegen.core.enums import Capability
 from minegen.core.models import ApiModel, ErrorDetail
 from minegen.layout.certification import ClearancePolicyReconstructionError
 from minegen.levels.models import LevelsPayload
-from minegen.mining.models import StopesPayload
+from minegen.mining.models import CutFillPayload, RoomPillarPayload, StopesPayload
 from minegen.scheduling.models import TimelinePayload
 from minegen.services.design_service import (
     DesignService,
@@ -313,9 +313,39 @@ def capability_path(
         raise _fail(scenario_id, exc) from exc
 
 
+@router.post("/production")
+def generate_production(
+    scenario_id: str, svc: Service
+) -> StopesPayload | CutFillPayload | RoomPillarPayload:
+    """Phase 21B/C: synchronous production generation for the scenario's
+    ACTIVE mining method — the method's typed payload (Longhole stopes, Cut &
+    Fill cuts / backfills, Room & Pillar rooms / benches / pillars) or the
+    reserved methods' typed FAILED boundary."""
+    try:
+        return svc.generate_production(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _fail(scenario_id, exc) from exc
+
+
+@router.get("/production")
+def get_production(
+    scenario_id: str, svc: Service
+) -> StopesPayload | CutFillPayload | RoomPillarPayload:
+    try:
+        return svc.production(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _fail(scenario_id, exc) from exc
+
+
 @router.post("/stopes")
 def generate_stopes(scenario_id: str, svc: Service) -> StopesPayload:
-    """Phase 09 (rules 75–80): synchronous planned-stope generation."""
+    """Phase 09 (rules 75–80): synchronous planned-stope generation — the
+    LONGHOLE production route (unchanged behaviour); 409
+    PRODUCTION_METHOD_MISMATCH under Cut & Fill / Room & Pillar."""
     try:
         return svc.generate_stopes(scenario_id)
     except HTTPException:

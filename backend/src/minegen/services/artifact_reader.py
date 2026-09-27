@@ -96,7 +96,7 @@ from minegen.layout.certification import (
     ClearancePolicyReconstructionError,
 )
 from minegen.levels.models import LevelsPayload
-from minegen.mining.models import StopesPayload
+from minegen.mining.models import parse_production_payload
 from minegen.network.models import NetworkPayload
 from minegen.scheduling.models import TimelinePayload
 from minegen.services.artifact_errors import (
@@ -233,6 +233,12 @@ class ReadSpec:
     absent_error: Callable[[str], Exception] | None
     #: typed payload model (the eight ``ApiModel`` artifacts)
     model: type[ApiModel] | None = None
+    #: Phase 21B/C: a typed PARSER for an artifact whose payload class depends
+    #: on the document itself (the active production artifact — the payload
+    #: union is discriminated by its ``method``). Structural validation only
+    #: (READ ≠ TRUST); it decides nothing about method support. Exclusive
+    #: with ``model``; a ``ValueError`` / ``ValidationError`` is MALFORMED.
+    parser: Callable[[dict[str, Any]], ApiModel] | None = None
     #: first-level structural precondition of a dict-only artifact — the very
     #: subscript its consumers perform today, never a new schema
     shape: ShapeCheck | None = None
@@ -926,8 +932,10 @@ READ_SPECS: Mapping[str, ReadSpec] = {
         ),
         provenance_inputs=(LEVELS_ARTIFACT,),
     ),
+    # Phase 21B/C: the ACTIVE PRODUCTION artifact — the compatibility path
+    # ``stopes.json`` carries the method-specific typed payload union
     STOPES_ARTIFACT: _spec(
-        STOPES_ARTIFACT, absent_error=StopesNotGeneratedError, model=StopesPayload
+        STOPES_ARTIFACT, absent_error=StopesNotGeneratedError, parser=parse_production_payload
     ),
     TIMELINE_ARTIFACT: _spec(
         TIMELINE_ARTIFACT, absent_error=TimelineNotGeneratedError, model=TimelinePayload
@@ -1101,6 +1109,13 @@ class ArtifactReader:
             except (ValidationError, TypeError) as err:
                 return self._malformed(
                     name, obs, f"does not satisfy {read_spec.model.__name__} ({_first_line(err)})"
+                )
+        elif read_spec.parser is not None:
+            try:
+                model = read_spec.parser(document)
+            except (ValidationError, TypeError, ValueError) as err:
+                return self._malformed(
+                    name, obs, f"does not satisfy {read_spec.parser.__name__} ({_first_line(err)})"
                 )
         else:
             model = None

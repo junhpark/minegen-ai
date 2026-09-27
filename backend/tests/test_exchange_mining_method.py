@@ -79,13 +79,15 @@ def longhole_bundle(longhole: TabularStack) -> Bundle:
 
 @pytest.fixture(scope="module")
 def cut_and_fill(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TabularStack]:
-    """A reserved method: layout → levels (generic backbone only) → stopes
-    (typed FAILED). No tunnel / network is needed for the method semantics."""
-    stack = TabularStack(tmp_path_factory.mktemp("exchange-cut-and-fill"))
+    """A RESERVED method (SUBLEVEL_CAVING since Phase 21B/C implemented Cut &
+    Fill; the fixture keeps its historical name): layout → levels (generic
+    backbone only) → stopes (typed FAILED). No tunnel / network is needed for
+    the method semantics."""
+    stack = TabularStack(tmp_path_factory.mktemp("exchange-reserved-method"))
     c = stack.client
     sc = small_scenario(with_fault=True)
     payload = sc.model_dump(by_alias=True, exclude={"id", "schema_version"})
-    payload["mining"]["method"] = "CUT_AND_FILL"
+    payload["mining"]["method"] = "SUBLEVEL_CAVING"
     r = c.post("/api/v1/scenarios", json=payload)
     assert r.status_code == 201, r.text
     stack.sid = str(r.json()["id"])
@@ -119,7 +121,7 @@ def test_x1_world_only_export_carries_method_semantics_and_no_production(
     assert not any(p.startswith("production/") for p in b.entries)
     assert not any(e["kind"] == "STOPE" for e in b.manifest["entities"])
     mm = b.json("semantics/mining_method.json")
-    assert mm["mineExchangeVersion"] == MINE_EXCHANGE_VERSION == "1.1.0"
+    assert mm["mineExchangeVersion"] == MINE_EXCHANGE_VERSION == "1.2.0"
     assert mm["semanticType"] == "MINING_METHOD"
     assert mm["requestedMethod"] == "LONGHOLE_OPEN_STOPING"
     assert mm["displayName"] == "Longhole Open Stoping"
@@ -139,6 +141,8 @@ def test_x1_world_only_export_carries_method_semantics_and_no_production(
         "sourceRevision": None,
         "stopeCount": 0,
         "entityIds": [],
+        "productionKind": "STOPES",
+        "unitCount": 0,
     }
     f = b.files["semantics/mining_method.json"]
     assert f["semanticType"] == "MINING_METHOD" and f["representation"] == "DOCUMENT"
@@ -264,15 +268,15 @@ def test_x3_unsupported_method_exports_typed_outcomes_and_no_stope_geometry(
     assert not any(e["kind"] in {"STOPE", "CROSSCUT"} for e in b.manifest["entities"])
     assert any(e["kind"] == "DRIFT" for e in b.manifest["entities"])  # generic backbone
     mm = b.json("semantics/mining_method.json")
-    assert mm["requestedMethod"] == "CUT_AND_FILL"
-    assert mm["displayName"] == "Cut & Fill"
+    assert mm["requestedMethod"] == "SUBLEVEL_CAVING"
+    assert mm["displayName"] == "Sublevel Caving"
     assert mm["implementationStatus"] == "UNSUPPORTED_METHOD"
     pd = mm["productionDevelopment"]
     assert pd["status"] == "UNSUPPORTED_METHOD" and pd["entityIds"] == []
     assert "rule 159" in pd["reason"] and "no longhole crosscut lattice" in pd["reason"]
     pr = mm["production"]
     assert pr["status"] == "FAILED" and pr["stopeCount"] == 0 and pr["entityIds"] == []
-    assert pr["failureReason"].startswith("UNSUPPORTED_METHOD: CUT_AND_FILL")
+    assert pr["failureReason"].startswith("UNSUPPORTED_METHOD: SUBLEVEL_CAVING")
     assert pr["sourceArtifact"] == STOPES_ARTIFACT
 
 
@@ -307,7 +311,7 @@ def test_x4_method_authority_mismatch_is_a_typed_409(
     original = path.read_bytes()
     try:
         doc = json.loads(original)
-        doc["method"] = "CUT_AND_FILL"
+        doc["method"] = "SUBLEVEL_CAVING"
         _rewrite(path, doc)
         msg = _refused(longhole.client, longhole.sid, "MINE_EXCHANGE_EXPORT_FAILED")
         assert "authority mismatch" in msg and STOPES_ARTIFACT in msg
@@ -330,7 +334,7 @@ def test_x4_method_authority_mismatch_is_a_typed_409(
     try:
         doc = json.loads(original)
         doc["productionDevelopment"]["method"] = "LONGHOLE_OPEN_STOPING"
-        doc["productionDevelopment"]["status"] = "IMPLEMENTED"
+        doc["productionDevelopment"]["status"] = "IMPLEMENTED"  # SUBLEVEL scenario
         _rewrite(path, doc)
         r = cut_and_fill.client.post(f"/api/v1/scenarios/{cut_and_fill.sid}{EXPORT}")
         assert r.status_code == 409, r.text

@@ -12,6 +12,8 @@ Bundle tree (``mine_exchange/``)::
     topology/    network.json  nodes.csv  edges.csv
     semantics/   capability.json  mining_method.json
     production/  stopes.json  stopes/<entity>.{stl,obj,glb}      (1.1.0)
+                 cut_fill.json  cut_fill/cuts/<entity>.{stl,obj,glb}          (1.2.0)
+                 room_pillar.json  room_pillar/{benches,pillars}/<entity>.*  (1.2.0)
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import numpy as np
+from numpy.typing import NDArray
 
 from minegen.core.artifacts import (
     CAPABILITY_GRAPH_ARTIFACT,
@@ -31,7 +34,7 @@ from minegen.core.artifacts import (
     STOPES_ARTIFACT,
     TUNNEL_MESH_ARTIFACT,
 )
-from minegen.core.models import Scenario
+from minegen.core.models import CutFillParameters, RoomPillarParameters, Scenario
 from minegen.exchange.errors import ExchangeExportError
 from minegen.exchange.formats.asc import write_esri_ascii_grid
 from minegen.exchange.formats.csv_table import write_csv
@@ -67,30 +70,53 @@ from minegen.exchange.models import (
     COORDINATE_FRAME,
     GLTF_FRAME,
     MINE_EXCHANGE_VERSION,
+    ExchangeBackfill,
+    ExchangeBench,
     ExchangeCapability,
     ExchangeCapabilityEdge,
     ExchangeCapabilityNode,
+    ExchangeCut,
+    ExchangeCutFillLift,
+    ExchangeCutFillMetrics,
+    ExchangeCutFillParameters,
     ExchangeEgressAdvisory,
     ExchangeEntity,
+    ExchangeMethodParameters,
     ExchangeMiningMethod,
     ExchangeMiningParameters,
     ExchangeNetwork,
     ExchangeNetworkEdge,
     ExchangeNetworkNode,
     ExchangeOmission,
+    ExchangePillar,
+    ExchangePlanBounds,
+    ExchangeProductionCutFill,
     ExchangeProductionDevelopmentStatus,
+    ExchangeProductionRoomPillar,
     ExchangeProductionStatus,
     ExchangeProductionStopes,
     ExchangeRequiredPath,
+    ExchangeRoom,
+    ExchangeRoomPillarMetrics,
+    ExchangeRoomPillarParameters,
     ExchangeStope,
     ExchangeStopeBounds,
     ExchangeStopesMetrics,
     GeometryQa,
     GlbFrame,
     MultiBodyComponent,
+    ProductionKind,
     SourceSnapshot,
 )
 from minegen.mining.methods.registry import plan_for
+from minegen.mining.models import (
+    CutFillPayload,
+    ProductionPayload,
+    RoomPillarPayload,
+    StopesPayload,
+    parse_production_payload,
+    production_payload_class,
+)
 from minegen.network.geometry_refs import (
     OWNING_ARTIFACTS_BY_EDGE_TYPE,
     GeometryRefError,
@@ -246,8 +272,8 @@ def build_exchange(inputs: ExchangeInputs) -> BundleSpec:
     centerlines = _excavations(inputs, files, entities, omissions)
     geometry_refs, node_ids = _topology(inputs, centerlines, files, omissions)
     _capability(inputs, files, omissions)
-    stope_ids = _stopes(inputs, files, entities, omissions, node_ids)
-    _mining_method(inputs, centerlines, stope_ids, files)
+    production = _production(inputs, centerlines, files, entities, omissions, node_ids)
+    _mining_method(inputs, centerlines, production, files)
     for group, detail in (
         ("TIMELINE", "development / production scheduling is not part of MineExchange v1"),
         (
@@ -272,6 +298,13 @@ def build_exchange(inputs: ExchangeInputs) -> BundleSpec:
         "Stope solids (production/stopes/) are the authoritative planned prisms, one closed "
         "body each; vertically adjacent stopes share a boundary face and are never unioned; "
         "volumes, tonnes and grade proxies are planning quantities, never reserves."
+    )
+    notes.append(
+        "Cut & Fill cuts (production/cut_fill/cuts/) and Room & Pillar benches / pillars "
+        "(production/room_pillar/benches/, pillars/) are the authoritative planned prisms of "
+        "the ACTIVE method, one closed body each, never unioned; backfills and rooms are "
+        "semantic entities without geometry files; pillars are retained material, never a "
+        "geotechnical design. Exactly one production kind is exported per scenario."
     )
     spec = BundleSpec(
         scenario_id=inputs.scenario.id,
@@ -672,7 +705,16 @@ def _faults(
 
 
 def _source_not_success(
-    group: Literal["EXCAVATIONS", "SHAFTS", "CAPABILITY", "RENDER_GLB", "NETWORK", "STOPES"],
+    group: Literal[
+        "EXCAVATIONS",
+        "SHAFTS",
+        "CAPABILITY",
+        "RENDER_GLB",
+        "NETWORK",
+        "STOPES",
+        "CUT_FILL",
+        "ROOM_PILLAR",
+    ],
     artifact: str,
     doc: dict[str, Any],
 ) -> ExchangeOmission:
@@ -1442,6 +1484,22 @@ def check_method_authority(inputs: ExchangeInputs) -> None:
                 f"{STOPES_ARTIFACT} is SUCCESS for {requested.value}, which the registry does "
                 "not implement — stope geometry is never exported under an unsupported method"
             )
+        # 1.2.0: the payload SHAPE must be the method's typed payload (a
+        # Longhole-shaped document under a Cut & Fill scenario, or vice versa,
+        # is a corrupted artifact, never re-interpreted)
+        expected_cls = production_payload_class(requested)
+        try:
+            parsed = parse_production_payload(stopes)
+        except (ValueError, TypeError) as err:
+            raise ExchangeExportError(
+                f"{STOPES_ARTIFACT} does not parse as the {requested.value} production payload: "
+                f"{err}"
+            ) from err
+        if not isinstance(parsed, expected_cls):
+            raise ExchangeExportError(
+                f"{STOPES_ARTIFACT} carries a {type(parsed).__name__} although {requested.value} "
+                f"persists a {expected_cls.__name__}"
+            )
 
 
 _STOPE_NOTES = (
@@ -1449,6 +1507,39 @@ _STOPE_NOTES = (
     "shares a boundary face with its vertical neighbour; not unioned",
     "planning volume, never a reserve or resource",
 )
+_CUT_NOTES = (
+    "authoritative planned Cut & Fill cut prism (active production artifact, canonical "
+    "frame); shares boundary faces with its strike / lift neighbours; not unioned",
+    "planning volume, never a reserve or resource; its 1:1 backfill references this solid",
+)
+_BENCH_NOTES = (
+    "authoritative planned Room & Pillar extraction unit (HEADING / BENCH) prism; shares "
+    "boundary faces with its room's other stages; not unioned",
+    "planning volume, never a reserve or resource",
+)
+_PILLAR_NOTES = (
+    "retained pillar prism (material left in place); planning geometry, never a "
+    "geotechnical pillar design or certification; never scheduled",
+)
+
+#: production omission group / semantics document per typed payload class
+_PRODUCTION_KIND: dict[type, ProductionKind] = {
+    StopesPayload: "STOPES",
+    CutFillPayload: "CUT_FILL",
+    RoomPillarPayload: "ROOM_PILLAR",
+}
+
+
+@dataclass(frozen=True)
+class ProductionExport:
+    """What the production projection exported: the kind (omission group),
+    every production entity id in bundle order, the primary-unit count and
+    the STOPE count (1.1.0 field, 0 for every non-Longhole method)."""
+
+    kind: ProductionKind
+    entity_ids: list[str]
+    unit_count: int
+    stope_count: int
 
 
 def _stope_file(
@@ -1458,12 +1549,14 @@ def _stope_file(
     path: str,
     data: bytes,
     glb: GlbFrame | None = None,
+    semantic_type: str = "STOPE_SOLID",
+    notes: tuple[str, ...] = _STOPE_NOTES,
 ) -> BundleFile:
-    """One STOPE_SOLID bundle file (STL / OBJ / GLB share every attribute)."""
+    """One production-solid bundle file (STL / OBJ / GLB share every attribute)."""
     return BundleFile(
         path,
         data,
-        semantic_type="STOPE_SOLID",
+        semantic_type=semantic_type,
         representation="AUTHORITATIVE_CLOSED_MESH",
         source_entity_ids=[eid],
         source_artifact=STOPES_ARTIFACT,
@@ -1471,7 +1564,639 @@ def _stope_file(
         derived=False,
         geometry=geometry,
         glb=glb,
-        notes=list(_STOPE_NOTES),
+        notes=list(notes),
+    )
+
+
+def _flat_triples(eid: str, field: str, values: Any, dtype: type) -> NDArray[Any]:
+    """A persisted flat coordinate / index list as an ``(n, 3)`` array. A
+    list whose length is not a multiple of three, or that is not a flat
+    numeric list, is a TYPED refusal — never NumPy's bare ``ValueError`` from
+    ``reshape`` (rule 190: malformed artifacts answer 409, never 500)."""
+    if not isinstance(values, list) or len(values) % 3 != 0:
+        n = len(values) if isinstance(values, list) else type(values).__name__
+        raise ExchangeExportError(
+            f"{eid}: geometry.{field} must be a flat list of coordinate triples, got {n}"
+        )
+    try:
+        arr: NDArray[Any] = np.asarray(values, dtype=dtype)
+    except (TypeError, ValueError) as exc:
+        raise ExchangeExportError(f"{eid}: geometry.{field} is not numeric ({exc})") from exc
+    if arr.ndim != 1 or (dtype is np.float64 and not np.all(np.isfinite(arr))):
+        raise ExchangeExportError(f"{eid}: geometry.{field} is not a finite flat list")
+    return arr.reshape(-1, 3)
+
+
+def _export_prism(
+    eid: str,
+    kind: str,
+    source_id: str,
+    id_key: str,
+    rec: dict[str, Any],
+    revision: str | None,
+    directory: str,
+    semantic_type: str,
+    notes: tuple[str, ...],
+    files: list[BundleFile],
+) -> tuple[list[str], float]:
+    """Export ONE authoritative 8-vertex / 12-triangle prism (STL / OBJ /
+    GLB) from ``rec['geometry']`` verbatim, QA'd INDEPENDENTLY (closed solid,
+    positive volume agreeing with ``rec['geometricVolumeM3']``). Returns the
+    three file paths and the declared volume. A defect is a typed refusal."""
+    geom = rec["geometry"]
+    positions = _flat_triples(eid, "vertices", geom["vertices"], np.float64)
+    triangles = _flat_triples(eid, "triangleIndices", geom["triangleIndices"], np.int64)
+    if positions.shape[0] != STOPE_VERTEX_COUNT or triangles.shape[0] != STOPE_TRIANGLE_COUNT:
+        raise ExchangeExportError(
+            f"{eid}: {kind.lower()} prism must carry {STOPE_VERTEX_COUNT} vertices / "
+            f"{STOPE_TRIANGLE_COUNT} triangles, got {positions.shape[0]} / "
+            f"{triangles.shape[0]}"
+        )
+    qa = mesh_qa(positions, triangles)
+    if not qa.closed_solid:
+        raise ExchangeExportError(f"{eid}: closed-solid QA failed ({'; '.join(qa.problems)})")
+    declared = float(rec["geometricVolumeM3"])
+    if not np.isfinite(declared) or declared <= 0.0:
+        raise ExchangeExportError(f"{eid}: non-positive geometric volume {declared!r}")
+    if abs(qa.signed_volume - declared) > STOPE_VOLUME_REL_TOLERANCE * declared:
+        raise ExchangeExportError(
+            f"{eid}: exported mesh volume {qa.signed_volume:.6f} m³ disagrees with the "
+            f"artifact's geometric volume {declared:.6f} m³"
+        )
+    stem = entity_file_stem(eid)
+    stl_path = f"{directory}/{stem}.stl"
+    obj_path = f"{directory}/{stem}.obj"
+    glb_path = f"{directory}/{stem}.glb"
+    geometry = GeometryQa(
+        closed=True,
+        watertight=True,
+        manifold=True,
+        unioned=False,
+        overlapping_at_junctions=False,
+        triangle_count=qa.triangle_count,
+        vertex_count=qa.vertex_count,
+        signed_volume_m3=qa.signed_volume,
+    )
+    files.append(
+        _stope_file(
+            eid,
+            revision,
+            geometry,
+            stl_path,
+            write_binary_stl(positions, triangles, f"MineExchange {eid} LOCAL_ENU_Z_UP m"),
+            semantic_type=semantic_type,
+            notes=notes,
+        )
+    )
+    files.append(
+        _stope_file(
+            eid,
+            revision,
+            geometry,
+            obj_path,
+            write_obj(positions, triangles, eid).encode("utf-8"),
+            semantic_type=semantic_type,
+            notes=notes,
+        )
+    )
+    files.append(
+        _stope_file(
+            eid,
+            revision,
+            geometry,
+            glb_path,
+            write_mesh_glb(
+                positions,
+                [(eid, triangles, {"entityId": eid, "kind": kind, id_key: source_id})],
+                name=eid,
+                node_extras={
+                    "mineExchangeVersion": MINE_EXCHANGE_VERSION,
+                    "sourceFrame": COORDINATE_FRAME,
+                    "sceneFrame": GLTF_FRAME,
+                    "sourceArtifact": STOPES_ARTIFACT,
+                },
+            ),
+            glb=_glb_frame(),
+            semantic_type=semantic_type,
+            notes=notes,
+        )
+    )
+    return [stl_path, obj_path, glb_path], declared
+
+
+def _local_bounds(b: dict[str, Any]) -> ExchangeStopeBounds:
+    return ExchangeStopeBounds(
+        u_min=float(b["uMin"]),
+        u_max=float(b["uMax"]),
+        v_min=float(b["vMin"]),
+        v_max=float(b["vMax"]),
+        w_min=float(b["wMin"]),
+        w_max=float(b["wMax"]),
+    )
+
+
+def _grade(value: object) -> float | None:
+    """A planning grade proxy: ``None`` stays ``None``; anything else must be a
+    finite number (READ ≠ TRUST — never coerced from text)."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ExchangeExportError(f"grade proxy {value!r} is not a number")
+    return float(value)
+
+
+def _production(
+    inputs: ExchangeInputs,
+    centerlines: list[CenterlineEntity],
+    files: list[BundleFile],
+    entities: list[ExchangeEntity],
+    omissions: list[ExchangeOmission],
+    network_node_ids: set[str] | None,
+) -> ProductionExport:
+    """Project the ACTIVE production artifact (``derived/stopes.json``, the
+    method-typed ``ProductionPayload``). The omission group / semantics
+    document is the one of the scenario's method (STOPES / CUT_FILL /
+    ROOM_PILLAR) — exactly one production kind is ever reported. Dispatch is
+    on the TYPED payload class (the persisted discriminated union), never on
+    an ``if method ==`` of its own; ``check_method_authority`` has already
+    proven the payload class matches the scenario's method."""
+    kind = _PRODUCTION_KIND[production_payload_class(inputs.scenario.mining.method)]
+    if inputs.stopes is None:
+        omissions.append(
+            ExchangeOmission(
+                group=kind,
+                reason_code="ARTIFACT_ABSENT",
+                detail="stopes.json is not generated",
+                source_artifact=STOPES_ARTIFACT,
+            )
+        )
+        return ProductionExport(kind, [], 0, 0)
+    doc = inputs.stopes.document
+    if doc.get("status") != "SUCCESS":
+        omissions.append(_source_not_success(kind, STOPES_ARTIFACT, doc))
+        return ProductionExport(kind, [], 0, 0)
+    payload: ProductionPayload = parse_production_payload(doc)
+    if isinstance(payload, CutFillPayload):
+        ids = _cut_fill(inputs, doc, centerlines, files, entities)
+        return ProductionExport(kind, ids, len(doc["cuts"]), 0)
+    if isinstance(payload, RoomPillarPayload):
+        ids = _room_pillar(inputs, doc, centerlines, files, entities)
+        return ProductionExport(kind, ids, len(doc["extractionUnits"]), 0)
+    ids = _stopes(inputs, files, entities, omissions, network_node_ids)
+    return ProductionExport(kind, ids, len(ids), len(ids))
+
+
+def _crosscut_entity_by_source(centerlines: list[CenterlineEntity]) -> dict[str, str]:
+    return {c.source_id: c.entity_id for c in centerlines if c.kind == "CROSSCUT"}
+
+
+def cut_entity_id(cut_id: str) -> str:
+    return f"cut:{cut_id}"
+
+
+def backfill_entity_id(backfill_id: str) -> str:
+    return f"backfill:{backfill_id}"
+
+
+def room_entity_id(room_id: str) -> str:
+    return f"room:{room_id}"
+
+
+def bench_entity_id(unit_id: str) -> str:
+    return f"bench:{unit_id}"
+
+
+def pillar_entity_id(pillar_id: str) -> str:
+    return f"pillar:{pillar_id}"
+
+
+def _cut_fill_parameters(scenario: Scenario) -> ExchangeCutFillParameters:
+    mp = scenario.mining.method_parameters
+    if not isinstance(mp, CutFillParameters):
+        raise ExchangeExportError("scenario carries no CutFillParameters for CUT_AND_FILL")
+    return ExchangeCutFillParameters(lift_height_m=mp.lift_height_m, cut_length_m=mp.cut_length_m)
+
+
+def _room_pillar_parameters(scenario: Scenario) -> ExchangeRoomPillarParameters:
+    mp = scenario.mining.method_parameters
+    if not isinstance(mp, RoomPillarParameters):
+        raise ExchangeExportError("scenario carries no RoomPillarParameters for ROOM_AND_PILLAR")
+    return ExchangeRoomPillarParameters(
+        room_width_m=mp.room_width_m,
+        pillar_width_m=mp.pillar_width_m,
+        heading_height_m=mp.heading_height_m,
+        bench_count=int(mp.bench_count),
+        boundary_pillar_m=mp.boundary_pillar_m,
+    )
+
+
+def _method_parameters(scenario: Scenario) -> ExchangeMethodParameters | None:
+    mp = scenario.mining.method_parameters
+    if mp is None:
+        return None
+    if isinstance(mp, CutFillParameters):
+        return _cut_fill_parameters(scenario)
+    return _room_pillar_parameters(scenario)
+
+
+def _cut_fill(
+    inputs: ExchangeInputs,
+    doc: dict[str, Any],
+    centerlines: list[CenterlineEntity],
+    files: list[BundleFile],
+    entities: list[ExchangeEntity],
+) -> list[str]:
+    """CUT entities (one closed prism each under ``production/cut_fill/cuts/``)
+    + BACKFILL entities (semantic, 1:1, referencing the cut; no geometry
+    file) + ``production/cut_fill.json``. Persisted order (lowest lift first,
+    cuts along strike) is the bundle order — it is the mining sequence."""
+    assert inputs.stopes is not None
+    revision = inputs.stopes.revision
+    crosscut_entities = _crosscut_entity_by_source(centerlines)
+    backfill_by_cut: dict[str, dict[str, Any]] = {}
+    for bf in doc.get("backfills", []):
+        cid = str(bf["sourceCutId"])
+        if cid in backfill_by_cut:
+            raise ExchangeExportError(f"{STOPES_ARTIFACT}: cut {cid!r} has two backfills")
+        backfill_by_cut[cid] = bf
+    seen: set[str] = set()
+    cuts_out: list[ExchangeCut] = []
+    backfills_out: list[ExchangeBackfill] = []
+    ids: list[str] = []
+    for rec in doc.get("cuts", []):
+        cid = str(rec["id"])
+        if cid in seen:
+            raise ExchangeExportError(f"{STOPES_ARTIFACT}: duplicate cut id {cid!r}")
+        seen.add(cid)
+        bf = backfill_by_cut.pop(cid, None)
+        if bf is None:
+            raise ExchangeExportError(f"{STOPES_ARTIFACT}: cut {cid!r} has no backfill")
+        eid = cut_entity_id(cid)
+        bid = backfill_entity_id(str(bf["id"]))
+        paths, declared = _export_prism(
+            eid,
+            "CUT",
+            cid,
+            "cutId",
+            rec,
+            revision,
+            "production/cut_fill/cuts",
+            "CUT_SOLID",
+            _CUT_NOTES,
+            files,
+        )
+        cut_files = [*paths, "production/cut_fill.json"]
+        access_dev = str(rec["accessDevelopmentId"])
+        entities.append(
+            ExchangeEntity(
+                entity_id=eid,
+                kind="CUT",
+                level_id=str(rec["lowerLevelId"]),
+                source_artifact=STOPES_ARTIFACT,
+                source_id=cid,
+                files=cut_files,
+            )
+        )
+        entities.append(
+            ExchangeEntity(
+                entity_id=bid,
+                kind="BACKFILL",
+                level_id=str(rec["lowerLevelId"]),
+                source_artifact=STOPES_ARTIFACT,
+                source_id=str(bf["id"]),
+                parent_entity_id=eid,
+                files=["production/cut_fill.json"],
+            )
+        )
+        ids.extend([eid, bid])
+        cuts_out.append(
+            ExchangeCut(
+                entity_id=eid,
+                cut_id=cid,
+                method=str(rec["method"]),
+                lift_index=int(rec["liftIndex"]),
+                cut_index=int(rec["cutIndex"]),
+                lower_level_id=str(rec["lowerLevelId"]),
+                upper_level_id=str(rec["upperLevelId"]),
+                access_development_id=access_dev,
+                access_entity_id=crosscut_entities.get(access_dev),
+                backfill_entity_id=bid,
+                local_bounds=_local_bounds(rec["localBounds"]),
+                strike_length=float(rec["strikeLength"]),
+                down_dip_span=float(rec["downDipSpan"]),
+                vertical_height=float(rec["verticalHeight"]),
+                thickness=float(rec["thickness"]),
+                geometric_volume_m3=declared,
+                tonnes=float(rec["tonnes"]),
+                mean_grade_proxy=_grade(rec.get("meanGradeProxy")),
+                planned_state=str(rec.get("plannedState", "PLANNED")),
+                files=cut_files,
+            )
+        )
+        bf_volume = float(bf["volumeM3"])
+        if abs(bf_volume - declared) > STOPE_VOLUME_REL_TOLERANCE * declared:
+            raise ExchangeExportError(
+                f"{bid}: backfill volume {bf_volume:.6f} m³ disagrees with its cut's "
+                f"{declared:.6f} m³"
+            )
+        backfills_out.append(
+            ExchangeBackfill(
+                entity_id=bid,
+                backfill_id=str(bf["id"]),
+                source_cut_id=cid,
+                source_cut_entity_id=eid,
+                volume_m3=bf_volume,
+            )
+        )
+    if backfill_by_cut:
+        orphan = sorted(backfill_by_cut)[0]
+        raise ExchangeExportError(f"{STOPES_ARTIFACT}: backfill references unknown cut {orphan!r}")
+    lifts = [
+        ExchangeCutFillLift(
+            lift_index=int(lf["liftIndex"]),
+            lower_level_id=str(lf["lowerLevelId"]),
+            upper_level_id=str(lf["upperLevelId"]),
+            v_min=float(lf["vMin"]),
+            v_max=float(lf["vMax"]),
+            vertical_height=float(lf["verticalHeight"]),
+            cut_entity_ids=[cut_entity_id(str(c)) for c in lf["cutIds"]],
+        )
+        for lf in doc.get("lifts", [])
+    ]
+    cut_entity_ids = {c.entity_id for c in cuts_out}
+    for lf in lifts:
+        for ceid in lf.cut_entity_ids:
+            if ceid not in cut_entity_ids:
+                raise ExchangeExportError(f"lift {lf.lift_index} references unknown cut {ceid!r}")
+    doc_out = ExchangeProductionCutFill(
+        mine_exchange_version=MINE_EXCHANGE_VERSION,
+        source_artifact=STOPES_ARTIFACT,
+        source_revision=revision,
+        method=str(doc["method"]),
+        parameters=_cut_fill_parameters(inputs.scenario),
+        lifts=lifts,
+        cuts=cuts_out,
+        backfills=backfills_out,
+        metrics=_cut_fill_metrics(doc.get("metrics")),
+        notes=[
+            "one authoritative closed prism per cut (production/cut_fill/cuts/); cuts share "
+            "boundary faces along strike and between lifts; no union, no aggregate body",
+            "a BACKFILL entity fills its source cut's void 1:1 and owns no geometry — its "
+            "shape IS the cut solid (sourceCutEntityId)",
+            "cut order (lifts bottom → top, cuts along strike) is the planned mining "
+            "sequence; volume / tonnes / grade proxy are planning quantities, never "
+            "reserves or resources",
+        ],
+    )
+    files.append(
+        BundleFile(
+            "production/cut_fill.json",
+            dumps(doc_out.model_dump(mode="json", by_alias=True)),
+            "PRODUCTION_CUT_FILL",
+            "DOCUMENT",
+            ids,
+            STOPES_ARTIFACT,
+            revision,
+            False,
+        )
+    )
+    return ids
+
+
+def _cut_fill_metrics(metrics: object) -> ExchangeCutFillMetrics | None:
+    if not isinstance(metrics, dict):
+        return None
+    return ExchangeCutFillMetrics(
+        cut_count=int(metrics["cutCount"]),
+        backfill_count=int(metrics["backfillCount"]),
+        lift_count=int(metrics["liftCount"]),
+        level_interval_count=int(metrics["levelIntervalCount"]),
+        total_geometric_volume_m3=float(metrics["totalGeometricVolumeM3"]),
+        total_tonnes=float(metrics["totalTonnes"]),
+        geometric_extraction_fraction_of_orebody=float(
+            metrics["geometricExtractionFractionOfOrebody"]
+        ),
+        weighted_mean_grade_proxy=_grade(metrics.get("weightedMeanGradeProxy")),
+        actual_mean_lift_height=float(metrics["actualMeanLiftHeight"]),
+        actual_mean_cut_length=float(metrics["actualMeanCutLength"]),
+    )
+
+
+def _room_pillar(
+    inputs: ExchangeInputs,
+    doc: dict[str, Any],
+    centerlines: list[CenterlineEntity],
+    files: list[BundleFile],
+    entities: list[ExchangeEntity],
+) -> list[str]:
+    """ROOM entities (semantic parents, no geometry) + BENCH entities (one
+    closed prism each under ``production/room_pillar/benches/``) + PILLAR
+    entities (``production/room_pillar/pillars/``) + ``production/room_pillar.json``.
+    Persisted order (row-major grid) is the bundle order."""
+    assert inputs.stopes is not None
+    revision = inputs.stopes.revision
+    crosscut_entities = _crosscut_entity_by_source(centerlines)
+    units_by_room: dict[str, list[dict[str, Any]]] = {}
+    unit_ids_seen: set[str] = set()
+    for u in doc.get("extractionUnits", []):
+        uid = str(u["id"])
+        if uid in unit_ids_seen:
+            raise ExchangeExportError(f"{STOPES_ARTIFACT}: duplicate extraction unit id {uid!r}")
+        unit_ids_seen.add(uid)
+        units_by_room.setdefault(str(u["roomId"]), []).append(u)
+    ids: list[str] = []
+    rooms_out: list[ExchangeRoom] = []
+    benches_out: list[ExchangeBench] = []
+    pillars_out: list[ExchangePillar] = []
+    room_ids_seen: set[str] = set()
+    for room in doc.get("rooms", []):
+        rid = str(room["id"])
+        if rid in room_ids_seen:
+            raise ExchangeExportError(f"{STOPES_ARTIFACT}: duplicate room id {rid!r}")
+        room_ids_seen.add(rid)
+        reid = room_entity_id(rid)
+        members = units_by_room.pop(rid, [])
+        declared_units = [str(x) for x in room["extractionUnitIds"]]
+        if [str(u["id"]) for u in members] != declared_units:
+            raise ExchangeExportError(
+                f"{reid}: extractionUnitIds {declared_units} do not match the units "
+                f"referencing the room {[str(u['id']) for u in members]}"
+            )
+        access_dev = str(room["accessDevelopmentId"])
+        b = room["localPlanBounds"]
+        entities.append(
+            ExchangeEntity(
+                entity_id=reid,
+                kind="ROOM",
+                level_id=None,
+                source_artifact=STOPES_ARTIFACT,
+                source_id=rid,
+                source_member_ids=declared_units,
+                files=["production/room_pillar.json"],
+            )
+        )
+        ids.append(reid)
+        bench_eids: list[str] = []
+        for u in members:
+            uid = str(u["id"])
+            beid = bench_entity_id(uid)
+            paths, declared = _export_prism(
+                beid,
+                "BENCH",
+                uid,
+                "unitId",
+                u,
+                revision,
+                "production/room_pillar/benches",
+                "BENCH_SOLID",
+                _BENCH_NOTES,
+                files,
+            )
+            bench_files = [*paths, "production/room_pillar.json"]
+            entities.append(
+                ExchangeEntity(
+                    entity_id=beid,
+                    kind="BENCH",
+                    level_id=None,
+                    source_artifact=STOPES_ARTIFACT,
+                    source_id=uid,
+                    parent_entity_id=reid,
+                    files=bench_files,
+                )
+            )
+            ids.append(beid)
+            bench_eids.append(beid)
+            benches_out.append(
+                ExchangeBench(
+                    entity_id=beid,
+                    unit_id=uid,
+                    room_entity_id=reid,
+                    stage=str(u["stage"]),
+                    bench_index=int(u["benchIndex"]),
+                    local_bounds=_local_bounds(u["localBounds"]),
+                    geometric_volume_m3=declared,
+                    tonnes=float(u["tonnes"]),
+                    mean_grade_proxy=_grade(u.get("meanGradeProxy")),
+                    planned_state=str(u.get("plannedState", "PLANNED")),
+                    files=bench_files,
+                )
+            )
+        rooms_out.append(
+            ExchangeRoom(
+                entity_id=reid,
+                room_id=rid,
+                row_index=int(room["rowIndex"]),
+                column_index=int(room["columnIndex"]),
+                local_plan_bounds=ExchangePlanBounds(
+                    u_min=float(b["uMin"]),
+                    u_max=float(b["uMax"]),
+                    v_min=float(b["vMin"]),
+                    v_max=float(b["vMax"]),
+                ),
+                access_development_id=access_dev,
+                access_entity_id=crosscut_entities.get(access_dev),
+                extraction_unit_entity_ids=bench_eids,
+            )
+        )
+    if units_by_room:
+        orphan = sorted(units_by_room)[0]
+        raise ExchangeExportError(
+            f"{STOPES_ARTIFACT}: extraction units reference unknown room {orphan!r}"
+        )
+    pillar_ids_seen: set[str] = set()
+    for pl in doc.get("pillars", []):
+        pid = str(pl["id"])
+        if pid in pillar_ids_seen:
+            raise ExchangeExportError(f"{STOPES_ARTIFACT}: duplicate pillar id {pid!r}")
+        pillar_ids_seen.add(pid)
+        peid = pillar_entity_id(pid)
+        paths, declared = _export_prism(
+            peid,
+            "PILLAR",
+            pid,
+            "pillarId",
+            pl,
+            revision,
+            "production/room_pillar/pillars",
+            "PILLAR_SOLID",
+            _PILLAR_NOTES,
+            files,
+        )
+        pillar_files = [*paths, "production/room_pillar.json"]
+        entities.append(
+            ExchangeEntity(
+                entity_id=peid,
+                kind="PILLAR",
+                level_id=None,
+                source_artifact=STOPES_ARTIFACT,
+                source_id=pid,
+                files=pillar_files,
+            )
+        )
+        ids.append(peid)
+        pillars_out.append(
+            ExchangePillar(
+                entity_id=peid,
+                pillar_id=pid,
+                row_index=int(pl["rowIndex"]),
+                column_index=int(pl["columnIndex"]),
+                local_bounds=_local_bounds(pl["localBounds"]),
+                geometric_volume_m3=declared,
+                tonnes_equivalent=float(pl["tonnesEquivalent"]),
+                mean_grade_proxy=_grade(pl.get("meanGradeProxy")),
+                files=pillar_files,
+            )
+        )
+    doc_out = ExchangeProductionRoomPillar(
+        mine_exchange_version=MINE_EXCHANGE_VERSION,
+        source_artifact=STOPES_ARTIFACT,
+        source_revision=revision,
+        method=str(doc["method"]),
+        parameters=_room_pillar_parameters(inputs.scenario),
+        rooms=rooms_out,
+        extraction_units=benches_out,
+        pillars=pillars_out,
+        metrics=_room_pillar_metrics(doc.get("metrics")),
+        notes=[
+            "a ROOM is the semantic parent of its extraction units and owns no geometry; "
+            "BENCH solids (HEADING / BENCH_1 / BENCH_2) are one closed prism each, sharing "
+            "boundary faces within a room; no union, no aggregate body",
+            "PILLAR solids are retained material — planning geometry, never a geotechnical "
+            "pillar design, never scheduled",
+            "volume / tonnes / grade proxy are planning quantities, never reserves or "
+            "resources; the extraction fraction is a geometric planning fraction",
+        ],
+    )
+    files.append(
+        BundleFile(
+            "production/room_pillar.json",
+            dumps(doc_out.model_dump(mode="json", by_alias=True)),
+            "PRODUCTION_ROOM_PILLAR",
+            "DOCUMENT",
+            ids,
+            STOPES_ARTIFACT,
+            revision,
+            False,
+        )
+    )
+    return ids
+
+
+def _room_pillar_metrics(metrics: object) -> ExchangeRoomPillarMetrics | None:
+    if not isinstance(metrics, dict):
+        return None
+    return ExchangeRoomPillarMetrics(
+        room_count=int(metrics["roomCount"]),
+        extraction_unit_count=int(metrics["extractionUnitCount"]),
+        pillar_count=int(metrics["pillarCount"]),
+        heading_count=int(metrics["headingCount"]),
+        bench_count=int(metrics["benchCount"]),
+        total_mined_volume_m3=float(metrics["totalMinedVolumeM3"]),
+        total_pillar_volume_m3=float(metrics["totalPillarVolumeM3"]),
+        panel_volume_m3=float(metrics["panelVolumeM3"]),
+        total_mined_tonnes=float(metrics["totalMinedTonnes"]),
+        geometric_extraction_fraction=float(metrics["geometricExtractionFraction"]),
+        weighted_mean_grade_proxy=_grade(metrics.get("weightedMeanGradeProxy")),
     )
 
 
@@ -1517,26 +2242,19 @@ def _stopes(
             raise ExchangeExportError(f"{STOPES_ARTIFACT}: duplicate stope id {sid!r}")
         seen.add(sid)
         eid = stope_entity_id(sid)
-        geom = rec["geometry"]
-        positions = np.asarray(geom["vertices"], dtype=np.float64).reshape(-1, 3)
-        triangles = np.asarray(geom["triangleIndices"], dtype=np.int64).reshape(-1, 3)
-        if positions.shape[0] != STOPE_VERTEX_COUNT or triangles.shape[0] != STOPE_TRIANGLE_COUNT:
-            raise ExchangeExportError(
-                f"{eid}: stope prism must carry {STOPE_VERTEX_COUNT} vertices / "
-                f"{STOPE_TRIANGLE_COUNT} triangles, got {positions.shape[0]} / "
-                f"{triangles.shape[0]}"
-            )
-        qa = mesh_qa(positions, triangles)
-        if not qa.closed_solid:
-            raise ExchangeExportError(f"{eid}: closed-solid QA failed ({'; '.join(qa.problems)})")
-        declared = float(rec["geometricVolumeM3"])
-        if not np.isfinite(declared) or declared <= 0.0:
-            raise ExchangeExportError(f"{eid}: non-positive geometric volume {declared!r}")
-        if abs(qa.signed_volume - declared) > STOPE_VOLUME_REL_TOLERANCE * declared:
-            raise ExchangeExportError(
-                f"{eid}: exported mesh volume {qa.signed_volume:.6f} m³ disagrees with the "
-                f"artifact's geometric volume {declared:.6f} m³"
-            )
+        paths, declared = _export_prism(
+            eid,
+            "STOPE",
+            sid,
+            "stopeId",
+            rec,
+            revision,
+            "production/stopes",
+            "STOPE_SOLID",
+            _STOPE_NOTES,
+            files,
+        )
+        stl_path, obj_path, glb_path = paths
         upper_node, lower_node = str(rec["upperAccessNodeId"]), str(rec["lowerAccessNodeId"])
         if network_node_ids is not None:
             for node in (upper_node, lower_node):
@@ -1544,58 +2262,6 @@ def _stopes(
                     raise ExchangeExportError(
                         f"{eid}: access node {node!r} is not a node of the exported network"
                     )
-        stem = entity_file_stem(eid)
-        stl_path = f"production/stopes/{stem}.stl"
-        obj_path = f"production/stopes/{stem}.obj"
-        glb_path = f"production/stopes/{stem}.glb"
-        geometry = GeometryQa(
-            closed=True,
-            watertight=True,
-            manifold=True,
-            unioned=False,
-            overlapping_at_junctions=False,
-            triangle_count=qa.triangle_count,
-            vertex_count=qa.vertex_count,
-            signed_volume_m3=qa.signed_volume,
-        )
-        files.append(
-            _stope_file(
-                eid,
-                revision,
-                geometry,
-                stl_path,
-                write_binary_stl(positions, triangles, f"MineExchange {eid} LOCAL_ENU_Z_UP m"),
-            )
-        )
-        files.append(
-            _stope_file(
-                eid,
-                revision,
-                geometry,
-                obj_path,
-                write_obj(positions, triangles, eid).encode("utf-8"),
-            )
-        )
-        files.append(
-            _stope_file(
-                eid,
-                revision,
-                geometry,
-                glb_path,
-                write_mesh_glb(
-                    positions,
-                    [(eid, triangles, {"entityId": eid, "kind": "STOPE", "stopeId": sid})],
-                    name=eid,
-                    node_extras={
-                        "mineExchangeVersion": MINE_EXCHANGE_VERSION,
-                        "sourceFrame": COORDINATE_FRAME,
-                        "sceneFrame": GLTF_FRAME,
-                        "sourceArtifact": STOPES_ARTIFACT,
-                    },
-                ),
-                glb=_glb_frame(),
-            )
-        )
         stope_files = [stl_path, obj_path, glb_path, "production/stopes.json"]
         entities.append(
             ExchangeEntity(
@@ -1607,7 +2273,6 @@ def _stopes(
                 files=stope_files,
             )
         )
-        b = rec["localBounds"]
         exported.append(
             ExchangeStope(
                 entity_id=eid,
@@ -1619,14 +2284,7 @@ def _stopes(
                 lower_level_id=str(rec["lowerLevelId"]),
                 upper_access_node_id=upper_node,
                 lower_access_node_id=lower_node,
-                local_bounds=ExchangeStopeBounds(
-                    u_min=float(b["uMin"]),
-                    u_max=float(b["uMax"]),
-                    v_min=float(b["vMin"]),
-                    v_max=float(b["vMax"]),
-                    w_min=float(b["wMin"]),
-                    w_max=float(b["wMax"]),
-                ),
+                local_bounds=_local_bounds(rec["localBounds"]),
                 strike_length=float(rec["strikeLength"]),
                 down_dip_span=float(rec["downDipSpan"]),
                 vertical_height=float(rec["verticalHeight"]),
@@ -1694,7 +2352,7 @@ def _stopes_metrics(metrics: object) -> ExchangeStopesMetrics | None:
 def _mining_method(
     inputs: ExchangeInputs,
     centerlines: list[CenterlineEntity],
-    stope_ids: list[str],
+    production_export: ProductionExport,
     files: list[BundleFile],
 ) -> None:
     """``semantics/mining_method.json`` — always present (the scenario is its
@@ -1727,6 +2385,7 @@ def _mining_method(
             source_revision=inputs.levels.revision if inputs.levels is not None else None,
             entity_ids=crosscut_ids,
         )
+    stope_ids = production_export.entity_ids
     stopes = inputs.stopes.document if inputs.stopes is not None else None
     if isinstance(stopes, dict) and inputs.stopes is not None:
         st_status = str(stopes["status"])
@@ -1737,8 +2396,10 @@ def _mining_method(
             failure_reason=stopes.get("failureReason"),
             source_artifact=STOPES_ARTIFACT,
             source_revision=inputs.stopes.revision,
-            stope_count=len(stope_ids),
+            stope_count=production_export.stope_count,
             entity_ids=stope_ids,
+            production_kind=production_export.kind,
+            unit_count=production_export.unit_count,
         )
     else:
         production = ExchangeProductionStatus(
@@ -1748,6 +2409,8 @@ def _mining_method(
             source_revision=None,
             stope_count=0,
             entity_ids=[],
+            production_kind=production_export.kind,
+            unit_count=0,
         )
     doc = ExchangeMiningMethod(
         mine_exchange_version=MINE_EXCHANGE_VERSION,
@@ -1758,6 +2421,7 @@ def _mining_method(
             sublevel_interval=float(scenario.mining.sublevel_interval),
             stope_length=float(scenario.mining.stope_length),
             minimum_pillar=float(scenario.mining.minimum_pillar),
+            method_parameters=_method_parameters(scenario),
         ),
         production_development=development,
         production=production,
@@ -1766,8 +2430,9 @@ def _mining_method(
             "requestedMethod is the scenario's persisted configuration authority; "
             "implementationStatus is what this MineGen version implements for it",
             "production development geometry is the exported CROSSCUT entities "
-            "(levels.json owns it); production geometry is the exported STOPE entities "
-            "(stopes.json owns it) — nothing is duplicated here",
+            "(levels.json owns it); production geometry is the exported STOPE / CUT / "
+            "BENCH / PILLAR entities of the ACTIVE method (the production artifact owns "
+            "it) — nothing is duplicated here",
             "an unsupported method never receives longhole geometry; its production "
             "artifacts are typed UNSUPPORTED_METHOD outcomes",
         ],

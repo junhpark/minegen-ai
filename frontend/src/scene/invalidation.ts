@@ -10,7 +10,7 @@ import type {
   SensorPayload,
   ShaftsPayload,
   SmoothedDeclinePayload,
-  StopesPayload,
+  ProductionPayload,
   TimelinePayload,
   WorldScene,
 } from '@/types/scene'
@@ -113,9 +113,9 @@ export function afterNetworkRegen(scene: WorldScene, payload: NetworkPayload): W
   }
 }
 
-/** Stopes rebuilt (rules 79/86/92): timeline is stale, communication and
- * everything else is preserved. */
-export function afterStopesRegen(scene: WorldScene, payload: StopesPayload): WorldScene {
+/** Production (stopes / cuts / rooms — ONE active artifact, rules 79/86/92)
+ * rebuilt: timeline is stale, communication and everything else is preserved. */
+export function afterStopesRegen(scene: WorldScene, payload: ProductionPayload): WorldScene {
   return { ...scene, stopes: payload, timeline: null }
 }
 

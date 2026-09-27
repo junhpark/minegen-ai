@@ -40,7 +40,7 @@ export const DESIGN_TAB_FEATURES: Record<DesignTab, readonly string[]> = {
   LAYOUT: ['Mine layout', 'Design assessment', 'Legacy decline'],
   DEVELOP: ['Level development', 'Development mesh', 'Ramp tunnel mesh', 'Shafts'],
   NETWORK: ['Mine network', 'Capabilities'],
-  // Phase 21A will add a "Mining method" card ABOVE Stopes in this list;
-  // Phase 20E deliberately ships no method selector (§21).
-  MINING: ['Stopes', 'Schedule'],
+  // Phase 21B/C: the method card (selector + explicit parameters) sits above
+  // the method-generic Production card
+  MINING: ['Mining method', 'Production', 'Schedule'],
 }

@@ -32,11 +32,18 @@ import numpy as np
 
 from minegen.core.enums import ObjectState, TaskType
 from minegen.core.models import Scenario
+from minegen.mining.methods.contracts import (
+    ProductionScheduleContext,
+    ProductionScheduleSpec,
+)
+from minegen.mining.methods.registry import plan_for
 from minegen.network.geometry_refs import GeometryRefError, resolve_owning_centerline
 from minegen.network.models import GeometryRef
 from minegen.network.node_ids import level_entry_id
 from minegen.scheduling.models import (
     DevelopmentTimeline,
+    ProductionTimeline,
+    ProductionUnitTimeline,
     StateTransition,
     StopeTimeline,
     TaskBasis,
@@ -199,10 +206,13 @@ class MineTimelineBuilder:
         if len(set(edge_ids)) != len(edge_ids):
             dup = sorted({i for i in edge_ids if edge_ids.count(i) > 1})[:3]
             return _failed(source_revision, f"duplicate network edge ids: {dup}")
-        stope_id_list = [s["id"] for s in stopes_payload["stopes"]]
-        if len(set(stope_id_list)) != len(stope_id_list):
-            dup = sorted({i for i in stope_id_list if stope_id_list.count(i) > 1})[:3]
-            return _failed(source_revision, f"duplicate stope ids: {dup}")
+        # Phase 21B/C: the mining-method plan is the ONLY method authority —
+        # the builder never inspects ``scenario.mining.method`` itself.
+        plan = plan_for(self.scenario.mining.method)
+        unit_id_list, unit_noun = plan.production_identity(stopes_payload)
+        if len(set(unit_id_list)) != len(unit_id_list):
+            dup = sorted({i for i in unit_id_list if unit_id_list.count(i) > 1})[:3]
+            return _failed(source_revision, f"duplicate {unit_noun} ids: {dup}")
         nodes = {n["id"]: n for n in node_list}
         for e in edges:
             for endpoint in (e["fromNode"], e["toNode"]):
@@ -445,161 +455,51 @@ class MineTimelineBuilder:
                 if dep != tid:
                     tasks[tid].dependencies.append(dep)
 
-        # -- stope access + five-task chains (§8–§9) ------------------------- #
+        # -- production schedule from the method plan (Phase 21B/C) ---------- #
+        # The CROSSCUT development tasks terminating at each access node and
+        # the development task of every physical edge are the validated
+        # context a method may depend on; the plan returns its task graph.
         cc_task_by_access: dict[str, list[str]] = {}
         for e in edges:
             if e["type"] == "CROSSCUT":
                 cc_task_by_access.setdefault(e["toNode"], []).append(dev_task_by_edge[e["id"]])
-        stopes = stopes_payload["stopes"]
-        stope_task_ids: dict[str, dict[str, str]] = {}
-        for s in stopes:
-            # -- semantic anchor correspondence (blocker 1): existence is not
-            # enough — the referenced STOPE_ACCESS must be THIS stope's
-            # station on THIS stope's levels, not any real anchor elsewhere.
-            if s["upperAccessNodeId"] == s["lowerAccessNodeId"]:
-                return _failed(
-                    source_revision,
-                    f"stope {s['id']} upper and lower access anchors must differ, "
-                    f"both are {s['upperAccessNodeId']}",
+        spec_or_failure = plan.production_schedule(
+            self.scenario,
+            stopes_payload,
+            ProductionScheduleContext(
+                nodes=nodes,
+                development_task_by_edge=dict(dev_task_by_edge),
+                crosscut_tasks_by_access_node=cc_task_by_access,
+                schedule=sch,
+            ),
+        )
+        if isinstance(spec_or_failure, str):
+            return _failed(source_revision, spec_or_failure)
+        spec: ProductionScheduleSpec = spec_or_failure
+        for pt in spec.tasks:
+            if not (pt.duration_days > 0.0 and math.isfinite(pt.duration_days)):
+                return _failed(source_revision, f"non-positive duration for {pt.id}")
+            for dep in pt.dependencies:
+                if dep not in tasks:
+                    return _failed(
+                        source_revision,
+                        f"production task {pt.id} depends on unknown task {dep}",
+                    )
+            add_failure = add_task(
+                TimelineTask(
+                    id=pt.id,
+                    task_type=pt.task_type,
+                    target_kind=pt.target_kind,
+                    target_id=pt.target_id,
+                    duration_days=pt.duration_days,
+                    start_day=0.0,
+                    end_day=0.0,
+                    dependencies=list(pt.dependencies),
+                    basis=pt.basis,
                 )
-            deps_access: list[str] = []
-            anchor_specs = (
-                ("upper", s["upperAccessNodeId"], s["upperLevelId"]),
-                ("lower", s["lowerAccessNodeId"], s["lowerLevelId"]),
             )
-            for side, anchor, expected_level in anchor_specs:
-                node = nodes.get(anchor)
-                if node is None:
-                    return _failed(
-                        source_revision,
-                        f"stope {s['id']} references access anchor {anchor} that does "
-                        "not exist in the network",
-                    )
-                if node.get("type") != "STOPE_ACCESS":
-                    return _failed(
-                        source_revision,
-                        f"{side} anchor {anchor} of stope {s['id']} is type "
-                        f"{node.get('type')!r}, not STOPE_ACCESS",
-                    )
-                if node.get("levelId") != expected_level:
-                    return _failed(
-                        source_revision,
-                        f"{side} anchor {anchor} of stope {s['id']} lies on level "
-                        f"{node.get('levelId')!r}, expected {expected_level!r}",
-                    )
-                if node.get("stationIndex") != s["stationIndex"]:
-                    return _failed(
-                        source_revision,
-                        f"{side} anchor {anchor} of stope {s['id']} has stationIndex "
-                        f"{node.get('stationIndex')!r}, expected {s['stationIndex']!r}",
-                    )
-                station_u = node.get("stationU")
-                if station_u is None or abs(float(station_u) - float(s["stationU"])) > 1e-6:
-                    return _failed(
-                        source_revision,
-                        f"{side} anchor {anchor} of stope {s['id']} has stationU "
-                        f"{station_u!r}, expected {float(s['stationU'])!r} within 1e-6",
-                    )
-                cc = cc_task_by_access.get(anchor, [])
-                if len(cc) != 1:
-                    return _failed(
-                        source_revision,
-                        f"access anchor {anchor} of stope {s['id']} must terminate "
-                        f"exactly one CROSSCUT development, found {len(cc)}",
-                    )
-                deps_access.append(cc[0])
-            if deps_access[0] == deps_access[1]:
-                return _failed(
-                    source_revision,
-                    f"stope {s['id']} upper and lower access crosscut tasks must be "
-                    f"distinct, both resolved to {deps_access[0]}",
-                )
-            tonnes = float(s["tonnes"])
-            volume = float(s["geometricVolumeM3"])
-            sid = s["id"]
-            chain_spec = [
-                (
-                    f"TASK:PREP:{sid}",
-                    TaskType.STOPE_PREPARATION,
-                    float(sch.stope_preparation_days),
-                    TaskBasis(
-                        quantity=float(sch.stope_preparation_days),
-                        quantity_unit="day",
-                        rate=1.0,
-                        rate_unit="day/day",
-                    ),
-                    sorted(deps_access),
-                ),
-                (
-                    f"TASK:STOPING:{sid}",
-                    TaskType.STOPING,
-                    tonnes / float(sch.stoping_tonnes_per_day),
-                    TaskBasis(
-                        quantity=tonnes,
-                        quantity_unit="t",
-                        rate=float(sch.stoping_tonnes_per_day),
-                        rate_unit="t/day",
-                    ),
-                    [f"TASK:PREP:{sid}"],
-                ),
-                (
-                    f"TASK:MUCKING:{sid}",
-                    TaskType.MUCKING,
-                    tonnes / float(sch.mucking_tonnes_per_day),
-                    TaskBasis(
-                        quantity=tonnes,
-                        quantity_unit="t",
-                        rate=float(sch.mucking_tonnes_per_day),
-                        rate_unit="t/day",
-                    ),
-                    [f"TASK:STOPING:{sid}"],
-                ),
-                (
-                    f"TASK:BACKFILL:{sid}",
-                    TaskType.BACKFILL,
-                    volume / float(sch.backfill_m3_per_day),
-                    TaskBasis(
-                        quantity=volume,
-                        quantity_unit="m3",
-                        rate=float(sch.backfill_m3_per_day),
-                        rate_unit="m3/day",
-                    ),
-                    [f"TASK:MUCKING:{sid}"],
-                ),
-                (
-                    f"TASK:CURE:{sid}",
-                    TaskType.CURE_BACKFILL,
-                    float(sch.backfill_cure_days),
-                    TaskBasis(
-                        quantity=float(sch.backfill_cure_days),
-                        quantity_unit="day",
-                        rate=1.0,
-                        rate_unit="day/day",
-                    ),
-                    [f"TASK:BACKFILL:{sid}"],
-                ),
-            ]
-            ids: dict[str, str] = {}
-            for tid, ttype, duration, basis, deps in chain_spec:
-                if not (duration > 0.0 and math.isfinite(duration)):
-                    return _failed(source_revision, f"non-positive duration for {tid}")
-                add_failure = add_task(
-                    TimelineTask(
-                        id=tid,
-                        task_type=ttype,
-                        target_kind="STOPE",
-                        target_id=sid,
-                        duration_days=duration,
-                        start_day=0.0,
-                        end_day=0.0,
-                        dependencies=list(deps),
-                        basis=basis,
-                    )
-                )
-                if add_failure is not None:
-                    return _failed(source_revision, add_failure)
-                ids[ttype.value] = tid
-            stope_task_ids[sid] = ids
+            if add_failure is not None:
+                return _failed(source_revision, add_failure)
 
         # -- earliest-start over a validated DAG (§4, §16) ------------------- #
         solve_failure = solve_earliest_start(tasks)
@@ -675,71 +575,91 @@ class MineTimelineBuilder:
                 )
             )
 
-        # -- stope state machines (§13, rule 84) ----------------------------- #
+        # -- production state machines (§13, rule 84) ------------------------ #
+        # Every transition is bound to a solved task boundary named by the plan.
+        def unit_transitions(unit_transitions_spec: Any) -> list[StateTransition] | str:
+            out: list[StateTransition] = []
+            for tr in unit_transitions_spec:
+                task = tasks.get(tr.task_id)
+                if task is None:
+                    return f"state transition references unknown task {tr.task_id}"
+                day = task.start_day if tr.boundary == "start" else task.end_day
+                out.append(StateTransition(day=day, state=tr.state))
+            return out
+
         stope_timelines: list[StopeTimeline] = []
-        for s in stopes:
-            ids = stope_task_ids[s["id"]]
-            prep = tasks[ids[TaskType.STOPE_PREPARATION.value]]
-            stoping = tasks[ids[TaskType.STOPING.value]]
-            mucking = tasks[ids[TaskType.MUCKING.value]]
-            backfill = tasks[ids[TaskType.BACKFILL.value]]
-            cure = tasks[ids[TaskType.CURE_BACKFILL.value]]
-            stope_timelines.append(
-                StopeTimeline(
-                    stope_id=s["id"],
-                    transitions=[
-                        StateTransition(day=prep.start_day, state=ObjectState.DEVELOPING),
-                        StateTransition(day=stoping.start_day, state=ObjectState.ACTIVE),
-                        StateTransition(day=stoping.end_day, state=ObjectState.MINED),
-                        StateTransition(day=mucking.end_day, state=ObjectState.VOID),
-                        StateTransition(day=backfill.end_day, state=ObjectState.BACKFILLED),
-                        StateTransition(day=cure.end_day, state=ObjectState.CLOSED),
-                    ],
+        production_units: list[ProductionUnitTimeline] = []
+        for unit_spec in spec.units:
+            transitions = unit_transitions(unit_spec.transitions)
+            if isinstance(transitions, str):
+                return _failed(source_revision, transitions)
+            if spec.target_kind == "STOPE":
+                stope_timelines.append(
+                    StopeTimeline(stope_id=unit_spec.unit_id, transitions=transitions)
                 )
-            )
+            else:
+                production_units.append(
+                    ProductionUnitTimeline(unit_id=unit_spec.unit_id, transitions=transitions)
+                )
+        production_objects = stope_timelines if spec.target_kind == "STOPE" else production_units
 
         task_list = [tasks[tid] for tid in sorted(tasks)]
         dev_tasks = [t for t in task_list if t.target_kind == "DEVELOPMENT"]
-        stope_tasks = [t for t in task_list if t.target_kind == "STOPE"]
+        prod_tasks = [t for t in task_list if t.target_kind == spec.target_kind]
         # -- aggregate identity verification before SUCCESS (blocker 2) ------ #
         dev_targets = [d.edge_id for d in developments]
-        stope_targets = [st.stope_id for st in stope_timelines]
+        unit_targets = [u.unit_id for u in spec.units]
+        n_units = len(unit_id_list)
         if (
             len(dev_tasks) != len(edges)
             or len(developments) != len(edges)
-            or len(stope_tasks) != 5 * len(stopes)
-            or len(stope_timelines) != len(stopes)
+            or len(prod_tasks) != spec.tasks_per_unit * n_units
+            or len(production_objects) != n_units
+            or len(task_list) != len(dev_tasks) + len(prod_tasks)
         ):
             return _failed(
                 source_revision,
                 "aggregate task/object counts do not match the input artifacts: "
                 f"devTasks={len(dev_tasks)} devObjects={len(developments)} "
-                f"edges={len(edges)} stopeTasks={len(stope_tasks)} "
-                f"stopeObjects={len(stope_timelines)} stopes={len(stopes)}",
+                f"edges={len(edges)} {unit_noun}Tasks={len(prod_tasks)} "
+                f"{unit_noun}Objects={len(production_objects)} {unit_noun}s={n_units}",
             )
         if len(set(dev_targets)) != len(dev_targets) or set(dev_targets) != set(edge_ids):
             return _failed(
                 source_revision, "development timeline targets are not unique or unresolved"
             )
-        if len(set(stope_targets)) != len(stope_targets) or set(stope_targets) != set(
-            stope_id_list
-        ):
-            return _failed(source_revision, "stope timeline targets are not unique or unresolved")
+        if len(set(unit_targets)) != len(unit_targets) or set(unit_targets) != set(unit_id_list):
+            return _failed(
+                source_revision, f"{unit_noun} timeline targets are not unique or unresolved"
+            )
         end_day = max((t.end_day for t in task_list), default=0.0)
-        stoping_starts = [t.start_day for t in stope_tasks if t.task_type is TaskType.STOPING]
+        stoping_starts = [t.start_day for t in prod_tasks if t.task_type is TaskType.STOPING]
+        is_stope = spec.target_kind == "STOPE"
         metrics = TimelineMetrics(
             task_count=len(task_list),
             development_task_count=len(dev_tasks),
-            stope_task_count=len(stope_tasks),
+            stope_task_count=len(prod_tasks) if is_stope else 0,
             development_object_count=len(developments),
             stope_object_count=len(stope_timelines),
             total_development_length3d=total_dev_len,
-            total_scheduled_tonnes=float(math.fsum(float(s["tonnes"]) for s in stopes)),
+            total_scheduled_tonnes=spec.scheduled_tonnes,
             ramp_completion_day=max(
                 (tasks[dev_task_by_edge[e["id"]]].end_day for e in ramp_edges), default=0.0
             ),
             first_stoping_day=min(stoping_starts) if stoping_starts else None,
             end_day=end_day,
+            production_task_count=None if is_stope else len(prod_tasks),
+            production_object_count=None if is_stope else len(production_units),
+            production_target_kind=None if is_stope else spec.target_kind,
+        )
+        production_block = (
+            None
+            if is_stope
+            else ProductionTimeline(
+                method=self.scenario.mining.method.value,
+                target_kind=spec.target_kind,
+                units=production_units,
+            )
         )
         return TimelinePayload(
             status="SUCCESS",
@@ -751,4 +671,5 @@ class MineTimelineBuilder:
             developments=developments,
             stopes=stope_timelines,
             metrics=metrics,
+            production=production_block,
         )

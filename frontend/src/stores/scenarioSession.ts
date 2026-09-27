@@ -30,6 +30,25 @@ export function activateScenario(scenario: Scenario | null): number {
   return epoch
 }
 
+/**
+ * Scenario REVISION boundary (Phase 21B/C review blocker 2). A scenario PUT
+ * keeps the id but replaces the document, and the backend clears every
+ * derived artifact on it (rule 40): for the frontend that is a new revision
+ * of the same scenario, never a same-id refresh. This transition therefore
+ * ALWAYS advances the epoch and clears the scene manifest, the in-flight
+ * job ids, the slice, the 4D day cursor and the scenario-scoped viewer state
+ * — exactly what `activateScenario` does for a different id — so an
+ * asynchronous result started under the previous revision is dropped by
+ * `setScene` / `applyScene` / `setJob` instead of populating the new one.
+ */
+export function activateScenarioRevision(scenario: Scenario): number {
+  const epoch = useScenarioStore.getState().replaceScenarioDocument(scenario)
+  useSliceStore.getState().reset()
+  useTimelineStore.getState().reset()
+  useViewerStore.getState().resetScenarioScopedState()
+  return epoch
+}
+
 /** Current scenario epoch, for producers that start outside a transition. */
 export function scenarioEpoch(): number {
   return useScenarioStore.getState().epoch

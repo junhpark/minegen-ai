@@ -10,22 +10,13 @@ import { describe, expect, it } from 'vitest'
 import type {
   DevelopmentMeshReport,
   LevelsPayload,
-  MiningMethodSummary,
   NetworkPayload,
   StopesPayload,
   TimelinePayload,
 } from '@/types/scene'
 import { DesignPanelBody, type DesignPanelBodyProps } from './DesignPanel'
+import { LONGHOLE, METHOD_TABLE } from './miningMethod.fixture'
 import { DESIGN_TABS, type DesignTab } from './workflowTabs'
-
-const LONGHOLE: MiningMethodSummary = {
-  method: 'LONGHOLE_OPEN_STOPING',
-  displayName: 'Longhole Open Stoping',
-  implementationStatus: 'IMPLEMENTED',
-  sublevelInterval: 25,
-  stopeLength: 20,
-  minimumPillar: 15,
-}
 
 function props(over: Partial<DesignPanelBodyProps> = {}): DesignPanelBodyProps {
   return {
@@ -61,10 +52,14 @@ function props(over: Partial<DesignPanelBodyProps> = {}): DesignPanelBodyProps {
     capabilityEnabled: false,
     onGenerateCapabilityGraph: () => undefined,
     miningMethod: LONGHOLE,
-    stopes: null,
-    stopesPending: false,
-    stopesEnabled: false,
-    onGenerateStopes: () => undefined,
+    scenarioIdentity: 'scenario-a:1',
+    methodPending: false,
+    methodEnabled: true,
+    onApplyMethod: () => undefined,
+    production: null,
+    productionPending: false,
+    productionEnabled: false,
+    onGenerateProduction: () => undefined,
     timeline: null,
     timelinePending: false,
     timelineEnabled: false,
@@ -88,7 +83,7 @@ const OWNER: Record<string, DesignTab> = {
   'Mine network': 'NETWORK',
   Capabilities: 'NETWORK',
   'Mining method': 'MINING',
-  Stopes: 'MINING',
+  Production: 'MINING',
   Schedule: 'MINING',
 }
 
@@ -111,18 +106,30 @@ describe('Design workflow tabs expose one context at a time', () => {
     expect(DESIGN_TABS.map((t) => t.label)).toEqual(['Layout', 'Develop', 'Network', 'Mining'])
   })
 
-  it('Mining holds the production features and a READ-ONLY method card, no selector (§21)', () => {
+  it('Mining holds the method card (selector over the registry table) above Production', () => {
     const html = render({ view: 'MINING' })
-    expect(html).toContain('>Stopes')
+    expect(html).toContain('>Production')
     expect(html).toContain('>Schedule')
-    // Phase 21A: the card echoes the backend registry; nothing here edits the method
-    const card = html.slice(html.indexOf('Mining method'), html.indexOf('>Stopes'))
+    const card = html.slice(html.indexOf('Mining method'), html.indexOf('>Production'))
     expect(card).toContain('Longhole Open Stoping')
     expect(card).toContain('Implemented')
     expect(card).toContain('data-status="ACTIVE"')
-    expect(card).not.toContain('<select')
-    expect(card).not.toContain('type="radio"')
-    expect(html.indexOf('Mining method')).toBeLessThan(html.indexOf('>Stopes'))
+    // Phase 21B/C: the selector lists EVERY registry method with its status
+    expect(card).toContain('data-testid="mining-method-select"')
+    for (const row of METHOD_TABLE) {
+      expect(card).toContain(`${row.displayName.replace('&', '&amp;')} — `)
+    }
+    expect(card).toContain('Sublevel Caving — Not implemented')
+    expect(card).toContain('Cut &amp; Fill — Implemented')
+    expect(html.indexOf('Mining method')).toBeLessThan(html.indexOf('>Production'))
+    // Longhole edits its three planning parameters
+    const params = card.slice(card.indexOf('data-testid="mining-parameters"'))
+    expect(params).toContain('Sublevel interval (m)')
+    expect(params).toContain('Stope length (m)')
+    expect(params).toContain('Minimum pillar (m)')
+    expect(params).not.toContain('Lift height')
+    // nothing is dirty yet, so Apply is present but disabled
+    expect(card).toContain('Apply method')
     const details = card.slice(card.indexOf('hidden=""'))
     expect(details).toContain('Sublevel interval')
     expect(details).toContain('25 m')
@@ -130,6 +137,58 @@ describe('Design workflow tabs expose one context at a time', () => {
     expect(details).toContain('20 m')
     expect(details).toContain('Minimum pillar')
     expect(details).toContain('15 m')
+    // the generic production action names the active method's units
+    expect(html).toContain('Generate Stopes')
+  })
+
+  it('a Cut & Fill scenario shows its own parameters and production action', () => {
+    const html = render({
+      view: 'MINING',
+      miningMethod: {
+        ...LONGHOLE,
+        method: 'CUT_AND_FILL',
+        displayName: 'Cut & Fill',
+        productionKind: 'CUT_FILL',
+        methodParameters: { kind: 'CUT_AND_FILL', liftHeightM: 4, cutLengthM: 15 },
+      },
+    })
+    const card = html.slice(html.indexOf('Mining method'), html.indexOf('>Production'))
+    expect(card).toContain('Lift height (m)')
+    expect(card).toContain('Cut length (m)')
+    expect(card).not.toContain('Stope length (m)')
+    expect(html).toContain('Generate Cut &amp; Fill')
+  })
+
+  it('a Room & Pillar scenario shows its own parameters incl. bench mode', () => {
+    const html = render({
+      view: 'MINING',
+      miningMethod: {
+        ...LONGHOLE,
+        method: 'ROOM_AND_PILLAR',
+        displayName: 'Room & Pillar',
+        productionKind: 'ROOM_PILLAR',
+        methodParameters: {
+          kind: 'ROOM_AND_PILLAR',
+          roomWidthM: 8,
+          pillarWidthM: 6,
+          headingHeightM: 5,
+          benchCount: 2,
+          boundaryPillarM: 6,
+        },
+      },
+    })
+    const card = html.slice(html.indexOf('Mining method'), html.indexOf('>Production'))
+    for (const label of [
+      'Room width (m)',
+      'Pillar width (m)',
+      'Heading height (m)',
+      'Bench mode',
+      'Boundary pillar (m)',
+    ]) {
+      expect(card).toContain(label)
+    }
+    expect(card).toContain('data-testid="bench-mode-select"')
+    expect(html).toContain('Generate Room &amp; Pillar')
   })
 
   it('an unsupported method reads "Not implemented" without implying a mine failure', () => {
@@ -137,24 +196,51 @@ describe('Design workflow tabs expose one context at a time', () => {
       view: 'MINING',
       miningMethod: {
         ...LONGHOLE,
-        method: 'CUT_AND_FILL',
-        displayName: 'Cut & Fill',
+        method: 'SUBLEVEL_CAVING',
+        displayName: 'Sublevel Caving',
         implementationStatus: 'UNSUPPORTED_METHOD',
       },
     })
-    const card = html.slice(html.indexOf('Mining method'), html.indexOf('>Stopes'))
-    expect(card).toContain('Cut &amp; Fill')
+    const card = html.slice(html.indexOf('Mining method'), html.indexOf('>Production'))
+    expect(card).toContain('Sublevel Caving')
     expect(card).toContain('Not implemented')
     expect(card).toContain('data-status="INACTIVE"')
     expect(card).not.toContain('data-status="FAILED"')
     expect(card).toContain('not implemented in this version')
-    expect(card).not.toContain('<select')
+    // review SHOULD_FIX 7: a method without a production implementation shows
+    // the shared sublevel interval only — never the Longhole production
+    // parameters — and offers no Longhole production action
+    expect(card).toContain('Sublevel interval (m)')
+    expect(card).not.toContain('Stope length (m)')
+    expect(card).not.toContain('Minimum pillar (m)')
+    const production = html.slice(html.indexOf('>Production'), html.indexOf('>Schedule'))
+    expect(production).toContain('Not implemented')
+    expect(production).not.toContain('Generate Stopes')
+    expect(production).toContain('disabled=""')
+    expect(production).toContain('no production geometry is generated')
+  })
+
+  it('the production action stays disabled for an unsupported method even when levels exist', () => {
+    const html = render({
+      view: 'MINING',
+      productionEnabled: true, // the parent gate is also closed in DesignPanel; the body never trusts it alone
+      miningMethod: {
+        ...LONGHOLE,
+        method: 'SHRINKAGE_STOPING',
+        displayName: 'Shrinkage Stoping',
+        implementationStatus: 'UNSUPPORTED_METHOD',
+        productionKind: null,
+      },
+    })
+    const production = html.slice(html.indexOf('>Production'), html.indexOf('>Schedule'))
+    expect(production).toContain('Not implemented')
+    expect(production).toContain('disabled=""')
   })
 
   it('without a loaded scene the method card is simply absent', () => {
     const html = render({ view: 'MINING', miningMethod: null })
     expect(html).not.toContain('Mining method')
-    expect(html).toContain('>Stopes')
+    expect(html).toContain('>Production')
   })
 })
 
@@ -278,7 +364,7 @@ describe('key metrics stay in the primary view, detailed numbers move to Details
         firstStopingDay: 620,
       },
     } as unknown as TimelinePayload
-    const html = render({ view: 'MINING', stopes, timeline })
+    const html = render({ view: 'MINING', production: stopes, timeline })
     expect(html).toContain('48 stopes')
     expect(html).toContain('312 tasks')
     expect(html).toContain('end day 1840')

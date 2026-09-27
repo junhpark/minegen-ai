@@ -23,6 +23,7 @@ function scene(over: Partial<WorldScene> = {}): WorldScene {
     network: null,
     capabilityGraph: null,
     stopes: null,
+    miningMethod: { productionKind: 'STOPES' },
     ...over,
   } as unknown as WorldScene
 }
@@ -125,6 +126,23 @@ describe('describeExportContents', () => {
     expect(layers.find((l) => l.key === 'stopes')?.state).toBe('FAILED')
     expect(layers.find((l) => l.key === 'stopes')?.label).toBe('Stopes')
   })
+
+  it('MineExchange 1.2: the production row is named after the ACTIVE method kind', () => {
+    const cf = describeExportContents(
+      scene({ miningMethod: { productionKind: 'CUT_FILL' } as never, stopes: ok }),
+      false,
+    )
+    expect(cf.find((l) => l.key === 'stopes')?.label).toBe('Cut & Fill production')
+    expect(cf.find((l) => l.key === 'stopes')?.state).toBe('INCLUDED')
+    const rp = describeExportContents(
+      scene({ miningMethod: { productionKind: 'ROOM_PILLAR' } as never }),
+      false,
+    )
+    expect(rp.find((l) => l.key === 'stopes')?.label).toBe('Room & Pillar production')
+    expect(rp.find((l) => l.key === 'stopes')?.state).toBe('NOT_GENERATED')
+    // one production row per bundle, whatever the method
+    expect(cf.filter((l) => l.key === 'stopes')).toHaveLength(1)
+  })
 })
 
 describe('ExportContents readout', () => {
@@ -146,5 +164,17 @@ describe('ExportContents readout', () => {
     const empty = renderToStaticMarkup(<ExportContents layers={[]} />)
     expect(empty).not.toContain('Current export contents')
     expect(empty).toContain(EXPORT_HELPER_TEXT)
+  })
+})
+
+describe('production row of a method without a production implementation', () => {
+  it('names the row honestly instead of calling it Stopes', () => {
+    const layers = describeExportContents(
+      scene({ miningMethod: { productionKind: null } } as never),
+      false,
+    )
+    const row = layers.find((l) => l.key === 'stopes')
+    expect(row?.label).toBe('Production (method not implemented)')
+    expect(row?.state).toBe('NOT_GENERATED')
   })
 })

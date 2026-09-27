@@ -43,7 +43,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_ARTIFACT,
     TUNNEL_MESH_GLB,
 )
-from minegen.core.enums import Capability, DistanceContract, OrebodyType
+from minegen.core.enums import Capability, DistanceContract, MiningMethodType, OrebodyType
 from minegen.core.mesh_record import build_mesh_commit, mesh_commit_name
 from minegen.core.models import ApiModel, Scenario
 from minegen.core.publication import publish_bytes, publish_text
@@ -72,7 +72,12 @@ from minegen.layout.search import LayoutV2Search
 from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
 from minegen.levels.models import LevelsPayload
 from minegen.mining.methods.registry import plan_for
-from minegen.mining.models import StopesPayload
+from minegen.mining.models import (
+    CutFillPayload,
+    ProductionPayload,
+    RoomPillarPayload,
+    StopesPayload,
+)
 from minegen.network.builder import MineNetworkBuilder
 from minegen.network.models import NetworkPayload
 from minegen.scheduling.builder import MineTimelineBuilder
@@ -89,6 +94,7 @@ from minegen.services.artifact_errors import (
     LevelAccessesNotGeneratedError,
     LevelsNotGeneratedError,
     NetworkNotFoundError,
+    ProductionMethodMismatchError,
     ShaftsNotGeneratedError,
     ShaftsStaleError,
     SmoothedNotGeneratedError,
@@ -300,6 +306,24 @@ class DesignService:
         payload = self._reader.require(scenario_id, name).model
         if not isinstance(payload, model):  # pragma: no cover - READ_SPECS declares it
             raise ArtifactMalformedError(name, f"does not satisfy {model.__name__}")
+        return payload
+
+    def production(self, scenario_id: str) -> ProductionPayload:
+        """The ACTIVE production payload (Phase 21B/C): the method-specific
+        typed payload the reader parsed from ``stopes.json``, checked against
+        the scenario's requested method — a persisted payload of another
+        method is a typed PRODUCTION_METHOD_MISMATCH, never normalized."""
+        scenario = self.store.get(scenario_id)
+        payload = self._reader.require(scenario_id, STOPES_ARTIFACT).model
+        if not isinstance(payload, StopesPayload | CutFillPayload | RoomPillarPayload):
+            raise ArtifactMalformedError(  # pragma: no cover - READ_SPECS declares it
+                STOPES_ARTIFACT, "does not satisfy a production payload"
+            )
+        if payload.method != scenario.mining.method.value:
+            raise ProductionMethodMismatchError(
+                f"the persisted production artifact was generated for {payload.method} but "
+                f"the scenario requests {scenario.mining.method.value}; regenerate production"
+            )
         return payload
 
     # -- artifact lifecycle (AC-01E: the registry's ONE consumer path) ------- #
@@ -1051,12 +1075,14 @@ class DesignService:
     def stopes_fingerprint(self, scenario_id: str) -> InputFingerprint:
         return self._fingerprint_of(scenario_id, STOPES_ARTIFACT)
 
-    def generate_stopes(self, scenario_id: str) -> StopesPayload:
-        """Synchronous Phase 09 stope generation (rules 75–80): consumes the
-        validated levels artifact only, resolves the scenario mining method
-        through the mining-method registry (rule 78 / 192 — unsupported
-        methods fail, never silently substitute), and leaves tunnel/network
-        untouched (rule 79)."""
+    def generate_production(self, scenario_id: str) -> ProductionPayload:
+        """Synchronous production generation into the ONE active production
+        artifact (Phase 09 rules 75–80, Phase 21B/C): consumes the validated
+        levels artifact only, resolves the scenario mining method through the
+        mining-method registry (rule 78 / 192 — unsupported methods fail,
+        never silently substitute) and leaves tunnel / network untouched
+        (rule 79). The persisted path stays ``derived/stopes.json``; the
+        payload is the method's typed one."""
         fingerprint = self.stopes_fingerprint(scenario_id)
         levels_payload = self.levels(scenario_id)  # 409 if not generated
         scenario, world, _ = self.evaluator(scenario_id)
@@ -1085,8 +1111,32 @@ class DesignService:
             self._invalidate_downstream(scenario_id, STOPES_ARTIFACT)  # rule 86: timeline
         return payload
 
+    def generate_stopes(self, scenario_id: str) -> StopesPayload:
+        """The LONGHOLE production route (Phase 09 compatibility): identical to
+        ``generate_production`` for LONGHOLE_OPEN_STOPING and for the
+        reserved methods' typed FAILED boundary; under Cut & Fill / Room &
+        Pillar it is a typed PRODUCTION_METHOD_MISMATCH — Cut / Room geometry
+        is never returned disguised as stopes."""
+        scenario = self.store.get(scenario_id)
+        self._require_longhole_route(scenario.mining.method)
+        payload = self.generate_production(scenario_id)
+        assert isinstance(payload, StopesPayload)  # the route gate above guarantees it
+        return payload
+
     def stopes(self, scenario_id: str) -> StopesPayload:
-        return self._require_model(scenario_id, STOPES_ARTIFACT, StopesPayload)
+        scenario = self.store.get(scenario_id)
+        self._require_longhole_route(scenario.mining.method)
+        payload = self.production(scenario_id)
+        assert isinstance(payload, StopesPayload)
+        return payload
+
+    @staticmethod
+    def _require_longhole_route(method: MiningMethodType) -> None:
+        if method in (MiningMethodType.CUT_AND_FILL, MiningMethodType.ROOM_AND_PILLAR):
+            raise ProductionMethodMismatchError(
+                f"…/design/stopes is the LONGHOLE_OPEN_STOPING production route; the active "
+                f"method {method.value} is served by …/design/production"
+            )
 
     # -- timeline (Phase 10, rules 81–86) ------------------------------------- #
 
@@ -1102,7 +1152,7 @@ class DesignService:
         timeline touches NOTHING upstream."""
         fingerprint = self.timeline_fingerprint(scenario_id)
         network_payload = self.network(scenario_id)  # NetworkNotFoundError if absent
-        stopes_payload = self.stopes(scenario_id)  # 409 if absent
+        stopes_payload = self.production(scenario_id)  # 409 if absent (method-typed)
         smoothed_payload = self.effective_ramp(scenario_id)
         accesses_payload = self.active_level_accesses(scenario_id)
         levels_payload = self.levels(scenario_id)

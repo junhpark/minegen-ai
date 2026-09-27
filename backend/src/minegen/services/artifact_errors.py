@@ -53,6 +53,7 @@ __all__ = [
     "LevelAccessesNotGeneratedError",
     "LevelsNotGeneratedError",
     "NetworkNotFoundError",
+    "ProductionMethodMismatchError",
     "ReadSnapshotChangedError",
     "SceneArtifactInvalidError",
     "SensorsNotGeneratedError",
@@ -187,9 +188,20 @@ class NetworkNotFoundError(LookupError):
 
 
 class StopesNotGeneratedError(LookupError):
-    """stopes.json does not exist for the scenario."""
+    """stopes.json (the active production artifact) does not exist."""
 
     code: ClassVar[str] = "STOPES_NOT_GENERATED"
+    http_status: ClassVar[int] = 409
+
+
+class ProductionMethodMismatchError(LookupError):
+    """Phase 21B/C: a method-specific production route (``…/design/stopes``
+    is the LONGHOLE route) was asked for under another active method, or the
+    persisted production payload's method disagrees with the scenario. Never
+    normalized — the generic ``…/design/production`` route answers the active
+    method's typed payload."""
+
+    code: ClassVar[str] = "PRODUCTION_METHOD_MISMATCH"
     http_status: ClassVar[int] = 409
 
 

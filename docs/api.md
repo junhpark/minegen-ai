@@ -41,11 +41,14 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      stopeLength, minimumPillar} resolved by the
                                                      backend mining-method registry, rule 192)
     POST /api/v1/scenarios/{id}/export/mine-exchange MineExchange bundle (docs/mine-exchange.md);
-                                                     X-MineExchange-Version 1.1.0 since Phase 21A
-                                                     (semantics/mining_method.json, production
-                                                     stopes, STOPE entities; 409
-                                                     MINE_EXCHANGE_EXPORT_FAILED on a method-
-                                                     authority mismatch)
+                                                     X-MineExchange-Version 1.2.0 since Phase 21B/C
+                                                     (1.1: semantics/mining_method.json, production
+                                                     stopes, STOPE entities; 1.2: typed method
+                                                     parameters, production/cut_fill + room_pillar
+                                                     with CUT / BACKFILL / ROOM / BENCH / PILLAR
+                                                     entities, one production omission group per
+                                                     bundle; 409 MINE_EXCHANGE_EXPORT_FAILED on a
+                                                     method-authority or payload-shape mismatch)
 
     Scenario documents are schemaVersion 2 (Phase 18): `fieldSampling
     {spacingX, spacingY, spacingZ}` replaces the v1 `blockModel {dx, dy, dz}`.
@@ -248,12 +251,27 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      SECTION_TRACE_MISMATCH,
                                                      SECTION_RESOLUTION_BUDGET_EXCEEDED,
                                                      SECTION_STANDOFF_NONPOSITIVE
-    POST /api/v1/scenarios/{id}/design/stopes        Phase 09: synchronous planned stopes
-                                                     (typed StopesPayload; 409 LEVELS_NOT_GENERATED
-                                                     without the Phase 08 artifact; UNSUPPORTED
-                                                     methods yield explicit FAILED payloads)
+    POST /api/v1/scenarios/{id}/design/production    Phase 21B/C: the method-generic production
+                                                     route — the ACTIVE method's typed payload
+                                                     (StopesPayload | CutFillPayload |
+                                                     RoomPillarPayload, discriminated by `method`;
+                                                     409 LEVELS_NOT_GENERATED without levels;
+                                                     unsupported methods yield explicit FAILED
+                                                     payloads; TABULAR-only methods fail typed
+                                                     METHOD_GEOMETRY_NOT_IMPLEMENTED on other bodies)
+    GET  /api/v1/scenarios/{id}/design/production    Phase 21B/C: the persisted production payload
+                                                     (409 STOPES_NOT_GENERATED after invalidation;
+                                                     409 PRODUCTION_METHOD_MISMATCH when the
+                                                     persisted method disagrees with the scenario)
+    POST /api/v1/scenarios/{id}/design/stopes        Phase 09: synchronous planned stopes — the
+                                                     Longhole-ONLY route (typed StopesPayload; 409
+                                                     LEVELS_NOT_GENERATED without the Phase 08
+                                                     artifact; reserved methods yield explicit FAILED
+                                                     payloads; 409 PRODUCTION_METHOD_MISMATCH under
+                                                     CUT_AND_FILL / ROOM_AND_PILLAR, rule 194)
     GET  /api/v1/scenarios/{id}/design/stopes        Phase 09: persisted typed StopesPayload
-                                                     (409 STOPES_NOT_GENERATED after invalidation)
+                                                     (409 STOPES_NOT_GENERATED after invalidation;
+                                                     409 PRODUCTION_METHOD_MISMATCH for other methods)
     POST /api/v1/scenarios/{id}/design/timeline      Phase 10: synchronous deterministic
                                                      precedence-only MineTimeline baseline
                                                      (typed TimelinePayload; 409 NETWORK_NOT_GENERATED /
