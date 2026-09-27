@@ -1978,7 +1978,11 @@ code, the code and the rule win and the map is corrected.
      `tests/fixtures/phase21bc/longhole_baseline.json` (captured on the
      pinned pre-migration HEAD 7052606 by
      `scripts/phase21bc_capture_baseline.py`, which refuses any other HEAD;
-     `tests/test_longhole_baseline_21bc.py`, two-tier gate of rule 192) —
+     `tests/test_longhole_baseline_21bc.py`, two-tier gate of rule 192;
+     the ONE classified cross-runner artefact is a sampled `pointCount` /
+     `fractionCount` flipping by exactly one where a piece's
+     `length3d / SAMPLE_SPACING` sits within 1e-9 of an integer — measured
+     on PR #47 CI, recorded as a test property, never widened) —
      a Longhole change under this rule is BLOCKING, never regenerated. The
      rule 192 parity fixture is never regenerated either; its CUT_AND_FILL
      case is a historical record of the reserved boundary, explicitly

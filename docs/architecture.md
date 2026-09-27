@@ -1654,9 +1654,14 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
   small 15 stopes, 49 edges, 124 tasks / WARPED typed boundary) captured on
   the pinned HEAD 7052606 by `scripts/phase21bc_capture_baseline.py`;
   `tests/test_longhole_baseline_21bc.py` compares levels, stopes, network and
-  timeline under the rule 192 two-tier gate. The rule 192 parity fixture is
-  untouched; its CUT_AND_FILL case is retained as a historical record and
-  explicitly superseded.
+  timeline under the rule 192 two-tier gate. One cross-runner artefact is
+  classified, never absorbed: a sampled `pointCount` / `fractionCount` that
+  flips by exactly one where the piece length sits within float noise of an
+  exact `SAMPLE_SPACING` multiple (measured on PR #47 CI: `DRIFT:L01:09`,
+  10.00000000000001 m → 7 points locally, 10.0 m → 6 on the CI CPU); it is
+  recorded as a test property and every other difference stays BLOCKING.
+  The rule 192 parity fixture is untouched; its CUT_AND_FILL case is
+  retained as a historical record and explicitly superseded.
 - **MineExchange 1.2.0** (`docs/mine-exchange.md`): typed method-parameter
   DTOs in `semantics/mining_method.json`, `production/cut_fill.json` +
   `production/cut_fill/cuts/<id>.{stl,obj,glb}` (CUT solids, BACKFILL
