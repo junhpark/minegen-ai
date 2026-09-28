@@ -2233,3 +2233,36 @@ code, the code and the rule win and the map is corrected.
      never auto-selects. The UI keeps "Engineering rank #n" and "Comparable
      development cost" as separate readouts, and a ranking / cost
      disagreement is shown as it is.
+
+207. External adapters are translators over MineExchange BYTES (Phase 23B,
+     `adapters/`, `docs/external-adapters.md`). An adapter consumes a
+     MineExchange bundle through the manifest-driven reader
+     (`adapters/bundle_reader.py`: safe paths, SHA-256 of every listed file,
+     no unlisted entry, DTO validation, `LOCAL_ENU_Z_UP` metre contract) —
+     never `derived/*`, never the exporter's in-memory objects — so the API
+     path and an offline bundle produce the same package. It redesigns
+     nothing, invents nothing and clamps nothing: every consumed bundle
+     group is reported in exactly one of AVAILABLE / ABSENT /
+     SOURCE_NOT_SUCCESS / UNSUPPORTED_BY_ADAPTER; every value the target
+     needs that no MineGen authority owns is NOT_PROVIDED, USER_REQUIRED or
+     ADAPTER_DEFAULT_EXPLICIT (value, unit, scope, documented source,
+     userOverride) — a number in the package that is neither in the bundle
+     nor in `assumptions[]` is a defect; failures are typed
+     (MINEEXCHANGE_BUNDLE_INVALID, MINEEXCHANGE_VERSION_UNSUPPORTED,
+     REQUIRED_SOURCE_ABSENT, REQUIRED_PARAMETER_MISSING,
+     TARGET_FORMAT_UNSUPPORTED, COORDINATE_MAPPING_UNSUPPORTED,
+     ADAPTER_CONVERSION_FAILED), never a bare 500; the adapter version and
+     `supportedMineExchangeVersions` are independent of the MineExchange
+     version; packages are deterministic and carry no wall-clock value.
+     The 23B.1 Ventsim SEED (`VENTSIM_SEED 0.1.0`,
+     `POST …/export/ventsim-seed`) is one DXF 3-D polyline per MineNetwork
+     edge on the edge's owning centerline (layer = edge type, end vertices
+     verified ON the topology nodes within 1e-4 m, declared length verified
+     against the polyline, explicit Douglas-Peucker tolerance with end
+     points kept and the measured deviation reported, RAISE a typed
+     omission) plus an attribute table of bundle facts only (authoritative /
+     delivered length, width, height, profile shape); resistance, fans,
+     regulators, heat, contaminants and air density are NOT_PROVIDED. It is
+     a geometry / network seed, never a ventilation model, and no
+     `BaseAdapter` / registry / plugin runtime exists until a second adapter
+     justifies one.

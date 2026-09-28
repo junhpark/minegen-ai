@@ -647,3 +647,147 @@ as evidence.
 - [x] adapter implementation sequence defined (§18)
 - [x] result import / write-back kept out of scope (§14)
 - [x] no production code added; no MineExchange version change; no FULL / golden re-run (docs-only)
+
+## 23. Phase 23B.1 — Ventsim geometry / network SEED adapter (DELIVERED)
+
+The first concrete adapter. It implements §4–§11 for the Ventsim target in
+the seed scope decided in §11.3 and answers the §11.4 questions it can
+answer without a Ventsim licence.
+
+### 23.1 Code and boundary
+
+    backend/src/minegen/adapters/
+      errors.py           typed failures (§8 codes + MINEEXCHANGE_BUNDLE_INVALID)
+      contracts.py        generic AdapterReport DTOs (§4, §6, §7, §10)
+      bundle_reader.py    manifest-driven MineExchange ZIP reader (READ ≠ TRUST)
+      polyline.py         length + 3-D Douglas-Peucker (end points kept)
+      package.py          deterministic package ZIP
+      ventsim/config.py   VentsimSeedConfig — explicit parameters
+      ventsim/seed.py     build_ventsim_seed(bundle, config) → package + report
+    backend/src/minegen/services/adapter_service.py
+    backend/src/minegen/api/adapters.py   POST /scenarios/{id}/export/ventsim-seed
+
+The service calls the MineExchange exporter (`ExchangeService.export`, one
+coherent validated snapshot) and hands the adapter the bundle **bytes**: the
+adapter reads `manifest.json`, verifies every listed file's SHA-256, refuses
+unlisted entries and validates each consumed document against its
+MineExchange DTO — it never touches `derived/*` and behaves exactly like an
+offline consumer of a downloaded bundle (`build_ventsim_seed_from_bundle_bytes`).
+Nothing is persisted; no derived artifact, no lifecycle.
+
+### 23.2 Representation decision (§11.4 Q1 answered)
+
+ONE 3-D DXF `POLYLINE` per **MineNetwork edge**, layer = the edge type
+(`RAMP`, `LEVEL_ACCESS`, `DRIFT`, `CROSSCUT`, `SHAFT`, `SHAFT_STATION_ACCESS`).
+Every network edge owns exactly one exported centerline entity
+(`geometryEntityId`) whose first / last points ARE its two topology nodes
+(the network builder welds at 1e-6 m), so the DXF polylines of edges meeting
+at a node share that vertex — the property Ventsim's Convert Centrelines
+needs to join airway chains. The adapter verifies the weld
+(`ENDPOINT_WELD_TOLERANCE_M` = 1e-4 m, typed `ADAPTER_CONVERSION_FAILED`
+above it — a detached or reversed polyline is never snapped or flipped) and
+the declared edge `length` against the polyline it owns (typed
+`MINEEXCHANGE_BUNDLE_INVALID` on disagreement).
+
+Vertices are the authoritative points, optionally reduced by a 3-D
+Douglas-Peucker pass with an explicit tolerance: end points are always kept,
+every kept vertex is an authoritative point, every removed point lies within
+the tolerance of the delivered polyline, and the measured maximum deviation
+is reported. Default `0.5 m` (one tenth of the default tunnel width,
+recorded as `ADAPTER_DEFAULT_EXPLICIT`, `userOverride = false`); `0`
+delivers the polyline verbatim. Measured on one 30 m-radius spiral turn
+sampled at ≈ 0.47 m: 400 → 33 vertices, deviation 0.156 m.
+
+A `RAISE` edge (the one type with `geometryContract = NONE`) is a typed
+omission (`NO_GEOMETRY_CONTRACT`); no geometry is invented for it.
+
+### 23.3 Package (`ventsim_seed/`)
+
+| File | Content |
+| --- | --- |
+| `airways.dxf` | R12 3-D POLYLINE per edge, deterministic handle, layer = edge type, `$INSUNITS = 6` |
+| `airways.csv` | `dxfHandle, airwayId (= edge id), edgeType, layer, sourceNodeId, targetNodeId, geometryEntityId, entityKind, levelId, orientation, authoritativeLengthM, deliveredLengthM, lengthDeviationM, vertexCountAuthoritative, vertexCountDelivered, widthM, heightM, profileShape` |
+| `nodes.csv` | every network node: `nodeId, type, x, y, z, levelId, surface` |
+| `identity_map.json` | DXF handle ↔ airway / edge / entity id; node positions |
+| `adapter_report.json` | the §4 `AdapterReport` (+ config, effective tolerance, airway metrics) |
+| `README.txt` | import steps, coordinate statement, what is NOT provided |
+
+No ventilation quantity appears anywhere: the attribute table carries only
+what the bundle owns (lengths, cross-section width / height / shape). A
+missing cross-section leaves the cells blank and is reported (warning +
+`airwaysWithoutCrossSection`), never filled.
+
+### 23.4 Explicit configuration and assumption record
+
+`VentsimSeedConfig` (request body, all optional): `simplificationToleranceM`
+(`null` → 0.5 default, `0…5`, validated never clamped), `originOffset`
+(metres on the source axes, default `(0, 0, 0)`; the coordinate mapping
+records it as `translation`), `dimensionDeliveryPolicy = ATTRIBUTE_TABLE`
+and `targetFormat = DXF_R12_3D_POLYLINES` (the only values this version
+produces; another value is a 422).
+
+`assumptions[]`: `SIMPLIFICATION_TOLERANCE` and `DIMENSION_DELIVERY_POLICY`
+as `ADAPTER_DEFAULT_EXPLICIT` (value, unit, scope, documented source,
+userOverride); `AIRWAY_RESISTANCE`, `AIRWAY_ROUGHNESS`, `FANS`,
+`REGULATORS_AND_DOORS`, `HEAT_SOURCES`, `CONTAMINANT_SOURCES`,
+`AIR_DENSITY_AND_SURFACE_CONDITIONS` as `NOT_PROVIDED`. No `USER_REQUIRED`
+parameter exists in 0.1.0.
+
+`sourceStates[]`: `EXCAVATIONS`, `NETWORK` = `AVAILABLE` (required —
+`REQUIRED_SOURCE_ABSENT` carries the bundle's own `ARTIFACT_ABSENT` /
+`SOURCE_NOT_SUCCESS` reason otherwise); `SHAFTS` only when the bundle
+records a shaft omission; `TERRAIN`, `OREBODY`, `FAULTS`, `CAPABILITY`,
+`MINING_METHOD`, `PRODUCTION` = `UNSUPPORTED_BY_ADAPTER` (no reference
+layers in 0.1.0); `TIMELINE` = `ABSENT` with the bundle's `NOT_IN_V1`.
+
+Coordinate mapping: `LOCAL_ENU_Z_UP` → `LOCAL_ENU_Z_UP`, metre, unit factor
+1, translation = the offset. The README states that Ventsim imports a DXF in
+the Ventsim file's current units (vendor manual, §11.1).
+
+Versioning: `VENTSIM_SEED 0.1.0`, `supportedMineExchangeVersions =
+">=1.2.0,<2.0.0"`; a manifest outside the range is
+`MINEEXCHANGE_VERSION_UNSUPPORTED`.
+
+### 23.5 API
+
+    POST /api/v1/scenarios/{id}/export/ventsim-seed     body: VentsimSeedConfig (optional)
+      → 200 application/zip  minegen_<id>_ventsim_seed.zip
+        X-Adapter-Name: VENTSIM_SEED, X-Adapter-Version: 0.1.0, X-MineExchange-Version: 1.2.0
+      → 404 SCENARIO_NOT_FOUND · 409 WORLD_NOT_GENERATED · 409 READ_SNAPSHOT_CHANGED
+      → 409 <MineExchange refusal>  (STALE / MALFORMED / MINE_EXCHANGE_EXPORT_FAILED)
+      → 409 REQUIRED_SOURCE_ABSENT · 409 MINEEXCHANGE_BUNDLE_INVALID
+      → 409 MINEEXCHANGE_VERSION_UNSUPPORTED · 409 ADAPTER_CONVERSION_FAILED
+      → 422 COORDINATE_MAPPING_UNSUPPORTED · 422 request validation (out-of-range parameter)
+
+Frontend: `Export Ventsim seed (.zip)` in the Scenario panel, enabled only
+when the scene shows a ramp and a SUCCESS network (the same prerequisite the
+backend enforces); no adapter parameter is edited in the UI in 23B.1.
+
+### 23.6 Tests
+
+`backend/tests/test_ventsim_seed_adapter.py` (FAST, synthetic bundle through
+the REAL exporter: identity / shared end vertices / determinism, faithful vs
+simplified, Douglas-Peucker properties, attribute table, source states and
+NOT_PROVIDED policy, RAISE omission, origin offset, world-only refusal,
+tampered / unlisted / non-ZIP / malformed-manifest bundles, version range,
+detached end point, inconsistent length, missing cross-section, config
+validation, API 404 / 409 / 422) and
+`backend/tests/test_exchange_bundle.py::test_v1_ventsim_seed_over_the_real_layout_v2_chain`
+(e2e: the real LAYOUT_V2 chain — every edge welded, simplification inside
+tolerance, read-only, byte-identical re-run). Frontend:
+`exportFilename.test.ts`, `exportContents.test.tsx`.
+
+### 23.7 Open after 23B.1 (unchanged, §11.4)
+
+- Q2 a documented text / spreadsheet airway import — UNVERIFIED; the
+  attribute-table path is the one implemented.
+- Q3 layer inheritance on Convert Centrelines in 6.0.x — to confirm on an
+  installation.
+- Q4 acceptance on a real Ventsim installation (Convert behaviour, joined
+  chains, dimension assignment) is a MANUAL acceptance step with a licence;
+  everything verifiable without one (DXF structure through the independent
+  tag-level parser, identity, welds, tolerances, determinism) is a unit
+  test.
+- Reference layers (terrain / orebody / faults) as optional context DXF
+  layers are a later adapter version, reported today as
+  `UNSUPPORTED_BY_ADAPTER`.

@@ -26,6 +26,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from minegen.api.deps import (
+    get_adapter_service,
     get_analysis_service,
     get_design_service,
     get_exchange_service,
@@ -58,6 +59,7 @@ from minegen.exchange.geometry.centerlines import development_entity_id
 from minegen.exchange.geometry.qa import MeshQa, mesh_qa
 from minegen.exchange.models import MINE_EXCHANGE_VERSION
 from minegen.main import create_app
+from minegen.services.adapter_service import AdapterService
 from minegen.services.analysis_service import AnalysisService
 from minegen.services.design_service import DesignService
 from minegen.services.exchange_service import ExchangeService
@@ -289,9 +291,9 @@ class TabularStack:
             self.store, self.design
         )
         app.dependency_overrides[get_job_service] = lambda: self.jobs
-        app.dependency_overrides[get_exchange_service] = lambda: ExchangeService(
-            self.store, self.worlds
-        )
+        exchange_service = ExchangeService(self.store, self.worlds)
+        app.dependency_overrides[get_exchange_service] = lambda: exchange_service
+        app.dependency_overrides[get_adapter_service] = lambda: AdapterService(exchange_service)
         app.dependency_overrides[get_analysis_service] = lambda: AnalysisService(self.store)
         self.client = TestClient(app)
         self.client.__enter__()
@@ -627,6 +629,71 @@ def test_n1_n5_network_projection(tabular: TabularStack, tabular_bundle: Bundle)
     assert len(nodes_csv) - 1 == len(net["nodes"]) and len(edges_csv) - 1 == len(net["edges"])
     assert [ln.split(",")[0] for ln in nodes_csv[1:]] == [n["id"] for n in net["nodes"]]
     assert [ln.split(",")[0] for ln in edges_csv[1:]] == [e["id"] for e in net["edges"]]
+
+
+def test_v1_ventsim_seed_over_the_real_layout_v2_chain(
+    tabular: TabularStack, tabular_bundle: Bundle
+) -> None:
+    """Phase 23B.1: the Ventsim seed adapter over the REAL LAYOUT_V2 bundle
+    (ramp segments split at junctions, level accesses, curved / straight
+    drifts, crosscuts): one DXF polyline per network edge, end vertices ON
+    the topology nodes, simplification measured within tolerance, the
+    attribute table = the bundle's authoritative lengths; read-only."""
+    from minegen.adapters.ventsim.seed import ENDPOINT_WELD_TOLERANCE_M
+    from minegen.exchange.formats.csv_table import read_csv
+
+    derived_before = _derived_state(tabular.derived)
+    r = tabular.client.post(f"/api/v1/scenarios/{tabular.sid}/export/ventsim-seed")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "application/zip"
+    assert r.headers["x-adapter-name"] == "VENTSIM_SEED"
+    assert r.headers["x-mineexchange-version"] == MINE_EXCHANGE_VERSION
+    assert r.headers["content-disposition"] == (
+        f'attachment; filename="minegen_{tabular.sid}_ventsim_seed.zip"'
+    )
+    assert _derived_state(tabular.derived) == derived_before
+    with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+        files = {n.split("/", 1)[1]: zf.read(n) for n in zf.namelist()}
+    report = json.loads(files["adapter_report.json"])
+    net = tabular_bundle.json("topology/network.json")
+    edges = {e["id"]: e for e in net["edges"]}
+    nodes = {n["id"]: np.asarray(n["position"]) for n in net["nodes"]}
+    entities = read_dxf_entities(files["airways.dxf"].decode("ascii"))
+    identity = json.loads(files["identity_map.json"])
+    handles = {a["dxfHandle"]: a for a in identity["airways"]}
+    assert len(entities) == len(edges) == report["airwayMetrics"]["airwayCount"]
+    assert report["sourceSnapshot"] == tabular_bundle.manifest["sourceSnapshot"]
+    for ent in entities:
+        e = edges[handles[ent["handle"]]["airwayId"]]
+        assert ent["layer"] == e["type"]
+        assert (
+            np.linalg.norm(ent["points"][0] - nodes[e["sourceNodeId"]]) <= ENDPOINT_WELD_TOLERANCE_M
+        )
+        assert (
+            np.linalg.norm(ent["points"][-1] - nodes[e["targetNodeId"]])
+            <= ENDPOINT_WELD_TOLERANCE_M
+        )
+    assert {ent["layer"] for ent in entities} >= {"RAMP", "LEVEL_ACCESS", "DRIFT", "CROSSCUT"}
+    m = report["airwayMetrics"]
+    assert m["maxSimplificationDeviationM"] <= report["effectiveSimplificationToleranceM"] == 0.5
+    assert m["vertexCountDelivered"] < m["vertexCountAuthoritative"]
+    assert m["maxEndpointWeldM"] <= ENDPOINT_WELD_TOLERANCE_M
+    header, rows = read_csv(files["airways.csv"].decode("utf-8"))
+    table = [dict(zip(header, row, strict=True)) for row in rows]
+    for row in table:
+        e = edges[row["airwayId"]]
+        assert float(row["authoritativeLengthM"]) == e["length"]
+        assert float(row["widthM"]) == e["crossSection"]["width"]
+        assert (
+            abs(float(row["deliveredLengthM"]) - e["length"])
+            <= float(row["lengthDeviationM"]) + 1e-9
+        )
+    assert report["omissions"] == []  # no RAISE in the real chain
+    # a second run is byte-identical (deterministic package)
+    assert (
+        tabular.client.post(f"/api/v1/scenarios/{tabular.sid}/export/ventsim-seed").content
+        == r.content
+    )
 
 
 def test_b1_every_network_edge_resolves_through_the_owning_contract(

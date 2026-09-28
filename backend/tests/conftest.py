@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from minegen.api.deps import (
+    get_adapter_service,
     get_analysis_service,
     get_design_service,
     get_exchange_service,
@@ -30,6 +31,7 @@ from minegen.core.models import (
 )
 from minegen.layout.search import LayoutSearchResult, LayoutV2Search
 from minegen.main import create_app
+from minegen.services.adapter_service import AdapterService
 from minegen.services.analysis_service import AnalysisService
 from minegen.services.design_service import DesignService
 from minegen.services.exchange_service import ExchangeService
@@ -161,6 +163,8 @@ TEST_MARKERS: dict[str, tuple[str, ...]] = {
     "test_b1_every_network_edge_resolves_through_the_owning_contract": ("e2e",),
     "test_s1_b3_aggregates_and_parents_on_the_real_chain": ("e2e",),
     "test_b1_http_wrong_owner_geometry_ref_is_a_typed_409": ("e2e",),
+    # Phase 23B.1 Ventsim seed adapter over the same REAL LAYOUT_V2 stack
+    "test_v1_ventsim_seed_over_the_real_layout_v2_chain": ("e2e",),
     # Phase 20C.2B shaft + capability graph API lifecycle (legacy pipeline E2E)
     "test_shaft_and_capability_api_lifecycle": ("e2e",),
     # AC-01E artifact registry: every artifact built + regenerated through the
@@ -262,7 +266,9 @@ def client(
         store, design_service
     )
     app.dependency_overrides[get_job_service] = lambda: job_service
-    app.dependency_overrides[get_exchange_service] = lambda: ExchangeService(store, world_service)
+    exchange_service = ExchangeService(store, world_service)
+    app.dependency_overrides[get_exchange_service] = lambda: exchange_service
+    app.dependency_overrides[get_adapter_service] = lambda: AdapterService(exchange_service)
     app.dependency_overrides[get_analysis_service] = lambda: AnalysisService(store)
     # the WebSocket handler resolves the registry without DI; point it at the same instance
     import minegen.api.jobs as jobs_module

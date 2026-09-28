@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from minegen.config import get_settings
+from minegen.services.adapter_service import AdapterService
 from minegen.services.analysis_service import AnalysisService
 from minegen.services.design_service import DesignService
 from minegen.services.exchange_service import ExchangeService
@@ -47,3 +48,8 @@ def get_exchange_service() -> ExchangeService:
 @lru_cache
 def get_analysis_service() -> AnalysisService:
     return AnalysisService(get_scenario_store())
+
+
+@lru_cache
+def get_adapter_service() -> AdapterService:
+    return AdapterService(get_exchange_service())

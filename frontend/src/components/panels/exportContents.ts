@@ -92,3 +92,29 @@ export const STATE_TEXT: Record<ExportLayerState, string> = {
   NOT_GENERATED: 'not generated',
   FAILED: 'failed',
 }
+
+/**
+ * Phase 23B.1: whether the Ventsim SEED adapter can run RIGHT NOW. The seed
+ * needs the excavation centerlines and the MineNetwork in the MineExchange
+ * bundle (the backend refuses with REQUIRED_SOURCE_ABSENT otherwise); the
+ * panel only mirrors that prerequisite from the loaded scene and never
+ * decides the package contents — the adapter report is the authority.
+ */
+export interface VentsimSeedAvailability {
+  enabled: boolean
+  reason: string
+}
+
+export const VENTSIM_SEED_HELPER_TEXT =
+  'Ventsim seed: one DXF polyline per network edge plus an airway attribute table (lengths, width / height). Ventilation properties are not provided.'
+
+export function describeVentsimSeedAvailability(scene: WorldScene | null): VentsimSeedAvailability {
+  if (!scene) return { enabled: false, reason: 'Generate a world first.' }
+  if (scene.smoothedDecline == null || scene.smoothedDecline.status === 'FAILED') {
+    return { enabled: false, reason: 'A ramp (excavation centerlines) is required.' }
+  }
+  if (scene.network == null || scene.network.status !== 'SUCCESS') {
+    return { enabled: false, reason: 'A generated MineNetwork is required.' }
+  }
+  return { enabled: true, reason: 'Ready: the network and centerlines are in the bundle.' }
+}

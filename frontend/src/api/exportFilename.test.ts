@@ -46,6 +46,46 @@ describe('Phase 23A MineExchange download client', () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/scenarios\/s1\/export\/mine-exchange$/)
   })
 
+  it('POSTs the Ventsim seed export with no body and keeps the server filename (Phase 23B.1)', async () => {
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      expect(init?.method).toBe('POST')
+      expect(init?.body).toBeUndefined()
+      return Promise.resolve(
+        new Response(new Blob([new Uint8Array([80, 75, 3, 4])]), {
+          status: 200,
+          headers: {
+            'content-type': 'application/zip',
+            'content-disposition': 'attachment; filename="minegen_s1_ventsim_seed.zip"',
+          },
+        }),
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const file = await api.exportVentsimSeed('s1')
+    expect(file.filename).toBe('minegen_s1_ventsim_seed.zip')
+    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/scenarios\/s1\/export\/ventsim-seed$/)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              detail: {
+                code: 'REQUIRED_SOURCE_ABSENT',
+                message: 'bundle group NETWORK is ARTIFACT_ABSENT',
+              },
+            }),
+            { status: 409, headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+      ),
+    )
+    await expect(api.exportVentsimSeed('s1')).rejects.toMatchObject({
+      status: 409,
+      code: 'REQUIRED_SOURCE_ABSENT',
+    })
+  })
+
   it('maps a typed backend refusal to ApiError (existing error UI convention)', async () => {
     vi.stubGlobal(
       'fetch',

@@ -22,7 +22,10 @@ import { nextActionVariant } from '@/components/ui/presentation'
 import { Disclosure } from '@/components/ui/Disclosure'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { ExportContents } from '@/components/panels/ExportContents'
-import { describeExportContents } from '@/components/panels/exportContents'
+import {
+  describeExportContents,
+  describeVentsimSeedAvailability,
+} from '@/components/panels/exportContents'
 import { activateScenario, scenarioEpoch } from '@/stores/scenarioSession'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { saveFile } from '@/utils/download'
@@ -129,8 +132,26 @@ export function ScenarioPanel() {
     },
   })
 
+  // Phase 23B.1: the Ventsim seed adapter runs over that same bundle on the
+  // backend; the panel mirrors its prerequisite (network + centerlines) and
+  // sends no adapter parameter — the documented defaults are recorded in
+  // the package's adapter report.
+  const exportVentsim = useMutation({
+    mutationFn: async () => {
+      if (!scenario) throw new Error('no scenario selected')
+      const file = await api.exportVentsimSeed(scenario.id)
+      saveFile(file.blob, file.filename)
+    },
+  })
+  const ventsim = describeVentsimSeedAvailability(scene ?? null)
+
   const error =
-    realize.error ?? create.error ?? load.error ?? generate.error ?? exportExchange.error
+    realize.error ??
+    create.error ??
+    load.error ??
+    generate.error ??
+    exportExchange.error ??
+    exportVentsim.error
   const errorText =
     error instanceof ApiError ? `${error.code}: ${error.message}` : error ? error.message : null
 
@@ -324,6 +345,16 @@ export function ScenarioPanel() {
         >
           {exportExchange.isPending ? 'Preparing export…' : 'Export MineExchange (.zip)'}
         </ActionButton>
+        <div className="mt-1">
+          <ActionButton
+            variant="secondary"
+            disabled={!scenario || !ventsim.enabled || exportVentsim.isPending}
+            title={`Ventsim seed package (DXF airway centerlines + attribute table + adapter report). ${ventsim.reason}`}
+            onClick={() => exportVentsim.mutate()}
+          >
+            {exportVentsim.isPending ? 'Preparing Ventsim seed…' : 'Export Ventsim seed (.zip)'}
+          </ActionButton>
+        </div>
         <Disclosure
           label="Export contents"
           hint={

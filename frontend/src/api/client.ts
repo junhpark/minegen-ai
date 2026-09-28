@@ -203,6 +203,16 @@ export const api = {
       { method: 'POST' },
       `minegen_${id}_mineexchange_v1.zip`,
     ),
+  /** Phase 23B.1: the Ventsim SEED package (VENTSIM_SEED adapter over the
+   * MineExchange bundle). Adapter defaults are recorded in the package's
+   * report; the backend answers 409 REQUIRED_SOURCE_ABSENT without a
+   * network. */
+  exportVentsimSeed: (id: string) =>
+    requestFile(
+      `/scenarios/${id}/export/ventsim-seed`,
+      { method: 'POST' },
+      `minegen_${id}_ventsim_seed.zip`,
+    ),
   getDesignAssessment: (id: string) =>
     request<DesignAssessmentPayload>(`/scenarios/${id}/design/assessment`),
   setRampSource: (id: string, activeSource: RampSource) =>

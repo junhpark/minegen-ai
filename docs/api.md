@@ -49,6 +49,16 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      entities, one production omission group per
                                                      bundle; 409 MINE_EXCHANGE_EXPORT_FAILED on a
                                                      method-authority or payload-shape mismatch)
+    POST /api/v1/scenarios/{id}/export/ventsim-seed  Phase 23B.1 (rule 207): Ventsim SEED package
+                                                     (docs/external-adapters.md §23) — the
+                                                     VENTSIM_SEED 0.1.0 adapter over the
+                                                     MineExchange bundle: airways.dxf (one 3-D
+                                                     polyline per network edge, layer = edge type),
+                                                     airways.csv, nodes.csv, identity_map.json,
+                                                     adapter_report.json; optional JSON body =
+                                                     VentsimSeedConfig; 409 REQUIRED_SOURCE_ABSENT
+                                                     without centerlines + network, typed adapter
+                                                     refusals otherwise, never a ventilation model
     GET  /api/v1/scenarios/{id}/analysis             Phase 22A/B (rules 197–202): synchronous
                                                      READ-ONLY mine analysis — development
                                                      lengths / GROSS excavation volumes per edge

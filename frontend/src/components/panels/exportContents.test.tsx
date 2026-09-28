@@ -8,7 +8,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { WorldScene } from '@/types/scene'
 import { ExportContents } from './ExportContents'
-import { EXPORT_HELPER_TEXT, describeExportContents } from './exportContents'
+import {
+  EXPORT_HELPER_TEXT,
+  describeExportContents,
+  describeVentsimSeedAvailability,
+} from './exportContents'
 
 function scene(over: Partial<WorldScene> = {}): WorldScene {
   return {
@@ -176,5 +180,22 @@ describe('production row of a method without a production implementation', () =>
     const row = layers.find((l) => l.key === 'stopes')
     expect(row?.label).toBe('Production (method not implemented)')
     expect(row?.state).toBe('NOT_GENERATED')
+  })
+})
+
+describe('describeVentsimSeedAvailability (Phase 23B.1)', () => {
+  it('mirrors the adapter prerequisite: world → ramp → SUCCESS network', () => {
+    expect(describeVentsimSeedAvailability(null).enabled).toBe(false)
+    expect(describeVentsimSeedAvailability(scene()).enabled).toBe(false)
+    expect(describeVentsimSeedAvailability(scene()).reason).toMatch(/ramp/i)
+    expect(describeVentsimSeedAvailability(scene({ smoothedDecline: ok })).reason).toMatch(
+      /network/i,
+    )
+    expect(
+      describeVentsimSeedAvailability(scene({ smoothedDecline: ok, network: failed })).enabled,
+    ).toBe(false)
+    expect(
+      describeVentsimSeedAvailability(scene({ smoothedDecline: ok, network: ok })).enabled,
+    ).toBe(true)
   })
 })
