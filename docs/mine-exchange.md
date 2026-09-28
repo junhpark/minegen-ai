@@ -504,7 +504,8 @@ Grade / rock quality lattices (never a block model), GeoTIFF / real CRS /
 unioned or multi-body stope file), timeline / production scheduling /
 economics, drawpoint / pillar / backfill / room / cut / bench entities (the
 drawpoints — no implemented method owns them), application adapters
-(Phase 23B), import and write-back. Stopes and the mining-method semantics
+(Phase 23B — architecture and gap analysis in `docs/external-adapters.md`;
+adapters consume this bundle and never `derived/*`), import and write-back. Stopes and the mining-method semantics
 were NOT_IN_V1 in 1.0 and are part of the bundle since 1.1; Cut & Fill and
 Room & Pillar production since 1.2.
 
