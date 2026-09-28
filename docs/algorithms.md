@@ -2041,3 +2041,37 @@ selection / malformed catalogue → 409 through the real API, T9 required
 paths keep both reachabilities; plus the real chain search → activate →
 levels → network → capability graph → assessment in the e2e tier).
 
+
+## Phase 22A/B — mine analysis projection and planning cashflow (`analysis/`, rules 197–202)
+
+Not a design algorithm: a deterministic projection of persisted quantities
+plus one bucketed cashflow ledger.
+
+    development[type]   = (count, Σ length3d, Σ length3d × analyticArea)     per EdgeType, enum order
+    plannedMinedTonnes  = Σ unit.tonnes            units = stopes | cuts | extractionUnits (never pillars / backfills)
+    gradeProxy          = Σ tonnes × proxy / Σ tonnes  over units with a proxy   (informational)
+    metresPerKt         = totalDevelopmentLengthM / (plannedMinedTonnes / 1000)  (null when tonnes = 0)
+    firstProductionDay  = min startDay over STOPING tasks                      (== metrics.firstStopingDay, verified)
+
+Costs (geometry = quantity authority, timeline = timing authority):
+
+    devCost(edge)       = length3d × rate(edge.type)            over its DEVELOP task [start, end]
+    miningCost(unit)    = tonnes × rate(active method)          over STOPING
+    processing(unit)    = tonnes × processingCostPerTonne       over MUCKING
+    revenue(unit)       = tonnes × grossRevenuePerMinedTonne    over MUCKING   (the ONE revenue model)
+    backfill(cut)       = backfillVolume × backfillCostPerM3    over BACKFILL  (Cut & Fill only, else 0)
+    fixedOpex           = (endDay − startDay) × fixedOperatingCostPerDay   linear over [startDay, endDay]
+    capital             = initialCapitalCost                    bucket 0
+
+Bucket ledger (`cashflow.py`): buckets `[k·b, (k+1)·b)` for `k <
+ceil(endDay / b)` (at least one; the last one closed at `endDay`); an amount
+attached to `[s, e]` is spread by overlap fraction `|[s,e] ∩ bucket| / (e −
+s)` (a zero-length interval lands whole in the bucket containing its day);
+`net = revenue − Σ costs`, `cumulative` running, `discounted = net / (1 +
+annualRate)^(midDay / 365.25)`, `NPV = Σ discounted`. Reconciliation:
+every bucket column sums to its summary figure and `totalCost` equals the
+six components; `annualRate = 0` gives `NPV = undiscounted net` exactly.
+Hand-calculated reference: the `tests/analysis_support.py` mine (230 m,
+4 400 m³ gross, 4 000 t, 120 d, 30-day buckets) gives nets
+`[−2540, −2590, −2300, 11700]`, undiscounted 4 270 and NPV `Σ net_k /
+1.1^(mid_k / 365.25)` with `mid = [15, 45, 75, 105]`.

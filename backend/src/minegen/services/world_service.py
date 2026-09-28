@@ -88,7 +88,11 @@ from minegen.services.artifact_errors import (
 )
 from minegen.services.artifact_reader import READ_SPECS, ArtifactReader, ArtifactSnapshot
 from minegen.services.effective_ramp import resolve_effective_ramp
-from minegen.services.scenario_service import ScenarioNotFoundError, ScenarioStore
+from minegen.services.scenario_service import (
+    BOUND_READ_ATTEMPTS,
+    ScenarioNotFoundError,
+    ScenarioStore,
+)
 from minegen.world.geology import FaultPlane
 from minegen.world.orebody import build_orebody
 from minegen.world.spatial_fields import IncompatibleFieldArtifactError, SpatialFieldSet
@@ -151,7 +155,8 @@ SCENE_SLOTS: tuple[tuple[str, str], ...] = (
 #: A mutation storm on ONE scenario then answers 409 ``READ_SNAPSHOT_CHANGED``
 #: (A9) — nothing was generated and nothing was discarded, so it is never
 #: ``JOB_INPUTS_CHANGED``.
-SNAPSHOT_ATTEMPTS: Final[int] = 3
+#: the bound read's retry budget is the store's (ScenarioStore.get_bound)
+SNAPSHOT_ATTEMPTS: Final[int] = BOUND_READ_ATTEMPTS
 
 
 @dataclass(frozen=True)
@@ -304,13 +309,10 @@ class WorldService:
         ``ScenarioStore.create`` writes a fresh id and a client cannot name
         one before it is created, so no API route can reach that branch — it
         is closed by construction rather than by a special case."""
-        path = self.store.scenario_path(scenario_id)
-        for _attempt in range(SNAPSHOT_ATTEMPTS):
-            revision = file_revision(path)
-            scenario = self.store.get(scenario_id)
-            if revision is not None and file_revision(path) == revision:
-                return scenario, revision
-        raise ReadSnapshotChangedError(scenario_id, "scenario.json kept changing during the read")
+        # PR #48 review: the protocol lives in ``ScenarioStore.get_bound`` so
+        # the analysis service binds its document the SAME way (no second
+        # implementation); the contract above is unchanged
+        return self.store.get_bound(scenario_id)
 
     def load_bound(self, scenario_id: str) -> tuple[Scenario, SyntheticWorld, str, str]:
         """The scenario document, its world, and the two file revisions BOTH

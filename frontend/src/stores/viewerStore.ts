@@ -4,7 +4,7 @@ import { useTimelineStore } from './timelineStore'
 import { useScenarioStore } from './scenarioStore'
 import { temporalSessionIdentity } from '@/walkthrough/temporalPlan'
 import type { WalkthroughNavigationMode } from '@/walkthrough/navigation'
-import type { DesignTab, SystemsTab } from '@/components/panels/workflowTabs'
+import type { AnalysisTab, DesignTab, SystemsTab } from '@/components/panels/workflowTabs'
 
 export type CameraMode = 'orbit' | 'walkthrough'
 export type WalkthroughContext = 'STATIC_FINAL' | 'TIMELINE_SNAPSHOT'
@@ -34,8 +34,10 @@ export interface ViewerState {
    */
   designTab: DesignTab
   systemsTab: SystemsTab
+  analysisTab: AnalysisTab
   setDesignTab: (tab: DesignTab) => void
   setSystemsTab: (tab: SystemsTab) => void
+  setAnalysisTab: (tab: AnalysisTab) => void
 
   setMode: (mode: AppMode) => void
   setCameraMode: (cameraMode: CameraMode) => void
@@ -97,6 +99,8 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   systemsTab: 'COMMUNICATION',
   setDesignTab: (designTab) => set({ designTab }),
   setSystemsTab: (systemsTab) => set({ systemsTab }),
+  analysisTab: 'OVERVIEW',
+  setAnalysisTab: (analysisTab) => set({ analysisTab }),
 
   setNavigationMode: (navigationMode) => set({ navigationMode }),
   setMode: (mode) =>

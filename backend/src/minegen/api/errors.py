@@ -47,6 +47,7 @@ from typing import Any, Final
 
 from fastapi import HTTPException
 
+from minegen.analysis.integrity import AnalysisSourceInconsistentError
 from minegen.core.models import ErrorDetail
 from minegen.layout.certification import ClearancePolicyReconstructionError
 from minegen.services.artifact_errors import (
@@ -171,6 +172,8 @@ CODE_LADDER: Final[tuple[tuple[type[Exception], str], ...]] = (
     (ArtifactStaleError, "ARTIFACT_STALE"),
     (SceneArtifactInvalidError, "SCENE_ARTIFACT_INVALID"),
     (ReadSnapshotChangedError, "READ_SNAPSHOT_CHANGED"),
+    # Phase 22A (directive §9): two authoritative analysis sources disagree
+    (AnalysisSourceInconsistentError, "ANALYSIS_SOURCE_INCONSISTENT"),
 )
 
 #: status + message per wire code, transcribed from the router bodies at HEAD
@@ -304,6 +307,7 @@ ERRORS: Final[dict[str, ErrorSpec]] = {
     "ARTIFACT_STALE": ErrorSpec(409, None, "AC-01F A1"),
     "SCENE_ARTIFACT_INVALID": ErrorSpec(409, None, "AC-01F A14"),
     "READ_SNAPSHOT_CHANGED": ErrorSpec(409, None, "AC-01F A9"),
+    "ANALYSIS_SOURCE_INCONSISTENT": ErrorSpec(409, None, "Phase 22A directive §9"),
 }
 
 #: the per-router drift that stays (A6): a router row REPLACES the base row.

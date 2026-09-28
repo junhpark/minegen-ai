@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DESIGN_TABS, SYSTEMS_TABS } from './workflowTabs'
+import { ANALYSIS_TABS, DESIGN_TABS, SYSTEMS_TABS } from './workflowTabs'
 
 const HERE = join(__dirname)
 const LAYOUT = join(__dirname, '..', 'layout')
@@ -134,6 +134,7 @@ describe('the layout and legacy endpoints are unchanged', () => {
 describe('switching a tab is presentation only (§19)', () => {
   const design = read(join(LAYOUT, 'DesignWorkspace.tsx'))
   const systems = read(join(LAYOUT, 'SystemsWorkspace.tsx'))
+  const analysis = read(join(LAYOUT, 'AnalysisWorkspace.tsx'))
 
   it('every panel stays mounted and is gated on its own tab, never unmounted', () => {
     expect(design).toContain("<LayoutPanel active={tab === 'LAYOUT'} />")
@@ -141,15 +142,17 @@ describe('switching a tab is presentation only (§19)', () => {
     expect(design).toContain("<LegacyDeclinePanel active={tab === 'LAYOUT'} />")
     expect(systems).toContain("<CommunicationPanel active={tab === 'COMMUNICATION'} />")
     expect(systems).toContain("<SensorPanel active={tab === 'SENSORS'} />")
+    // Phase 22A/B: the analysis panel renders one tab's context, stays mounted
+    expect(analysis).toContain('<AnalysisPanel view={tab} />')
     // a conditional mount would drop a running job poll
-    for (const src of [design, systems]) {
+    for (const src of [design, systems, analysis]) {
       expect(src).not.toMatch(/tab === '[A-Z_]+' \?\s*</)
       expect(src).not.toMatch(/&&\s*<[A-Z]/)
     }
   })
 
   it('the tab handlers only set tab state — they run no mutation', () => {
-    for (const src of [design, systems]) {
+    for (const src of [design, systems, analysis]) {
       expect(src).toContain('onSelect={setTab}')
       expect(src).not.toContain('mutate')
       expect(src).not.toContain('setLayerVisible')
@@ -164,8 +167,8 @@ describe('Systems navigation (§26 E)', () => {
     expect(SYSTEMS_TABS.map((t) => t.label)).toEqual(['Communication', 'Sensors'])
   })
 
-  it('every tab id is unique in both tab sets', () => {
-    for (const tabs of [DESIGN_TABS, SYSTEMS_TABS]) {
+  it('every tab id is unique in every tab set', () => {
+    for (const tabs of [DESIGN_TABS, SYSTEMS_TABS, ANALYSIS_TABS]) {
       expect(new Set(tabs.map((t) => t.id)).size).toBe(tabs.length)
     }
   })
@@ -180,6 +183,7 @@ describe('the left panel keeps Layers reachable and independent (§6)', () => {
     expect(left.indexOf('<LayerPanel />')).toBeGreaterThan(left.indexOf('Workspace />'))
     expect(read(join(LAYOUT, 'DesignWorkspace.tsx'))).not.toContain('LayerPanel')
     expect(read(join(LAYOUT, 'SystemsWorkspace.tsx'))).not.toContain('LayerPanel')
+    expect(read(join(LAYOUT, 'AnalysisWorkspace.tsx'))).not.toContain('LayerPanel')
   })
 
   it('the layer store contract is untouched: toggleLayer only', () => {

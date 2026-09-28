@@ -19,11 +19,17 @@ from pathlib import Path
 
 from minegen.core.models import SCENARIO_SCHEMA_VERSION, Scenario, ScenarioCreate, ScenarioSummary
 from minegen.core.publication import publish_text
+from minegen.core.revision import file_revision
+from minegen.services.artifact_errors import ReadSnapshotChangedError
 from minegen.services.scenario_migration import migrate_scenario_document
 
 
 class ScenarioNotFoundError(KeyError):
     pass
+
+
+#: bounded retries of the stat / get / re-stat document binding
+BOUND_READ_ATTEMPTS = 3
 
 
 class ScenarioStore:
@@ -77,6 +83,37 @@ class ScenarioStore:
             self._write(scenario)
             self.clear_derived(scenario_id)
         return scenario
+
+    def get_bound(self, scenario_id: str) -> tuple[Scenario, str]:
+        """The scenario document AND the ``scenario.json`` revision it was
+        parsed from — the ONE bound document read (AC-01F C4, shared by
+        ``WorldService`` and ``AnalysisService``; PR #48 review blocker).
+
+        ``stat`` → :meth:`get` → ``stat`` again, repeated while the revision
+        moves, at most :data:`BOUND_READ_ATTEMPTS` times::
+
+            revision = file_revision(scenario.json)
+            scenario = store.get(sid)          # 404 / 422 / the A10 migration
+            file_revision(scenario.json) == revision ?  →  bound
+                                                        else repeat
+
+        Both halves matter: capturing only BEFORE the read makes the A10
+        migration-on-read look like a concurrent mutation; capturing only
+        AFTER leaves the read itself outside the guarded window — a PUT
+        between ``get`` and the stat would bind an OLD document to the NEW
+        revision. Exhaustion is ``ReadSnapshotChangedError`` (409
+        ``READ_SNAPSHOT_CHANGED``): a READ that could not be bound, never a
+        generation whose inputs moved. A consumer that then takes an
+        ``ArtifactReader`` snapshot passes the returned revision as
+        ``expect_scenario_revision`` so the document and the artifact
+        observation are one revision."""
+        path = self.scenario_path(scenario_id)
+        for _attempt in range(BOUND_READ_ATTEMPTS):
+            revision = file_revision(path)
+            scenario = self.get(scenario_id)
+            if revision is not None and file_revision(path) == revision:
+                return scenario, revision
+        raise ReadSnapshotChangedError(scenario_id, "scenario.json kept changing during the read")
 
     def replace(self, scenario_id: str, payload: ScenarioCreate) -> Scenario:
         existing = self.get(scenario_id)

@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 
 from minegen import __version__
 from minegen.api import (
+    analysis,
     design,
     exchange,
     health,
@@ -97,6 +98,7 @@ def create_app() -> FastAPI:
     api.include_router(infrastructure.router)
     api.include_router(jobs.router)
     api.include_router(exchange.router)
+    api.include_router(analysis.router)
     app.include_router(api)
     app.include_router(jobs.ws_router)
     return app

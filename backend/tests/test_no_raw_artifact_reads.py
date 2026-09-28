@@ -84,9 +84,21 @@ READ_AUTHORITY = "artifact_reader.py"
 #: fails this proof. ``tests/test_publication.py`` holds the matching
 #: WRITE-side proof: no raw ``write_text`` / ``write_bytes`` / ``np.savez*``
 #: / write-mode ``open`` exists outside this module.
+#:
+#: Phase 22B (rule 200): ``analysis/economics.py::observe_economics`` reads
+#: ``economics.json`` — the USER-AUTHORED planning-economics assumption
+#: document at the scenario-directory ROOT beside ``scenario.json``, the same
+#: category as the ``ScenarioStore.get`` exception above. It is NOT a derived
+#: artifact: no registry entry, no fingerprint role, no cascade, never under
+#: ``derived/``. The read is one lock-held observation, validated by its own
+#: schema (a present unusable document is ``ARTIFACT_MALFORMED``), and the
+#: analysis re-observes it after the projection (``READ_SNAPSHOT_CHANGED``).
+#: Named one function at a time, so a derived-artifact read added to the
+#: analysis package still fails this proof.
 ALLOWED_FILE_READS: dict[str, tuple[str, ...]] = {
     "core/publication.py": ("_open_temp", "_fsync_directory"),
     "services/scenario_service.py": ("get",),
+    "analysis/economics.py": ("observe_economics",),
     "regression/golden.py": ("write_report", "load_report"),
     "regression/layout_v2.py": ("write_report", "load_report"),
     "regression/warped_vein.py": ("write_report", "load_report"),

@@ -1,5 +1,6 @@
 import { ScenarioPanel } from '@/components/panels/ScenarioPanel'
 import { LayerPanel } from '@/components/panels/LayerPanel'
+import { AnalysisWorkspace } from '@/components/layout/AnalysisWorkspace'
 import { DesignWorkspace } from '@/components/layout/DesignWorkspace'
 import { SystemsWorkspace } from '@/components/layout/SystemsWorkspace'
 import { useViewerStore } from '@/stores/viewerStore'
@@ -10,6 +11,7 @@ import { useViewerStore } from '@/stores/viewerStore'
  *   Scenario summary          — always on top
  *   workflow tabs             — Design: Layout | Develop | Network | Mining
  *                               Systems: Communication | Sensors
+ *                               Analysis: Overview | Economics (Phase 22A/B)
  *   Layers                    — viewer control, always reachable, collapsed
  *
  * Infrastructure features remain independent components shown by mode and are
@@ -21,7 +23,13 @@ export function LeftPanel() {
   return (
     <aside className="flex w-[320px] shrink-0 flex-col overflow-y-auto border-r border-rock-700 bg-rock-800">
       <ScenarioPanel />
-      {mode === 'INFRASTRUCTURE' ? <SystemsWorkspace /> : <DesignWorkspace />}
+      {mode === 'INFRASTRUCTURE' ? (
+        <SystemsWorkspace />
+      ) : mode === 'ANALYSIS' ? (
+        <AnalysisWorkspace />
+      ) : (
+        <DesignWorkspace />
+      )}
       <LayerPanel />
     </aside>
   )
