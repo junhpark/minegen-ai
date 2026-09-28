@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 
 from minegen.analysis.economics import EconomicsConfig, EconomicsConfigResponse
+from minegen.analysis.layout_comparison import LayoutComparisonPayload
 from minegen.analysis.models import MineAnalysisPayload
 from minegen.api.deps import get_analysis_service
 from minegen.api.errors import ROUTER_DESIGN, guard
@@ -62,6 +63,23 @@ def put_economics_config(
     invalidation follows an economics change."""
     try:
         return svc.put_economics_config(scenario_id, config)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _mapped(scenario_id, exc) from exc
+
+
+@router.get("/layout-comparison")
+def get_layout_comparison(scenario_id: str, svc: Service) -> LayoutComparisonPayload:
+    """Phase 22C (rules 204–206): synchronous READ-ONLY comparable layout
+    development cost per ranked layout-v2 candidate — persisted main-ramp
+    length × ramp rate + persisted level-access length × level-access rate.
+    No job, no generation, no persistence, no ranking change; no catalogue →
+    NOT_AVAILABLE (200), no ``economics.json`` → NOT_CONFIGURED with the
+    geometry facts (200); a malformed catalogue → 409 ``ARTIFACT_MALFORMED``,
+    a moving source → 409 ``READ_SNAPSHOT_CHANGED``."""
+    try:
+        return svc.layout_comparison(scenario_id)
     except HTTPException:
         raise
     except Exception as exc:

@@ -198,3 +198,59 @@ export interface EconomicsConfigResponse {
   revision: string | null
   config: EconomicsConfig | null
 }
+
+// --------------------------------------------------------------------------- //
+// Phase 22C — Layout Development Economics (rules 204–206): read-only mirror
+// of GET …/analysis/layout-comparison. Every length is the persisted
+// candidate fact, every cost is backend `length × rate`; the frontend never
+// sums a centerline, never re-ranks and never derives a cost.
+// --------------------------------------------------------------------------- //
+
+import type { ComparisonScores, LayoutScope, ScoreDeltas } from './scene'
+
+export type LayoutComparisonAvailability = 'AVAILABLE' | 'NOT_AVAILABLE' | 'NOT_CONFIGURED'
+
+export interface LayoutComparisonBasis {
+  included: string[]
+  excluded: string[]
+}
+
+export interface LayoutDevelopmentComparisonRow {
+  candidateId: string
+  family: string
+  /** the persisted layout rank (1 = ranking winner) — the ONLY rank */
+  catalogueRank: number | null
+  selected: boolean
+  winner: boolean
+  status: 'FEASIBLE' | 'INFEASIBLE' | 'NOT_VALIDATED'
+  mainRampLengthM: number
+  levelAccessLengthM: number
+  comparableDevelopmentLengthM: number
+  rampCost: number | null
+  levelAccessCost: number | null
+  comparableDevelopmentCost: number | null
+  costDeltaFromWinner: number | null
+  costDeltaFromSelected: number | null
+  scores: ComparisonScores | null
+  scoreDeltaFromWinner: ScoreDeltas | null
+}
+
+export interface LayoutComparisonPayload {
+  status: 'SUCCESS'
+  availability: LayoutComparisonAvailability
+  reason: string | null
+  scope: LayoutScope
+  activeSource: string
+  winnerId: string | null
+  selectedCandidateId: string | null
+  currencyCode: string | null
+  rampRatePerM: number | null
+  levelAccessRatePerM: number | null
+  economicsRevision: string | null
+  layoutRevision: string | null
+  selectionRevision: string | null
+  comparisonBasis: LayoutComparisonBasis
+  /** persisted ranking order — never sorted by cost */
+  rows: LayoutDevelopmentComparisonRow[]
+  disclaimer: string
+}

@@ -10,6 +10,7 @@ import type {
 import type {
   EconomicsConfig,
   EconomicsConfigResponse,
+  LayoutComparisonPayload,
   MineAnalysisPayload,
 } from '@/types/analysis'
 import type { Capability } from '@/types/enums'
@@ -266,6 +267,11 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(config),
     }),
+  /** Phase 22C: READ-ONLY comparable layout development cost per ranked
+   * layout-v2 candidate (persisted lengths × configured rates; no job, no
+   * persistence, no ranking change). */
+  getLayoutComparison: (id: string) =>
+    request<LayoutComparisonPayload>(`/scenarios/${id}/analysis/layout-comparison`),
   generateNetwork: (id: string) =>
     request<NetworkPayload>(`/scenarios/${id}/network/generate`, { method: 'POST' }),
   getNetwork: (id: string) => request<NetworkPayload>(`/scenarios/${id}/network`),

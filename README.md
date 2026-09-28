@@ -36,6 +36,7 @@ platform. Research prototype / proof of concept.
 | 19    | Implicit Geological Orebody (WARPED_VEIN implicit solid)     | done  |
 | 20–21 | Layout v2, level access, shafts, capability, assessment, MineExchange, mining methods | done  |
 | 22A/B | Mine Analysis Core + Planning Economics (read-only analysis, economics.json) | done  |
+| 22C   | Design Rulebook + Layout Development Economics (read-only, no second evaluator) | done  |
 
 
 ## Layout
@@ -360,10 +361,13 @@ Scenario 3 — CUT_AND_FILL
 
 See `docs/api.md` for the authoritative endpoint reference. Phase 22A/B adds
 the read-only mine analysis and the planning-economics assumptions
-(`docs/analysis-economics.md`):
+(`docs/analysis-economics.md`); Phase 22C adds the read-only comparable
+layout development cost over the persisted layout-v2 catalogue
+(`docs/layout-comparison.md`; the Rules tab reuses `GET …/design/assessment`):
 
     GET      /api/v1/scenarios/{id}/analysis
     GET/PUT  /api/v1/scenarios/{id}/analysis/economics-config
+    GET      /api/v1/scenarios/{id}/analysis/layout-comparison
 
 Phase 12 adds the sensor placement baseline alongside Phase 11 communication:
 

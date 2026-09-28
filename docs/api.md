@@ -77,6 +77,26 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      revision sha256(canonical JSON); invalidates
                                                      NOTHING (every derived file byte- and
                                                      stat-identical)
+    GET  /api/v1/scenarios/{id}/analysis/layout-comparison
+                                                     Phase 22C (rules 204–206): synchronous
+                                                     READ-ONLY Comparable Layout Development Cost
+                                                     per ranked layout-v2 candidate — persisted
+                                                     diagnostics.length3d × rampPerM + persisted
+                                                     access.totalAccessLength × levelAccessPerM
+                                                     (RAMP + LEVEL_ACCESS only; every other kind
+                                                     explicitly excluded), rows in the persisted
+                                                     ranking order with Δ vs winner / selected and
+                                                     the 20D.3 scores. No catalogue →
+                                                     NOT_AVAILABLE (200); no economics.json →
+                                                     NOT_CONFIGURED with geometry rows and null
+                                                     costs (200); LEGACY active + catalogue →
+                                                     scope INACTIVE_LAYOUT_V2; malformed catalogue
+                                                     409 ARTIFACT_MALFORMED, stale selection 409
+                                                     LAYOUT_V2_SELECTION_STALE, moving source 409
+                                                     READ_SNAPSHOT_CHANGED. Never changes ranking,
+                                                     winner, scores or selection; no job, no
+                                                     persistence. The Rules tab reuses
+                                                     GET …/design/assessment (rule 203).
 
     Scenario documents are schemaVersion 2 (Phase 18): `fieldSampling
     {spacingX, spacingY, spacingZ}` replaces the v1 `blockModel {dx, dy, dz}`.
