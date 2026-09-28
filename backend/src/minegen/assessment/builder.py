@@ -50,6 +50,8 @@ __all__ = [
     "DEFAULT_MAX_COMPARISON_ROWS",
     "CatalogueShapeError",
     "build_design_assessment",
+    "comparison_scores",
+    "score_deltas",
     "validate_catalogue_shape",
 ]
 
@@ -400,15 +402,8 @@ def _row(
     winner_scores: dict[str, Any] | None,
 ) -> CandidateComparisonRow:
     cid = str(cand["candidateId"])
-    scores = _scores(cand.get("scores"))
-    deltas = None
-    if scores is not None and winner_scores is not None:
-        deltas = ScoreDeltas(
-            total_score_delta_from_winner=scores.total - float(winner_scores["total"]),
-            development_score_delta=scores.development - float(winner_scores["development"]),
-            geology_score_delta=scores.geology - float(winner_scores["geology"]),
-            geometry_score_delta=scores.geometry - float(winner_scores["geometry"]),
-        )
+    scores = comparison_scores(cand.get("scores"))
+    deltas = score_deltas(scores, winner_scores)
     return CandidateComparisonRow(
         candidate_id=cid,
         family=str(cand["family"]),
@@ -428,7 +423,10 @@ def _row(
     )
 
 
-def _scores(scores: dict[str, Any] | None) -> ComparisonScores | None:
+def comparison_scores(scores: dict[str, Any] | None) -> ComparisonScores | None:
+    """The catalogue's ``scores`` block copied verbatim (rule 148). Shared
+    with the Phase 22C layout comparison so the two read models carry ONE
+    score semantics (rule 203 / 206)."""
     if scores is None:
         return None
     return ComparisonScores(
@@ -436,6 +434,21 @@ def _scores(scores: dict[str, Any] | None) -> ComparisonScores | None:
         geology=scores["geology"],
         geometry=scores["geometry"],
         total=scores["total"],
+    )
+
+
+def score_deltas(
+    scores: ComparisonScores | None, winner_scores: dict[str, Any] | None
+) -> ScoreDeltas | None:
+    """Plain ``candidate − winner`` subtraction per group (directive §13);
+    ``None`` when either side is unscored. Never a re-ranking input."""
+    if scores is None or winner_scores is None:
+        return None
+    return ScoreDeltas(
+        total_score_delta_from_winner=scores.total - float(winner_scores["total"]),
+        development_score_delta=scores.development - float(winner_scores["development"]),
+        geology_score_delta=scores.geology - float(winner_scores["geology"]),
+        geometry_score_delta=scores.geometry - float(winner_scores["geometry"]),
     )
 
 

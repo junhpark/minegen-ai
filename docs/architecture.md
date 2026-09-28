@@ -82,7 +82,12 @@ here. Per-phase decision records below keep their original wording.
                        ratios / economics), economics (user-authored
                        economics.json beside the scenario, sha256 revision,
                        rates), cashflow (bucket ledger, overlap allocation,
-                       mid-bucket NPV); never a derived artifact
+                       mid-bucket NPV); never a derived artifact.
+                       layout_comparison (Phase 22C, rules 204–206): the
+                       Comparable Layout Development Cost over the PERSISTED
+                       layout-v2 candidate quantities — pure builder, shared
+                       assessment score helpers, consumer-specific catalogue
+                       shape extension; the Rules tab reuses assessment/
       mining/          Phase 21A/21B/C mining-method core (rules 192–196): methods/registry.py
                        (plan_for — the ONE dispatch authority), methods/contracts.py
                        (MiningMethodPlan protocol, access patterns, production schedule spec),
@@ -1831,7 +1836,60 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
   Fill / Room & Pillar chains, determinism, corruption 409, snapshot race,
   one config over three methods); frontend `AnalysisPanel.test.tsx`,
   `economicsDraft.test.ts`, `workflowPreservation.test.ts`.
-- **Non-scope.** Rule compliance and layout comparison economics (22C),
-  IRR / tax / depreciation / royalty / inflation / sensitivity, candidate
-  what-if economics, ventilation / haulage / capacity, external adapters
-  (23B).
+- **Non-scope.** IRR / tax / depreciation / royalty / inflation /
+  sensitivity, candidate what-if economics, ventilation / haulage /
+  capacity, external adapters (23B).
+
+## Phase 22C — Design Rulebook + Layout Development Economics (rules 203–206)
+
+- **Design Rulebook (rule 203).** The Analysis **Rules** tab is a
+  presentation of the Phase 20D.3 design assessment: `AnalysisPanel` reads
+  `GET …/design/assessment` under the SAME react-query key the Layout panel
+  uses (one cache entry, one read model) and `RulebookPanel` renders every
+  `AssessmentCheck` as Category · Rule · Status · Authority · Scope ·
+  Evidence through the pure mappings in `panels/rulebook.ts`
+  (`rulebookStatus`, `evidenceText`). Hard rules / validations keep ✓ / ✗ /
+  ? / —, an advisory reads "Advisory satisfied / not satisfied" with the
+  non-statutory note and never the ✓ mark, an informational row reads
+  "Info", NOT_EVALUATED stays NOT EVALUATED, and no overall score exists.
+  No backend change and no second evaluator.
+- **Layout comparison (rules 204–206, `analysis/layout_comparison.py`).**
+  `AnalysisService.layout_comparison` follows the 22A/B protocol — bound
+  scenario read, ONE snapshot of `layout_v2.json`,
+  `layout_v2_selected.json`, `level_accesses.json` (the selection's pair
+  unit) and `ramp_source.json` at that revision, `economics.json` observed
+  beside them, the ramp source resolved FIRST, projection through the pure
+  `build_layout_comparison`, every source re-observed
+  (`READ_SNAPSHOT_CHANGED` on movement). The builder applies the shared
+  `validate_catalogue_shape` and then the consumer-specific
+  `validate_layout_economics_shape` (finite non-negative
+  `diagnostics.length3d` / `access.totalAccessLength` for every RANKED
+  candidate; `CatalogueShapeError` → 409 `ARTIFACT_MALFORMED`; the fields
+  stay optional for the assessment) and emits one
+  `LayoutDevelopmentComparisonRow` per ranking entry in the persisted order:
+  the two persisted lengths, `length × rate` costs (`None` when
+  `economics.json` is absent — NOT_CONFIGURED keeps the geometry rows),
+  plain `candidate − winner` / `candidate − selected` cost deltas and the
+  20D.3 `ComparisonScores` / `ScoreDeltas` through the now-public
+  `assessment.builder.comparison_scores` / `score_deltas`. `comparisonBasis`
+  names the included (`RAMP`, `LEVEL_ACCESS`) and excluded kinds. Nothing is
+  written, ranked, selected or recomputed; no per-candidate artifact exists.
+- **Wire.** `GET …/analysis/layout-comparison` (sync, 200 for absent
+  catalogue / economics, typed 409 refusals through the shared error
+  ladder — no new code). Frontend: `ANALYSIS_TABS` = Overview | Economics |
+  Rules | Layout comparison; `LayoutComparisonPanel` (summary card, ranking-
+  order table, optional bar chart, scores in Details) keyed on epoch + scene
+  identity + economics revision; saving the assumptions invalidates
+  `mine-analysis` and `layout-comparison` only.
+- **Tests.** `tests/test_layout_comparison.py` (C-1 formula, C-2 ranking
+  preservation, C-3 no hidden economics, C-4 scope, C-5 malformed → typed
+  shape error / 409 and the assessment isolation, C-6 races on scenario /
+  catalogue / selection / economics, C-7 read-only proof, C-8 no generation
+  entry point, C-9 vocabulary, C-10 determinism, plus the REAL catalogue
+  e2e); frontend `RulebookPanel.test.tsx`, `LayoutComparisonPanel.test.tsx`,
+  `analysisIsolation.test.ts`.
+- **Non-scope.** Candidate regeneration, candidate NPV / IRR / payback,
+  tax / royalty / depreciation / inflation, pricing / grade revenue /
+  recovery, ventilation / haulage / fleet / capacity, Monte Carlo,
+  auto-selection or optimization, 23B adapters, calibration, resources /
+  reserves.

@@ -7,9 +7,11 @@ import { useScenarioStore } from '@/stores/scenarioStore'
 import type {
   EconomicsConfig,
   EconomicsConfigResponse,
+  LayoutComparisonPayload,
   MineAnalysisPayload,
   ProductionDetail,
 } from '@/types/analysis'
+import type { DesignAssessmentPayload } from '@/types/scene'
 import {
   AVAILABILITY_LABEL,
   availabilityTone,
@@ -28,6 +30,8 @@ import { assessmentKey } from './assessmentKey'
 import { CashflowTable } from './CashflowTable'
 import { EconomicsConfigEditor } from './EconomicsConfigEditor'
 import { economicsIdentity } from './economicsDraft'
+import { LayoutComparisonBody } from './LayoutComparisonPanel'
+import { RulebookBody } from './RulebookPanel'
 import type { AnalysisTab } from './workflowTabs'
 
 const errorText = (err: unknown): string | null =>
@@ -38,13 +42,16 @@ const errorText = (err: unknown): string | null =>
       : null
 
 /**
- * Phase 22A/B — the Analysis workspace container. Two READ-ONLY queries over
- * the backend projection (the analysis and the economics assumption
- * document), keyed on the scenario epoch and the scene identity so a
- * response of a previous scenario / revision never populates the current one
- * (the existing `scenarioStore` epoch contract), and one mutation: saving the
- * assumptions, which reloads the analysis and touches no mine artifact — an
- * economics change is not a viewer revision (no epoch bump, no scene clear).
+ * Phase 22A/B/C — the Analysis workspace container. Four READ-ONLY queries
+ * over backend projections — the analysis, the economics assumption document,
+ * the Phase 20D.3 design assessment (the Rules tab; the SAME query key the
+ * Layout panel uses, so both read one cache entry) and the layout comparison —
+ * keyed on the scenario epoch and the scene identity so a response of a
+ * previous scenario / revision never populates the current one (the existing
+ * `scenarioStore` epoch contract), and one mutation: saving the assumptions,
+ * which reloads the analysis and the layout comparison and touches no mine
+ * artifact — an economics change is not a viewer revision (no epoch bump, no
+ * scene clear).
  */
 export function AnalysisPanel({ view }: { view: AnalysisTab }) {
   const scene = useScenarioStore((s) => s.scene)
@@ -66,16 +73,33 @@ export function AnalysisPanel({ view }: { view: AnalysisTab }) {
     enabled: scenarioId !== null,
     retry: false,
   })
+  // Phase 22C Rules tab: the design assessment read model, ONE cache entry
+  // shared with the Layout panel (identical key), never a second evaluator
+  const assessment = useQuery({
+    queryKey: ['design-assessment', epoch, ...assessmentKey(scene)],
+    queryFn: () => api.getDesignAssessment(scene?.scenarioId ?? ''),
+    enabled: scene !== null,
+    retry: false,
+  })
+  // Phase 22C Layout comparison: persisted candidate lengths × configured rates
+  const comparison = useQuery({
+    queryKey: ['layout-comparison', epoch, scenarioId, ...assessmentKey(scene), revision],
+    queryFn: () => api.getLayoutComparison(scenarioId ?? ''),
+    enabled: scenarioId !== null,
+    retry: false,
+  })
   const save = useMutation({
     mutationFn: async (next: EconomicsConfig) => {
       if (!scenarioId) throw new Error('load a scenario first')
       return api.putEconomicsConfig(scenarioId, next)
     },
     onSuccess: (saved: EconomicsConfigResponse) => {
-      // the saved document IS the new persisted state; the analysis is
-      // re-read under its new economics revision. Nothing else changes.
+      // the saved document IS the new persisted state; the analysis and the
+      // layout comparison are re-read under its new economics revision.
+      // Nothing else changes: no epoch bump, no scene clear, no invalidation.
       qc.setQueryData(['economics-config', epoch, scenarioId], saved)
       void qc.invalidateQueries({ queryKey: ['mine-analysis'] })
+      void qc.invalidateQueries({ queryKey: ['layout-comparison'] })
     },
   })
 
@@ -86,6 +110,12 @@ export function AnalysisPanel({ view }: { view: AnalysisTab }) {
       analysis={analysis.data ?? null}
       analysisError={errorText(analysis.error)}
       loading={analysis.isPending && scenarioId !== null}
+      assessment={assessment.data ?? null}
+      assessmentError={errorText(assessment.error)}
+      assessmentLoading={assessment.isPending && scene !== null}
+      layoutComparison={comparison.data ?? null}
+      layoutComparisonError={errorText(comparison.error)}
+      layoutComparisonLoading={comparison.isPending && scenarioId !== null}
       economicsConfig={config.data ?? null}
       economicsError={errorText(config.error)}
       activeMethod={scenarioDoc?.mining.method ?? null}
@@ -102,6 +132,12 @@ export interface AnalysisPanelBodyProps {
   analysis: MineAnalysisPayload | null
   analysisError: string | null
   loading: boolean
+  assessment: DesignAssessmentPayload | null
+  assessmentError: string | null
+  assessmentLoading: boolean
+  layoutComparison: LayoutComparisonPayload | null
+  layoutComparisonError: string | null
+  layoutComparisonLoading: boolean
   economicsConfig: EconomicsConfigResponse | null
   economicsError: string | null
   activeMethod: string | null
@@ -117,6 +153,24 @@ export function AnalysisPanelBody(p: AnalysisPanelBodyProps) {
   if (p.scenarioId === null) {
     return (
       <p className="px-4 py-3 text-[11px] text-mute">Load a scenario to analyse its mine plan.</p>
+    )
+  }
+  if (p.view === 'RULES') {
+    return (
+      <RulebookBody
+        assessment={p.assessment}
+        error={p.assessmentError}
+        loading={p.assessmentLoading}
+      />
+    )
+  }
+  if (p.view === 'LAYOUT_COMPARISON') {
+    return (
+      <LayoutComparisonBody
+        payload={p.layoutComparison}
+        error={p.layoutComparisonError}
+        loading={p.layoutComparisonLoading}
+      />
     )
   }
   if (p.analysisError) {

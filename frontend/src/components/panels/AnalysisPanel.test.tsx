@@ -21,6 +21,12 @@ function props(over: Partial<AnalysisPanelBodyProps> = {}): AnalysisPanelBodyPro
     analysis: FULL,
     analysisError: null,
     loading: false,
+    assessment: null,
+    assessmentError: null,
+    assessmentLoading: false,
+    layoutComparison: null,
+    layoutComparisonError: null,
+    layoutComparisonLoading: false,
     economicsConfig: { configured: true, revision: 'e', config: CONFIG },
     economicsError: null,
     activeMethod: 'LONGHOLE_OPEN_STOPING',
@@ -45,9 +51,20 @@ const FORBIDDEN = [
 ]
 
 describe('Analysis tabs', () => {
-  it('are Overview and Economics only — no Compliance placeholder', () => {
-    expect(ANALYSIS_TABS.map((t) => t.id)).toEqual(['OVERVIEW', 'ECONOMICS'])
-    expect(ANALYSIS_TABS.map((t) => t.label)).toEqual(['Overview', 'Economics'])
+  it('are Overview | Economics | Rules | Layout comparison — "Rules", never "Compliance"', () => {
+    expect(ANALYSIS_TABS.map((t) => t.id)).toEqual([
+      'OVERVIEW',
+      'ECONOMICS',
+      'RULES',
+      'LAYOUT_COMPARISON',
+    ])
+    expect(ANALYSIS_TABS.map((t) => t.label)).toEqual([
+      'Overview',
+      'Economics',
+      'Rules',
+      'Layout comparison',
+    ])
+    expect(ANALYSIS_TABS.some((t) => /compliance/i.test(t.label))).toBe(false)
   })
 })
 

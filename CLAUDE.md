@@ -2183,3 +2183,53 @@ code, the code and the rule win and the map is corrected.
      columns reconcile exactly with the summary; the summary's `totalCost`
      is the sum of its six components. Every check is deterministic (same
      state + config → identical JSON).
+
+203. Design Rulebook authority (Phase 22C). The Rules tab is a PRESENTATION
+     of the Phase 20D.3 design assessment (`GET …/design/assessment`, rule
+     189): it consumes the existing `DesignAssessmentPayload` and renders
+     every check with its recorded status, authority and scope. No second
+     rule evaluator exists (no `analysis/rule_engine.py`,
+     `compliance_engine.py` or `rulebook_engine.py`, no client-side rule
+     logic). HARD_DESIGN_RULE / DERIVED_VALIDATION show ✓ SATISFIED /
+     ✗ NOT SATISFIED / ? NOT EVALUATED / — NOT APPLICABLE verbatim; an
+     ADVISORY is "Advisory satisfied / not satisfied" with "Design advisory —
+     not a statutory compliance determination" and never the ✓ pass mark; an
+     INFORMATIONAL row has no pass / fail; NOT_EVALUATED is never coerced
+     to a failure; no overall compliance score, percentage, "compliant" or
+     certification exists. A LEGACY-active scenario with a dormant catalogue
+     is labelled INACTIVE_LAYOUT_V2, never the active design.
+204. Candidate economics use ONLY persisted candidate quantities (Phase 22C,
+     `analysis/layout_comparison.py`). `mainRampLengthM` is
+     `layout_v2.json candidates[].diagnostics.length3d` and
+     `levelAccessLengthM` is `candidates[].access.totalAccessLength`; the
+     backend never re-sweeps, re-sums a centerline or re-plans, and the
+     frontend never sums a centerline or derives a cost. No per-candidate
+     levels / production / network / timeline artifact is generated or
+     imagined. The consumer-specific `validate_layout_economics_shape`
+     extends the shared `validate_catalogue_shape` grammar (finite,
+     non-negative lengths for every ranked candidate) without making those
+     fields required for the design assessment; a defect is 409
+     ARTIFACT_MALFORMED, never a bare 500. The comparison is served from ONE
+     bound scenario read + artifact snapshot + `economics.json` observation,
+     re-observed after the projection (READ_SNAPSHOT_CHANGED on movement).
+205. Comparable Layout Development Cost is `mainRampLengthM × rampPerM +
+     levelAccessLengthM × levelAccessPerM` and nothing else
+     (`comparisonBasis.included = [RAMP, LEVEL_ACCESS]`, every other kind —
+     DRIFT, CROSSCUT, RAISE, SHAFT, SHAFT_STATION_ACCESS, PRODUCTION,
+     PROCESSING, BACKFILL, FIXED_OPEX, CAPITAL, REVENUE, NPV — explicitly
+     `excluded`). It keeps the word "Comparable" and is never called a total
+     mine development cost; it is not project economics, not NPV, not
+     profitability, not feasibility. Without `economics.json` the endpoint
+     is NOT_CONFIGURED with the geometry rows and `null` costs — never a
+     hidden demo rate. No candidate what-if quantity (drift, crosscut,
+     shaft, tonnage, production, processing, backfill, fixed opex, revenue,
+     duration, NPV) is ever estimated per candidate.
+206. No economic selection authority. `ranking`, `winnerId`, `scores` and
+     the selection are owned by the layout authority (rules 148 / 149);
+     `GET …/analysis/layout-comparison` returns rows in the persisted ranking
+     order, carries no cost rank, no "cheapest", "economic winner", "best
+     option", "recommended" or "optimal" marker, combines no engineering
+     score with a cost, never modifies `layout_v2.json` or the selection and
+     never auto-selects. The UI keeps "Engineering rank #n" and "Comparable
+     development cost" as separate readouts, and a ranking / cost
+     disagreement is shown as it is.

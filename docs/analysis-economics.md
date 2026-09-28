@@ -108,14 +108,20 @@ without a timeline.
 
 ## Frontend
 
-The **Analysis** mode shows two tabs: **Overview** (Development, Production,
-Schedule, Ratios cards) and **Economics** (the permanent disclaimer, the
+The **Analysis** mode shows four tabs: **Overview** (Development, Production,
+Schedule, Ratios cards), **Economics** (the permanent disclaimer, the
 Planning economics card with summary and cashflow table, and the
-"Configure assumptions" editor). The editor edits explicit values only, is
+"Configure assumptions" editor), **Rules** (the Design Rulebook — a
+presentation of the Phase 20D.3 design assessment) and **Layout comparison**
+(the Comparable Layout Development Cost over the persisted layout-v2
+catalogue); the last two are described in `docs/layout-comparison.md`
+(Phase 22C, rules 203–206). The editor edits explicit values only, is
 scoped to `scenarioId:economicsRevision` (a scenario change or a save resets
 the draft), offers "Use demo assumptions — DEMO / SYNTHETIC ASSUMPTIONS" on
 an explicit click only, and saving performs exactly one PUT followed by an
-analysis reload — no generation, no scene reset.
+analysis reload and a layout-comparison reload — no generation, no scene
+reset, no invalidation. The layout comparison consumes only `rampPerM` and
+`levelAccessPerM` of this document.
 
 Forbidden vocabulary in payload and UI: reserves, resources, recoverable ore,
 proven tonnes, economic grade, optimized schedule, feasibility, bankable,

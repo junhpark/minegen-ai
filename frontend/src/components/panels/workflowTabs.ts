@@ -28,12 +28,19 @@ export const SYSTEMS_TABS: readonly PanelTab<SystemsTab>[] = [
   { id: 'SENSORS', label: 'Sensors' },
 ]
 
-/** Phase 22A/B — the Analysis workspace: quantities first, economics second. */
-export type AnalysisTab = 'OVERVIEW' | 'ECONOMICS'
+/**
+ * Phase 22A/B/C — the Analysis workspace: quantities first, economics second,
+ * then the Design Rulebook (a presentation of the Phase 20D.3 design
+ * assessment — never a second rule evaluator) and the Layout comparison
+ * (comparable development cost over the persisted layout-v2 catalogue).
+ */
+export type AnalysisTab = 'OVERVIEW' | 'ECONOMICS' | 'RULES' | 'LAYOUT_COMPARISON'
 
 export const ANALYSIS_TABS: readonly PanelTab<AnalysisTab>[] = [
   { id: 'OVERVIEW', label: 'Overview' },
   { id: 'ECONOMICS', label: 'Economics' },
+  { id: 'RULES', label: 'Rules' },
+  { id: 'LAYOUT_COMPARISON', label: 'Layout comparison' },
 ]
 
 export const DESIGN_PANEL_ID = 'design-workflow-panel'

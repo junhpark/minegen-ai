@@ -107,6 +107,8 @@ TEST_MARKERS: dict[str, tuple[str, ...]] = {
     "test_golden_smoke_contract_matches_baseline": ("golden", "legacy_regression"),
     # clean-pipeline E2E through services / API (8–226 s each)
     "test_downstream_reuses_the_selected_candidate_certification_across_restart": ("e2e", "slow"),
+    # Phase 22C: the layout comparison over the REAL synchronous layout-v2 catalogue
+    "test_real_catalogue_rows_are_the_persisted_candidate_quantities": ("e2e",),
     # AC-01D: cold service chain / sync-API fail-closed proofs drive the services / API
     "test_restore_equals_stage4_policy_on_the_tabular_service_chain_cold": ("e2e",),
     "test_sync_tunnel_and_development_mesh_fail_closed_with_typed_409": ("e2e",),
