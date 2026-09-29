@@ -117,11 +117,11 @@ def test_x1_world_only_export_carries_method_semantics_and_no_production(
     b = export(client, sid)
     assert_integrity(b)
     om = b.omissions()
-    assert om["STOPES"] == "ARTIFACT_ABSENT" and om["TIMELINE"] == "NOT_IN_V1"
+    assert om["STOPES"] == "ARTIFACT_ABSENT" and om["TIMELINE"] == "ARTIFACT_ABSENT"
     assert not any(p.startswith("production/") for p in b.entries)
     assert not any(e["kind"] == "STOPE" for e in b.manifest["entities"])
     mm = b.json("semantics/mining_method.json")
-    assert mm["mineExchangeVersion"] == MINE_EXCHANGE_VERSION == "1.2.0"
+    assert mm["mineExchangeVersion"] == MINE_EXCHANGE_VERSION == "1.3.0"
     assert mm["semanticType"] == "MINING_METHOD"
     assert mm["requestedMethod"] == "LONGHOLE_OPEN_STOPING"
     assert mm["displayName"] == "Longhole Open Stoping"
@@ -159,7 +159,7 @@ def test_x2_longhole_stopes_are_exported_as_independent_closed_solids(
 ) -> None:
     b = longhole_bundle
     assert_integrity(b)
-    assert b.omissions() == {"TIMELINE": "NOT_IN_V1", "FIELD_LATTICE": "NOT_IN_V1"}
+    assert b.omissions() == {"TIMELINE": "ARTIFACT_ABSENT", "FIELD_LATTICE": "NOT_IN_V1"}
     src = longhole.artifact(STOPES_ARTIFACT)
     assert src["status"] == "SUCCESS"
     ids = sorted(str(s["id"]) for s in src["stopes"])

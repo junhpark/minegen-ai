@@ -62,6 +62,10 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     "test_exchange_production_methods": ("e2e",),
     # Phase 22A/B analysis over three real method chains (network + timeline)
     "test_analysis_api": ("e2e",),
+    # Phase 23B MineExchange 1.3 timeline + the adapters over the same three
+    # real method chains (three module-scoped stacks: minutes)
+    "test_exchange_timeline_e2e": ("e2e",),
+    "test_adapters_e2e": ("e2e",),
     "test_layout_v2_golden_smoke": ("golden",),
     # Phase 20B.x: the GEOMETRY-STRESS feasibility oracle (one full layout-v2 search)
     "test_geometry_stress_oracle": ("slow",),
@@ -163,8 +167,6 @@ TEST_MARKERS: dict[str, tuple[str, ...]] = {
     "test_b1_every_network_edge_resolves_through_the_owning_contract": ("e2e",),
     "test_s1_b3_aggregates_and_parents_on_the_real_chain": ("e2e",),
     "test_b1_http_wrong_owner_geometry_ref_is_a_typed_409": ("e2e",),
-    # Phase 23B.1 Ventsim seed adapter over the same REAL LAYOUT_V2 stack
-    "test_v1_ventsim_seed_over_the_real_layout_v2_chain": ("e2e",),
     # Phase 20C.2B shaft + capability graph API lifecycle (legacy pipeline E2E)
     "test_shaft_and_capability_api_lifecycle": ("e2e",),
     # AC-01E artifact registry: every artifact built + regenerated through the

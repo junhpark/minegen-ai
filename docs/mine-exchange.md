@@ -22,7 +22,7 @@ capability stay separate files with separate meanings.
 
 ## Version
 
-`manifest.json → mineExchangeVersion = "1.2.0"` (semantic versioning). 1.1
+`manifest.json → mineExchangeVersion = "1.3.0"` (semantic versioning). 1.1
 (Phase 21A) is an ADDITIVE minor version over 1.0: the mining-method
 semantics document, the production stopes and the `STOPE` entity kind
 (see "Mining method and production stopes"); every 1.0 file, id and meaning
@@ -30,7 +30,13 @@ is unchanged. 1.2 (Phase 21B/C) is again additive: typed method-parameter
 DTOs, the Cut & Fill and Room & Pillar production documents and solids, the
 `CUT`, `BACKFILL`, `ROOM`, `BENCH`, `PILLAR` entity kinds and the `CUT_FILL` /
 `ROOM_PILLAR` omission groups (see "Cut & Fill and Room & Pillar production");
-every 1.1 file, id and meaning is unchanged. The
+every 1.1 file, id and meaning is unchanged. 1.3 (Phase 23B) is again
+additive: the MineTimeline projection (`operations/timeline.json`,
+`operations/tasks.csv`, semantic types `MINE_TIMELINE` /
+`MINE_TIMELINE_TASKS`) and the `TIMELINE` omission group now following the
+`ARTIFACT_ABSENT` / `SOURCE_NOT_SUCCESS` semantics (see "Timeline
+semantics"); every 1.2 file is byte-identical and no geometry binary
+changed. The
 manifest version is the **external** contract authority; internal artifact
 versions (scenario `schemaVersion`, per-artifact `sourceRevision`) are only
 quoted as provenance. Additive fields are minor versions; a change in the
@@ -41,7 +47,7 @@ meaning of an existing field is a major version.
     POST /api/v1/scenarios/{scenario_id}/export/mine-exchange
       → 200 application/zip
         Content-Disposition: attachment; filename="minegen_<safeScenarioId>_mineexchange_v1.zip"
-        X-MineExchange-Version: 1.2.0
+        X-MineExchange-Version: 1.3.0
         X-MineExchange-Generated-At: <ISO time, NON-authoritative>
       → 404 SCENARIO_NOT_FOUND
       → 409 WORLD_NOT_GENERATED            (the world is the only prerequisite)
@@ -118,6 +124,9 @@ not. It is never assumed.
       production/room_pillar.json       1.2 — Room & Pillar rooms / extraction units / pillars DTO
       production/room_pillar/benches/<unit>.{stl,obj,glb}  1.2 — one closed prism per extraction unit
       production/room_pillar/pillars/<pillar>.{stl,obj,glb} 1.2 — one closed prism per retained pillar
+      operations/timeline.json         1.3 — MineTimeline projection (authority: timeline.json): tasks with
+                                        external target references, development progress, production states
+      operations/tasks.csv             1.3 — convenience task table
 
 A world-only scenario yields `terrain/`, `orebody/`, `geology/` and
 `semantics/mining_method.json` (the scenario is its first authority) and
@@ -135,8 +144,10 @@ gap. Four situations are kept distinct:
 | present but MALFORMED | typed refusal `ARTIFACT_MALFORMED` |
 
 Files are never faked; `NOT_IN_V1` omissions name what v1 deliberately leaves
-out (timeline, field lattice — stopes joined the bundle in 1.1 and now follow
-the `ARTIFACT_ABSENT` / `SOURCE_NOT_SUCCESS` semantics above). A defect in the exporter's own
+out (since 1.3 only the field lattice — stopes joined the bundle in 1.1 and
+the timeline in 1.3; both follow the `ARTIFACT_ABSENT` / `SOURCE_NOT_SUCCESS`
+semantics above, and an absent timeline is `TIMELINE: ARTIFACT_ABSENT`, never
+`NOT_IN_V1`). A defect in the exporter's own
 projection — an unresolvable network geometry reference, a duplicated entity
 id or bundle path, a dangling parent, an unrecognised development id, a
 closed-solid QA failure — is a typed `409 MINE_EXCHANGE_EXPORT_FAILED`
@@ -148,9 +159,9 @@ safe paths, every `entities[].files` entry present, every non-null
 resolving to an entity, and every exported network edge's
 `geometryEntityId` resolving.
 
-## Manifest schema (1.2.0)
+## Manifest schema (1.3.0)
 
-    mineExchangeVersion   "1.2.0"
+    mineExchangeVersion   "1.3.0"
     scenarioId, scenarioName
     coordinateSystem      { name, crs, axes, axisOrder, verticalAxis, handedness, unit }
     units                 { length, angle, volume }
@@ -172,8 +183,9 @@ Semantic types: `MANIFEST, README, TERRAIN_GRID, TERRAIN_SURFACE,
 OREBODY_MODEL, OREBODY, FAULT_MODEL, FAULT_SURFACE, EXCAVATION_ENTITIES,
 EXCAVATION_CENTERLINES, EXCAVATION_SOLID, EXCAVATION_MULTI_BODY,
 EXCAVATION_RENDER_SURFACE, MINE_NETWORK, MINE_NETWORK_NODES,
-MINE_NETWORK_EDGES, CAPABILITY` and, since 1.1, `MINING_METHOD,
-PRODUCTION_STOPES, STOPE_SOLID`. Representations: `DOCUMENT, TABLE,
+MINE_NETWORK_EDGES, CAPABILITY`, since 1.1 `MINING_METHOD,
+PRODUCTION_STOPES, STOPE_SOLID`, and since 1.3 `MINE_TIMELINE,
+MINE_TIMELINE_TASKS`. Representations: `DOCUMENT, TABLE,
 NODE_GRID, ESRI_ASCII_GRID, SURFACE_MESH, DERIVED_SURFACE_OF_SOLID,
 PLANAR_POLYGONS, POLYLINES, CLOSED_LOGICAL_SWEEP, MULTI_BODY_CONCATENATION,
 RENDER_SURFACE` and, since 1.1, `AUTHORITATIVE_CLOSED_MESH` (a closed mesh
@@ -465,6 +477,52 @@ typed 409, never re-interpreted; the 1.1 "no CROSSCUT under an unsupported
 method" guard now applies to reserved methods only (Cut & Fill and Room &
 Pillar develop one central production crosscut per level).
 
+## Timeline semantics (1.3, Phase 23B, rule 208)
+
+`operations/timeline.json` (`ExchangeTimeline`) is a PROJECTION of the
+MineTimeline artifact (`derived/timeline.json`, rules 81–86) — never a
+schedule of its own. `timelineSemantics` states the contract verbatim: a
+synthetic earliest-start planning baseline in days from day 0 (never a
+production forecast); `state(day)` = the latest transition whose
+`day <= day` (exact boundary); development progress `p` reveals chainage
+fractions `[0, p]` for `progressDirection = +1` and `[1 − p, 1]` for `−1`
+along the owning centerline (rule 174).
+
+    tasks[]             { taskId, taskType, targetKind, targetId (MineGen provenance),
+                          targetReference { kind: NETWORK_EDGE | ENTITY, id },
+                          startDay, endDay, durationDays, dependencies[],
+                          basis { quantity, quantityUnit, rate, rateUnit } }
+    developments[]      { edgeId, edgeType, geometryEntityId, geometryRef, taskId,
+                          initialState, transitions[{day, state}],
+                          progressStartDay, progressEndDay,
+                          pointChainageFractions[], excavationStartNode, progressDirection }
+    productionStates[]  { entityId, targetKind, sourceId, initialState, transitions[] }
+    metrics             the MineTimeline metrics, copied
+
+`targetReference` is the EXTERNAL identity a consumer uses: a development
+task references the exported network edge (`NETWORK_EDGE`, the edge id);
+a production task references the exported production entity (`ENTITY`:
+`stope:<id>` for Longhole, `cut:<id>` for Cut & Fill — BACKFILL and CURE
+tasks target the CUT, the backfill record is never a target —
+`bench:<unitId>` for Room & Pillar; pillars are retained material and never
+a target). The exporter never reschedules, re-times, re-orders or invents a
+task; `operations/tasks.csv` is a convenience table of the same rows.
+
+Preflight (typed `409 MINE_EXCHANGE_EXPORT_FAILED`, never a partial file):
+unique task ids, every dependency a task, every development target an
+exported edge whose `geometryRef` resolves to the exported centerline entity
+(point count and chainage fraction count agree), every production target
+and production state an exported entity of the ACTIVE method, and every
+task's `targetKind` consistent with its reference. A timeline whose network
+or production owner is not exported cannot be projected and is refused.
+
+Omission: `TIMELINE: ARTIFACT_ABSENT` (no `derived/timeline.json`) or
+`SOURCE_NOT_SUCCESS` (a FAILED timeline, with its `failureReason`); a
+STALE / MALFORMED timeline is the reader's typed refusal. Consumers that
+need the timeline (the AnyLogic adapter) refuse a bundle without it with
+the bundle's own reason carried through; the field lattice remains the only
+`NOT_IN_V1` group.
+
 ## Determinism and integrity
 
 The same authoritative snapshot yields the same bytes: lexicographic entry
@@ -479,21 +537,26 @@ not self-listed) and nothing unlisted is packed.
 
 The service takes ONE validated snapshot of every source (scenario, arrays,
 ramp source, both ramp owners, level accesses, levels, shafts, network,
-capability graph, stopes (1.1), tunnel / development reports and GLB bytes), checks the
+capability graph, stopes (1.1), timeline (1.3), tunnel / development reports and GLB bytes), checks the
 world binding against it, builds the bundle, then re-snapshots and refuses
 with `READ_SNAPSHOT_CHANGED` if any revision or presence changed meanwhile.
 A bundle never mixes revisions.
 
 ## Frontend
 
-The Scenario panel's "Export MineExchange (.zip)" button downloads the bundle
-of the currently available state; a world is the only prerequisite and the
-button is never disabled because a design layer is missing. Beneath it,
+The Scenario panel's compact export selector (MineExchange, Ventsim, AnyLogic,
+Unity, Unreal — Phase 23B, `describeExportTargets`) with its single "Export
+… (.zip)" button downloads the MineExchange bundle of the currently
+available state, or the chosen adapter package built from that bundle; a
+world is the only prerequisite for MineExchange and the button is never
+disabled because a design layer is missing (an adapter's missing required
+source is the backend's typed refusal). Beneath it,
 "Current export contents" (`components/panels/exportContents.ts`) lists each
 layer as included / not generated / failed, read from the already-loaded
 scene snapshot only — no generation endpoint is called and nothing is
-inferred — including, since 1.1, the always-included "Mining method" row and
-the "Stopes" row (`scene.stopes` status) — with the helper text "MineExchange exports the currently available
+inferred — including, since 1.1, the always-included "Mining method" row,
+the "Stopes" row (`scene.stopes` status) and, since 1.3, the "Timeline" row
+(`scene.timeline` status) — with the helper text "MineExchange exports the currently available
 mine state. Layers not yet generated are omitted and recorded in the
 manifest." The manifest remains the authority on the bundle's content.
 
@@ -501,20 +564,22 @@ manifest." The manifest remains the authority on the bundle's content.
 
 Grade / rock quality lattices (never a block model), GeoTIFF / real CRS /
 `.prj`, a terrain-closed `model_block.stl`, Boolean unions (including a
-unioned or multi-body stope file), timeline / production scheduling /
-economics, drawpoint / pillar / backfill / room / cut / bench entities (the
-drawpoints — no implemented method owns them), application adapters
-(Phase 23B — architecture in `docs/external-adapters.md`; the Ventsim seed
-adapter of 23B.1 consumes this bundle's BYTES through `adapters/bundle_reader.py`
-and never `derived/*`), import and write-back. Stopes and the mining-method semantics
-were NOT_IN_V1 in 1.0 and are part of the bundle since 1.1; Cut & Fill and
-Room & Pillar production since 1.2.
+unioned or multi-body stope file), economics, drawpoint entities (no
+implemented method owns them), application adapters as bundle content
+(Phase 23B — `docs/external-adapters.md`; the Ventsim, AnyLogic, Unity and
+Unreal adapters consume this bundle's BYTES through
+`adapters/bundle_reader.py` and never `derived/*`; their packages are
+separate downloads, never bundle files), import and write-back. Stopes and
+the mining-method semantics were NOT_IN_V1 in 1.0 and are part of the
+bundle since 1.1; Cut & Fill and Room & Pillar production since 1.2; the
+timeline / production scheduling projection since 1.3.
 
 ## Versioning policy
 
 - 1.x: additive files, fields, omission groups and entity kinds only;
   existing meanings, ids and coordinate contract unchanged. 1.1 declared
-  `STOPE`; 1.2 declared `CUT`, `BACKFILL`, `ROOM`, `BENCH`, `PILLAR`; the
+  `STOPE`; 1.2 declared `CUT`, `BACKFILL`, `ROOM`, `BENCH`, `PILLAR`; 1.3
+  added the `operations/` documents (no new entity kind); the
   remaining reserved future entity kinds (PRODUCTION_DRIFT, DRAWPOINT) are
   documented here, not pre-declared in the enum.
 - 2.0: any change to the coordinate contract, entity identity rule or the

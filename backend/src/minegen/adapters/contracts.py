@@ -1,10 +1,12 @@
-"""Generic adapter output contract (``docs/external-adapters.md`` §4–§9).
+"""Common adapter output contract (``docs/external-adapters.md`` §4–§9,
+directive §6–§7).
 
-Every adapter package carries one ``AdapterReport``: what was consumed
-(four-state source mapping), what was assumed (three-state assumption
-policy), what was generated (files with hashes and source ids), how the
-coordinates map, and what was deliberately not emitted. The report is a
-deterministic document — no wall-clock value.
+Every adapter package carries one ``adapter_manifest.json`` — an
+``AdapterManifest``: what was consumed (FIVE-state source mapping), what was
+assumed (three-state assumption policy), what was generated (files with
+hashes, semantics and sources), how coordinates map, the identity map
+between target ids and bundle ids, and what was deliberately not emitted.
+The manifest is deterministic — no wall-clock value.
 """
 
 from __future__ import annotations
@@ -15,22 +17,27 @@ from pydantic import Field
 
 from minegen.core.models import ApiModel
 
-SourceState = Literal["AVAILABLE", "ABSENT", "SOURCE_NOT_SUCCESS", "UNSUPPORTED_BY_ADAPTER"]
-AssumptionState = Literal["NOT_PROVIDED", "USER_REQUIRED", "ADAPTER_DEFAULT_EXPLICIT"]
-#: the contract failure codes (§8); the API answers each with its own class
-AdapterFailureCode = Literal[
-    "MINEEXCHANGE_BUNDLE_INVALID",
-    "MINEEXCHANGE_VERSION_UNSUPPORTED",
-    "REQUIRED_SOURCE_ABSENT",
-    "REQUIRED_PARAMETER_MISSING",
-    "TARGET_FORMAT_UNSUPPORTED",
-    "COORDINATE_MAPPING_UNSUPPORTED",
-    "ADAPTER_CONVERSION_FAILED",
+#: directive §6 — the five source states
+#:   AVAILABLE               the bundle carries the group and the adapter consumed it
+#:   ARTIFACT_ABSENT         MineGen never generated the artifact (bundle omission)
+#:   SOURCE_NOT_SUCCESS      the artifact exists but is FAILED (bundle omission)
+#:   NOT_EXPORTED_BY_VERSION the MineGen authority may exist but this MineExchange
+#:                           version does not expose it (bundle NOT_IN_V1, or a
+#:                           group a newer version would carry)
+#:   UNSUPPORTED_BY_ADAPTER  the bundle carries it, this adapter does not consume it
+SourceState = Literal[
+    "AVAILABLE",
+    "ARTIFACT_ABSENT",
+    "SOURCE_NOT_SUCCESS",
+    "NOT_EXPORTED_BY_VERSION",
+    "UNSUPPORTED_BY_ADAPTER",
 ]
+AssumptionState = Literal["NOT_PROVIDED", "USER_REQUIRED", "ADAPTER_DEFAULT_EXPLICIT"]
+AdapterTarget = Literal["VENTSIM", "ANYLOGIC", "UNITY", "UNREAL"]
 
 
 class AdapterSourceState(ApiModel):
-    """One consumed (or deliberately unconsumed) bundle group (§6)."""
+    """One bundle group in exactly one of the five states (§6)."""
 
     group: str
     state: SourceState
@@ -43,7 +50,8 @@ class AdapterAssumption(ApiModel):
     """A value the target application needs that no MineGen authority owns
     (§7). ``ADAPTER_DEFAULT_EXPLICIT`` records the applied value, its unit,
     scope, documented source and whether the user overrode it; the other two
-    states carry no value."""
+    states carry no value — a number in a package that is neither in the
+    bundle nor recorded here is a defect."""
 
     kind: str
     state: AssumptionState
@@ -65,16 +73,29 @@ class AdapterGeneratedFile(ApiModel):
 
 
 class AdapterCoordinateMapping(ApiModel):
-    """Source frame (always the manifest's) → target frame, exactly (§10)."""
+    """Source frame (always the manifest's) → target frame, exactly (§10).
+    ``transform`` is a glTF-style column-major 4×4 (16 values) applied to
+    source coordinates, or ``null`` for identity."""
 
     source_frame: str
     target_frame: str
     unit: str
     unit_factor: float
-    #: added to every source coordinate (metres, source axes) — an explicit
-    #: parameter, never a hidden re-basing
-    translation: list[float] = Field(min_length=3, max_length=3)
+    handedness: str
+    up_axis: str
+    transform: list[float] | None = Field(default=None, min_length=16, max_length=16)
     note: str
+
+
+class AdapterIdentityEntry(ApiModel):
+    """One target-side identity ↔ bundle identity link."""
+
+    target_id: str
+    target_kind: str
+    bundle_entity_id: str | None = None
+    bundle_edge_id: str | None = None
+    bundle_node_id: str | None = None
+    file: str | None = None
 
 
 class AdapterOmission(ApiModel):
@@ -85,20 +106,23 @@ class AdapterOmission(ApiModel):
     detail: str
 
 
-class AdapterReport(ApiModel):
+class AdapterManifest(ApiModel):
     adapter_name: str
     adapter_version: str
+    target_application: AdapterTarget
     supported_mine_exchange_versions: str
-    target_application: str
     source_mine_exchange_version: str
     source_scenario_id: str
     source_scenario_name: str
-    #: copied from the manifest (provenance)
+    #: copied from the bundle manifest (provenance)
     source_snapshot: dict[str, Any]
     coordinate_mapping: AdapterCoordinateMapping
+    #: every emitted file EXCEPT this manifest (it cannot carry its own hash)
+    generated_files: list[AdapterGeneratedFile]
+    identity_map: list[AdapterIdentityEntry]
     source_states: list[AdapterSourceState]
     assumptions: list[AdapterAssumption]
-    #: every emitted file EXCEPT this report (it cannot carry its own hash)
-    generated_files: list[AdapterGeneratedFile]
-    omissions: list[AdapterOmission]
     warnings: list[str]
+    omissions: list[AdapterOmission]
+    #: adapter-specific typed facts (counts, normalization results)
+    details: dict[str, Any] = {}

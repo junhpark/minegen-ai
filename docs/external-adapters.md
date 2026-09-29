@@ -1,13 +1,16 @@
-# External adapters — architecture, contract and gap analysis (Phase 23B.0)
+# External adapters — architecture, contract and implementation (Phase 23B)
 
-Status: **architecture decision / gap analysis**. Phase 23B.0 implements no
-adapter, no framework, no MineExchange change and no production code. It
-fixes the boundary every later adapter (23B.1 …) is built on and records,
-per target application, what MineExchange 1.2 already provides, what is
-missing and which authority owns the gap.
+Status: **DELIVERED as ONE phase (23B)** — architecture finalized,
+MineExchange 1.3 (timeline semantics), and four adapters at version 0.1.0:
+Ventsim (§23.3), AnyLogic (§23.4), Unity and Unreal (§23.5). §1–§22 are the
+architecture decision and gap analysis this implementation is built on
+(kept as the record; §23 is the implementation contract and supersedes any
+earlier sub-phase wording such as "23B.1 / 23B.x / 23B.2 / 23B.3" — no
+sub-phase split exists). CLAUDE.md rules 207–212 are the binding invariants.
 
 Baseline: `main` `4321babcce423d89a608ce4dc553fb71705d4a54` (after PR #49,
-Phase 22C). MineExchange contract: `docs/mine-exchange.md` (1.2.0, rule 190).
+Phase 22C). MineExchange contract: `docs/mine-exchange.md` (1.3.0, rules
+190 / 208).
 
 ## 1. Purpose
 
@@ -71,7 +74,7 @@ supplied by the user and labelled as such.
 Every conversion is provenance-tracked: the adapter output names the bundle
 file, entity id and MineExchange version each generated element came from.
 
-## 4. Adapter input / output contract (conceptual — no code in 23B.0)
+## 4. Adapter input / output contract (conceptual sketch; implemented as `AdapterManifest` in `adapters/contracts.py`, §23.1)
 
     AdapterInput
       mineExchangeVersion     manifest.mineExchangeVersion (semver)
@@ -99,7 +102,7 @@ The adapter reads the bundle by manifest — `entities[].files`,
 file stem (the stem hash prefix is not injective; `docs/mine-exchange.md`,
 "Stable entity identity").
 
-## 5. MineExchange 1.2 as the stable boundary — inventory
+## 5. MineExchange as the stable boundary — inventory (1.3)
 
 What the bundle carries today (from `docs/mine-exchange.md`, verified
 against `backend/src/minegen/exchange/models.py`):
@@ -118,7 +121,8 @@ against `backend/src/minegen/exchange/models.py`):
 | Capability | `semantics/capability.json` | per-edge typed may / may-not tags with `source`, node `supports`, required paths (`physicalReachable` AND `capabilityReachable`), egress advisory (`advisoryOnly = true`) | access-restriction candidates; capability ≠ capacity |
 | Mining method | `semantics/mining_method.json` (always present) | requested method, registry status, typed parameters, production status | operation semantics (metadata) |
 | Production | `production/stopes.json` + `stopes/<stope>.{stl,obj,glb}` (Longhole); `production/cut_fill.json` + `cut_fill/cuts/*` + BACKFILL semantic entities (Cut & Fill); `production/room_pillar.json` + `room_pillar/{benches,pillars}/*` (Room & Pillar) | authoritative closed prisms, planning quantities (`geometricVolumeM3`, `tonnes`, `meanGradeProxy`), `STOPE_ACCESS` node links (Longhole), `accessEntityId` (Cut & Fill), room ↔ unit membership | source / destination candidates for AnyLogic; mesh actors for engines |
-| Omissions | `manifest.omissions[]` | `ARTIFACT_ABSENT`, `SOURCE_NOT_SUCCESS` (with detail), `NOT_IN_V1` (timeline, field lattice) | the adapter's four-state input (§6) |
+| Timeline (1.3) | `operations/timeline.json` (authority: the MineTimeline projection), `operations/tasks.csv` | tasks with EXTERNAL `targetReference` (`NETWORK_EDGE` = edge id; `ENTITY` = `stope:` / `cut:` / `bench:` entity id), development progress (chainage fractions, start node, direction, transitions), production state machines, metrics — `docs/mine-exchange.md` "Timeline semantics" | the AnyLogic operational input; the engines' `scene/timeline.json` |
+| Omissions | `manifest.omissions[]` | `ARTIFACT_ABSENT`, `SOURCE_NOT_SUCCESS` (with detail), `NOT_IN_V1` (field lattice only since 1.3) | the adapter's five-state input (§6) |
 
 Coordinate authority (the ONLY external coordinate contract):
 
@@ -134,27 +138,43 @@ An adapter reads `glb.storedVertexFrame` / `glb.sceneFrame` /
 `glb.transformMatrix` from the manifest; it never guesses MineGen's internal
 Three.js convention.
 
-Not in the bundle (1.2): the timeline / schedule (`NOT_IN_V1`), the field
-lattice, economics, a Boolean union of excavations, any operational or
-physical property (roughness, resistance, fans, fleet, speeds).
+Not in the bundle (1.3): the field lattice (`NOT_IN_V1`), economics, a
+Boolean union of excavations, any operational or physical property
+(roughness, resistance, fans, fleet, speeds). The timeline joined the
+bundle in 1.3 (`operations/`).
 
-## 6. Four-state source mapping rule
+## 6. Five-state source mapping rule
 
 An adapter never flattens source availability. Every bundle group it
-consumes is reported in exactly one of four states:
+consumes is reported in exactly one of FIVE states
+(`AdapterSourceState`, `adapters/contracts.py`; decided once in
+`adapters/common.py::source_state`):
 
 | State | Meaning | Who decides |
 | --- | --- | --- |
-| `AVAILABLE` | the bundle carries the source and the adapter mapped it | bundle + adapter |
-| `ABSENT` | `manifest.omissions[]` says `ARTIFACT_ABSENT` (never generated) | MineGen / bundle |
+| `AVAILABLE` | the bundle carries the source and the adapter consumed it | bundle + adapter |
+| `ARTIFACT_ABSENT` | `manifest.omissions[]` says `ARTIFACT_ABSENT` (MineGen never generated it) — or, for the optional SHAFTS group, no shaft entity exists | MineGen / bundle |
 | `SOURCE_NOT_SUCCESS` | the source exists but its status is FAILED (`omissions[].detail`) | MineGen / bundle |
+| `NOT_EXPORTED_BY_VERSION` | the MineGen authority may exist but the consumed MineExchange version does not expose it: the bundle's `NOT_IN_V1` (field lattice), or a group a newer version carries (the timeline for a 1.2 bundle) | MineExchange version |
 | `UNSUPPORTED_BY_ADAPTER` | the bundle carries it, this adapter version has no mapping for it | adapter |
 
-Example: no shaft in the mine → `SHAFT = ABSENT`. A shaft in the bundle but
-a Ventsim adapter version without a vertical-airway mapping →
-`SHAFT = UNSUPPORTED_BY_ADAPTER`. The two are different facts and are
-reported differently; `NOT_IN_V1` groups (timeline) are `ABSENT` at the
-bundle level with the bundle's own reason code carried through.
+`bundleReasonCode` carries the bundle's own omission reason through
+whenever the bundle decided the state. The states are never conflated: an
+absent artifact (`ARTIFACT_ABSENT`) is not a version gap
+(`NOT_EXPORTED_BY_VERSION`) and neither is an adapter gap
+(`UNSUPPORTED_BY_ADAPTER`); "ABSENT" as a bare word is not a state. A group
+with several bundle members (`RENDER_GLB`: the ramp tunnel GLB and the
+development GLB) is `AVAILABLE` when at least one member was consumed and
+names the omitted members in `detail` and in `omissions[]`
+(`adapters/common.py::multi_member_group_state`).
+
+Example: no shaft in the mine → `SHAFTS = ARTIFACT_ABSENT`. A shaft in the
+bundle but an adapter version without a vertical-airway mapping →
+`SHAFTS = UNSUPPORTED_BY_ADAPTER`. A 1.2-shaped bundle (no
+`operations/timeline.json`) under a 1.3 manifest → `TIMELINE =
+ARTIFACT_ABSENT` (the bundle records the omission); a genuine 1.2 bundle →
+`TIMELINE = NOT_EXPORTED_BY_VERSION` for the engine packages and a typed
+version refusal for AnyLogic, which requires 1.3.
 
 ## 7. Assumption policy
 
@@ -163,7 +183,8 @@ airway roughness / friction factor, fan curves, regulator resistance, door
 leakage, heat load, diesel emission, vehicle speed, loading / dumping time,
 vehicle capacity, traffic priority, material densities beyond the scenario
 density, engine materials — are **never guessed**. Each such value is in one
-of three states, recorded in `AdapterOutput.assumptions[]`:
+of three states, recorded in `adapter_manifest.json → assumptions[]`
+(`AdapterAssumption`):
 
 | State | Meaning |
 | --- | --- |
@@ -172,31 +193,43 @@ of three states, recorded in `AdapterOutput.assumptions[]`:
 | `ADAPTER_DEFAULT_EXPLICIT` | a documented adapter default was applied — recorded with `source` (adapter version + documented table), `value`, `unit`, `scope` (which entities), and `userOverride` (whether / how the user changed it) |
 
 A silent default — a number written into the target package that is not in
-the bundle and not in `assumptions[]` — is a defect. `ADAPTER_DEFAULT_EXPLICIT`
-is an allowance for later phases (e.g. an airway profile default for the
-Ventsim seed); 23B.0 permits it only under the five recorded fields.
+the bundle and not in `assumptions[]` — is a defect. No adapter of 23B
+applies an `ADAPTER_DEFAULT_EXPLICIT` value (the earlier simplification
+tolerance default is gone with the simplification itself): every
+operational / physical / engine value is `NOT_PROVIDED`, and no
+`USER_REQUIRED` parameter exists in 0.1.0.
 
-## 8. Failure model (contract candidates — no enum, no code in 23B.0)
+## 8. Failure model (implemented: `adapters/errors.py`)
 
-| Code | When |
-| --- | --- |
-| `MINEEXCHANGE_VERSION_UNSUPPORTED` | `manifest.mineExchangeVersion` outside `supportedMineExchangeVersions` |
-| `REQUIRED_SOURCE_ABSENT` | a group the adapter needs is `ABSENT` / `SOURCE_NOT_SUCCESS` (the omission reason is carried through) |
-| `REQUIRED_PARAMETER_MISSING` | a `USER_REQUIRED` assumption was not supplied |
-| `TARGET_FORMAT_UNSUPPORTED` | the requested target format / version is not produced by this adapter version |
-| `COORDINATE_MAPPING_UNSUPPORTED` | the requested target frame / unit / offset cannot be expressed (e.g. a real CRS requested from `LOCAL_SYNTHETIC`) |
-| `ADAPTER_CONVERSION_FAILED` | a conversion defect the adapter detected (duplicate target id, dangling reference, non-finite value) |
+| Code | HTTP | When |
+| --- | --- | --- |
+| `ADAPTER_MINEEXCHANGE_BUNDLE_INVALID` | 409 | the input is not a readable, integral MineExchange bundle (bad ZIP, missing / malformed manifest, SHA-256 mismatch, unlisted or unsafe entry, a document that does not validate against its DTO, a dangling reference the bundle preflight should have refused) |
+| `ADAPTER_MINEEXCHANGE_VERSION_UNSUPPORTED` | 409 | `manifest.mineExchangeVersion` outside `supportedMineExchangeVersions` |
+| `ADAPTER_REQUIRED_SOURCE_ABSENT` | 409 | a group the adapter needs is `ARTIFACT_ABSENT` / `NOT_IN_V1` (the omission reason is carried through) |
+| `ADAPTER_SOURCE_NOT_SUCCESS` | 409 | a group the adapter needs exists but its authority is FAILED |
+| `ADAPTER_CONVERSION_FAILED` | 409 | a conversion defect the adapter detected (duplicate target id, dangling reference, a polyline whose end points are not its topology nodes, an invalid GLB, a non-finite value, an unsafe package path) |
+| `ADAPTER_TARGET_UNSUPPORTED` | 422 | the requested target application is not one this adapter set produces |
 
-One generic failure covering every case is not acceptable; each failure
-names the bundle group, entity or parameter concerned.
+Every failure (`AdapterError`) names the ADAPTER, the bundle SOURCE GROUP
+when one is concerned, the SUBJECT (entity / file / parameter) and the
+REASON in its `detail` (`adapter=…; group=…; subject=…; reason=…`); the
+API answers with the contract code and that message, never a bare 500. A
+MineExchange refusal raised while building the bundle (`WORLD_NOT_GENERATED`,
+`READ_SNAPSHOT_CHANGED`, STALE / MALFORMED artifacts,
+`MINE_EXCHANGE_EXPORT_FAILED`) passes through unchanged. The 23B.0
+candidates `REQUIRED_PARAMETER_MISSING`, `TARGET_FORMAT_UNSUPPORTED` and
+`COORDINATE_MAPPING_UNSUPPORTED` have no trigger in 0.1.0 (no user
+parameter, one format per target, one coordinate mapping per target) and are
+not declared.
 
 ## 9. Versioning
 
-    adapterName                   VENTSIM | ANYLOGIC | UNITY | UNREAL | …
-    adapterVersion                semver of the adapter itself
-    supportedMineExchangeVersions e.g. ">=1.2,<2"
+    adapterName                   VENTSIM | ANYLOGIC | UNITY | UNREAL
+    adapterVersion                0.1.0 for all four (semver of the adapter itself)
+    supportedMineExchangeVersions VENTSIM / UNITY / UNREAL ">=1.2.0,<2.0.0"; ANYLOGIC ">=1.3.0,<2.0.0"
+    sourceMineExchangeVersion     the consumed bundle's manifest version
 
-Example: `VENTSIM 0.1.0`, `MineExchange >=1.2,<2`. The adapter version and
+Example: `VENTSIM 0.1.0`, `MineExchange >=1.2.0,<2.0.0`. The adapter version and
 the MineExchange version are never identified with each other: a bundle
 minor version that adds files does not change an adapter that ignores them;
 an adapter change never bumps MineExchange.
@@ -209,10 +242,11 @@ an adapter change never bumps MineExchange.
 - Ventsim: DXF is imported in the Ventsim file's current units and
   coordinates (vendor manual, §11) — the adapter emits metres and the
   adapter package README states "metric, local synthetic origin"; an
-  optional user offset is an explicit parameter, never a hidden re-basing.
-- AnyLogic: space-markup coordinates are model-local; the mapping (metre →
-  model unit, axis orientation of the 2-D / 3-D canvas) is an explicit
-  adapter parameter pair (scale, axis map) recorded in the output.
+  package records an identity mapping (no offset, no re-basing).
+- AnyLogic: space-markup coordinates are model-local; the package delivers
+  `LOCAL_ENU_Z_UP` metres and records the model axis mapping / scale as a
+  `NOT_PROVIDED` assumption (`MODEL_AXIS_MAPPING`) — a consumer parameter,
+  never a hidden default.
 - Unity / Unreal: glTF is Y-up right-handed metre; both engines convert on
   import (Unity: left-handed, one axis mirrored by the importer; Unreal:
   Z-up left-handed centimetre, converted by the glTF importer). The adapter
@@ -390,7 +424,7 @@ finished ventilation model.
 | dump / stockpile / crusher locations | destinations | MISSING | class B (no MineGen authority for surface infrastructure) |
 | tunnel width / height | vehicle clearance / passing rules | DERIVABLE | `crossSection` exists; passing semantics are model logic (C) |
 
-### 12.3 Mine­Exchange 1.3 decision gate
+### 12.3 Mine­Exchange 1.3 decision gate (RESOLVED — 1.3 delivered in 23B)
 
 > Is MineExchange 1.3 — Operational / Timeline Semantics — required before
 > an AnyLogic adapter?
@@ -431,7 +465,7 @@ Even with 1.3 the adapter never reconstructs temporal semantics:
 `state(day)` keeps the exact-boundary rule of the authority (CLAUDE.md rule
 84); the adapter copies transitions, it does not re-evaluate them.
 
-### 12.5 Recommended 23B.2 scope (after 1.3)
+### 12.5 Recommended AnyLogic scope (implemented in 23B, §23.4)
 
 Network tables (nodes / edges / kinds / lengths / cross-sections), production
 unit tables (id, tonnes, access node), timeline task and state tables — as
@@ -525,7 +559,7 @@ Cells: `READY` (MineExchange 1.2 carries it and the vendor path exists),
 | Topology | READY — welded centerlines + `network.json` for identity | READY — `nodes.csv` / `edges.csv` + network-by-code | READY (data) — graph as data; navmesh is engine-side | READY (data) |
 | Capabilities | NOT_REQUIRED — no ventilation meaning | PARTIAL — restriction candidates, no capacity | PARTIAL — interaction gating only | PARTIAL |
 | Production | NOT_REQUIRED (context) | READY — units, tonnes, access links | READY — prism meshes + ids | READY |
-| Timeline | MISSING (1.2 `NOT_IN_V1`) — needed only for staged models | MISSING — required for 23B.2 (§12.3) | MISSING — needed only for 4D animation | MISSING |
+| Timeline | PRESENT since 1.3 (`operations/timeline.json`; unused by the Ventsim seed) | PRESENT since 1.3 — consumed (§23.4) | PRESENT since 1.3 — copied as `scene/timeline.json` (§23.5) | delivered (was MISSING in 1.2) |
 | Economics | NOT_REQUIRED | NOT_REQUIRED (planning economics are not simulation inputs) | NOT_REQUIRED | NOT_REQUIRED |
 | Coordinate mapping | PARTIAL — metres + declared origin; unit declared by adapter, none in DXF flag | PARTIAL — explicit scale / axis parameters | READY — glTF frames declared per file | READY — importer converts |
 | Static visualization | READY (reference layers) | NOT_REQUIRED | READY | READY |
@@ -559,19 +593,13 @@ transformation (adapter work) · **E** future simulation result.
 | Vehicle positions, queues, utilization, haulage rate | E | future result-import phase | |
 | Fan / ventilation model in Ventsim's native format | — | out of scope (proprietary format, §2) | |
 
-## 18. Recommended implementation sequence
+## 18. Implementation sequence (as delivered)
 
-    23B.0  External Adapter Architecture & Contract              — this document
-    23B.1  Ventsim Geometry / Network Seed Adapter               — MineExchange 1.2 only
-    23B.x  MineExchange 1.3 — Operational / Timeline Semantics   — REQUIRED before 23B.2
-    23B.2  AnyLogic Operational Adapter                          — after 1.3
-    23B.3  Unity / Unreal Runtime Package Adapter                — 1.2 suffices for static; 1.3 for 4D
-    future Simulation Result Import / Overlay                    — separate phase (§14)
-
-23B.3 could run before 23B.2 (it needs no MineExchange change for the
-static scope); it is placed third because its product value without the
-timeline is a packaged viewer, which the browser app already is. Scopes
-stay separate; no two of them are merged into one phase.
+The 23B.0 plan foresaw sub-phases (23B.1 Ventsim seed, 23B.x MineExchange
+1.3, 23B.2 AnyLogic, 23B.3 Unity / Unreal). Phase 23B delivered all of
+them as ONE phase on one branch (see §23); the sub-phase names are
+historical and no longer denote separate deliverables. Simulation result
+import / overlay stays a separate future phase (§14).
 
 ## 19. First implementation target — Ventsim vs AnyLogic
 
@@ -586,17 +614,18 @@ stay separate; no two of them are merged into one phase.
 | Research value | moderate (seed only) | high (operations coupling), but blocked by 1.3 |
 | MineGen product value | high — first external engineering consumer of the development topology | high, after 1.3 |
 
-**FIRST IMPLEMENTATION TARGET = Ventsim (23B.1).** The initial hypothesis
-holds on the evidence: Ventsim needs no new authority, uses a documented
-open import path and can be tested largely against existing writers;
-AnyLogic's useful scope is gated by MineExchange 1.3.
+**First implementation target was Ventsim** (its seed shipped first, then
+was reworked to the §23.3 contract inside the same phase); AnyLogic's useful
+scope was gated by MineExchange 1.3, which 23B delivers.
 
 ## 20. No premature abstraction
 
-23B.0 creates no `BaseAdapter`, `AdapterRegistry`, plugin SDK, adapter
-runtime, plugin loader, adapter REST API or adapter persistence. The first
-concrete adapter (23B.1) decides which abstraction, if any, is justified by
-a second adapter; until then the contract lives in this document only.
+23B creates no `BaseAdapter`, plugin SDK, adapter runtime, plugin loader or
+adapter persistence. `adapters/registry.py::ADAPTERS` is a plain table of
+four `bytes → AdapterPackage` builders keyed by target (the API composes it
+with the exporter through `AdapterService`); shared consumption helpers live
+in `adapters/common.py` and the deterministic writer in
+`adapters/package.py`. That is the whole framework.
 
 ## 21. Research evidence
 
@@ -633,7 +662,7 @@ phase that relies on them.
 Community forum posts (ventsim.invisionzone.com, Epic forums) were not used
 as evidence.
 
-## 22. Completion checklist (23B.0)
+## 22. Completion checklist (23B.0 architecture stage, historical)
 
 - [x] MineExchange remains the only external interoperability boundary (§2)
 - [x] no adapter reads `derived/*` directly (§2, §15)
@@ -648,146 +677,239 @@ as evidence.
 - [x] result import / write-back kept out of scope (§14)
 - [x] no production code added; no MineExchange version change; no FULL / golden re-run (docs-only)
 
-## 23. Phase 23B.1 — Ventsim geometry / network SEED adapter (DELIVERED)
+## 23. Phase 23B — Full External Application Adapters (DELIVERED)
 
-The first concrete adapter. It implements §4–§11 for the Ventsim target in
-the seed scope decided in §11.3 and answers the §11.4 questions it can
-answer without a Ventsim licence.
+One phase, one branch, one PR: architecture (§23.1), MineExchange 1.3
+(§23.2), Ventsim (§23.3), AnyLogic (§23.4), Unity / Unreal (§23.5), API and
+frontend (§23.6), tests and acceptance (§23.7). No proprietary vendor file
+(`.vsm`, `.alp`, `.unitypackage`, `.uasset`) is produced anywhere.
 
-### 23.1 Code and boundary
+### 23.1 Architecture and boundary (rules 207, 209)
 
     backend/src/minegen/adapters/
-      errors.py           typed failures (§8 codes + MINEEXCHANGE_BUNDLE_INVALID)
-      contracts.py        generic AdapterReport DTOs (§4, §6, §7, §10)
+      errors.py           AdapterError + the six typed codes (§8)
+      contracts.py        AdapterManifest, AdapterSourceState (five states), AdapterAssumption,
+                          AdapterGeneratedFile, AdapterCoordinateMapping, AdapterIdentityEntry,
+                          AdapterOmission
       bundle_reader.py    manifest-driven MineExchange ZIP reader (READ ≠ TRUST)
-      polyline.py         length + 3-D Douglas-Peucker (end points kept)
-      package.py          deterministic package ZIP
-      ventsim/config.py   VentsimSeedConfig — explicit parameters
-      ventsim/seed.py     build_ventsim_seed(bundle, config) → package + report
-    backend/src/minegen/services/adapter_service.py
-    backend/src/minegen/api/adapters.py   POST /scenarios/{id}/export/ventsim-seed
+      common.py           shared consumption helpers: five-state mapping, required-group refusal,
+                          version range, network / centerline / timeline / capability documents,
+                          NOT_PROVIDED assumptions, identity coordinate mapping
+      package.py          PackageBuilder / write_package — deterministic ZIP, adapter_manifest.json last
+      registry.py         ADAPTERS = {VENTSIM, ANYLOGIC, UNITY, UNREAL} → build_package(target, bytes)
+      ventsim/adapter.py  build_ventsim_package
+      anylogic/adapter.py build_anylogic_package
+      engine/glb.py       split_glb / join_glb / scene_root_nodes / add_root_transform
+      engine/package.py   build_unity_package / build_unreal_package
+    backend/src/minegen/services/adapter_service.py   AdapterService(ExchangeService).export(id, target)
+    backend/src/minegen/api/adapters.py               POST /scenarios/{id}/export/{ventsim|anylogic|unity|unreal}
 
-The service calls the MineExchange exporter (`ExchangeService.export`, one
-coherent validated snapshot) and hands the adapter the bundle **bytes**: the
-adapter reads `manifest.json`, verifies every listed file's SHA-256, refuses
-unlisted entries and validates each consumed document against its
-MineExchange DTO — it never touches `derived/*` and behaves exactly like an
-offline consumer of a downloaded bundle (`build_ventsim_seed_from_bundle_bytes`).
-Nothing is persisted; no derived artifact, no lifecycle.
+**Input = MineExchange ZIP bytes, nothing else.** `AdapterService` calls
+`ExchangeService.export` (one coherent validated snapshot) and hands the
+bytes to `build_package`; the adapter package never imports or reads
+`ScenarioStore`, `ArtifactReader`, `DesignService`, `derived/*`,
+`scenario.json`, `timeline.json`, `network.json` or `stopes.json`
+(`tests/test_adapters_core.py::test_b63_*` scans the import graph and the
+code strings, and builds every package from a saved fixture ZIP without any
+service module loaded). The reader: safe relative paths under
+`mine_exchange/`, `manifest.json` validated as `ExchangeManifest`, every
+listed file present with its SHA-256, no unlisted entry, entity file
+references resolving, `LOCAL_ENU_Z_UP` metre contract; files, entities,
+semantic types, DXF handles (`files[].dxfEntities`) and omissions are looked
+up through the manifest — no file name is guessed, no handle is re-parsed.
 
-### 23.2 Representation decision (§11.4 Q1 answered)
+**Output = one deterministic ZIP per target** (`<target>_package/`):
+fixed 1980-01-01 entry timestamps, lexicographic paths, fixed DEFLATE,
+SHA-256 per file, duplicate / unsafe paths refused, no wall-clock value;
+same bundle bytes → byte-identical package. `adapter_manifest.json`
+(`AdapterManifest`) is the meaning authority of every package:
 
-ONE 3-D DXF `POLYLINE` per **MineNetwork edge**, layer = the edge type
-(`RAMP`, `LEVEL_ACCESS`, `DRIFT`, `CROSSCUT`, `SHAFT`, `SHAFT_STATION_ACCESS`).
-Every network edge owns exactly one exported centerline entity
-(`geometryEntityId`) whose first / last points ARE its two topology nodes
-(the network builder welds at 1e-6 m), so the DXF polylines of edges meeting
-at a node share that vertex — the property Ventsim's Convert Centrelines
-needs to join airway chains. The adapter verifies the weld
-(`ENDPOINT_WELD_TOLERANCE_M` = 1e-4 m, typed `ADAPTER_CONVERSION_FAILED`
-above it — a detached or reversed polyline is never snapped or flipped) and
-the declared edge `length` against the polyline it owns (typed
-`MINEEXCHANGE_BUNDLE_INVALID` on disagreement).
+    adapterName, adapterVersion, targetApplication
+    supportedMineExchangeVersions, sourceMineExchangeVersion
+    sourceScenarioId, sourceScenarioName, sourceSnapshot (copied from the bundle manifest)
+    coordinateMapping { sourceFrame, targetFrame, unit, unitFactor, handedness, upAxis, transform, note }
+    generatedFiles[]  { path, mediaType, targetSemantic, sourceEntityIds[], sourceFiles[], sha256 }
+    identityMap[]     { targetId, targetKind, bundleEntityId, bundleEdgeId, bundleNodeId, file }
+    sourceStates[]    { group, state (§6), bundleReasonCode, detail }
+    assumptions[]     { kind, state (§7), value, unit, scope, source, userOverride, note }
+    warnings[], omissions[] { subject, reasonCode, detail }, details {}
 
-Vertices are the authoritative points, optionally reduced by a 3-D
-Douglas-Peucker pass with an explicit tolerance: end points are always kept,
-every kept vertex is an authoritative point, every removed point lies within
-the tolerance of the delivered polyline, and the measured maximum deviation
-is reported. Default `0.5 m` (one tenth of the default tunnel width,
-recorded as `ADAPTER_DEFAULT_EXPLICIT`, `userOverride = false`); `0`
-delivers the polyline verbatim. Measured on one 30 m-radius spiral turn
-sampled at ≈ 0.47 m: 400 → 33 vertices, deviation 0.156 m.
+Read-only: an export generates nothing and persists nothing — `scenario.json`,
+`arrays.npz`, `derived/*` and `economics.json` stay byte- and stat-identical
+(proved by `tests/test_adapters_api.py` and `tests/test_adapters_e2e.py`).
 
-A `RAISE` edge (the one type with `geometryContract = NONE`) is a typed
-omission (`NO_GEOMETRY_CONTRACT`); no geometry is invented for it.
+### 23.2 MineExchange 1.3 — timeline semantics (rule 208)
 
-### 23.3 Package (`ventsim_seed/`)
+`docs/mine-exchange.md` "Timeline semantics" is the contract:
+`operations/timeline.json` (`ExchangeTimeline`) + `operations/tasks.csv`,
+`TIMELINE_ARTIFACT` in the export snapshot, external `targetReference` per
+task (`NETWORK_EDGE` = edge id; `ENTITY` = `stope:<id>` / `cut:<id>` /
+`bench:<unitId>`; BACKFILL / CURE target the cut; pillars never a target),
+development progress and production states copied from the authority,
+preflight-bound to the exported edges / centerlines / entities. Additive:
+every 1.2 file is byte-identical and the geometry binaries are untouched
+(`tests/test_exchange_timeline.py` MX13-11 / 12). `TIMELINE` omission =
+`ARTIFACT_ABSENT` / `SOURCE_NOT_SUCCESS`; `FIELD_LATTICE` stays the only
+`NOT_IN_V1`.
 
-| File | Content |
-| --- | --- |
-| `airways.dxf` | R12 3-D POLYLINE per edge, deterministic handle, layer = edge type, `$INSUNITS = 6` |
-| `airways.csv` | `dxfHandle, airwayId (= edge id), edgeType, layer, sourceNodeId, targetNodeId, geometryEntityId, entityKind, levelId, orientation, authoritativeLengthM, deliveredLengthM, lengthDeviationM, vertexCountAuthoritative, vertexCountDelivered, widthM, heightM, profileShape` |
-| `nodes.csv` | every network node: `nodeId, type, x, y, z, levelId, surface` |
-| `identity_map.json` | DXF handle ↔ airway / edge / entity id; node positions |
-| `adapter_report.json` | the §4 `AdapterReport` (+ config, effective tolerance, airway metrics) |
-| `README.txt` | import steps, coordinate statement, what is NOT provided |
+### 23.3 Ventsim — geometry / network SEED (`VENTSIM 0.1.0`, rule 210)
 
-No ventilation quantity appears anywhere: the attribute table carries only
-what the bundle owns (lengths, cross-section width / height / shape). A
-missing cross-section leaves the cells blank and is reported (warning +
-`airwaysWithoutCrossSection`), never filled.
+Requires `EXCAVATIONS` (centerlines) and `NETWORK`; `SHAFTS` consumed when
+present (SHAFT / SHAFT_STATION_ACCESS airways). MineExchange `>=1.2.0,<2.0.0`.
 
-### 23.4 Explicit configuration and assumption record
+    ventsim_package/
+      adapter_manifest.json
+      README.txt                      documented Ventsim workflow, coordinate statement, NOT PROVIDED list
+      geometry/mine_centerlines.dxf   the bundle's excavations/centerlines.dxf, BYTE FOR BYTE
+      network/nodes.csv               nodeId, nodeType, x, y, z, levelId, surface
+      network/airways.csv             edgeId, geometryEntityId, sourceNodeId, targetNodeId, edgeType, lengthM,
+                                      widthM, heightM, shape, orientation, dxfHandle, levelId, vertexCount
+      identity/entity_map.csv         dxfHandle, layer, dxfEntityType, entityId, entityKind, levelId, edgeId
 
-`VentsimSeedConfig` (request body, all optional): `simplificationToleranceM`
-(`null` → 0.5 default, `0…5`, validated never clamped), `originOffset`
-(metres on the source axes, default `(0, 0, 0)`; the coordinate mapping
-records it as `translation`), `dimensionDeliveryPolicy = ATTRIBUTE_TABLE`
-and `targetFormat = DXF_R12_3D_POLYLINES` (the only values this version
-produces; another value is a 422).
+Representation (§11.4 Q1, revised): the bundle DXF is the geometry authority
+and is delivered **verbatim — full fidelity, no simplification** (the earlier
+Douglas-Peucker option and its `ADAPTER_DEFAULT_EXPLICIT` tolerance are
+removed). One 3-D POLYLINE per exported centerline entity, layer = entity
+kind; every network edge owns exactly one entity whose end points ARE its
+topology nodes, so polylines meeting at a node share the vertex Ventsim's
+Convert Centrelines joins. DXF handles come from `manifest.files[].dxfEntities`
+(never re-parsed). The adapter VERIFIES and never repairs: end points on the
+nodes within `ENDPOINT_WELD_TOLERANCE_M` = 1e-4 m (typed
+`ADAPTER_CONVERSION_FAILED`, never snapped or reversed), declared edge length
+equal to the polyline length within 1e-6 relative (typed
+`ADAPTER_MINEEXCHANGE_BUNDLE_INVALID`). `RAISE` (the one edge type without an
+owning centerline) is a typed `NO_GEOMETRY_CONTRACT` omission. A missing
+cross-section leaves `widthM` / `heightM` blank with a warning, never filled.
 
-`assumptions[]`: `SIMPLIFICATION_TOLERANCE` and `DIMENSION_DELIVERY_POLICY`
-as `ADAPTER_DEFAULT_EXPLICIT` (value, unit, scope, documented source,
-userOverride); `AIRWAY_RESISTANCE`, `AIRWAY_ROUGHNESS`, `FANS`,
-`REGULATORS_AND_DOORS`, `HEAT_SOURCES`, `CONTAMINANT_SOURCES`,
-`AIR_DENSITY_AND_SURFACE_CONDITIONS` as `NOT_PROVIDED`. No `USER_REQUIRED`
-parameter exists in 0.1.0.
+No ventilation physics: `airways.csv` has no friction, resistance, fan,
+regulator, door, leakage, heat, diesel, airflow, pressure or density column;
+`assumptions[]` records `AIRWAY_FRICTION_FACTOR`, `AIRWAY_RESISTANCE`,
+`FANS`, `REGULATORS_AND_DOORS`, `HEAT_SOURCES`,
+`DIESEL_AND_CONTAMINANT_SOURCES`, `AIRFLOW_AND_PRESSURE` as `NOT_PROVIDED`.
+The CSV is an **authoritative handoff / QA table**: applying dimensions
+inside Ventsim per DXF handle / layer is the documented USER workflow
+(README steps: DXF import → Convert Centrelines → verify metric / local
+basis → assign dimensions → configure physics); no official automated
+attribute import is claimed (§11.4 Q2 stays UNVERIFIED), and no `.vsm` is
+produced. Coordinate mapping: identity (`LOCAL_ENU_Z_UP` metres; Ventsim
+imports a DXF in the file's CURRENT units — the README says to set metres).
 
-`sourceStates[]`: `EXCAVATIONS`, `NETWORK` = `AVAILABLE` (required —
-`REQUIRED_SOURCE_ABSENT` carries the bundle's own `ARTIFACT_ABSENT` /
-`SOURCE_NOT_SUCCESS` reason otherwise); `SHAFTS` only when the bundle
-records a shaft omission; `TERRAIN`, `OREBODY`, `FAULTS`, `CAPABILITY`,
-`MINING_METHOD`, `PRODUCTION` = `UNSUPPORTED_BY_ADAPTER` (no reference
-layers in 0.1.0); `TIMELINE` = `ABSENT` with the bundle's `NOT_IN_V1`.
+### 23.4 AnyLogic — operational data package (`ANYLOGIC 0.1.0`, rule 211)
 
-Coordinate mapping: `LOCAL_ENU_Z_UP` → `LOCAL_ENU_Z_UP`, metre, unit factor
-1, translation = the offset. The README states that Ventsim imports a DXF in
-the Ventsim file's current units (vendor manual, §11.1).
+Requires MineExchange `>=1.3.0,<2.0.0`, `NETWORK` and `TIMELINE`
+(`ADAPTER_REQUIRED_SOURCE_ABSENT` / `ADAPTER_SOURCE_NOT_SUCCESS` with the
+bundle's reason otherwise; a 1.2 bundle is
+`ADAPTER_MINEEXCHANGE_VERSION_UNSUPPORTED`); production optional.
 
-Versioning: `VENTSIM_SEED 0.1.0`, `supportedMineExchangeVersions =
-">=1.2.0,<2.0.0"`; a manifest outside the range is
-`MINEEXCHANGE_VERSION_UNSUPPORTED`.
+    anylogic_package/
+      adapter_manifest.json, README.txt
+      data/nodes.csv                  nodeId, nodeType, x, y, z, levelId, surface
+      data/edges.csv                  edgeId, sourceNodeId, targetNodeId, edgeType, geometryEntityId, lengthM,
+                                      widthM, heightM, shape, orientation, geometryContract
+                                      (direction = storage / centerline orientation, NOT one-way traffic)
+      data/centerline_points.csv      geometryEntityId, sequence, x, y, z
+      data/capabilities.csv           edgeId, capability, allowed, source   (capability ≠ capacity)
+      data/production_units.csv       entityId, productionKind (STOPE | CUT | BACKFILL | BENCH | PILLAR), sourceId,
+                                      levelId, accessReference, plannedTonnes, geometricVolumeM3, retained,
+                                      backfill, parentEntityId
+      data/tasks.csv                  taskId, taskType, targetKind, targetReferenceKind, targetReferenceId, startDay,
+                                      endDay, durationDays, dependencies (JSON list), basis quantity / unit / rate
+      data/development_progress.csv   edgeId, geometryEntityId, taskId, progressStartDay, progressEndDay,
+                                      excavationStartNode, progressDirection, initialState, pointChainageFractions
+      data/production_states.csv      entityId, targetKind, initialState, transitionIndex, day, state
+      templates/simulation_inputs.csv fleetSize, truckType, lhdType, speedLoadedKmh, speedEmptyKmh, gradeSpeedCurve,
+                                      loadingTimeMin, dumpingTimeMin, shiftCalendar, trafficPriority, dispatchLogic,
+                                      crusherCapacityTph, stockpileCapacityT — COLUMNS ONLY, every value blank
 
-### 23.5 API
+Pillars are RETAINED material (`retained = true`, `plannedTonnes` blank);
+a backfill is the semantic record of a cut void (`backfill = true`,
+`plannedTonnes` blank, `parentEntityId` = the source cut) — neither is
+production tonnes. Referential integrity is re-verified at the boundary
+(every task target an edge or an exported production unit, every dependency
+a task, every progress edge / start node and every state entity known, every
+capability edge a network edge) — a defect is
+`ADAPTER_MINEEXCHANGE_BUNDLE_INVALID`. No fleet, speed, cycle time, calendar,
+priority, dispatch or capacity value is written or defaulted (all
+`NOT_PROVIDED`, plus `MODEL_AXIS_MAPPING`); no `.alp` is produced. The README
+gives the documented AnyLogic workflow (database / text-file import, network
+by code, tables as the planning baseline).
 
-    POST /api/v1/scenarios/{id}/export/ventsim-seed     body: VentsimSeedConfig (optional)
-      → 200 application/zip  minegen_<id>_ventsim_seed.zip
-        X-Adapter-Name: VENTSIM_SEED, X-Adapter-Version: 0.1.0, X-MineExchange-Version: 1.2.0
+### 23.5 Unity / Unreal — engine import packages (`UNITY` / `UNREAL 0.1.0`, rule 212)
+
+MineExchange `>=1.2.0,<2.0.0`; no required group — a world-only bundle
+yields a partial package (geology assets only).
+
+    <unity|unreal>_package/
+      adapter_manifest.json, README.txt
+      scene/assets/<bundle path, '/' → '_'>.glb   every bundle GLB, scene = glTF Y-up right-handed metres
+      scene/entities.json         IDENTITY AUTHORITY: entityId, kind, levelId, assetPath, sourceEntityId,
+                                  sourceId, parentEntityId, sourceMemberIds, networkEdgeIds[], bundleFiles[]
+      scene/network.json          topology/network.json verbatim (when present)
+      scene/capability.json       semantics/capability.json verbatim (when present)
+      scene/timeline.json         operations/timeline.json verbatim (when present, 1.3)
+      scene/import_settings.json  packageSceneFrame, unit, handedness, the root matrix, engine notes,
+                                  per-asset facts (storedVertexFrame, sourceSceneFrame, rootTransformAdded,
+                                  binaryChunkPreserved, junctionApertures, closed)
+
+GLB normalization (`engine/glb.py`): an exporter GLB (`glb.sceneFrame =
+GLTF_Y_UP`, root matrix present) is copied verbatim; a copied render GLB
+(`sceneFrame = LOCAL_ENU_Z_UP`, `transformMatrix = null`) gets EXACTLY ONE
+new root node `MineExchange_LOCAL_ENU_Z_UP_to_GLTF_Y_UP` carrying the
+column-major matrix of `(x, y, z) → (x, z, −y)` that parents the previous
+scene roots; nodes, meshes, accessors, extras and the BIN chunk are preserved
+byte for byte; a GLB already carrying the root node is refused (never
+transformed twice); any other frame record or an invalid container is
+`ADAPTER_CONVERSION_FAILED`. Unity and Unreal packages differ only in the
+engine notes (Unity: glTFast / UnityGLTF, Y-up left-handed importer mirror,
+metres; Unreal: Interchange glTF import, Z-up left-handed, centimetres by
+the importer's metre → cm scale). Not provided (all `NOT_PROVIDED`):
+materials / lighting, collision / physics, NavMesh, gameplay / AI,
+ventilation simulation, runtime synchronization, animation. No
+`.unitypackage` / `.uasset`.
+
+### 23.6 API and frontend (rule 209)
+
+    POST /api/v1/scenarios/{id}/export/ventsim
+    POST /api/v1/scenarios/{id}/export/anylogic
+    POST /api/v1/scenarios/{id}/export/unity
+    POST /api/v1/scenarios/{id}/export/unreal
+      → 200 application/zip  minegen_<id>_<target>.zip
+        X-Adapter-Name: <TARGET>, X-Adapter-Version: 0.1.0, X-MineExchange-Version: 1.3.0
       → 404 SCENARIO_NOT_FOUND · 409 WORLD_NOT_GENERATED · 409 READ_SNAPSHOT_CHANGED
       → 409 <MineExchange refusal>  (STALE / MALFORMED / MINE_EXCHANGE_EXPORT_FAILED)
-      → 409 REQUIRED_SOURCE_ABSENT · 409 MINEEXCHANGE_BUNDLE_INVALID
-      → 409 MINEEXCHANGE_VERSION_UNSUPPORTED · 409 ADAPTER_CONVERSION_FAILED
-      → 422 COORDINATE_MAPPING_UNSUPPORTED · 422 request validation (out-of-range parameter)
+      → 409 ADAPTER_REQUIRED_SOURCE_ABSENT · 409 ADAPTER_SOURCE_NOT_SUCCESS
+      → 409 ADAPTER_MINEEXCHANGE_VERSION_UNSUPPORTED · 409 ADAPTER_MINEEXCHANGE_BUNDLE_INVALID
+      → 409 ADAPTER_CONVERSION_FAILED · 422 ADAPTER_TARGET_UNSUPPORTED
 
-Frontend: `Export Ventsim seed (.zip)` in the Scenario panel, enabled only
-when the scene shows a ramp and a SUCCESS network (the same prerequisite the
-backend enforces); no adapter parameter is edited in the UI in 23B.1.
+Frontend (`components/panels/ScenarioPanel.tsx`, `exportContents.ts`,
+`api/client.ts::exportAdapter`): one compact selector (MineExchange —
+"Canonical exchange bundle"; Ventsim — "Ventilation geometry/network seed";
+AnyLogic — "Operational simulation data package"; Unity / Unreal — "Engine
+import package") with one "Export <target> (.zip)" button; the download
+mutates no scene state and no epoch; a backend refusal is shown through the
+existing `ApiError` display. "Current export contents" gained the Timeline
+row (1.3).
 
-### 23.6 Tests
+### 23.7 Tests and acceptance
 
-`backend/tests/test_ventsim_seed_adapter.py` (FAST, synthetic bundle through
-the REAL exporter: identity / shared end vertices / determinism, faithful vs
-simplified, Douglas-Peucker properties, attribute table, source states and
-NOT_PROVIDED policy, RAISE omission, origin offset, world-only refusal,
-tampered / unlisted / non-ZIP / malformed-manifest bundles, version range,
-detached end point, inconsistent length, missing cross-section, config
-validation, API 404 / 409 / 422) and
-`backend/tests/test_exchange_bundle.py::test_v1_ventsim_seed_over_the_real_layout_v2_chain`
-(e2e: the real LAYOUT_V2 chain — every edge welded, simplification inside
-tolerance, read-only, byte-identical re-run). Frontend:
-`exportFilename.test.ts`, `exportContents.test.tsx`.
-
-### 23.7 Open after 23B.1 (unchanged, §11.4)
-
-- Q2 a documented text / spreadsheet airway import — UNVERIFIED; the
-  attribute-table path is the one implemented.
-- Q3 layer inheritance on Convert Centrelines in 6.0.x — to confirm on an
-  installation.
-- Q4 acceptance on a real Ventsim installation (Convert behaviour, joined
-  chains, dimension assignment) is a MANUAL acceptance step with a licence;
-  everything verifiable without one (DXF structure through the independent
-  tag-level parser, identity, welds, tolerances, determinism) is a unit
-  test.
-- Reference layers (terrain / orebody / faults) as optional context DXF
-  layers are a later adapter version, reported today as
-  `UNSUPPORTED_BY_ADAPTER`.
+- `tests/test_exchange_timeline.py` (FAST, MX13-1 … MX13-14 on the
+  synthetic consistent mine) and `tests/test_exchange_timeline_e2e.py`
+  (real Longhole / Cut & Fill / Room & Pillar chains).
+- `tests/test_adapters_core.py` — boundary (import graph + code-string scan,
+  build from saved bytes without services), bundle integrity refusals,
+  version ranges, five-state mapping, error detail, deterministic /
+  wall-clock-free packages, package builder guards.
+- `tests/test_adapter_ventsim.py`, `tests/test_adapter_anylogic.py`,
+  `tests/test_adapter_engine.py` — per-adapter contracts on the synthetic
+  bundle (verbatim DXF, manifest handles, copied dimensions, no physics
+  columns, detached end point / length refusals, blank template, no fleet
+  value, 1.2-shape and version refusals, GLB root transform added once with
+  the binary chunk preserved, Unity vs Unreal, world-only partial package).
+- `tests/test_adapters_api.py` (FAST: 404 / 409 / typed refusals / headers /
+  read-only proof on a world-only scenario) and `tests/test_adapters_e2e.py`
+  (real chains: Ventsim, AnyLogic on all three methods — pillars retained,
+  backfill never tonnes, targets resolve — Unity / Unreal re-framing both
+  render GLBs exactly once, every export read-only).
+- Browser acceptance Cases A–G (production build + real backend) recorded in
+  the phase report. A licensed Ventsim / AnyLogic / engine import remains a
+  manual step outside CI (§11.4 Q3 / Q4 unchanged).

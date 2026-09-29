@@ -46,24 +46,28 @@ describe('Phase 23A MineExchange download client', () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/scenarios\/s1\/export\/mine-exchange$/)
   })
 
-  it('POSTs the Ventsim seed export with no body and keeps the server filename (Phase 23B.1)', async () => {
-    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
-      expect(init?.method).toBe('POST')
-      expect(init?.body).toBeUndefined()
-      return Promise.resolve(
-        new Response(new Blob([new Uint8Array([80, 75, 3, 4])]), {
-          status: 200,
-          headers: {
-            'content-type': 'application/zip',
-            'content-disposition': 'attachment; filename="minegen_s1_ventsim_seed.zip"',
-          },
-        }),
+  it('POSTs an adapter export with no body and keeps the server filename (Phase 23B)', async () => {
+    for (const target of ['VENTSIM', 'ANYLOGIC', 'UNITY', 'UNREAL'] as const) {
+      const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+        expect(init?.method).toBe('POST')
+        expect(init?.body).toBeUndefined()
+        return Promise.resolve(
+          new Response(new Blob([new Uint8Array([80, 75, 3, 4])]), {
+            status: 200,
+            headers: {
+              'content-type': 'application/zip',
+              'content-disposition': `attachment; filename="minegen_s1_${target.toLowerCase()}.zip"`,
+            },
+          }),
+        )
+      })
+      vi.stubGlobal('fetch', fetchMock)
+      const file = await api.exportAdapter('s1', target)
+      expect(file.filename).toBe(`minegen_s1_${target.toLowerCase()}.zip`)
+      expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(
+        new RegExp(`/scenarios/s1/export/${target.toLowerCase()}$`),
       )
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    const file = await api.exportVentsimSeed('s1')
-    expect(file.filename).toBe('minegen_s1_ventsim_seed.zip')
-    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/scenarios\/s1\/export\/ventsim-seed$/)
+    }
     vi.stubGlobal(
       'fetch',
       vi.fn(() =>
@@ -71,8 +75,9 @@ describe('Phase 23A MineExchange download client', () => {
           new Response(
             JSON.stringify({
               detail: {
-                code: 'REQUIRED_SOURCE_ABSENT',
-                message: 'bundle group NETWORK is ARTIFACT_ABSENT',
+                code: 'ADAPTER_REQUIRED_SOURCE_ABSENT',
+                message:
+                  'adapter=VENTSIM; group=NETWORK; reason=bundle group NETWORK is ARTIFACT_ABSENT',
               },
             }),
             { status: 409, headers: { 'content-type': 'application/json' } },
@@ -80,9 +85,9 @@ describe('Phase 23A MineExchange download client', () => {
         ),
       ),
     )
-    await expect(api.exportVentsimSeed('s1')).rejects.toMatchObject({
+    await expect(api.exportAdapter('s1', 'VENTSIM')).rejects.toMatchObject({
       status: 409,
-      code: 'REQUIRED_SOURCE_ABSENT',
+      code: 'ADAPTER_REQUIRED_SOURCE_ABSENT',
     })
   })
 

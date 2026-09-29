@@ -2234,35 +2234,119 @@ code, the code and the rule win and the map is corrected.
      development cost" as separate readouts, and a ranking / cost
      disagreement is shown as it is.
 
-207. External adapters are translators over MineExchange BYTES (Phase 23B,
-     `adapters/`, `docs/external-adapters.md`). An adapter consumes a
-     MineExchange bundle through the manifest-driven reader
-     (`adapters/bundle_reader.py`: safe paths, SHA-256 of every listed file,
-     no unlisted entry, DTO validation, `LOCAL_ENU_Z_UP` metre contract) —
-     never `derived/*`, never the exporter's in-memory objects — so the API
-     path and an offline bundle produce the same package. It redesigns
-     nothing, invents nothing and clamps nothing: every consumed bundle
-     group is reported in exactly one of AVAILABLE / ABSENT /
-     SOURCE_NOT_SUCCESS / UNSUPPORTED_BY_ADAPTER; every value the target
-     needs that no MineGen authority owns is NOT_PROVIDED, USER_REQUIRED or
-     ADAPTER_DEFAULT_EXPLICIT (value, unit, scope, documented source,
-     userOverride) — a number in the package that is neither in the bundle
-     nor in `assumptions[]` is a defect; failures are typed
-     (MINEEXCHANGE_BUNDLE_INVALID, MINEEXCHANGE_VERSION_UNSUPPORTED,
-     REQUIRED_SOURCE_ABSENT, REQUIRED_PARAMETER_MISSING,
-     TARGET_FORMAT_UNSUPPORTED, COORDINATE_MAPPING_UNSUPPORTED,
-     ADAPTER_CONVERSION_FAILED), never a bare 500; the adapter version and
+207. MineExchange is the ONLY adapter input boundary (Phase 23B,
+     `adapters/`, `docs/external-adapters.md`). An external adapter consumes
+     a MineExchange bundle as ZIP BYTES through the manifest-driven reader
+     (`adapters/bundle_reader.py`: safe paths under the bundle root, SHA-256
+     of every listed file, no unlisted entry, DTO validation on demand,
+     `LOCAL_ENU_Z_UP` metre contract, every file / entity / DXF handle /
+     omission looked up through `manifest.json` — a file name is never
+     guessed and a DXF handle is never re-derived by parsing) — never
+     `derived/*`, `scenario.json`, `timeline.json`, `network.json`,
+     `stopes.json`, `ScenarioStore`, `ArtifactReader`, `DesignService` or
+     the exporter's in-memory objects (`tests/test_adapters_core.py` scans
+     the adapter import graph and code strings). `AdapterService` composes
+     ONLY `ExchangeService.export` → `adapters.build_package(target, bytes)`,
+     so the API path and an offline bundle produce byte-identical packages.
+     Every consumed bundle group is reported in exactly one of FIVE states —
+     AVAILABLE / ARTIFACT_ABSENT / SOURCE_NOT_SUCCESS /
+     NOT_EXPORTED_BY_VERSION (the bundle's `NOT_IN_V1`, or a group this
+     MineExchange version cannot carry) / UNSUPPORTED_BY_ADAPTER — a
+     bundle-side absence is never conflated with a version gap or an
+     adapter gap; every value the target needs that no MineGen authority
+     owns is NOT_PROVIDED, USER_REQUIRED or ADAPTER_DEFAULT_EXPLICIT (value,
+     unit, scope, documented source, userOverride), and a number in a
+     package that is neither in the bundle nor in `assumptions[]` is a
+     defect. Failures are typed (`ADAPTER_MINEEXCHANGE_BUNDLE_INVALID`,
+     `ADAPTER_MINEEXCHANGE_VERSION_UNSUPPORTED`,
+     `ADAPTER_REQUIRED_SOURCE_ABSENT`, `ADAPTER_SOURCE_NOT_SUCCESS`,
+     `ADAPTER_CONVERSION_FAILED`, `ADAPTER_TARGET_UNSUPPORTED` — each with
+     adapter / source group / subject / reason), never a bare 500; adapter
+     versions (VENTSIM, ANYLOGIC, UNITY, UNREAL 0.1.0) and
      `supportedMineExchangeVersions` are independent of the MineExchange
-     version; packages are deterministic and carry no wall-clock value.
-     The 23B.1 Ventsim SEED (`VENTSIM_SEED 0.1.0`,
-     `POST …/export/ventsim-seed`) is one DXF 3-D polyline per MineNetwork
-     edge on the edge's owning centerline (layer = edge type, end vertices
-     verified ON the topology nodes within 1e-4 m, declared length verified
-     against the polyline, explicit Douglas-Peucker tolerance with end
-     points kept and the measured deviation reported, RAISE a typed
-     omission) plus an attribute table of bundle facts only (authoritative /
-     delivered length, width, height, profile shape); resistance, fans,
-     regulators, heat, contaminants and air density are NOT_PROVIDED. It is
-     a geometry / network seed, never a ventilation model, and no
-     `BaseAdapter` / registry / plugin runtime exists until a second adapter
-     justifies one.
+     version. `adapters/registry.py::ADAPTERS` is a plain table of four
+     `bytes → AdapterPackage` builders, not a plugin runtime.
+208. MineExchange 1.3 timeline is a PROJECTION of MineTimeline only
+     (`operations/timeline.json` = `ExchangeTimeline`, `operations/tasks.csv`,
+     `TIMELINE_ARTIFACT` in the export snapshot). Every task keeps its
+     MineGen `targetId` as provenance and gains an EXTERNAL
+     `targetReference` — `NETWORK_EDGE` = the exported edge id for
+     development, `ENTITY` = `stope:<id>` / `cut:<id>` / `bench:<unitId>`
+     for production (BACKFILL / CURE target the CUT; pillars are never a
+     target); development progress copies `edgeId`, `geometryRef`,
+     `pointChainageFractions`, `excavationStartNode`, `progressDirection`
+     and the transitions; production states map to exported entity ids. The
+     bundle preflight refuses (409 MINE_EXCHANGE_EXPORT_FAILED) duplicate
+     task ids, unresolved dependencies, a development target that is not an
+     exported edge, a geometry reference that does not resolve to the
+     exported centerline, and a production target / state whose entity is
+     not exported. 1.3 is additive: every 1.2 file is byte-identical, the
+     geometry binaries are untouched, and the TIMELINE omission is
+     `ARTIFACT_ABSENT` / `SOURCE_NOT_SUCCESS` (no longer `NOT_IN_V1`;
+     `FIELD_LATTICE` stays the only `NOT_IN_V1`). The exporter never
+     reschedules, re-times or invents a task.
+209. Adapter outputs are read-only, deterministic and non-authoritative.
+     An export generates nothing, persists nothing (no `derived/*` write, no
+     registry entry, no invalidation) and leaves `scenario.json`,
+     `arrays.npz`, `derived/*` and `economics.json` byte- and stat-identical;
+     the same bundle bytes yield the same package bytes (fixed ZIP
+     timestamps, sorted paths, SHA-256 per file in `adapter_manifest.json`,
+     the manifest written last and never self-hashed, no wall-clock value,
+     duplicate / unsafe package paths refused). Every package carries
+     `adapter_manifest.json` (adapter name / version / target,
+     supported and source MineExchange versions, `sourceSnapshot` copied
+     from the bundle, `coordinateMapping`, `generatedFiles[]`,
+     `identityMap[]`, `sourceStates[]`, `assumptions[]`, `warnings[]`,
+     `omissions[]`) as its meaning authority. A package is a disposable
+     projection for the target application: it never becomes a MineGen
+     authority, is never imported back, and the frontend's compact export
+     selector (MineExchange / Ventsim / AnyLogic / Unity / Unreal) triggers
+     the download only — no scene mutation, no epoch bump, no generation.
+210. Ventsim SEED (`VENTSIM 0.1.0`, `POST …/export/ventsim`) invents no
+     physics. It requires EXCAVATION_CENTERLINES + MINE_NETWORK, copies the
+     bundle DXF byte for byte (FULL FIDELITY, no simplification — the
+     earlier Douglas-Peucker option is gone), takes DXF handles from
+     `manifest.files[].dxfEntities`, verifies (never repairs) that each
+     edge's polyline ends on its topology nodes (1e-4 m) and measures its
+     declared length, and delivers `network/nodes.csv`, `network/airways.csv`
+     (edge, entity, nodes, type, length, width, height, shape, orientation,
+     dxfHandle, levelId, vertexCount — bundle facts only) and
+     `identity/entity_map.csv`. No friction, resistance, fan, regulator,
+     door, leakage, heat, diesel, airflow, pressure or density field exists;
+     all are NOT_PROVIDED. The CSV is an authoritative handoff / QA table
+     for the DOCUMENTED USER WORKFLOW (DXF import → Convert Centrelines →
+     dimensions per handle / layer); no official automated attribute import
+     is claimed, and no `.vsm` is produced.
+211. AnyLogic operational data package (`ANYLOGIC 0.1.0`,
+     `POST …/export/anylogic`) invents no fleet or dispatch. It requires
+     MineExchange ≥ 1.3, MINE_NETWORK and MINE_TIMELINE (production
+     optional) and hands over normalized tables only — `data/nodes.csv`,
+     `edges.csv` (storage direction, never one-way traffic),
+     `centerline_points.csv`, `capabilities.csv` (capability ≠ capacity),
+     `production_units.csv` (STOPE / CUT / BACKFILL / BENCH / PILLAR with
+     `retained` and `backfill` flags: a pillar is retained material and a
+     backfill is a semantic record — neither is planned tonnes),
+     `tasks.csv`, `development_progress.csv`, `production_states.csv`
+     (explicit `initialState`) — plus `templates/simulation_inputs.csv`
+     whose columns (fleet, speeds, cycle times, calendar, priority,
+     dispatch, capacities) are BLANK. No speed, fleet size, cycle time or
+     dispatch policy is ever written or defaulted, and no `.alp` is produced.
+212. Unity / Unreal packages (`UNITY` / `UNREAL 0.1.0`,
+     `POST …/export/unity|unreal`) package geometry + semantics and are not
+     authorities. Every bundle GLB becomes `scene/assets/<path>.glb` in
+     glTF Y-up right-handed metres: an exporter GLB (already `GLTF_Y_UP`
+     under its root matrix) is copied verbatim; a copied
+     `LOCAL_ENU_Z_UP` render GLB with no root transform gets EXACTLY ONE
+     deterministic root node carrying `(x, y, z) → (x, z, −y)` that parents
+     the previous scene roots, with the binary chunk (vertices, normals,
+     indices) preserved byte for byte — never re-swept, never transformed
+     twice, and a GLB already carrying the root node is refused.
+     `scene/entities.json` is the identity authority (entityId, kind,
+     levelId, assetPath, sourceEntityId, networkEdgeIds[]);
+     `network.json`, `capability.json` and `timeline.json` (1.3) are the
+     bundle documents verbatim; `import_settings.json` records per-asset
+     frame facts and the engine import notes. No materials, lighting,
+     collision, physics, NavMesh, gameplay, AI, animation or runtime
+     synchronization is generated (all NOT_PROVIDED), and no
+     `.unitypackage` / `.uasset` is produced. A world-only scenario yields a
+     partial package (geology assets only) with ARTIFACT_ABSENT states.

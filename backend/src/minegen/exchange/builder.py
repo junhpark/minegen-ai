@@ -25,6 +25,7 @@ from typing import Any, Literal
 
 import numpy as np
 from numpy.typing import NDArray
+from pydantic import ValidationError
 
 from minegen.core.artifacts import (
     CAPABILITY_GRAPH_ARTIFACT,
@@ -32,6 +33,7 @@ from minegen.core.artifacts import (
     LEVELS_ARTIFACT,
     NETWORK_ARTIFACT,
     STOPES_ARTIFACT,
+    TIMELINE_ARTIFACT,
     TUNNEL_MESH_ARTIFACT,
 )
 from minegen.core.models import CutFillParameters, RoomPillarParameters, Scenario
@@ -79,6 +81,7 @@ from minegen.exchange.models import (
     ExchangeCutFillLift,
     ExchangeCutFillMetrics,
     ExchangeCutFillParameters,
+    ExchangeDevelopmentProgress,
     ExchangeEgressAdvisory,
     ExchangeEntity,
     ExchangeMethodParameters,
@@ -93,15 +96,22 @@ from minegen.exchange.models import (
     ExchangeProductionCutFill,
     ExchangeProductionDevelopmentStatus,
     ExchangeProductionRoomPillar,
+    ExchangeProductionState,
     ExchangeProductionStatus,
     ExchangeProductionStopes,
     ExchangeRequiredPath,
     ExchangeRoom,
     ExchangeRoomPillarMetrics,
     ExchangeRoomPillarParameters,
+    ExchangeStateTransition,
     ExchangeStope,
     ExchangeStopeBounds,
     ExchangeStopesMetrics,
+    ExchangeTargetReference,
+    ExchangeTaskBasis,
+    ExchangeTimeline,
+    ExchangeTimelineMetrics,
+    ExchangeTimelineTask,
     GeometryQa,
     GlbFrame,
     MultiBodyComponent,
@@ -122,6 +132,7 @@ from minegen.network.geometry_refs import (
     GeometryRefError,
     resolve_owning_centerline,
 )
+from minegen.scheduling.models import TimelinePayload
 from minegen.world.synthetic_world import SyntheticWorld
 
 __all__ = [
@@ -171,6 +182,8 @@ class ExchangeInputs:
     capability: ArtifactInput | None = None
     #: 1.1.0: the Phase 09 stopes artifact (longhole production geometry)
     stopes: ArtifactInput | None = None
+    #: 1.3.0: the MineTimeline artifact (operations / timeline semantics)
+    timeline: ArtifactInput | None = None
     tunnel_report: ArtifactInput | None = None
     tunnel_glb: bytes | None = None
     development_report: ArtifactInput | None = None
@@ -270,22 +283,21 @@ def build_exchange(inputs: ExchangeInputs) -> BundleSpec:
     _orebody(inputs, files, entities)
     _faults(inputs, files, entities)
     centerlines = _excavations(inputs, files, entities, omissions)
-    geometry_refs, node_ids = _topology(inputs, centerlines, files, omissions)
+    geometry_refs, node_ids, network_doc = _topology(inputs, centerlines, files, omissions)
     _capability(inputs, files, omissions)
     production = _production(inputs, centerlines, files, entities, omissions, node_ids)
     _mining_method(inputs, centerlines, production, files)
-    for group, detail in (
-        ("TIMELINE", "development / production scheduling is not part of MineExchange v1"),
-        (
-            "FIELD_LATTICE",
-            "grade / rock-quality lattices are not exported in v1 (no block-model semantics)",
-        ),
-    ):
-        omissions.append(
-            ExchangeOmission(
-                group=group, reason_code="NOT_IN_V1", detail=detail, source_artifact=None
-            )
+    _timeline(inputs, network_doc, production, centerlines, files, omissions)
+    omissions.append(
+        ExchangeOmission(
+            group="FIELD_LATTICE",
+            reason_code="NOT_IN_V1",
+            detail=(
+                "grade / rock-quality lattices are not exported in v1 (no block-model semantics)"
+            ),
+            source_artifact=None,
         )
+    )
     notes.append(
         "Individual excavation solids are closed but overlap at junctions and are NOT "
         "boolean-unioned; "
@@ -293,6 +305,11 @@ def build_exchange(inputs: ExchangeInputs) -> BundleSpec:
     )
     notes.append(
         "Dual-egress and required capability paths are design advisories, never statutory claims."
+    )
+    notes.append(
+        "operations/timeline.json (1.3.0) is a projection of the MineTimeline artifact: a "
+        "synthetic earliest-start planning baseline in days, never a production forecast; "
+        "task targets reference exported network edge ids and production entity ids."
     )
     notes.append(
         "Stope solids (production/stopes/) are the authoritative planned prisms, one closed "
@@ -328,7 +345,16 @@ def build_exchange(inputs: ExchangeInputs) -> BundleSpec:
 #: files whose ``sourceEntityIds`` name MineNetwork node / edge ids (topology
 #: identity), not exchange entities
 _NON_ENTITY_SOURCE_TYPES = frozenset(
-    {"MINE_NETWORK", "MINE_NETWORK_NODES", "MINE_NETWORK_EDGES", "CAPABILITY", "README"}
+    {
+        "MINE_NETWORK",
+        "MINE_NETWORK_NODES",
+        "MINE_NETWORK_EDGES",
+        "CAPABILITY",
+        "README",
+        # 1.3.0: the timeline documents name task ids, not entities
+        "MINE_TIMELINE",
+        "MINE_TIMELINE_TASKS",
+    }
 )
 
 
@@ -714,6 +740,7 @@ def _source_not_success(
         "STOPES",
         "CUT_FILL",
         "ROOM_PILLAR",
+        "TIMELINE",
     ],
     artifact: str,
     doc: dict[str, Any],
@@ -1197,10 +1224,11 @@ def _topology(
     centerlines: list[CenterlineEntity],
     files: list[BundleFile],
     omissions: list[ExchangeOmission],
-) -> tuple[list[tuple[str, str]], set[str] | None]:
-    """→ (edge geometry refs, exported node ids); node ids are ``None`` when
-    no network is exported, so a partial export never rejects stopes for a
-    reference it cannot check (directive §43)."""
+) -> tuple[list[tuple[str, str]], set[str] | None, ExchangeNetwork | None]:
+    """→ (edge geometry refs, exported node ids, the exported topology DTO);
+    node ids / DTO are ``None`` when no network is exported, so a partial
+    export never rejects stopes for a reference it cannot check (directive
+    §43); the DTO is the edge authority the 1.3 timeline projection binds to."""
     if inputs.network is None:
         omissions.append(
             ExchangeOmission(
@@ -1210,11 +1238,11 @@ def _topology(
                 source_artifact=NETWORK_ARTIFACT,
             )
         )
-        return [], None
+        return [], None, None
     net = inputs.network.document
     if net.get("status") != "SUCCESS":
         omissions.append(_source_not_success("NETWORK", NETWORK_ARTIFACT, net))
-        return [], None
+        return [], None, None
     doc = project_network(
         net,
         inputs.network.revision,
@@ -1300,6 +1328,7 @@ def _topology(
     return (
         [(e.id, e.geometry_entity_id) for e in edges if e.geometry_entity_id is not None],
         set(node_ids),
+        doc,
     )
 
 
@@ -1399,6 +1428,337 @@ def project_network(
         source_revision=revision,
         nodes=nodes,
         edges=edges,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# operations / timeline (1.3.0, Phase 23B, rule 208)
+# --------------------------------------------------------------------------- #
+
+#: the external production entity id of each timeline production target kind
+_PRODUCTION_ENTITY_ID_BY_TARGET_KIND: dict[str, Any] = {
+    "STOPE": lambda sid: stope_entity_id(sid),
+    "CUT": lambda cid: cut_entity_id(cid),
+    "ROOM_EXTRACTION": lambda uid: bench_entity_id(uid),
+}
+
+
+def _timeline(
+    inputs: ExchangeInputs,
+    network: ExchangeNetwork | None,
+    production: ProductionExport,
+    centerlines: list[CenterlineEntity],
+    files: list[BundleFile],
+    omissions: list[ExchangeOmission],
+) -> None:
+    if inputs.timeline is None:
+        omissions.append(
+            ExchangeOmission(
+                group="TIMELINE",
+                reason_code="ARTIFACT_ABSENT",
+                detail="timeline.json is not generated",
+                source_artifact=TIMELINE_ARTIFACT,
+            )
+        )
+        return
+    tl = inputs.timeline.document
+    if tl.get("status") != "SUCCESS":
+        omissions.append(_source_not_success("TIMELINE", TIMELINE_ARTIFACT, tl))
+        return
+    doc = project_timeline(
+        tl,
+        inputs.timeline.revision,
+        network=network,
+        production=production,
+        centerlines=centerlines,
+        ramp_doc=inputs.ramp.document if inputs.ramp is not None else None,
+        accesses_doc=inputs.accesses.document if inputs.accesses is not None else None,
+        levels_doc=inputs.levels.document if inputs.levels is not None else None,
+        shafts_doc=inputs.shafts.document if inputs.shafts is not None else None,
+    )
+    files.append(
+        BundleFile(
+            "operations/timeline.json",
+            dumps(doc.model_dump(mode="json", by_alias=True)),
+            "MINE_TIMELINE",
+            "DOCUMENT",
+            [],
+            TIMELINE_ARTIFACT,
+            inputs.timeline.revision,
+            False,
+            notes=[
+                "a PROJECTION of the MineTimeline artifact (never recomputed): synthetic "
+                "earliest-start planning baseline, days from day 0, never a forecast",
+                "task targetReference is the external identity (network edge id or "
+                "production entity id); every reference resolves within this bundle",
+            ],
+        )
+    )
+    files.append(
+        BundleFile(
+            "operations/tasks.csv",
+            write_csv(
+                (
+                    "taskId",
+                    "taskType",
+                    "targetKind",
+                    "targetReferenceKind",
+                    "targetReferenceId",
+                    "startDay",
+                    "endDay",
+                    "durationDays",
+                    "dependencies",
+                    "basisQuantity",
+                    "basisUnit",
+                    "basisRate",
+                    "rateUnit",
+                ),
+                [
+                    (
+                        t.task_id,
+                        t.task_type,
+                        t.target_kind,
+                        t.target_reference.kind,
+                        t.target_reference.id,
+                        t.start_day,
+                        t.end_day,
+                        t.duration_days,
+                        ";".join(t.dependencies),
+                        t.basis.quantity,
+                        t.basis.quantity_unit,
+                        t.basis.rate,
+                        t.basis.rate_unit,
+                    )
+                    for t in doc.tasks
+                ],
+            ).encode("utf-8"),
+            "MINE_TIMELINE_TASKS",
+            "TABLE",
+            [],
+            TIMELINE_ARTIFACT,
+            inputs.timeline.revision,
+            False,
+            notes=[
+                "convenience table of operations/timeline.json tasks; dependencies are ';'-joined"
+            ],
+        )
+    )
+
+
+def project_timeline(
+    tl: dict[str, Any],
+    revision: str,
+    *,
+    network: ExchangeNetwork | None,
+    production: ProductionExport,
+    centerlines: list[CenterlineEntity],
+    ramp_doc: dict[str, Any] | None,
+    accesses_doc: dict[str, Any] | None,
+    levels_doc: dict[str, Any] | None,
+    shafts_doc: dict[str, Any] | None,
+) -> ExchangeTimeline:
+    """MineTimeline → MineExchange operations DTO (1.3.0, rule 208).
+
+    The timeline is COPIED, never recomputed: tasks keep their ids, days,
+    dependencies and basis; development progress keeps its chainage
+    fractions, start node and direction; production states keep their
+    transitions. Every reference is bound to THIS bundle and preflighted
+    (typed ``ExchangeExportError``, never a dangling id): unique task ids,
+    every dependency a task, every DEVELOPMENT target an exported network
+    edge, every development's edge exported and its geometryRef resolving to
+    that edge's exported centerline entity, its start node an end node of
+    the edge, every production target / state an exported production entity
+    of the active method, and never a retained pillar or a backfill record.
+    """
+    try:
+        payload = TimelinePayload.model_validate(tl)
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        raise ExchangeExportError(
+            f"{TIMELINE_ARTIFACT} does not match the MineTimeline contract: "
+            f"{first['msg']} at {list(first['loc'])}"
+        ) from exc
+    if network is None:
+        raise ExchangeExportError(
+            f"{TIMELINE_ARTIFACT} is SUCCESS but no MineNetwork is exported; a timeline cannot "
+            "be projected without the edges its development tasks act on"
+        )
+    edges = {e.id: e for e in network.edges}
+    node_ids = {n.id for n in network.nodes}
+    production_ids = set(production.entity_ids)
+    refs = geometry_ref_index(centerlines)
+
+    def production_entity(target_kind: str, target_id: str, where: str) -> str:
+        fn = _PRODUCTION_ENTITY_ID_BY_TARGET_KIND.get(target_kind)
+        if fn is None:
+            raise ExchangeExportError(f"{where}: unknown production target kind {target_kind!r}")
+        entity_id = str(fn(target_id))
+        if entity_id not in production_ids:
+            raise ExchangeExportError(
+                f"{where}: production target {target_id!r} ({target_kind}) resolves to "
+                f"{entity_id!r}, which is not an exported production entity of the active method"
+            )
+        return entity_id
+
+    tasks: list[ExchangeTimelineTask] = []
+    task_ids: set[str] = set()
+    for t in payload.tasks:
+        if t.id in task_ids:
+            raise ExchangeExportError(f"{TIMELINE_ARTIFACT}: duplicate task id {t.id!r}")
+        task_ids.add(t.id)
+        if t.target_kind == "DEVELOPMENT":
+            if t.target_id not in edges:
+                raise ExchangeExportError(
+                    f"{TIMELINE_ARTIFACT} task {t.id!r}: development target {t.target_id!r} is "
+                    "not an exported network edge"
+                )
+            ref = ExchangeTargetReference(kind="NETWORK_EDGE", id=t.target_id)
+        else:
+            ref = ExchangeTargetReference(
+                kind="ENTITY",
+                id=production_entity(
+                    str(t.target_kind), t.target_id, f"{TIMELINE_ARTIFACT} task {t.id!r}"
+                ),
+            )
+        tasks.append(
+            ExchangeTimelineTask(
+                task_id=t.id,
+                task_type=str(t.task_type.value),
+                target_kind=str(t.target_kind),
+                target_id=t.target_id,
+                target_reference=ref,
+                start_day=t.start_day,
+                end_day=t.end_day,
+                duration_days=t.duration_days,
+                dependencies=list(t.dependencies),
+                basis=ExchangeTaskBasis(
+                    quantity=t.basis.quantity,
+                    quantity_unit=t.basis.quantity_unit,
+                    rate=t.basis.rate,
+                    rate_unit=t.basis.rate_unit,
+                ),
+            )
+        )
+    for task in tasks:
+        for dep in task.dependencies:
+            if dep not in task_ids:
+                raise ExchangeExportError(
+                    f"{TIMELINE_ARTIFACT} task {task.task_id!r}: dependency {dep!r} is not a task"
+                )
+
+    developments: list[ExchangeDevelopmentProgress] = []
+    seen_edges: set[str] = set()
+    for d in payload.developments:
+        where = f"{TIMELINE_ARTIFACT} development {d.edge_id!r}"
+        edge = edges.get(d.edge_id)
+        if edge is None:
+            raise ExchangeExportError(f"{where}: not an exported network edge")
+        if d.edge_id in seen_edges:
+            raise ExchangeExportError(f"{where}: duplicate development entry")
+        seen_edges.add(d.edge_id)
+        if d.task_id not in task_ids:
+            raise ExchangeExportError(f"{where}: task {d.task_id!r} is not a task")
+        try:
+            owner = resolve_owning_centerline(
+                d.geometry_ref.model_dump(by_alias=True),
+                edge_type=edge.type,
+                smoothed_payload=ramp_doc,
+                levels_payload=levels_doc,
+                accesses_payload=accesses_doc,
+                shafts_payload=shafts_doc,
+            )
+        except GeometryRefError as err:
+            raise ExchangeExportError(f"{where}: {err}") from err
+        geometry_id = refs.get((owner.artifact, owner.segment_index))
+        if geometry_id is None or geometry_id != edge.geometry_entity_id:
+            raise ExchangeExportError(
+                f"{where}: geometryRef resolves to {geometry_id!r} but the exported edge owns "
+                f"{edge.geometry_entity_id!r}"
+            )
+        if d.excavation_start_node not in (edge.source_node_id, edge.target_node_id):
+            raise ExchangeExportError(
+                f"{where}: excavationStartNode {d.excavation_start_node!r} is not an end node "
+                f"of the edge ({edge.source_node_id!r} / {edge.target_node_id!r})"
+            )
+        if d.excavation_start_node not in node_ids:
+            raise ExchangeExportError(
+                f"{where}: excavationStartNode {d.excavation_start_node!r} is not an exported node"
+            )
+        developments.append(
+            ExchangeDevelopmentProgress(
+                edge_id=d.edge_id,
+                edge_type=d.edge_type,
+                geometry_entity_id=geometry_id,
+                task_id=d.task_id,
+                initial_state=str(d.initial_state.value),
+                transitions=[
+                    ExchangeStateTransition(day=x.day, state=str(x.state.value))
+                    for x in d.transitions
+                ],
+                progress_start_day=d.progress_start_day,
+                progress_end_day=d.progress_end_day,
+                point_chainage_fractions=list(d.point_chainage_fractions),
+                excavation_start_node=d.excavation_start_node,
+                progress_direction=d.progress_direction,
+            )
+        )
+
+    states: list[ExchangeProductionState] = []
+    seen_states: set[str] = set()
+
+    def add_state(kind: str, source_id: str, initial: str, transitions: Any, where: str) -> None:
+        entity_id = production_entity(kind, source_id, where)
+        if entity_id in seen_states:
+            raise ExchangeExportError(f"{where}: duplicate production state for {entity_id!r}")
+        seen_states.add(entity_id)
+        states.append(
+            ExchangeProductionState(
+                entity_id=entity_id,
+                source_id=source_id,
+                target_kind=kind,
+                initial_state=initial,
+                transitions=[
+                    ExchangeStateTransition(day=x.day, state=str(x.state.value))
+                    for x in transitions
+                ],
+            )
+        )
+
+    for st in payload.stopes:
+        add_state(
+            "STOPE",
+            st.stope_id,
+            str(st.initial_state.value),
+            st.transitions,
+            f"{TIMELINE_ARTIFACT} stopes[{st.stope_id!r}]",
+        )
+    if payload.production is not None:
+        for u in payload.production.units:
+            add_state(
+                str(payload.production.target_kind),
+                u.unit_id,
+                str(u.initial_state.value),
+                u.transitions,
+                f"{TIMELINE_ARTIFACT} production.units[{u.unit_id!r}]",
+            )
+
+    metrics = (
+        ExchangeTimelineMetrics.model_validate(
+            payload.metrics.model_dump(mode="json", by_alias=True)
+        )
+        if payload.metrics is not None
+        else None
+    )
+    return ExchangeTimeline(
+        mine_exchange_version=MINE_EXCHANGE_VERSION,
+        source_artifact=TIMELINE_ARTIFACT,
+        source_revision=revision,
+        start_day=payload.start_day,
+        end_day=payload.end_day,
+        tasks=tasks,
+        developments=developments,
+        production_states=states,
+        metrics=metrics,
     )
 
 

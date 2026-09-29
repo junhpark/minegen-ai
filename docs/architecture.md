@@ -112,12 +112,16 @@ here. Per-phase decision records below keep their original wording.
                        failure (errors.py, 409 MINE_EXCHANGE_EXPORT_FAILED);
                        network geometryRefs resolve through
                        network/geometry_refs.py; docs/mine-exchange.md
-      adapters/        Phase 23B external application adapters (rule 207):
-                       manifest-driven MineExchange bundle reader (integrity,
-                       DTO validation), generic AdapterReport contracts,
-                       typed failures, polyline simplification, package ZIP;
-                       ventsim/ = the 23B.1 Ventsim geometry / network seed
-                       (docs/external-adapters.md §23)
+      adapters/        Phase 23B external application adapters (rules
+                       207–212): manifest-driven MineExchange bundle reader
+                       (integrity, DTO validation), AdapterManifest contracts
+                       (five-state sources, assumptions, identity map), typed
+                       ADAPTER_* failures, deterministic package writer,
+                       shared consumption helpers (common.py), the plain
+                       registry table (registry.py); ventsim/ (geometry /
+                       network seed), anylogic/ (operational data package),
+                       engine/ (GLB root-transform patcher + Unity / Unreal
+                       import packages); docs/external-adapters.md §23
       services/        scenario persistence, world / design / infrastructure
                        orchestration, async job service
       api/             FastAPI routers (thin; no algorithms)
@@ -1542,27 +1546,51 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
   exists and shows `Preparing export…`; the backend manifest is the only
   authority on what the bundle contains.
 
-## Phase 23B.1 — Ventsim geometry / network seed adapter (rule 207)
+## Phase 23B — Full External Application Adapters + MineExchange 1.3 (rules 207–212)
 
 `docs/external-adapters.md` §23 is the contract. Architecture summary:
 
-- **Boundary.** `services/adapter_service.py` runs the MineExchange export
-  (one coherent snapshot) and hands the adapter the bundle BYTES;
-  `adapters/bundle_reader.py` re-reads them by manifest (safe paths, SHA-256
-  of every listed file, no unlisted entry, DTO validation on demand,
-  `LOCAL_ENU_Z_UP` metre contract) — the adapter is an offline consumer of
-  the bundle and never touches `derived/*`. Nothing is persisted.
-- **Translation, not engineering.** `adapters/ventsim/seed.py` emits one
-  3-D DXF polyline per MineNetwork edge from the edge's owning centerline
-  entity (end points verified ON the topology nodes, declared length
-  verified against the polyline), optionally Douglas-Peucker reduced with
-  an explicit, reported tolerance; the attribute table carries only bundle
-  facts (lengths, width / height / shape); every ventilation property is
-  `NOT_PROVIDED`; RAISE is a typed omission; every consumed group has a
-  four-state record; failures are typed (`adapters/errors.py`).
-- **Frontend.** `api.exportVentsimSeed` + a Scenario-panel button enabled
-  on the same prerequisite the backend enforces (ramp + SUCCESS network);
-  no client-side adapter logic.
+- **MineExchange 1.3 (rule 208).** `exchange/builder.py::project_timeline`
+  projects the MineTimeline artifact into `operations/timeline.json`
+  (`ExchangeTimeline`: tasks with an external `targetReference`, development
+  progress, production state machines, metrics) and `operations/tasks.csv`;
+  `TIMELINE_ARTIFACT` joins the export snapshot; the preflight binds every
+  task / progress / state to exported edges, centerlines and production
+  entities. Additive over 1.2 — geometry binaries byte-identical, the
+  `TIMELINE` omission now `ARTIFACT_ABSENT` / `SOURCE_NOT_SUCCESS`.
+- **Boundary (rule 207).** `services/adapter_service.py` runs the
+  MineExchange export (one coherent snapshot) and hands the adapter the
+  bundle BYTES; `adapters/bundle_reader.py` re-reads them by manifest (safe
+  paths, SHA-256 of every listed file, no unlisted entry, DTO validation on
+  demand, DXF handles from `files[].dxfEntities`, `LOCAL_ENU_Z_UP` metre
+  contract). The adapter import graph never reaches a MineGen service,
+  artifact reader or store (`tests/test_adapters_core.py`); nothing is
+  persisted. `adapters/registry.py::ADAPTERS` maps the four targets to
+  `bytes → AdapterPackage` builders; `adapters/common.py` holds the shared
+  consumption helpers (five-state mapping, network / centerline / timeline
+  documents, NOT_PROVIDED assumptions); `adapters/package.py` writes the
+  deterministic ZIP with `adapter_manifest.json` (`AdapterManifest`) last.
+- **Ventsim (rule 210).** `adapters/ventsim/adapter.py`: the bundle DXF
+  copied verbatim (full fidelity), one airway row per network edge with an
+  owning centerline (weld and length verified, never repaired), node table,
+  handle ↔ entity ↔ edge identity map, every ventilation property
+  NOT_PROVIDED, RAISE a typed omission.
+- **AnyLogic (rule 211).** `adapters/anylogic/adapter.py`: requires 1.3 +
+  network + timeline; normalized `data/*.csv` (nodes, edges, centerline
+  points, capabilities, production units with retained / backfill flags,
+  tasks, development progress, production states) with referential
+  integrity re-verified, plus a blank `templates/simulation_inputs.csv`.
+- **Unity / Unreal (rule 212).** `adapters/engine/glb.py` splits / joins the
+  GLB container and adds ONE root node with the mine → glTF matrix to a
+  copied `LOCAL_ENU_Z_UP` render GLB (binary chunk preserved, never twice);
+  `adapters/engine/package.py` emits `scene/assets/*.glb`, the
+  `scene/entities.json` identity authority, verbatim network / capability /
+  timeline documents and `import_settings.json` with engine notes.
+- **API + frontend (rule 209).** `api/adapters.py`: `POST …/export/{ventsim
+  | anylogic | unity | unreal}` → `application/zip` with adapter headers;
+  typed `ADAPTER_*` refusals. The Scenario panel's compact export selector
+  (`describeExportTargets`, `api.exportAdapter`) offers MineExchange plus the
+  four adapters with one Export button; the download mutates no viewer state.
 
 ## Phase 21A — Mining Method Core, Longhole migration, MineExchange 1.1 (rule 192)
 

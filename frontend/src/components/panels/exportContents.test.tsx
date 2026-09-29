@@ -8,11 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { WorldScene } from '@/types/scene'
 import { ExportContents } from './ExportContents'
-import {
-  EXPORT_HELPER_TEXT,
-  describeExportContents,
-  describeVentsimSeedAvailability,
-} from './exportContents'
+import { EXPORT_HELPER_TEXT, describeExportContents, describeExportTargets } from './exportContents'
 
 function scene(over: Partial<WorldScene> = {}): WorldScene {
   return {
@@ -54,6 +50,7 @@ describe('describeExportContents', () => {
       developmentMesh: 'NOT_GENERATED',
       network: 'NOT_GENERATED',
       capability: 'NOT_GENERATED',
+      timeline: 'NOT_GENERATED',
       stopes: 'NOT_GENERATED',
     })
     expect(layers.find((l) => l.key === 'faults')?.label).toBe('Faults (2)')
@@ -82,6 +79,7 @@ describe('describeExportContents', () => {
     expect(byKey.developmentMesh).toBe('NOT_GENERATED')
     expect(byKey.network).toBe('NOT_GENERATED')
     expect(byKey.capability).toBe('NOT_GENERATED')
+    expect(byKey.timeline).toBe('NOT_GENERATED')
     expect(byKey.stopes).toBe('NOT_GENERATED')
   })
 
@@ -97,6 +95,7 @@ describe('describeExportContents', () => {
         developmentMesh: ok,
         network: ok,
         capabilityGraph: ok,
+        timeline: ok,
         stopes: ok,
       }),
       true,
@@ -115,6 +114,7 @@ describe('describeExportContents', () => {
       'developmentMesh',
       'network',
       'capability',
+      'timeline',
       'stopes',
     ])
     const withFailedCap = describeExportContents(
@@ -183,19 +183,46 @@ describe('production row of a method without a production implementation', () =>
   })
 })
 
-describe('describeVentsimSeedAvailability (Phase 23B.1)', () => {
-  it('mirrors the adapter prerequisite: world → ramp → SUCCESS network', () => {
-    expect(describeVentsimSeedAvailability(null).enabled).toBe(false)
-    expect(describeVentsimSeedAvailability(scene()).enabled).toBe(false)
-    expect(describeVentsimSeedAvailability(scene()).reason).toMatch(/ramp/i)
-    expect(describeVentsimSeedAvailability(scene({ smoothedDecline: ok })).reason).toMatch(
-      /network/i,
+describe('describeExportTargets (Phase 23B)', () => {
+  const enabled = (targets: ReturnType<typeof describeExportTargets>) =>
+    Object.fromEntries(targets.map((t) => [t.key, t.enabled]))
+
+  it('lists the five targets in a fixed order with their descriptions', () => {
+    const targets = describeExportTargets(null)
+    expect(targets.map((t) => t.key)).toEqual([
+      'MINE_EXCHANGE',
+      'VENTSIM',
+      'ANYLOGIC',
+      'UNITY',
+      'UNREAL',
+    ])
+    expect(targets.every((t) => !t.enabled && t.reason === 'Generate a world first.')).toBe(true)
+    expect(targets.find((t) => t.key === 'VENTSIM')?.description).toMatch(/ventilation/i)
+    expect(targets.find((t) => t.key === 'ANYLOGIC')?.description).toMatch(/operational/i)
+  })
+
+  it('mirrors each adapter prerequisite from the scene (backend stays the authority)', () => {
+    // world only: MineExchange + engine packages (partial), no Ventsim / AnyLogic
+    expect(enabled(describeExportTargets(scene()))).toEqual({
+      MINE_EXCHANGE: true,
+      VENTSIM: false,
+      ANYLOGIC: false,
+      UNITY: true,
+      UNREAL: true,
+    })
+    expect(describeExportTargets(scene()).find((t) => t.key === 'VENTSIM')?.reason).toMatch(
+      /ramp.*MineNetwork/,
     )
+    // ramp + network: Ventsim yes, AnyLogic needs the schedule
+    const withNetwork = scene({ smoothedDecline: ok, network: ok })
+    expect(enabled(describeExportTargets(withNetwork)).VENTSIM).toBe(true)
+    expect(enabled(describeExportTargets(withNetwork)).ANYLOGIC).toBe(false)
+    // a FAILED network is not a network
     expect(
-      describeVentsimSeedAvailability(scene({ smoothedDecline: ok, network: failed })).enabled,
+      enabled(describeExportTargets(scene({ smoothedDecline: ok, network: failed }))).VENTSIM,
     ).toBe(false)
-    expect(
-      describeVentsimSeedAvailability(scene({ smoothedDecline: ok, network: ok })).enabled,
-    ).toBe(true)
+    // network + timeline: everything
+    const full = scene({ smoothedDecline: ok, network: ok, timeline: ok })
+    expect(Object.values(enabled(describeExportTargets(full))).every(Boolean)).toBe(true)
   })
 })

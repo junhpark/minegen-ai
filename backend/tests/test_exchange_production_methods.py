@@ -1,7 +1,8 @@
-"""MineExchange 1.2.0 — Cut & Fill / Room & Pillar production export (Phase 21B/C).
+"""MineExchange 1.2 semantics (now carried by 1.3.0) — Cut & Fill / Room & Pillar
+production export (Phase 21B/C).
 
-MX-1  version 1.2.0; a Longhole bundle carries no CUT_FILL / ROOM_PILLAR group
-      and no methodParameters block (1.1.0 shape unchanged)
+MX-1  version 1.3.0 (1.2 semantics unchanged); a Longhole bundle carries no
+      CUT_FILL / ROOM_PILLAR group and no methodParameters block (1.1.0 shape unchanged)
 MX-2  CF world-only: CUT_FILL ARTIFACT_ABSENT (no STOPES group), typed
       methodParameters DTO, productionKind CUT_FILL
 MX-3  CF full: production/cut_fill.json, CUT solids (STL/OBJ/GLB, independent
@@ -144,8 +145,8 @@ def test_mx1_version_and_longhole_shape_unchanged(client: TestClient) -> None:
     _post(client, f"/api/v1/scenarios/{sid}/world/generate")
     b = export(client, sid)
     assert_integrity(b)
-    assert MINE_EXCHANGE_VERSION == "1.2.0"
-    assert b.manifest["mineExchangeVersion"] == "1.2.0"
+    assert MINE_EXCHANGE_VERSION == "1.3.0"
+    assert b.manifest["mineExchangeVersion"] == "1.3.0"
     om = b.omissions()
     assert om["STOPES"] == "ARTIFACT_ABSENT"
     assert "CUT_FILL" not in om and "ROOM_PILLAR" not in om
@@ -196,7 +197,7 @@ def test_mx3_cut_fill_cuts_and_backfills(cut_fill: TabularStack, cut_fill_bundle
     cuts_by_id = {c["id"]: c for c in src["cuts"]}
     doc = b.json("production/cut_fill.json")
     assert doc["semanticType"] == "PRODUCTION_CUT_FILL"
-    assert doc["mineExchangeVersion"] == "1.2.0" and doc["method"] == "CUT_AND_FILL"
+    assert doc["mineExchangeVersion"] == "1.3.0" and doc["method"] == "CUT_AND_FILL"
     assert doc["coordinateFrame"] == "LOCAL_ENU_Z_UP"
     assert doc["sourceArtifact"] == STOPES_ARTIFACT
     f = b.files["production/cut_fill.json"]

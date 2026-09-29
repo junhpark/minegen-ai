@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import SerializerFunctionWrapHandler, model_serializer
+from pydantic import Field, SerializerFunctionWrapHandler, model_serializer
 
 from minegen.core.models import ApiModel
 
@@ -38,6 +38,8 @@ __all__ = [
     "ExchangeRequiredPath",
     "ExchangeStope",
     "ExchangeStopesMetrics",
+    "ExchangeTimeline",
+    "ExchangeTimelineTask",
     "GeometryQa",
     "GlbFrame",
     "MultiBodyComponent",
@@ -52,7 +54,13 @@ __all__ = [
 #: (ROOM / BENCH / PILLAR) production exports, typed method-parameter DTOs
 #: and per-active-method production omission groups — again additive: every
 #: 1.1.0 file, id and meaning is unchanged.
-MINE_EXCHANGE_VERSION = "1.2.0"
+#: 1.3.0 (Phase 23B): OPERATIONAL / TIMELINE semantics — ``operations/
+#: timeline.json`` + ``operations/tasks.csv`` project the MineTimeline (tasks
+#: with external target references, development progress, production state
+#: machines); the TIMELINE omission group follows ARTIFACT_ABSENT /
+#: SOURCE_NOT_SUCCESS like every other artifact. Additive: every 1.2.0 file,
+#: id, geometry byte and meaning is unchanged.
+MINE_EXCHANGE_VERSION = "1.3.0"
 #: MineGen canonical frame: X East, Y North, Z Up, metres (CLAUDE.md rule 3)
 COORDINATE_FRAME = "LOCAL_ENU_Z_UP"
 #: glTF scene convention after the explicit root transform (x, z, −y)
@@ -92,6 +100,9 @@ SemanticType = Literal[
     "PRODUCTION_ROOM_PILLAR",
     "BENCH_SOLID",
     "PILLAR_SOLID",
+    # 1.3.0 (Phase 23B)
+    "MINE_TIMELINE",
+    "MINE_TIMELINE_TASKS",
 ]
 Representation = Literal[
     "DOCUMENT",
@@ -303,6 +314,114 @@ class ExchangeNetwork(ApiModel):
     source_revision: str
     nodes: list[ExchangeNetworkNode]
     edges: list[ExchangeNetworkEdge]
+
+
+# --------------------------------------------------------------------------- #
+# operations (1.3.0, Phase 23B): a PROJECTION of the MineTimeline (rule 208)
+# --------------------------------------------------------------------------- #
+
+#: rule 84 / 174 semantics, restated for external consumers
+TIMELINE_SEMANTICS = (
+    "synthetic earliest-start planning baseline in days from day 0 (never a "
+    "production forecast); state(day) = the latest transition whose day <= day "
+    "(exact boundary); development progress p reveals chainage fractions [0, p] "
+    "for progressDirection +1 and [1 - p, 1] for -1 along the owning centerline"
+)
+
+
+class ExchangeTargetReference(ApiModel):
+    """The EXTERNAL identity a task acts on: a MineExchange network edge id
+    (``NETWORK_EDGE``) or an exported production entity id (``ENTITY``:
+    ``stope:<id>``, ``cut:<id>``, ``bench:<unitId>``)."""
+
+    kind: Literal["NETWORK_EDGE", "ENTITY"]
+    id: str
+
+
+class ExchangeTaskBasis(ApiModel):
+    quantity: float
+    quantity_unit: str
+    rate: float
+    rate_unit: str
+
+
+class ExchangeTimelineTask(ApiModel):
+    task_id: str
+    task_type: str
+    target_kind: str
+    #: the authoritative MineGen target id (provenance); ``targetReference``
+    #: is the external identity to use
+    target_id: str
+    target_reference: ExchangeTargetReference
+    start_day: float
+    end_day: float
+    duration_days: float
+    dependencies: list[str]
+    basis: ExchangeTaskBasis
+
+
+class ExchangeStateTransition(ApiModel):
+    day: float
+    state: str
+
+
+class ExchangeDevelopmentProgress(ApiModel):
+    """Development excavation progress of ONE network edge (rule 83 / 174),
+    copied from the MineTimeline — never inferred."""
+
+    edge_id: str
+    edge_type: str
+    geometry_entity_id: str
+    task_id: str
+    initial_state: str
+    transitions: list[ExchangeStateTransition]
+    progress_start_day: float
+    progress_end_day: float
+    #: geometry-ordered cumulative chainage fractions of the owning polyline
+    point_chainage_fractions: list[float]
+    excavation_start_node: str
+    progress_direction: Literal[1, -1]
+
+
+class ExchangeProductionState(ApiModel):
+    """State machine of one production entity (stope / cut / extraction
+    unit); retained pillars and backfill records are never states here."""
+
+    entity_id: str
+    source_id: str
+    target_kind: str
+    initial_state: str
+    transitions: list[ExchangeStateTransition]
+
+
+class ExchangeTimelineMetrics(ApiModel):
+    task_count: int
+    development_task_count: int
+    stope_task_count: int
+    development_object_count: int
+    stope_object_count: int
+    total_development_length3d: float = Field(alias="totalDevelopmentLength3d")
+    total_scheduled_tonnes: float
+    ramp_completion_day: float
+    first_stoping_day: float | None
+    end_day: float
+    production_task_count: int | None = None
+    production_object_count: int | None = None
+    production_target_kind: str | None = None
+
+
+class ExchangeTimeline(ApiModel):
+    mine_exchange_version: str
+    semantic_type: Literal["MINE_TIMELINE"] = "MINE_TIMELINE"
+    source_artifact: str
+    source_revision: str
+    timeline_semantics: str = TIMELINE_SEMANTICS
+    start_day: float
+    end_day: float
+    tasks: list[ExchangeTimelineTask]
+    developments: list[ExchangeDevelopmentProgress]
+    production_states: list[ExchangeProductionState]
+    metrics: ExchangeTimelineMetrics | None
 
 
 # --------------------------------------------------------------------------- #

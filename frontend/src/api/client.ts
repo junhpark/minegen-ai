@@ -14,6 +14,7 @@ import type {
   MineAnalysisPayload,
 } from '@/types/analysis'
 import type { Capability } from '@/types/enums'
+import type { AdapterTarget } from '@/components/panels/exportContents'
 import type {
   AccessTargetsPayload,
   CapabilityGraphPayload,
@@ -203,15 +204,14 @@ export const api = {
       { method: 'POST' },
       `minegen_${id}_mineexchange_v1.zip`,
     ),
-  /** Phase 23B.1: the Ventsim SEED package (VENTSIM_SEED adapter over the
-   * MineExchange bundle). Adapter defaults are recorded in the package's
-   * report; the backend answers 409 REQUIRED_SOURCE_ABSENT without a
-   * network. */
-  exportVentsimSeed: (id: string) =>
+  /** Phase 23B: an external adapter package (VENTSIM | ANYLOGIC | UNITY |
+   * UNREAL) built on the backend from the MineExchange bundle; typed 409
+   * refusals (ADAPTER_REQUIRED_SOURCE_ABSENT, …) travel as ApiError. */
+  exportAdapter: (id: string, target: AdapterTarget) =>
     requestFile(
-      `/scenarios/${id}/export/ventsim-seed`,
+      `/scenarios/${id}/export/${target.toLowerCase()}`,
       { method: 'POST' },
-      `minegen_${id}_ventsim_seed.zip`,
+      `minegen_${id}_${target.toLowerCase()}.zip`,
     ),
   getDesignAssessment: (id: string) =>
     request<DesignAssessmentPayload>(`/scenarios/${id}/design/assessment`),

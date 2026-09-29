@@ -67,6 +67,8 @@ export function describeExportContents(
     },
     { key: 'network', label: 'Network', state: stateOf(scene.network) },
     { key: 'capability', label: 'Capability', state: stateOf(scene.capabilityGraph) },
+    // MineExchange 1.3: the operations timeline (ARTIFACT_ABSENT / SOURCE_NOT_SUCCESS)
+    { key: 'timeline', label: 'Timeline', state: stateOf(scene.timeline) },
     // MineExchange 1.1 / 1.2: the ACTIVE method's production solids
     // (stopes / cuts / rooms-benches-pillars) — one production kind per bundle
     {
@@ -94,27 +96,49 @@ export const STATE_TEXT: Record<ExportLayerState, string> = {
 }
 
 /**
- * Phase 23B.1: whether the Ventsim SEED adapter can run RIGHT NOW. The seed
- * needs the excavation centerlines and the MineNetwork in the MineExchange
- * bundle (the backend refuses with REQUIRED_SOURCE_ABSENT otherwise); the
- * panel only mirrors that prerequisite from the loaded scene and never
- * decides the package contents — the adapter report is the authority.
+ * Phase 23B: the export targets. MineExchange is the canonical bundle; the
+ * four adapters are backend translators over that bundle (rule 207). The
+ * panel only mirrors each adapter's REQUIRED source groups from the loaded
+ * scene (the backend refuses with ADAPTER_REQUIRED_SOURCE_ABSENT /
+ * ADAPTER_SOURCE_NOT_SUCCESS anyway) and never decides package contents —
+ * every package's adapter_manifest.json is the authority.
  */
-export interface VentsimSeedAvailability {
+export type AdapterTarget = 'VENTSIM' | 'ANYLOGIC' | 'UNITY' | 'UNREAL'
+export type ExportTargetKey = 'MINE_EXCHANGE' | AdapterTarget
+
+export interface ExportTarget {
+  key: ExportTargetKey
+  label: string
+  description: string
   enabled: boolean
   reason: string
 }
 
-export const VENTSIM_SEED_HELPER_TEXT =
-  'Ventsim seed: one DXF polyline per network edge plus an airway attribute table (lengths, width / height). Ventilation properties are not provided.'
+const TARGET_TEXT: Record<ExportTargetKey, { label: string; description: string }> = {
+  MINE_EXCHANGE: { label: 'MineExchange', description: 'Canonical exchange bundle' },
+  VENTSIM: { label: 'Ventsim', description: 'Ventilation geometry / network seed' },
+  ANYLOGIC: { label: 'AnyLogic', description: 'Operational simulation data package' },
+  UNITY: { label: 'Unity', description: 'Engine import package' },
+  UNREAL: { label: 'Unreal', description: 'Engine import package' },
+}
 
-export function describeVentsimSeedAvailability(scene: WorldScene | null): VentsimSeedAvailability {
-  if (!scene) return { enabled: false, reason: 'Generate a world first.' }
-  if (scene.smoothedDecline == null || scene.smoothedDecline.status === 'FAILED') {
-    return { enabled: false, reason: 'A ramp (excavation centerlines) is required.' }
-  }
-  if (scene.network == null || scene.network.status !== 'SUCCESS') {
-    return { enabled: false, reason: 'A generated MineNetwork is required.' }
-  }
-  return { enabled: true, reason: 'Ready: the network and centerlines are in the bundle.' }
+function ready(payload: { status: string } | null | undefined): boolean {
+  return payload != null && payload.status === 'SUCCESS'
+}
+
+export function describeExportTargets(scene: WorldScene | null): ExportTarget[] {
+  const world = scene != null
+  const network = world && ready(scene.network)
+  const ramp = world && ready(scene.smoothedDecline)
+  const timeline = world && ready(scene.timeline)
+  const need = (ok: boolean, missing: string): [boolean, string] =>
+    ok ? [true, 'Ready.'] : [false, world ? missing : 'Generate a world first.']
+  const rows: [ExportTargetKey, boolean, string][] = [
+    ['MINE_EXCHANGE', ...need(world, '')],
+    ['VENTSIM', ...need(ramp && network, 'Requires a ramp and a generated MineNetwork.')],
+    ['ANYLOGIC', ...need(network && timeline, 'Requires a generated MineNetwork and schedule.')],
+    ['UNITY', ...need(world, '')],
+    ['UNREAL', ...need(world, '')],
+  ]
+  return rows.map(([key, enabled, reason]) => ({ key, ...TARGET_TEXT[key], enabled, reason }))
 }

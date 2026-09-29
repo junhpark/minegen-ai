@@ -23,8 +23,9 @@ import { Disclosure } from '@/components/ui/Disclosure'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { ExportContents } from '@/components/panels/ExportContents'
 import {
+  type ExportTargetKey,
   describeExportContents,
-  describeVentsimSeedAvailability,
+  describeExportTargets,
 } from '@/components/panels/exportContents'
 import { activateScenario, scenarioEpoch } from '@/stores/scenarioSession'
 import { useScenarioStore } from '@/stores/scenarioStore'
@@ -121,37 +122,25 @@ export function ScenarioPanel() {
     },
   })
 
-  // Phase 23A: MineExchange download — the backend is the only authority on
-  // what the bundle contains (manifest omissions); the panel never guesses
-  // artifact availability and generates no geometry.
-  const exportExchange = useMutation({
+  // Phase 23A / 23B: one export action over a compact target selector. The
+  // backend is the only authority on what a package contains (MineExchange
+  // manifest omissions, adapter_manifest.json); the panel mirrors each
+  // adapter's required sources from the scene and generates nothing.
+  const [exportTarget, setExportTarget] = useState<ExportTargetKey>('MINE_EXCHANGE')
+  const exportTargets = describeExportTargets(scene ?? null)
+  const selectedTarget = exportTargets.find((t) => t.key === exportTarget) ?? exportTargets[0]
+  const exportPackage = useMutation({
     mutationFn: async () => {
       if (!scenario) throw new Error('no scenario selected')
-      const file = await api.exportMineExchange(scenario.id)
+      const file =
+        exportTarget === 'MINE_EXCHANGE'
+          ? await api.exportMineExchange(scenario.id)
+          : await api.exportAdapter(scenario.id, exportTarget)
       saveFile(file.blob, file.filename)
     },
   })
 
-  // Phase 23B.1: the Ventsim seed adapter runs over that same bundle on the
-  // backend; the panel mirrors its prerequisite (network + centerlines) and
-  // sends no adapter parameter — the documented defaults are recorded in
-  // the package's adapter report.
-  const exportVentsim = useMutation({
-    mutationFn: async () => {
-      if (!scenario) throw new Error('no scenario selected')
-      const file = await api.exportVentsimSeed(scenario.id)
-      saveFile(file.blob, file.filename)
-    },
-  })
-  const ventsim = describeVentsimSeedAvailability(scene ?? null)
-
-  const error =
-    realize.error ??
-    create.error ??
-    load.error ??
-    generate.error ??
-    exportExchange.error ??
-    exportVentsim.error
+  const error = realize.error ?? create.error ?? load.error ?? generate.error ?? exportPackage.error
   const errorText =
     error instanceof ApiError ? `${error.code}: ${error.message}` : error ? error.message : null
 
@@ -337,24 +326,40 @@ export function ScenarioPanel() {
       </Disclosure>
 
       <div className="mt-3 border-t border-rock-700 pt-2">
+        <label className="mb-1 block text-[11px] uppercase tracking-wide text-mute">
+          Export
+          <select
+            data-testid="export-target-select"
+            className={`${input} mt-1`}
+            value={exportTarget}
+            disabled={!scenario || exportPackage.isPending}
+            onChange={(e) => setExportTarget(e.target.value as ExportTargetKey)}
+          >
+            {exportTargets.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label} — {t.description}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="mb-1 text-[11px] text-chalk-dim" data-testid="export-target-reason">
+          {selectedTarget?.description}
+          {selectedTarget && !selectedTarget.enabled ? ` · ${selectedTarget.reason}` : ''}
+        </p>
         <ActionButton
           variant="secondary"
-          disabled={!scenario || !scene || exportExchange.isPending}
-          title="Download the MineExchange v1 bundle of the currently available mine state (a world-only export is valid; missing layers are recorded in the manifest)"
-          onClick={() => exportExchange.mutate()}
+          disabled={!scenario || !scene || !selectedTarget?.enabled || exportPackage.isPending}
+          title={
+            exportTarget === 'MINE_EXCHANGE'
+              ? 'Download the MineExchange bundle of the currently available mine state (a world-only export is valid; missing layers are recorded in the manifest)'
+              : `${selectedTarget?.label ?? ''} package built on the backend from the MineExchange bundle; adapter_manifest.json records sources, assumptions and omissions. ${selectedTarget?.reason ?? ''}`
+          }
+          onClick={() => exportPackage.mutate()}
         >
-          {exportExchange.isPending ? 'Preparing export…' : 'Export MineExchange (.zip)'}
+          {exportPackage.isPending
+            ? 'Preparing export…'
+            : `Export ${selectedTarget?.label ?? 'MineExchange'} (.zip)`}
         </ActionButton>
-        <div className="mt-1">
-          <ActionButton
-            variant="secondary"
-            disabled={!scenario || !ventsim.enabled || exportVentsim.isPending}
-            title={`Ventsim seed package (DXF airway centerlines + attribute table + adapter report). ${ventsim.reason}`}
-            onClick={() => exportVentsim.mutate()}
-          >
-            {exportVentsim.isPending ? 'Preparing Ventsim seed…' : 'Export Ventsim seed (.zip)'}
-          </ActionButton>
-        </div>
         <Disclosure
           label="Export contents"
           hint={
