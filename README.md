@@ -38,6 +38,7 @@ platform. Research prototype / proof of concept.
 | 22A/B | Mine Analysis Core + Planning Economics (read-only analysis, economics.json) | done  |
 | 22C   | Design Rulebook + Layout Development Economics (read-only, no second evaluator) | done  |
 | 23A/B | MineExchange 1.3 + external adapters (Ventsim, AnyLogic, Unity, Unreal packages) | done  |
+| 23C   | External simulation results (Ventsim / AnyLogic MineResult import, snapshot-bound overlay) | done  |
 
 
 ## Layout

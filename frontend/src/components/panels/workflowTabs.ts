@@ -34,13 +34,16 @@ export const SYSTEMS_TABS: readonly PanelTab<SystemsTab>[] = [
  * assessment — never a second rule evaluator) and the Layout comparison
  * (comparable development cost over the persisted layout-v2 catalogue).
  */
-export type AnalysisTab = 'OVERVIEW' | 'ECONOMICS' | 'RULES' | 'LAYOUT_COMPARISON'
+export type AnalysisTab = 'OVERVIEW' | 'ECONOMICS' | 'RULES' | 'LAYOUT_COMPARISON' | 'SIMULATION'
 
 export const ANALYSIS_TABS: readonly PanelTab<AnalysisTab>[] = [
   { id: 'OVERVIEW', label: 'Overview' },
   { id: 'ECONOMICS', label: 'Economics' },
   { id: 'RULES', label: 'Rules' },
   { id: 'LAYOUT_COMPARISON', label: 'Layout comparison' },
+  // Phase 23C: external simulation results imported over MineExchange
+  // bundles and overlaid on the mine — a separate container, no new AppMode
+  { id: 'SIMULATION', label: 'Simulation Results' },
 ]
 
 export const DESIGN_PANEL_ID = 'design-workflow-panel'

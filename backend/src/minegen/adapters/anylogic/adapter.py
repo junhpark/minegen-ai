@@ -49,6 +49,7 @@ from minegen.adapters.common import (
 from minegen.adapters.contracts import AdapterAssumption, AdapterIdentityEntry, AdapterOmission
 from minegen.adapters.errors import MineExchangeBundleInvalidError
 from minegen.adapters.package import README_PATH, AdapterPackage, PackageBuilder
+from minegen.adapters.roundtrip import add_anylogic_kit
 from minegen.exchange.formats.csv_table import write_csv
 from minegen.exchange.models import (
     ExchangeProductionCutFill,
@@ -57,7 +58,7 @@ from minegen.exchange.models import (
 )
 
 ADAPTER_NAME = "ANYLOGIC"
-ADAPTER_VERSION = "0.1.0"
+ADAPTER_VERSION = "0.2.0"  # 0.2.0: Phase 23C round-trip result kit (roundtrip/)
 SUPPORTED_MINE_EXCHANGE_VERSIONS = ">=1.3.0,<2.0.0"
 PACKAGE_ROOT = "anylogic_package"
 
@@ -503,6 +504,14 @@ def build_anylogic_package(bundle: MineExchangeBundle) -> AdapterPackage:
         source_files=[],
     )
 
+    kit_files = add_anylogic_kit(
+        pkg,
+        adapter_version=ADAPTER_VERSION,
+        mine_exchange_version=bundle.version,
+        scenario_id=bundle.manifest.scenario_id,
+        source_snapshot=bundle.manifest.source_snapshot.model_dump(mode="json", by_alias=True),
+    )
+
     method = mining_method(bundle)
     identity = [
         AdapterIdentityEntry(
@@ -586,6 +595,11 @@ def build_anylogic_package(bundle: MineExchangeBundle) -> AdapterPackage:
             "timelineEndDay": timeline.end_day,
             "miningMethod": (method or {}).get("requestedMethod"),
             "directionSemantics": network.direction_semantics,
+            "roundTripKit": {
+                "mineResultVersion": "1.0.0",
+                "files": kit_files,
+                "importRoute": "POST /api/v1/scenarios/{scenarioId}/results/import/anylogic",
+            },
         },
     )
     pkg.add(
@@ -635,6 +649,10 @@ def _readme(fields: dict[str, Any]) -> bytes:
         "                            transition whose day <= day (exact boundary), initialState",
         "                            before the first",
         "templates/simulation_inputs.csv  columns only — every value blank (no silent default)",
+        "roundtrip/                MineResult 1.0 kit: result_manifest.json (bound to this",
+        "                          export's snapshot), vehicle_samples.csv, edge_metrics.csv,",
+        "                          summary_metrics.csv, README.txt — fill from the AnyLogic",
+        "                          run, zip, import at .../results/import/anylogic",
         "",
         "Coordinates: metres, X east / Y north / Z up, right-handed, local synthetic origin.",
         "Map them to your model's space-markup axes and scale explicitly.",

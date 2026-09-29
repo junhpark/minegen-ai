@@ -122,6 +122,18 @@ here. Per-phase decision records below keep their original wording.
                        network seed), anylogic/ (operational data package),
                        engine/ (GLB root-transform patcher + Unity / Unreal
                        import packages); docs/external-adapters.md §23
+      results/         Phase 23C external simulation results (rules
+                       213–218): MineResult 1.0 DTOs (models), package
+                       reader with explicit budgets (package.py), Ventsim /
+                       AnyLogic importers (importers/), canonical
+                       normalization + deterministic resultId
+                       (normalization.py), source-snapshot edge geometry +
+                       chainage projection (geometry.py), frame builders
+                       (frames.py), atomic results/ store OUTSIDE derived/
+                       (store.py), canonical re-export (export.py), typed
+                       RESULT_* failures; services/result_service.py binds
+                       imports to ExchangeService.observe_source_snapshot /
+                       observe_edge_centerlines; docs/simulation-results.md
       services/        scenario persistence, world / design / infrastructure
                        orchestration, async job service
       api/             FastAPI routers (thin; no algorithms)
@@ -1591,6 +1603,43 @@ plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
   typed `ADAPTER_*` refusals. The Scenario panel's compact export selector
   (`describeExportTargets`, `api.exportAdapter`) offers MineExchange plus the
   four adapters with one Export button; the download mutates no viewer state.
+
+## Phase 23C — External Simulation Results & MineGen Overlay (rules 213–218)
+
+`docs/simulation-results.md` is the contract. Architecture summary:
+
+- **Contract.** MineResult 1.0 (`results/models.py`, `MINE_RESULT_VERSION =
+  "1.0.0"`; MineExchange stays 1.3.0) — a result is an OBSERVATION bound to
+  the exact MineExchange `sourceSnapshot` and to MineNetwork edge ids; it is
+  never a mine authority, never a fingerprint input, never exported back.
+- **Observation, once.** `ExchangeService.observe(…)` is the ONE observation
+  the export and the result binding share: `observe_source_snapshot` yields
+  the snapshot identity (no world load), `observe_edge_centerlines` the edge
+  identity space through the same `exchange/builder.py::assemble_centerlines`
+  (extracted from `_excavations`, byte-identical export) and `project_network`.
+- **Import.** `services/result_service.py`: observe → `results/package.py`
+  (ZIP safety, budgets, manifest, version) → bind (scenario, snapshot) →
+  `results/importers/{ventsim,anylogic}.py` (explicit identity, canonical
+  units through `results/units.py`, declared axis, sorted NaN-missing arrays)
+  → `results/normalization.py` (canonical digest, deterministic resultId,
+  NPZ) → re-observe under the scenario lock → `results/store.py` atomic
+  publication under `data/scenarios/{id}/results/<resultId>/`.
+- **Reads.** COMPATIBLE / STALE against the current snapshot on every read;
+  `results/frames.py` slices the stored arrays (hold-last ventilation,
+  same-edge vehicle interpolation, hold-last edge metrics) and
+  `results/export.py` rebuilds the canonical ZIP through the deterministic
+  adapter package writer. `api/results.py` maps every `ResultError` to its
+  wire code and status.
+- **Kits.** `adapters/roundtrip.py` adds the additive `roundtrip/` folder to
+  the Ventsim / AnyLogic packages (adapters 0.2.0).
+- **Frontend.** `types/results.ts`, `api/client.ts` (upload / list / detail
+  / delete / export / geometry / frames), `stores/resultsStore.ts`
+  (frontend-only, reset by `scenarioSession`), `results/` (format, colour
+  scale, overlay geometry, `SimulationOverlayController` outside the canvas),
+  `components/panels/SimulationResultsPanel.tsx` + `…Body.tsx` (the fifth
+  Analysis tab, mounted beside the read panel), `scene/VentilationResultLayer`
+  and `scene/OperationsResultLayer` behind the `ventilationResult` /
+  `operationsHeatmap` / `operationsVehicles` layers.
 
 ## Phase 21A — Mining Method Core, Longhole migration, MineExchange 1.1 (rule 192)
 

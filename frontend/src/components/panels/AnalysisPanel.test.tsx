@@ -51,18 +51,20 @@ const FORBIDDEN = [
 ]
 
 describe('Analysis tabs', () => {
-  it('are Overview | Economics | Rules | Layout comparison — "Rules", never "Compliance"', () => {
+  it('are Overview | Economics | Rules | Layout comparison | Simulation Results — "Rules", never "Compliance"', () => {
     expect(ANALYSIS_TABS.map((t) => t.id)).toEqual([
       'OVERVIEW',
       'ECONOMICS',
       'RULES',
       'LAYOUT_COMPARISON',
+      'SIMULATION',
     ])
     expect(ANALYSIS_TABS.map((t) => t.label)).toEqual([
       'Overview',
       'Economics',
       'Rules',
       'Layout comparison',
+      'Simulation Results',
     ])
     expect(ANALYSIS_TABS.some((t) => /compliance/i.test(t.label))).toBe(false)
   })

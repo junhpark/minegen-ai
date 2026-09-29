@@ -32,6 +32,7 @@ from minegen.api.deps import (
     get_exchange_service,
     get_infrastructure_service,
     get_job_service,
+    get_result_service,
     get_scenario_store,
     get_world_service,
 )
@@ -65,6 +66,7 @@ from minegen.services.design_service import DesignService
 from minegen.services.exchange_service import ExchangeService
 from minegen.services.infrastructure_service import InfrastructureService
 from minegen.services.job_service import JobService
+from minegen.services.result_service import ResultService
 from minegen.services.scenario_realizer import realize_scenario
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
@@ -329,6 +331,9 @@ class TabularStack:
         app.dependency_overrides[get_exchange_service] = lambda: exchange_service
         app.dependency_overrides[get_adapter_service] = lambda: AdapterService(exchange_service)
         app.dependency_overrides[get_analysis_service] = lambda: AnalysisService(self.store)
+        app.dependency_overrides[get_result_service] = lambda: ResultService(
+            self.store, exchange_service
+        )
         self.client = TestClient(app)
         self.client.__enter__()
         self.sid = ""

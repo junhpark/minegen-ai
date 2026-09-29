@@ -11,6 +11,7 @@ from minegen.services.design_service import DesignService
 from minegen.services.exchange_service import ExchangeService
 from minegen.services.infrastructure_service import InfrastructureService
 from minegen.services.job_service import JobService
+from minegen.services.result_service import ResultService
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
 
@@ -53,3 +54,8 @@ def get_analysis_service() -> AnalysisService:
 @lru_cache
 def get_adapter_service() -> AdapterService:
     return AdapterService(get_exchange_service())
+
+
+@lru_cache
+def get_result_service() -> ResultService:
+    return ResultService(get_scenario_store(), get_exchange_service())

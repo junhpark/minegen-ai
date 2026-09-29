@@ -2352,3 +2352,105 @@ code, the code and the rule win and the map is corrected.
      synchronization is generated (all NOT_PROVIDED), and no
      `.unitypackage` / `.uasset` is produced. A world-only scenario yields a
      partial package (geology assets only) with ARTIFACT_ABSENT states.
+
+213. MineResult 1.0 is the ONLY external-result input contract (Phase 23C,
+     `results/`, `docs/simulation-results.md`). A result is an OBSERVATION
+     an external application (Ventsim ventilation, AnyLogic operations)
+     made over a MineExchange bundle: `MINE_RESULT_VERSION = "1.0.0"` is
+     independent of MineExchange (which stays 1.3.0 — results are not a
+     mine description and are never exported back into a bundle or an
+     adapter package, so no feedback loop exists). The importer reads a
+     MineResult-compatible ZIP only (`result_manifest.json` + the domain
+     CSV tables — the filled round-trip kit); no `.vsm` / `.alp` / Unity /
+     `.uasset` parsing exists. A result never redesigns the mine, never
+     changes ranking, feasibility, topology, production, timeline or
+     economics, and MineGen computes NO simulation quantity from it: the
+     backend stores, binds, normalizes and slices what the user delivered.
+214. Exact source-snapshot binding. A result package names the scenario
+     (`sourceScenarioId`) and the EXACT MineExchange `sourceSnapshot`
+     (scenarioRevision, arraysRevision, activeRampSource,
+     artifactRevisions — the Phase 23B manifest grammar, produced by ONE
+     observation helper `ExchangeService.observe_source_snapshot` /
+     `observe_edge_centerlines`, never a second fingerprint calculator or a
+     second artifact list). Import is observe → parse → validate →
+     re-observe under the scenario lock → compare → atomic publish: another
+     scenario is RESULT_SOURCE_SCENARIO_MISMATCH (409), another snapshot
+     RESULT_SOURCE_SNAPSHOT_MISMATCH (409), a mine that moved during the
+     import READ_SNAPSHOT_CHANGED (409); a result is never re-bound. Every
+     stored result is judged COMPATIBLE / STALE against the CURRENT
+     snapshot on every read: a STALE result stays listed, inspectable,
+     exportable and deletable, but its overlay (geometry / frames) is
+     refused with RESULT_STALE (409) and the UI shows "STALE — this result
+     was generated from an older mine snapshot". No mine operation
+     (scenario PUT, world / design regeneration) deletes a result.
+215. Results live OUTSIDE derived/: `data/scenarios/{id}/results/<resultId>/`
+     `{manifest.json, normalized.npz, source.zip}` (the original ZIP kept
+     byte for byte with its SHA-256). Publication is atomic (temporary
+     sibling directory, fsync, rename); reading is READ ≠ TRUST (manifest
+     validation, folder / id agreement, normalized digest reproduction —
+     RESULT_PACKAGE_INVALID otherwise). `resultId` is deterministic:
+     `sha256(canonical normalized content + sourceSnapshot + domain +
+     sourceApplication)[:16]`, so the same package imported twice is ONE
+     result (idempotent: 201 created / 200 existing) and the canonical
+     export (`GET …/results/{id}/export`, `mine_result/` ZIP: fixed
+     timestamps, sorted paths, canonical units, canonical row order) is
+     byte-identical for the same stored result and is itself importable to
+     the same identity. Results have no registry entry, no fingerprint
+     role and no invalidation cascade.
+216. Explicit identity, canonical units, declared time axis. Identity binds
+     ONLY to MineNetwork edge ids of the source snapshot (Ventsim: `edgeId`
+     directly or `ventsimUniqueNumber` through the explicit
+     `airway_identity.csv` crosswalk; AnyLogic: `edgeId` +
+     `chainageFraction ∈ [0, 1]` along sourceNodeId → targetNodeId): no
+     nearest-airway, midpoint, endpoint or fuzzy spatial matching exists
+     (RESULT_IDENTITY_UNRESOLVED / RESULT_IDENTITY_AMBIGUOUS, 409). Values
+     are stored in canonical SI units (airflowM3s m3/s, velocityMs m/s,
+     pressurePa / pressureLossPa Pa, temperatureDryC / temperatureWetC degC,
+     airDensityKgM3 kg/m3; loadTonnes t; utilization fraction, queueCount
+     count, haulageTonnesPerHour t/h, travelTimeSeconds s) converted ONLY
+     through an explicit `unitConversions[]` declaration
+     (RESULT_UNIT_UNSUPPORTED, 422, otherwise); the airflow sign convention
+     is positive = edge sourceNodeId → targetNodeId (the edge direction is
+     the sign reference axis, never a traffic direction). The time axis is
+     DECLARED (`timeAxis.kind` STATIC | ELAPSED_SECONDS for ventilation,
+     ELAPSED_SECONDS | MINE_DAY for operations), never inferred. NaN / Inf /
+     non-numeric cells, out-of-range values, duplicate samples and
+     undeclared columns are typed RESULT_DATA_INVALID / RESULT_PACKAGE_INVALID
+     (422); explicit input budgets (upload 64 MiB, 32 members, 256 MiB
+     uncompressed, 1 M rows, 5 000 agents, 100 000 times, 64 KiB lines) are
+     RESULT_LIMIT_EXCEEDED (413); ZIP traversal, absolute members, nested
+     directories, duplicates, unknown members and declaration mismatches are
+     refused. Missing values are OMITTED, never zero-filled.
+217. Round-trip kits are ADDITIVE adapter output. The Ventsim and AnyLogic
+     export packages (adapters `VENTSIM 0.2.0`, `ANYLOGIC 0.2.0`; Unity /
+     Unreal stay 0.1.0) carry a `roundtrip/` folder: a pre-filled
+     `result_manifest.json` bound to the SAME sourceSnapshot as the export
+     with canonical units declared, the EMPTY domain tables (Ventsim:
+     `airway_results.csv` one pre-identified row per airway with blank
+     metric cells + `airway_identity.csv`; AnyLogic: `vehicle_samples.csv`,
+     `edge_metrics.csv`, `summary_metrics.csv` header rows) and a README.
+     The kit carries NO simulation value and changes nothing in the
+     existing package files; the adapter manifest lists the kit files
+     (hashed like every other file) under `details.roundTripKit`.
+218. Frames are backend slices; the overlay is separate geometry. The API
+     serves `GET …/results/{id}/ventilation?metric&time` (hold-last: the
+     sample at or before the time; nothing before the first sample; missing
+     edges listed) and `GET …/results/{id}/operations/frame?time` (vehicles
+     with backend-projected XYZ along the source centerline — interpolated
+     ONLY between two samples of the same agent on the SAME edge, the
+     previous sample held across an edge change, a vehicle existing from
+     its first to its last sample; edge metrics hold-last per edge) from the
+     stored normalized arrays; no hidden background processing. The
+     frontend (Analysis › Simulation Results — no new AppMode) renders the
+     frames over the source-snapshot edge centerlines as SEPARATE line /
+     marker geometry (`ventilationResult`, `operationsHeatmap`,
+     `operationsVehicles` layers; the base tunnel / centerline layers are
+     never recoloured), colours by the backend metric extent or a manual
+     display range with a legend (name, unit, min, max), keeps a missing
+     value neutral, draws optional airflow arrows from the sign, keeps a
+     RESULT CLOCK separate from the MineTimeline day cursor (MINE_DAY reads
+     "Mine day 123.4"), holds the active result ids in frontend-only state
+     that resets on every scenario transition, refreshes ONLY the results
+     list on import / delete (no epoch bump, no scene reload), never shows
+     results in the walkthrough and never invents a route, a value or a
+     collider.
