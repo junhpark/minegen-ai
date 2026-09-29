@@ -496,3 +496,38 @@ def test_a9_a11_units_and_summary_metrics(mine: ResultsStack, kit: dict[str, byt
             422,
         )
         assert match in msg, msg
+
+
+# -- B1 (PR #51 review): loadTonnes is never inferred as tonnes ------------------- #
+
+
+def test_b1_load_tonnes_value_requires_an_explicit_unit_declaration(
+    mine: ResultsStack, kit: dict[str, bytes]
+) -> None:
+    """A delivered loadTonnes VALUE without ``units.loadTonnes`` is refused
+    (RESULT_UNIT_UNSUPPORTED, 422) — explicit units only, never inferred; the
+    column with blank cells and no declaration carries no value and imports."""
+    c, sid = mine.client, mine.sid
+    m = manifest_of(kit)
+    assert m["units"].get("loadTonnes") == "t"  # the kit declares it
+    del m["units"]["loadTonnes"]
+    veh = [[0, "T1", "TRUCK", "RAMP:L01", 0.0, "", 3000]]
+    msg = _error(
+        post_zip(c, sid, "anylogic", anylogic_package(kit, veh, manifest=m)),
+        "RESULT_UNIT_UNSUPPORTED",
+        422,
+    )
+    assert "loadTonnes" in msg and "no declared unit" in msg
+    # the same package with the unit declared imports (identity differs from every
+    # other test package through the value); blank cells need no declaration
+    r = post_zip(c, sid, "anylogic", anylogic_package(kit, veh))
+    assert r.status_code in (200, 201), r.text
+    blank = [
+        [0, "T1", "TRUCK", "RAMP:L01", 0.0, "", ""],
+        [5, "T1", "TRUCK", "RAMP:L01", 0.5, "", ""],
+    ]
+    r = post_zip(c, sid, "anylogic", anylogic_package(kit, blank, manifest=m))
+    assert r.status_code in (200, 201), r.text
+    assert all(
+        v["loadTonnes"] is None for v in _frame(mine, r.json()["result"]["resultId"], 0)["vehicles"]
+    )

@@ -119,7 +119,13 @@ def read_result_package(data: bytes, *, allowed_members: frozenset[str]) -> Resu
                 raise ResultPackageInvalidError("duplicate member", subject=member)
             try:
                 payload = zf.read(info)
-            except (zipfile.BadZipFile, RuntimeError, EOFError, OSError) as exc:
+            except (
+                zipfile.BadZipFile,
+                NotImplementedError,  # unsupported compression method (never a bare 500)
+                RuntimeError,
+                EOFError,
+                OSError,
+            ) as exc:
                 raise ResultPackageInvalidError(
                     f"member cannot be read: {exc}", subject=member
                 ) from exc

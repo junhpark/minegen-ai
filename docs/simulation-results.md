@@ -83,7 +83,9 @@ traffic direction).
 
 `vehicle_samples.csv`: required `time`, `agentId`, `edgeId`,
 `chainageFraction` (0 … 1 along sourceNodeId → targetNodeId); optional
-`agentKind` (constant per agent), `status`, `loadTonnes` (t, ≥ 0). One
+`agentKind` (constant per agent), `status`, `loadTonnes` (t, ≥ 0 — a
+delivered value requires the explicit `units.loadTonnes = "t"`
+declaration, RESULT_UNIT_UNSUPPORTED otherwise; blank cells need none). One
 sample per (agent, time). The backend projects XYZ along the SOURCE
 snapshot centerline by arc length — a visualization derivative, never an
 authority.
@@ -112,8 +114,12 @@ days of the MineTimeline scale, ELAPSED_SECONDS model seconds.
 NaN / Inf / non-numeric cells, out-of-range values, negative times,
 duplicate samples, an agent changing kind, an empty result, unknown
 columns and a missing identity are typed RESULT_DATA_INVALID /
-RESULT_PACKAGE_INVALID (422). Budgets (RESULT_LIMIT_EXCEEDED, 413): upload
-64 MiB, 32 members, 256 MiB declared uncompressed, 128 MiB per member,
+RESULT_PACKAGE_INVALID (422); a member the ZIP library cannot decode
+(unsupported compression method) is RESULT_PACKAGE_INVALID, never a bare
+500. Budgets (RESULT_LIMIT_EXCEEDED, 413): upload 64 MiB — a MEMORY budget,
+enforced while the body streams in (a chunked / undeclared-length upload is
+refused the moment the received bytes exceed it, never buffered first) —
+32 members, 256 MiB declared uncompressed, 128 MiB per member,
 1 000 000 rows per file, 5 000 agents, 100 000 distinct times, 64 KiB CSV
 lines; a member whose payload disagrees with its declaration is refused
 (ZIP bomb / truncation).
@@ -206,7 +212,13 @@ Phase 20E §19):
 * list: every result with its compatibility badge (Compatible / Stale +
   the STALE sentence), domain · application · time axis · counts, Show /
   Hide overlay (disabled for STALE), Export, Delete, Details;
-* the active result's controls: metric selector, the RESULT CLOCK (its own
+* the active result's controls: the metric selector (it offers ONLY the
+  metrics the result carries — `metrics[].available` from the backend
+  manifest; activation keeps the current metric when the result carries it,
+  else the first available one; a frame is committed to the overlay only for
+  the active result AND the selected metric, so a previous metric's frame is
+  never shown under a new metric's label, not even as a placeholder), the
+  RESULT CLOCK (its own
   axis — "Mine day 123.4" for MINE_DAY, "t = 123 s" for seconds, none for
   STATIC; play / pause / speed for operations), the legend (name, unit,
   min, max), a manual display range, the airflow-arrow toggle;

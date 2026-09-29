@@ -13,6 +13,7 @@ import {
   OPS_FRAME,
   OPS_SUMMARY,
   VENT_FRAME,
+  VENT_PRESSURE_ONLY,
   VENT_STALE,
   VENT_SUMMARY,
 } from '@/results/results.fixture'
@@ -42,6 +43,7 @@ function props(over: Partial<SimulationResultsBodyProps> = {}): SimulationResult
     activeOperationsResultId: null,
     ventilation: {
       metric: 'airflowM3s',
+      metrics: ['airflowM3s'],
       time: 0,
       axis: VENT_SUMMARY.timeAxis,
       range: null,
@@ -55,6 +57,7 @@ function props(over: Partial<SimulationResultsBodyProps> = {}): SimulationResult
     },
     operations: {
       metric: 'utilization',
+      metrics: ['utilization'],
       time: 12.5,
       axis: OPS_SUMMARY.timeAxis,
       range: null,
@@ -130,7 +133,9 @@ describe('Simulation Results body', () => {
     expect(html).toContain('Hide overlay')
     expect(html).toContain('data-testid="ventilation-controls"')
     expect(html).toContain('Airflow (m3/s)')
-    expect(html).toContain('Air density (kg/m3)')
+    // B2: the selector offers ONLY the metrics the result carries
+    expect(html).not.toContain('Air density (kg/m3)')
+    expect(html).not.toContain('Pressure (Pa)')
     expect(html).toContain('airflow direction arrows (positive = sourceNode → targetNode)')
     expect(html).toContain('data-testid="result-legend"')
     expect(html).toContain('Airflow <span class="text-mute">(m3/s)</span>')
@@ -145,7 +150,7 @@ describe('Simulation Results body', () => {
     const html = render({ activeOperationsResultId: OPS_SUMMARY.resultId })
     expect(html).toContain('data-testid="operations-controls"')
     expect(html).toContain('Utilization (fraction)')
-    expect(html).toContain('Travel time (s)')
+    expect(html).not.toContain('Travel time (s)') // not carried by the result
     expect(html).toContain('Mine day 12.5')
     expect(html).toContain('Mine day · Mine day 0.0 → Mine day 30.0 · 40 samples')
     expect(html).toContain('>Play<')
@@ -174,5 +179,39 @@ describe('Simulation Results body', () => {
       }),
     ).toContain('Loading frame')
     expect(GEOMETRY.edges.length).toBe(2)
+  })
+})
+
+describe('metric authority (B2)', () => {
+  it('a pressure-only result offers Pressure alone and no airflow arrows toggle', () => {
+    const html = render({
+      results: [VENT_PRESSURE_ONLY],
+      activeVentilationResultId: VENT_PRESSURE_ONLY.resultId,
+      ventilation: {
+        ...props().ventilation,
+        metric: 'pressurePa',
+        metrics: ['pressurePa'],
+        frame: null,
+      },
+    })
+    expect(html).toContain('>Pressure (Pa)</option>')
+    expect(html).not.toContain('Airflow (m3/s)')
+    expect(html).not.toContain('airflow direction arrows')
+    expect(html).toContain('Loading frame')
+  })
+
+  it('a frame of another metric is never shown under the selected metric label', () => {
+    const html = render({
+      activeVentilationResultId: VENT_SUMMARY.resultId,
+      ventilation: {
+        ...props().ventilation,
+        metric: 'pressurePa',
+        metrics: ['airflowM3s', 'pressurePa'],
+        frame: VENT_FRAME, // an AIRFLOW frame
+      },
+    })
+    expect(html).not.toContain('data-testid="result-legend"')
+    expect(html).not.toContain('Pressure <span class="text-mute">(m3/s)</span>')
+    expect(html).toContain('Loading frame')
   })
 })

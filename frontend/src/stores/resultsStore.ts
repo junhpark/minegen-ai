@@ -8,6 +8,7 @@ import type {
   VentilationMetric,
 } from '@/types/results'
 import type { DisplayRange } from '@/results/colorScale'
+import { selectMetric } from '@/results/overlayCommit'
 
 export type ResultSpeed = 1 | 10 | 60
 
@@ -37,11 +38,15 @@ export interface ResultsState {
   activeVentilationResultId: string | null
   activeOperationsResultId: string | null
   ventilationMetric: VentilationMetric
+  /** metrics the ACTIVE ventilation result carries (backend `metrics[].available`) */
+  ventilationMetrics: VentilationMetric[]
   ventilationAxis: ResultTimeAxis | null
   ventilationTime: number
   ventilationRange: DisplayRange | null
   showAirflowArrows: boolean
   operationsMetric: OperationsEdgeMetric
+  /** edge metrics the ACTIVE operations result carries */
+  operationsMetrics: OperationsEdgeMetric[]
   operationsAxis: ResultTimeAxis | null
   operationsTime: number
   operationsPlaying: boolean
@@ -52,8 +57,16 @@ export interface ResultsState {
   ventilationOverlayError: string | null
   operationsOverlayError: string | null
 
-  setActiveVentilation: (resultId: string | null, axis: ResultTimeAxis | null) => void
-  setActiveOperations: (resultId: string | null, axis: ResultTimeAxis | null) => void
+  setActiveVentilation: (
+    resultId: string | null,
+    axis: ResultTimeAxis | null,
+    metrics?: VentilationMetric[],
+  ) => void
+  setActiveOperations: (
+    resultId: string | null,
+    axis: ResultTimeAxis | null,
+    metrics?: OperationsEdgeMetric[],
+  ) => void
   setVentilationMetric: (metric: VentilationMetric) => void
   setVentilationTime: (t: number) => void
   setVentilationRange: (range: DisplayRange | null) => void
@@ -73,11 +86,13 @@ const INITIAL = {
   activeVentilationResultId: null,
   activeOperationsResultId: null,
   ventilationMetric: 'airflowM3s' as VentilationMetric,
+  ventilationMetrics: [] as VentilationMetric[],
   ventilationAxis: null,
   ventilationTime: 0,
   ventilationRange: null,
   showAirflowArrows: true,
   operationsMetric: 'utilization' as OperationsEdgeMetric,
+  operationsMetrics: [] as OperationsEdgeMetric[],
   operationsAxis: null,
   operationsTime: 0,
   operationsPlaying: false,
@@ -97,26 +112,42 @@ function clamp(t: number, axis: ResultTimeAxis | null): number {
 export const useResultsStore = create<ResultsState>()((set) => ({
   ...INITIAL,
 
-  setActiveVentilation: (resultId, axis) =>
-    set({
+  setActiveVentilation: (resultId, axis, metrics = []) =>
+    set((s) => ({
       activeVentilationResultId: resultId,
+      ventilationMetrics: resultId === null ? [] : metrics,
+      // the metric is chosen from what the result CARRIES (B2): kept when
+      // available, else the first available one
+      ventilationMetric:
+        resultId === null ? s.ventilationMetric : selectMetric(s.ventilationMetric, metrics),
       ventilationAxis: axis,
       ventilationTime: axis?.start ?? 0,
       ventilationOverlay: null,
       ventilationOverlayError: null,
       ventilationRange: null,
-    }),
-  setActiveOperations: (resultId, axis) =>
-    set({
+    })),
+  setActiveOperations: (resultId, axis, metrics = []) =>
+    set((s) => ({
       activeOperationsResultId: resultId,
+      operationsMetrics: resultId === null ? [] : metrics,
+      operationsMetric:
+        resultId === null ? s.operationsMetric : selectMetric(s.operationsMetric, metrics),
       operationsAxis: axis,
       operationsTime: axis?.start ?? 0,
       operationsPlaying: false,
       operationsOverlay: null,
       operationsOverlayError: null,
       operationsRange: null,
+    })),
+  // a metric change drops the previous metric's frame: the overlay shows a
+  // frame of the SELECTED metric or nothing (never a mixed label / data)
+  setVentilationMetric: (ventilationMetric) =>
+    set({
+      ventilationMetric,
+      ventilationRange: null,
+      ventilationOverlay: null,
+      ventilationOverlayError: null,
     }),
-  setVentilationMetric: (ventilationMetric) => set({ ventilationMetric, ventilationRange: null }),
   setVentilationTime: (t) => set((s) => ({ ventilationTime: clamp(t, s.ventilationAxis) })),
   setVentilationRange: (ventilationRange) => set({ ventilationRange }),
   setShowAirflowArrows: (showAirflowArrows) => set({ showAirflowArrows }),

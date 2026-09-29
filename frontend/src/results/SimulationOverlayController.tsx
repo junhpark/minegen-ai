@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { api, ApiError } from '@/api/client'
 import { useResultsStore } from '@/stores/resultsStore'
 import { useScenarioStore } from '@/stores/scenarioStore'
+import { ventilationFrameMatches, ventilationPlaceholder } from './overlayCommit'
 import { quantizeTime } from './overlayGeometry'
 
 const errorText = (err: unknown): string | null =>
@@ -19,7 +20,9 @@ const errorText = (err: unknown): string | null =>
  * compute nothing. Frames are backend slices (`GET …/ventilation`,
  * `GET …/operations/frame`): the frontend never interpolates across edges
  * or invents a value, and a STALE result (RESULT_STALE) clears the overlay
- * with its typed reason.
+ * with its typed reason. A ventilation frame is committed only for the
+ * ACTIVE result AND the SELECTED metric (`overlayCommit.ts`): a previous
+ * metric's frame never stands in for a new metric, not even as a placeholder.
  */
 export function SimulationOverlayController() {
   const scenarioId = useScenarioStore((s) => s.scenario?.id ?? null)
@@ -56,7 +59,7 @@ export function SimulationOverlayController() {
     enabled: scenarioId !== null && ventId !== null,
     retry: false,
     staleTime: Infinity,
-    placeholderData: (prev) => prev,
+    placeholderData: (prev) => ventilationPlaceholder(prev, ventMetric),
   })
   const opsGeometry = useQuery({
     queryKey: ['simulation-result', scenarioId, opsId, 'geometry'],
@@ -83,10 +86,23 @@ export function SimulationOverlayController() {
     }
     const geometry = ventGeometry.data
     const frame = ventFrame.data
-    if (geometry && frame && geometry.resultId === ventId && frame.resultId === ventId) {
+    if (
+      geometry &&
+      frame &&
+      geometry.resultId === ventId &&
+      ventilationFrameMatches(frame, ventId, ventMetric)
+    ) {
       setVent({ resultId: ventId, geometry, frame })
     }
-  }, [ventId, ventGeometry.data, ventGeometry.error, ventFrame.data, ventFrame.error, setVent])
+  }, [
+    ventId,
+    ventMetric,
+    ventGeometry.data,
+    ventGeometry.error,
+    ventFrame.data,
+    ventFrame.error,
+    setVent,
+  ])
 
   useEffect(() => {
     if (opsId === null) return

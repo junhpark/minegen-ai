@@ -29,13 +29,11 @@ import {
 } from '@/results/format'
 import type { ResultSpeed } from '@/stores/resultsStore'
 import {
-  OPERATIONS_EDGE_METRICS,
   type OperationsEdgeMetric,
   type OperationsFrame,
   type ResultSummary,
   type ResultTimeAxis,
   type SourceApplication,
-  VENTILATION_METRICS,
   type VentilationFrame,
   type VentilationMetric,
 } from '@/types/results'
@@ -50,6 +48,8 @@ export const IMPORT_INFO =
 
 export interface VentilationControls {
   metric: VentilationMetric
+  /** the metrics the active result carries — the ONLY selectable ones */
+  metrics: VentilationMetric[]
   time: number
   axis: ResultTimeAxis | null
   range: DisplayRange | null
@@ -64,6 +64,8 @@ export interface VentilationControls {
 
 export interface OperationsControls {
   metric: OperationsEdgeMetric
+  /** the edge metrics the active result carries — the ONLY selectable ones */
+  metrics: OperationsEdgeMetric[]
   time: number
   axis: ResultTimeAxis | null
   range: DisplayRange | null
@@ -241,7 +243,7 @@ function VentilationOverlayControls({ c }: { c: VentilationControls }) {
           value={c.metric}
           onChange={(e) => c.onMetric(e.target.value as VentilationMetric)}
         >
-          {VENTILATION_METRICS.map((m) => (
+          {c.metrics.map((m) => (
             <option key={m} value={m}>
               {VENTILATION_METRIC_LABEL[m]} ({VENTILATION_METRIC_UNIT[m]})
             </option>
@@ -261,7 +263,7 @@ function VentilationOverlayControls({ c }: { c: VentilationControls }) {
         </label>
       ) : null}
       {c.error ? <p className="mt-1 break-words text-[11px] text-danger">{c.error}</p> : null}
-      {c.frame ? (
+      {c.frame && c.frame.metric === c.metric ? (
         <>
           <Legend
             label={VENTILATION_METRIC_LABEL[c.metric]}
@@ -301,7 +303,7 @@ function OperationsOverlayControls({ c }: { c: OperationsControls }) {
           value={c.metric}
           onChange={(e) => c.onMetric(e.target.value as OperationsEdgeMetric)}
         >
-          {OPERATIONS_EDGE_METRICS.map((m) => (
+          {c.metrics.map((m) => (
             <option key={m} value={m}>
               {OPERATIONS_METRIC_LABEL[m]} ({OPERATIONS_METRIC_UNIT[m]})
             </option>

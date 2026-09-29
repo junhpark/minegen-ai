@@ -84,6 +84,23 @@ describe('overlay data controller', () => {
     )
     for (const f of FORBIDDEN) expect(controller).not.toContain(f)
   })
+
+  it('commits a ventilation frame only for the selected metric (B2)', () => {
+    expect(controller).toContain(
+      'placeholderData: (prev) => ventilationPlaceholder(prev, ventMetric)',
+    )
+    expect(controller).toContain('ventilationFrameMatches(frame, ventId, ventMetric)')
+    // the only bare placeholder is the OPERATIONS frame (its query key carries no metric)
+    const bare = controller.indexOf('placeholderData: (prev) => prev,')
+    expect(bare).toBeGreaterThan(controller.indexOf("'operations', opsT]"))
+    expect(controller.indexOf('placeholderData: (prev) => prev,', bare + 1)).toBe(-1)
+    // the selectors render the CARRIED metrics only
+    expect(body).toContain('{c.metrics.map((m) => (')
+    expect(body).not.toContain('VENTILATION_METRICS.map')
+    expect(body).not.toContain('OPERATIONS_EDGE_METRICS.map')
+    expect(panel).toContain('availableVentilationMetrics(r)')
+    expect(panel).toContain('availableOperationsMetrics(r)')
+  })
 })
 
 describe('presentation and layers compute nothing', () => {

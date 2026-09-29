@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '@/api/client'
+import { availableOperationsMetrics, availableVentilationMetrics } from '@/results/overlayCommit'
 import { useResultsStore } from '@/stores/resultsStore'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import type { ResultSummary, SourceApplication } from '@/types/results'
@@ -60,6 +61,13 @@ export function SimulationResultsPanel({ active }: { active: boolean }) {
     }
   }, [listed])
 
+  // activation hands the store the metrics the result CARRIES (B2): the
+  // selector and the first frame request follow the backend manifest
+  const activate = (r: ResultSummary) =>
+    r.domain === 'VENTILATION'
+      ? results.setActiveVentilation(r.resultId, r.timeAxis, availableVentilationMetrics(r))
+      : results.setActiveOperations(r.resultId, r.timeAxis, availableOperationsMetrics(r))
+
   const importResult = useMutation({
     mutationFn: async (file: File) => {
       if (!scenarioId) throw new Error('load a scenario first')
@@ -73,10 +81,7 @@ export function SimulationResultsPanel({ active }: { active: boolean }) {
       )
       void qc.invalidateQueries({ queryKey: ['simulation-results', scenarioId] })
       const r = payload.result
-      if (r.compatibility === 'COMPATIBLE') {
-        if (r.domain === 'VENTILATION') results.setActiveVentilation(r.resultId, r.timeAxis)
-        else results.setActiveOperations(r.resultId, r.timeAxis)
-      }
+      if (r.compatibility === 'COMPATIBLE') activate(r)
     },
   })
   const deleteResult = useMutation({
@@ -156,6 +161,7 @@ export function SimulationResultsPanel({ active }: { active: boolean }) {
       activeOperationsResultId={results.activeOperationsResultId}
       ventilation={{
         metric: results.ventilationMetric,
+        metrics: results.ventilationMetrics,
         time: results.ventilationTime,
         axis: results.ventilationAxis,
         range: results.ventilationRange,
@@ -169,6 +175,7 @@ export function SimulationResultsPanel({ active }: { active: boolean }) {
       }}
       operations={{
         metric: results.operationsMetric,
+        metrics: results.operationsMetrics,
         time: results.operationsTime,
         axis: results.operationsAxis,
         range: results.operationsRange,
@@ -191,11 +198,7 @@ export function SimulationResultsPanel({ active }: { active: boolean }) {
         setImportNotice(null)
         importResult.mutate(file)
       }}
-      onActivate={(r) =>
-        r.domain === 'VENTILATION'
-          ? results.setActiveVentilation(r.resultId, r.timeAxis)
-          : results.setActiveOperations(r.resultId, r.timeAxis)
-      }
+      onActivate={activate}
       onDeactivate={(r) =>
         r.domain === 'VENTILATION'
           ? results.setActiveVentilation(null, null)

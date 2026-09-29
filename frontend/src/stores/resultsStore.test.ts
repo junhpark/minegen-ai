@@ -46,6 +46,51 @@ describe('results store', () => {
     expect(useResultsStore.getState().operationsTime).toBe(0)
   })
 
+  it('activation chooses the metric from what the result CARRIES (B2)', () => {
+    const s = useResultsStore.getState()
+    // default airflow, pressure-only result → pressure is requested first
+    s.setActiveVentilation('dddddddddddddddd', axis, ['pressurePa'])
+    expect(useResultsStore.getState().ventilationMetric).toBe('pressurePa')
+    expect(useResultsStore.getState().ventilationMetrics).toEqual(['pressurePa'])
+    // the current metric is kept when the next result carries it
+    s.setActiveVentilation('eeeeeeeeeeeeeeee', axis, ['airflowM3s', 'pressurePa'])
+    expect(useResultsStore.getState().ventilationMetric).toBe('pressurePa')
+    // deactivation clears the carried list and keeps the metric
+    s.setActiveVentilation(null, null)
+    expect(useResultsStore.getState().ventilationMetrics).toEqual([])
+    expect(useResultsStore.getState().ventilationMetric).toBe('pressurePa')
+    s.setActiveOperations('ffffffffffffffff', axis, ['queueCount'])
+    expect(useResultsStore.getState().operationsMetric).toBe('queueCount')
+    // a result carrying no edge metric keeps the current metric (nothing to request)
+    s.setActiveOperations('0000000000000000', axis, [])
+    expect(useResultsStore.getState().operationsMetric).toBe('queueCount')
+  })
+
+  it('changing the ventilation metric drops the previous metric frame (B2)', () => {
+    const s = useResultsStore.getState()
+    s.setActiveVentilation('aaaaaaaaaaaaaaaa', axis, ['airflowM3s', 'pressurePa'])
+    s.setVentilationOverlay({
+      resultId: 'aaaaaaaaaaaaaaaa',
+      geometry: { resultId: 'aaaaaaaaaaaaaaaa', coordinateFrame: 'LOCAL_ENU_Z_UP', edges: [] },
+      frame: {
+        resultId: 'aaaaaaaaaaaaaaaa',
+        metric: 'airflowM3s',
+        unit: 'm3/s',
+        timeAxisKind: 'STATIC',
+        time: null,
+        sampleTime: null,
+        values: [],
+        missingEdgeIds: [],
+        min: null,
+        max: null,
+        signConvention: null,
+      },
+    })
+    s.setVentilationMetric('pressurePa')
+    expect(useResultsStore.getState().ventilationOverlay).toBeNull()
+    expect(useResultsStore.getState().ventilationOverlayError).toBeNull()
+  })
+
   it('changing a metric clears the manual range; reset restores the defaults', () => {
     const s = useResultsStore.getState()
     s.setVentilationRange({ min: 1, max: 2 })

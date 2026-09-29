@@ -61,13 +61,17 @@ async def _upload(request: Request) -> bytes:
             f"upload of {declared} bytes exceeds the {MAX_UPLOAD_BYTES}-byte limit",
             subject="upload",
         )
-    data = await request.body()
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise ResultLimitExceededError(
-            f"upload of {len(data)} bytes exceeds the {MAX_UPLOAD_BYTES}-byte limit",
-            subject="upload",
-        )
-    return data
+    # the limit is a MEMORY budget: the body is consumed chunk by chunk and the
+    # upload is refused the moment the accumulated size exceeds it, so a
+    # chunked / undeclared-length upload never buffers past MAX_UPLOAD_BYTES
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > MAX_UPLOAD_BYTES:
+            raise ResultLimitExceededError(
+                f"upload exceeds the {MAX_UPLOAD_BYTES}-byte limit", subject="upload"
+            )
+        data.extend(chunk)
+    return bytes(data)
 
 
 async def _import(

@@ -29,6 +29,17 @@ export const VENT_SUMMARY: ResultSummary = {
   mineResultVersion: '1.0.0',
 }
 
+/** a valid result that carries PRESSURE only — airflow is NOT selectable */
+export const VENT_PRESSURE_ONLY: ResultSummary = {
+  ...VENT_SUMMARY,
+  resultId: 'd9116f41a5c99653',
+  runLabel: 'Pressure survey',
+  metrics: [
+    { name: 'airflowM3s', unit: 'm3/s', available: false, sampleCount: 0, min: null, max: null },
+    { name: 'pressurePa', unit: 'Pa', available: true, sampleCount: 2, min: 900, max: 1200 },
+  ],
+}
+
 export const VENT_STALE: ResultSummary = {
   ...VENT_SUMMARY,
   resultId: 'b7ff5e2f83a77431',

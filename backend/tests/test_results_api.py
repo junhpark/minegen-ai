@@ -480,3 +480,55 @@ def test_result_folder_layout_and_source_evidence(
     assert stored["resultId"] == rid and stored["sourceScenarioId"] == sid
     assert stored["sourceSnapshot"] == manifest_of(kits["ventsim"])["sourceSnapshot"]
     assert c.delete(f"/api/v1/scenarios/{sid}/results/{rid}").status_code == 204
+
+
+# -- B3 (PR #51 review): the upload limit is a MEMORY budget ----------------------- #
+
+
+def test_upload_without_content_length_is_refused_while_streaming(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A chunked / undeclared-length upload is refused the moment the received
+    bytes exceed MAX_UPLOAD_BYTES — the body is never buffered first."""
+    import asyncio
+
+    from starlette.requests import Request
+
+    from minegen.api import results as results_api
+    from minegen.results.errors import ResultLimitExceededError
+
+    limit = 10 * 1024
+    chunk = b"x" * 1024
+    monkeypatch.setattr(results_api, "MAX_UPLOAD_BYTES", limit)
+    delivered = 0
+
+    async def receive() -> dict[str, Any]:
+        nonlocal delivered
+        delivered += len(chunk)
+        return {"type": "http.request", "body": chunk, "more_body": True}  # endless body
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/x",
+        "headers": [(b"content-type", b"application/zip")],  # no content-length
+        "query_string": b"",
+    }
+    with pytest.raises(ResultLimitExceededError):
+        asyncio.run(results_api._upload(Request(scope, receive)))
+    assert delivered <= limit + len(chunk), delivered  # aborted at the boundary
+
+
+def test_unsupported_zip_compression_is_a_typed_package_refusal(
+    mine: ResultsStack, kits: dict[str, dict[str, bytes]]
+) -> None:
+    """A member with an unsupported compression method (zipfile raises
+    NotImplementedError) is RESULT_PACKAGE_INVALID, never a bare 500."""
+    data = bytearray(zip_bytes({"result_manifest.json": kits["ventsim"]["result_manifest.json"]}))
+    data[8:10] = (99).to_bytes(2, "little")  # local header compression method
+    cd = data.find(b"PK\x01\x02")
+    data[cd + 10 : cd + 12] = (99).to_bytes(2, "little")  # central directory
+    r = post_zip(mine.client, mine.sid, "ventsim", bytes(data))
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["code"] == "RESULT_PACKAGE_INVALID"
+    assert "compression" in r.json()["detail"]["message"]

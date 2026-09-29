@@ -132,6 +132,11 @@ def import_anylogic(package: ResultPackage, index: EdgeIndex) -> ImportedResult:
         raise ResultDataInvalidError(
             "the result carries no vehicle sample", subject=VEHICLES_MEMBER
         )
+    # explicit units only (rule 216): a delivered loadTonnes VALUE is accepted
+    # solely under an explicit ``units.loadTonnes = "t"`` declaration — a
+    # column with values and no declaration is never read as tonnes
+    if any(v[3] is not None for v in rows.values()):
+        require_canonical_unit(manifest, "loadTonnes", "t", subject=VEHICLES_MEMBER)
     agents = sorted({a for a, _ in rows})
     if len(agents) > MAX_AGENTS:
         raise ResultDataInvalidError(
