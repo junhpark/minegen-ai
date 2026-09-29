@@ -36,6 +36,8 @@ from tests.exchange_fixtures import synthetic_bundle
 from tests.test_exchange_corrections import SyntheticMine
 
 TARGETS = ("VENTSIM", "ANYLOGIC", "UNITY", "UNREAL")
+#: Phase 23C: VENTSIM / ANYLOGIC carry the round-trip result kit (0.2.0)
+ADAPTER_VERSIONS = {"VENTSIM": "0.2.0", "ANYLOGIC": "0.2.0", "UNITY": "0.1.0", "UNREAL": "0.1.0"}
 
 
 @pytest.fixture(scope="module")
@@ -159,7 +161,9 @@ def test_b63_every_adapter_builds_from_saved_bundle_bytes_without_services(
     for target in TARGETS:
         pkg = build_package(target, loaded)
         assert pkg.manifest.target_application == target
-        assert pkg.manifest.adapter_name == target and pkg.manifest.adapter_version == "0.1.0"
+        assert pkg.manifest.adapter_name == target
+        # Phase 23C: the two round-trip-kit adapters moved to 0.2.0; engines stay 0.1.0
+        assert pkg.manifest.adapter_version == ADAPTER_VERSIONS[target]
         assert pkg.manifest.source_mine_exchange_version == "1.3.0"
     # the adapter import graph never pulled a MineGen service in
     after = {m for m in sys.modules if m.startswith("minegen.services")}
@@ -336,9 +340,8 @@ def test_b9_package_is_deterministic_hashed_and_wall_clock_free(bundle: bytes, t
         assert {i.date_time for i in zf.infolist()} == {(1980, 1, 1, 0, 0, 0)}
         assert [i.filename for i in zf.infolist()] == sorted(i.filename for i in zf.infolist())
     assert manifest["sourceSnapshot"]["scenarioRevision"] == "s1"
-    assert (
-        manifest["adapterVersion"] == "0.1.0" and manifest["sourceMineExchangeVersion"] == "1.3.0"
-    )
+    assert manifest["adapterVersion"] == ADAPTER_VERSIONS[target]
+    assert manifest["sourceMineExchangeVersion"] == "1.3.0"
 
 
 def test_b9_package_builder_refuses_duplicate_and_unsafe_paths() -> None:

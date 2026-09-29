@@ -48,10 +48,11 @@ from minegen.adapters.common import (
 from minegen.adapters.contracts import AdapterIdentityEntry, AdapterOmission
 from minegen.adapters.errors import AdapterConversionFailedError, MineExchangeBundleInvalidError
 from minegen.adapters.package import README_PATH, AdapterPackage, PackageBuilder
+from minegen.adapters.roundtrip import add_ventsim_kit
 from minegen.exchange.formats.csv_table import write_csv
 
 ADAPTER_NAME = "VENTSIM"
-ADAPTER_VERSION = "0.1.0"
+ADAPTER_VERSION = "0.2.0"  # 0.2.0: Phase 23C round-trip result kit (roundtrip/)
 SUPPORTED_MINE_EXCHANGE_VERSIONS = ">=1.2.0,<2.0.0"
 PACKAGE_ROOT = "ventsim_package"
 
@@ -279,6 +280,15 @@ def build_ventsim_package(bundle: MineExchangeBundle) -> AdapterPackage:
         source_files=["manifest.json", NETWORK_PATH],
     )
 
+    kit_files = add_ventsim_kit(
+        pkg,
+        adapter_version=ADAPTER_VERSION,
+        mine_exchange_version=bundle.version,
+        scenario_id=bundle.manifest.scenario_id,
+        source_snapshot=bundle.manifest.source_snapshot.model_dump(mode="json", by_alias=True),
+        edge_ids=[str(row[0]) for row in airways],
+    )
+
     manifest_fields: dict[str, Any] = dict(
         adapter_name=ADAPTER_NAME,
         adapter_version=ADAPTER_VERSION,
@@ -329,6 +339,11 @@ def build_ventsim_package(bundle: MineExchangeBundle) -> AdapterPackage:
             "dimensionDelivery": (
                 "network/airways.csv (handoff / QA table; DXF carries geometry only)"
             ),
+            "roundTripKit": {
+                "mineResultVersion": "1.0.0",
+                "files": kit_files,
+                "importRoute": "POST /api/v1/scenarios/{scenarioId}/results/import/ventsim",
+            },
         },
     )
     pkg.add(
@@ -360,6 +375,10 @@ def _readme(fields: dict[str, Any], airway_count: int, node_count: int) -> bytes
         f"  {AIRWAYS_PATH}               one row per network edge: authoritative length, width,",
         "                                  height, profile shape, orientation, DXF handle, level",
         f"  {ENTITY_MAP_PATH}          DXF handle <-> excavation entity <-> network edge",
+        "  roundtrip/                      MineResult 1.0 kit: result_manifest.json (bound to",
+        "                                  this export's snapshot), airway_results.csv,",
+        "                                  airway_identity.csv, README.txt — fill from the Ventsim",
+        "                                  run, zip, import at .../results/import/ventsim",
         "",
         "Coordinates: metres, X east, Y north, Z up, LOCAL SYNTHETIC origin (no georeference).",
         "Ventsim imports a DXF in the Ventsim file's CURRENT units and coordinates — set the",

@@ -3,6 +3,7 @@ import { LeftPanel } from '@/components/layout/LeftPanel'
 import { RightPanel } from '@/components/layout/RightPanel'
 import { BottomBar } from '@/components/layout/BottomBar'
 import { MineCanvas } from '@/scene/MineCanvas'
+import { SimulationOverlayController } from '@/results/SimulationOverlayController'
 import { useViewerStore } from '@/stores/viewerStore'
 
 /**
@@ -24,6 +25,7 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <TopBar />
+      <SimulationOverlayController />
       <div className="flex min-h-0 flex-1">
         {walkthrough ? null : <LeftPanel />}
         <main className="min-w-0 flex-1">

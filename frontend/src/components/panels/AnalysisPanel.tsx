@@ -150,6 +150,9 @@ export const ECONOMICS_NOT_CONFIGURED_TEXT = 'Planning economics is not configur
 
 /** pure presentation of the read model — every number is a backend value */
 export function AnalysisPanelBody(p: AnalysisPanelBodyProps) {
+  // Phase 23C: the Simulation Results tab is its own container (mounted beside
+  // this panel); the read panel renders nothing in that context
+  if (p.view === 'SIMULATION') return null
   if (p.scenarioId === null) {
     return (
       <p className="px-4 py-3 text-[11px] text-mute">Load a scenario to analyse its mine plan.</p>

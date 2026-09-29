@@ -1,4 +1,5 @@
 import type { Scenario } from '@/types/api'
+import { useResultsStore } from './resultsStore'
 import { useScenarioStore } from './scenarioStore'
 import { useSliceStore } from './sliceStore'
 import { useTimelineStore } from './timelineStore'
@@ -27,6 +28,9 @@ export function activateScenario(scenario: Scenario | null): number {
   useSliceStore.getState().reset()
   useTimelineStore.getState().reset()
   useViewerStore.getState().resetScenarioScopedState()
+  // Phase 23C: active simulation results, their clocks and overlays belong to
+  // one scenario's results/ folder and never survive a scenario change
+  useResultsStore.getState().reset()
   return epoch
 }
 
@@ -46,6 +50,7 @@ export function activateScenarioRevision(scenario: Scenario): number {
   useSliceStore.getState().reset()
   useTimelineStore.getState().reset()
   useViewerStore.getState().resetScenarioScopedState()
+  useResultsStore.getState().reset()
   return epoch
 }
 

@@ -1,8 +1,9 @@
 # External adapters — architecture, contract and implementation (Phase 23B)
 
 Status: **DELIVERED as ONE phase (23B)** — architecture finalized,
-MineExchange 1.3 (timeline semantics), and four adapters at version 0.1.0:
-Ventsim (§23.3), AnyLogic (§23.4), Unity and Unreal (§23.5). §1–§22 are the
+MineExchange 1.3 (timeline semantics), and four adapters (0.1.0 at 23B;
+Phase 23C moved Ventsim and AnyLogic to 0.2.0 by adding the round-trip
+result kit, §24): Ventsim (§23.3), AnyLogic (§23.4), Unity and Unreal (§23.5). §1–§22 are the
 architecture decision and gap analysis this implementation is built on
 (kept as the record; §23 is the implementation contract and supersedes any
 earlier sub-phase wording such as "23B.1 / 23B.x / 23B.2 / 23B.3" — no
@@ -535,9 +536,10 @@ the engine's expected frame with the transform recorded), optional
 per-entity solids, the identity / semantics table, the network as data, an
 explicit material table; no runtime plugin, no vendor SDK work.
 
-## 14. Result import / write-back boundary (future, out of 23B scope)
+## 14. Result import / write-back boundary (delivered in Phase 23C)
 
-23B is one-way: MineGen → external application. A future phase may accept
+23B is one-way: MineGen → external application. Phase 23C accepts (see
+`docs/simulation-results.md` and §24)
 
     external simulation → result package → MineGen visualization overlay
 
@@ -760,7 +762,7 @@ every 1.2 file is byte-identical and the geometry binaries are untouched
 `ARTIFACT_ABSENT` / `SOURCE_NOT_SUCCESS`; `FIELD_LATTICE` stays the only
 `NOT_IN_V1`.
 
-### 23.3 Ventsim — geometry / network SEED (`VENTSIM 0.1.0`, rule 210)
+### 23.3 Ventsim — geometry / network SEED (`VENTSIM 0.1.0`; `0.2.0` since 23C, rule 210)
 
 Requires `EXCAVATIONS` (centerlines) and `NETWORK`; `SHAFTS` consumed when
 present (SHAFT / SHAFT_STATION_ACCESS airways). MineExchange `>=1.2.0,<2.0.0`.
@@ -802,7 +804,7 @@ attribute import is claimed (§11.4 Q2 stays UNVERIFIED), and no `.vsm` is
 produced. Coordinate mapping: identity (`LOCAL_ENU_Z_UP` metres; Ventsim
 imports a DXF in the file's CURRENT units — the README says to set metres).
 
-### 23.4 AnyLogic — operational data package (`ANYLOGIC 0.1.0`, rule 211)
+### 23.4 AnyLogic — operational data package (`ANYLOGIC 0.1.0`; `0.2.0` since 23C, rule 211)
 
 Requires MineExchange `>=1.3.0,<2.0.0`, `NETWORK` and `TIMELINE`
 (`ADAPTER_REQUIRED_SOURCE_ABSENT` / `ADAPTER_SOURCE_NOT_SUCCESS` with the
@@ -882,7 +884,7 @@ ventilation simulation, runtime synchronization, animation. No
     POST /api/v1/scenarios/{id}/export/unity
     POST /api/v1/scenarios/{id}/export/unreal
       → 200 application/zip  minegen_<id>_<target>.zip
-        X-Adapter-Name: <TARGET>, X-Adapter-Version: 0.1.0, X-MineExchange-Version: 1.3.0
+        X-Adapter-Name: <TARGET>, X-Adapter-Version: 0.2.0 (VENTSIM / ANYLOGIC) | 0.1.0 (UNITY / UNREAL), X-MineExchange-Version: 1.3.0
       → 404 SCENARIO_NOT_FOUND · 409 WORLD_NOT_GENERATED · 409 READ_SNAPSHOT_CHANGED
       → 409 <MineExchange refusal>  (STALE / MALFORMED / MINE_EXCHANGE_EXPORT_FAILED)
       → 409 ADAPTER_REQUIRED_SOURCE_ABSENT · 409 ADAPTER_SOURCE_NOT_SUCCESS
@@ -921,3 +923,35 @@ row (1.3).
 - Browser acceptance Cases A–G (production build + real backend) recorded in
   the phase report. A licensed Ventsim / AnyLogic / engine import remains a
   manual step outside CI (§11.4 Q3 / Q4 unchanged).
+
+## 24. Phase 23C — round-trip result kits (adapters `VENTSIM 0.2.0`, `ANYLOGIC 0.2.0`, rule 217)
+
+The Ventsim and AnyLogic packages gained an ADDITIVE `roundtrip/` folder
+(`adapters/roundtrip.py`); no existing file changed and Unity / Unreal stay
+0.1.0. The kit is the MineResult 1.0 package shape (`docs/simulation-results.md`
+§2) pre-bound to the export:
+
+    ventsim_package/roundtrip/
+      result_manifest.json   mineResultVersion 1.0.0, VENTILATION / VENTSIM, sourceScenarioId,
+                             the SAME sourceSnapshot as adapter_manifest.json, timeAxis STATIC,
+                             canonical units declared, unitConversions []
+      airway_results.csv     edgeId,ventsimUniqueNumber,time,airflowM3s,…,airDensityKgM3 —
+                             ONE pre-identified row per airway of network/airways.csv, every
+                             metric cell EMPTY (no invented value)
+      airway_identity.csv    edgeId,ventsimUniqueNumber — edgeId filled, number empty (explicit crosswalk)
+      README.txt             fill / zip / import instructions (POST …/results/import/ventsim)
+
+    anylogic_package/roundtrip/
+      result_manifest.json   OPERATIONS / ANYLOGIC, timeAxis ELAPSED_SECONDS (or MINE_DAY by edit),
+                             loadTonnes t + edge / summary metric units declared
+      vehicle_samples.csv    header only: time,agentId,agentKind,edgeId,chainageFraction,status,loadTonnes
+      edge_metrics.csv       header only: time,edgeId,utilization,queueCount,haulageTonnesPerHour,travelTimeSeconds
+      summary_metrics.csv    header only: metric,value,unit
+      README.txt             instructions (POST …/results/import/anylogic)
+
+`adapter_manifest.json` lists the kit files under `generatedFiles` (hashed
+like every other file) and names them in `details.roundTripKit`
+(`mineResultVersion`, `files`, `importRoute`). The kit carries no
+simulation value: MineGen never invents a result, only the shape it can
+bind. The import refuses a kit of another scenario or of an older
+snapshot (`RESULT_SOURCE_SCENARIO_MISMATCH` / `RESULT_SOURCE_SNAPSHOT_MISMATCH`).

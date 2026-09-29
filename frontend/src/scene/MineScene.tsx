@@ -34,6 +34,9 @@ import { SensorCoverageLayer } from './SensorCoverageLayer'
 import { staticExcavationVisibleIn4D } from '@/timeline/evaluate'
 import { RockQualitySliceLayer } from './RockQualitySliceLayer'
 import { TerrainLayer } from './TerrainLayer'
+import { useResultsStore } from '@/stores/resultsStore'
+import { VentilationResultLayer } from './VentilationResultLayer'
+import { OperationsResultLayer } from './OperationsResultLayer'
 
 /**
  * Mine scene. Layers are siblings toggled by the viewer store; each layer
@@ -62,6 +65,9 @@ export function MineScene() {
     mode === 'WALKTHROUGH' && developmentPhysics.mount,
   )
   const walkthroughActive = mode === 'WALKTHROUGH'
+  // Phase 23C: result overlays are frontend-only frames of the ACTIVE results
+  const ventilationOverlay = useResultsStore((st) => st.ventilationOverlay)
+  const operationsOverlay = useResultsStore((st) => st.operationsOverlay)
   const walkthroughSnapshotDay = useViewerStore((st) => st.walkthroughSnapshotDay)
   // §13: TIMELINE_SNAPSHOT never renders the full static tunnel GLB
   const temporalWalk = walkthroughActive && walkthroughContext === 'TIMELINE_SNAPSHOT'
@@ -192,6 +198,16 @@ export function MineScene() {
         <ShaftLayer shafts={scene.shafts} />
       ) : null}
       {scene?.network && visible.has('network') ? <NetworkLayer network={scene.network} /> : null}
+      {scene && ventilationOverlay && visible.has('ventilationResult') ? (
+        <VentilationResultLayer overlay={ventilationOverlay} />
+      ) : null}
+      {scene && operationsOverlay && (visible.has('operationsHeatmap') || visible.has('operationsVehicles')) ? (
+        <OperationsResultLayer
+          overlay={operationsOverlay}
+          showHeatmap={visible.has('operationsHeatmap')}
+          showVehicles={visible.has('operationsVehicles')}
+        />
+      ) : null}
       {communicationActive && scene?.communication && visible.has('routers') ? (
         <CommunicationRouterLayer communication={scene.communication} />
       ) : null}

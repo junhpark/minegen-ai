@@ -14,6 +14,15 @@ import type {
   MineAnalysisPayload,
 } from '@/types/analysis'
 import type { Capability } from '@/types/enums'
+import type {
+  OperationsFrame,
+  ResultDetail,
+  ResultGeometryPayload,
+  ResultImportPayload,
+  ResultListPayload,
+  SourceApplication,
+  VentilationFrame,
+} from '@/types/results'
 import type { AdapterTarget } from '@/components/panels/exportContents'
 import type {
   AccessTargetsPayload,
@@ -122,6 +131,28 @@ async function requestFile(
   }
 }
 
+/** An upload of raw bytes (a MineResult ZIP): the body is sent as-is under
+ * the declared media type; a typed refusal travels as `ApiError`. */
+async function requestUpload<T>(
+  path: string,
+  body: Blob,
+  mediaType: string,
+): Promise<{ status: number; payload: T }> {
+  const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': mediaType },
+    body,
+  })
+  if (!res.ok) throw await apiErrorOf(res)
+  return { status: res.status, payload: (await res.json()) as T }
+}
+
+/** A request whose success answer carries no body (204). */
+async function requestNoContent(path: string, init: RequestInit): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, init)
+  if (!res.ok) throw await apiErrorOf(res)
+}
+
 export const api = {
   health: () => request<HealthResponse>('/health'),
   listScenarios: () => request<ScenarioSummary[]>('/scenarios'),
@@ -215,6 +246,42 @@ export const api = {
     ),
   getDesignAssessment: (id: string) =>
     request<DesignAssessmentPayload>(`/scenarios/${id}/design/assessment`),
+  // -- Phase 23C: external simulation results (MineResult 1.0) ------------- //
+  /** Import a MineResult ZIP (the filled round-trip kit) for VENTSIM or
+   * ANYLOGIC; 201 when stored, 200 when the identical result already exists.
+   * The backend binds it to the CURRENT mine snapshot and computes nothing. */
+  importSimulationResult: (id: string, application: SourceApplication, file: Blob) =>
+    requestUpload<ResultImportPayload>(
+      `/scenarios/${id}/results/import/${application.toLowerCase()}`,
+      file,
+      'application/zip',
+    ),
+  listSimulationResults: (id: string) =>
+    request<ResultListPayload>(`/scenarios/${id}/results`),
+  getSimulationResult: (id: string, resultId: string) =>
+    request<ResultDetail>(`/scenarios/${id}/results/${resultId}`),
+  deleteSimulationResult: (id: string, resultId: string) =>
+    requestNoContent(`/scenarios/${id}/results/${resultId}`, { method: 'DELETE' }),
+  exportSimulationResult: (id: string, resultId: string) =>
+    requestFile(
+      `/scenarios/${id}/results/${resultId}/export`,
+      { method: 'GET' },
+      `minegen_${id}_mineresult_${resultId}.zip`,
+    ),
+  getSimulationResultGeometry: (id: string, resultId: string) =>
+    request<ResultGeometryPayload>(`/scenarios/${id}/results/${resultId}/geometry`),
+  getVentilationFrame: (id: string, resultId: string, metric: string, time: number | null) =>
+    request<VentilationFrame>(
+      `/scenarios/${id}/results/${resultId}/ventilation?` +
+        new URLSearchParams(
+          time === null ? { metric } : { metric, time: String(time) },
+        ).toString(),
+    ),
+  getOperationsFrame: (id: string, resultId: string, time: number) =>
+    request<OperationsFrame>(
+      `/scenarios/${id}/results/${resultId}/operations/frame?` +
+        new URLSearchParams({ time: String(time) }).toString(),
+    ),
   setRampSource: (id: string, activeSource: RampSource) =>
     request<RampSourceSummary>(`/scenarios/${id}/design/ramp-source`, {
       method: 'PUT',

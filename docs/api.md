@@ -57,9 +57,47 @@ meters (`docs/coordinate-system.md`). Schemas live in
     POST /api/v1/scenarios/{id}/export/unity         from the scenario's live MineExchange 1.3 bundle
     POST /api/v1/scenarios/{id}/export/unreal        BYTES (AdapterService → ExchangeService only);
                                                      headers X-Adapter-Name / X-Adapter-Version
-                                                     (0.1.0) / X-MineExchange-Version (1.3.0),
-                                                     filename minegen_<id>_<target>.zip; read-only,
-                                                     nothing generated or persisted, deterministic.
+                                                     (0.2.0 VENTSIM / ANYLOGIC since Phase 23C —
+                                                     round-trip result kit under roundtrip/;
+                                                     0.1.0 UNITY / UNREAL) / X-MineExchange-Version
+                                                     (1.3.0), filename minegen_<id>_<target>.zip;
+                                                     read-only, nothing generated or persisted,
+                                                     deterministic.
+    POST   /api/v1/scenarios/{id}/results/import/ventsim    Phase 23C (rules 213–218,
+    POST   /api/v1/scenarios/{id}/results/import/anylogic   docs/simulation-results.md): import a
+                                                     MineResult 1.0 ZIP (application/zip body — the
+                                                     filled roundtrip/ kit) bound to the CURRENT
+                                                     MineExchange sourceSnapshot; 201 {created,
+                                                     result} when stored, 200 when the identical
+                                                     result exists (deterministic resultId);
+                                                     422 RESULT_PACKAGE_INVALID / RESULT_VERSION_
+                                                     UNSUPPORTED / RESULT_UNIT_UNSUPPORTED /
+                                                     RESULT_DATA_INVALID, 409 RESULT_SOURCE_
+                                                     SCENARIO_MISMATCH / RESULT_SOURCE_SNAPSHOT_
+                                                     MISMATCH / RESULT_IDENTITY_UNRESOLVED /
+                                                     RESULT_IDENTITY_AMBIGUOUS / READ_SNAPSHOT_
+                                                     CHANGED, 413 RESULT_LIMIT_EXCEEDED
+    GET    /api/v1/scenarios/{id}/results            {scenarioId, results[]} — every stored
+                                                     result with compatibility COMPATIBLE | STALE
+                                                     against the current snapshot
+    GET    /api/v1/scenarios/{id}/results/{rid}      ResultDetail (metadata, provenance,
+                                                     availability; no samples); 404 RESULT_NOT_FOUND
+    DELETE /api/v1/scenarios/{id}/results/{rid}      204 — the only operation that removes a result
+    GET    /api/v1/scenarios/{id}/results/{rid}/export        canonical MineResult 1.0 ZIP
+                                                     (deterministic bytes, re-importable; allowed
+                                                     for STALE results)
+    GET    /api/v1/scenarios/{id}/results/{rid}/geometry      source-snapshot edge centerlines
+                                                     (LOCAL_ENU_Z_UP); 409 RESULT_STALE
+    GET    /api/v1/scenarios/{id}/results/{rid}/ventilation?metric=&time=
+                                                     VentilationFrame — hold-last slice, missing
+                                                     edges listed; 409 RESULT_STALE
+    GET    /api/v1/scenarios/{id}/results/{rid}/operations/frame?time=
+                                                     OperationsFrame — vehicles (same-edge
+                                                     interpolation only) + hold-last edge metrics;
+                                                     409 RESULT_STALE. Results live under
+                                                     results/<rid>/ beside derived/, are never
+                                                     generated / mutated by these routes and never
+                                                     deleted by mine regeneration.
                                                      VENTSIM: geometry / network SEED (verbatim
                                                      centerline DXF, nodes.csv, airways.csv with
                                                      manifest DXF handles, entity_map.csv) —

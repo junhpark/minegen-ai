@@ -67,6 +67,15 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
       { id: 'sensorCoverage', label: 'Monitoring coverage', phase: 12 },
     ],
   },
+  {
+    // Phase 23C: external simulation results (MineResult overlays)
+    title: 'Simulation results',
+    rows: [
+      { id: 'ventilationResult', label: 'Ventilation overlay (active result)', phase: 20 },
+      { id: 'operationsHeatmap', label: 'Operations edge heatmap', phase: 20 },
+      { id: 'operationsVehicles', label: 'Operations vehicles', phase: 20 },
+    ],
+  },
 ]
 
 // every listed layer has backend content by now (Phase 20B closeout v3 §4:

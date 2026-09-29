@@ -528,7 +528,14 @@ WRITE_MODES = frozenset({"w", "a", "x", "+"})
 #: ``backend/golden/`` (rule 132), which are not persisted scenario artifacts
 #: and are on no API path. The same allowlist shape as the READ proof's, so a
 #: new writer anywhere else in those modules still fails this test.
+#: Phase 23C (rule 215): ``results/normalization.py::npz_bytes`` hands
+#: ``np.savez_compressed`` an in-memory ``io.BytesIO`` — it serializes the
+#: canonical result arrays to BYTES and touches no path; the bytes are then
+#: installed by ``results/store.py::publish`` through ``publish_bytes`` (the
+#: write authority). Named as one function so any path-bound ``savez`` added
+#: to the results package still fails this proof.
 ALLOWED_WRITES: dict[str, tuple[str, ...]] = {
+    "results/normalization.py": ("npz_bytes",),
     "regression/golden.py": ("write_report",),
     "regression/layout_v2.py": ("write_report",),
     "regression/warped_vein.py": ("write_report",),

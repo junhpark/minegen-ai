@@ -14,6 +14,7 @@ from minegen.api.deps import (
     get_exchange_service,
     get_infrastructure_service,
     get_job_service,
+    get_result_service,
     get_scenario_store,
     get_world_service,
 )
@@ -37,6 +38,7 @@ from minegen.services.design_service import DesignService
 from minegen.services.exchange_service import ExchangeService
 from minegen.services.infrastructure_service import InfrastructureService
 from minegen.services.job_service import JobService
+from minegen.services.result_service import ResultService
 from minegen.services.scenario_realizer import realize_scenario
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.world_service import WorldService
@@ -66,6 +68,7 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     # real method chains (three module-scoped stacks: minutes)
     "test_exchange_timeline_e2e": ("e2e",),
     "test_adapters_e2e": ("e2e",),
+    "test_results_e2e": ("e2e",),
     "test_layout_v2_golden_smoke": ("golden",),
     # Phase 20B.x: the GEOMETRY-STRESS feasibility oracle (one full layout-v2 search)
     "test_geometry_stress_oracle": ("slow",),
@@ -272,6 +275,7 @@ def client(
     app.dependency_overrides[get_exchange_service] = lambda: exchange_service
     app.dependency_overrides[get_adapter_service] = lambda: AdapterService(exchange_service)
     app.dependency_overrides[get_analysis_service] = lambda: AnalysisService(store)
+    app.dependency_overrides[get_result_service] = lambda: ResultService(store, exchange_service)
     # the WebSocket handler resolves the registry without DI; point it at the same instance
     import minegen.api.jobs as jobs_module
 

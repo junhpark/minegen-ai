@@ -22,6 +22,7 @@ from minegen.api import (
     infrastructure,
     jobs,
     network,
+    results,
     scenarios,
     world,
 )
@@ -84,6 +85,15 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
+        # Phase 23C: a browser may read the download filename and the version
+        # headers of the export / result routes only when they are exposed
+        expose_headers=[
+            "Content-Disposition",
+            "X-MineExchange-Version",
+            "X-Adapter-Name",
+            "X-Adapter-Version",
+            "X-MineResult-Version",
+        ],
         allow_headers=["*"],
     )
 
@@ -101,6 +111,7 @@ def create_app() -> FastAPI:
     api.include_router(exchange.router)
     api.include_router(adapters.router)
     api.include_router(analysis.router)
+    api.include_router(results.router)
     app.include_router(api)
     app.include_router(jobs.ws_router)
     return app

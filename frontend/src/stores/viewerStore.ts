@@ -81,6 +81,11 @@ const DEFAULT_VISIBLE: LayerId[] = [
   'coverage',
   'sensors',
   'sensorCoverage',
+  // Phase 23C: overlays render only while a result is ACTIVE in the
+  // Simulation Results tab, so the toggles default ON
+  'ventilationResult',
+  'operationsHeatmap',
+  'operationsVehicles',
 ]
 
 export const useViewerStore = create<ViewerState>()((set, get) => ({

@@ -764,12 +764,20 @@ def _source_not_success(
     )
 
 
-def _excavations(
-    inputs: ExchangeInputs,
-    files: list[BundleFile],
-    entities: list[ExchangeEntity],
-    omissions: list[ExchangeOmission],
-) -> list[CenterlineEntity]:
+def assemble_centerlines(
+    inputs: ExchangeInputs, omissions: list[ExchangeOmission]
+) -> tuple[list[CenterlineEntity], list[AggregateEntity]] | None:
+    """The authoritative centerline entities of ONE snapshot (stable ids),
+    assembled exactly as the bundle projects them — the Effective Ramp first,
+    then every SUCCESS optional development source (level accesses, levels,
+    shafts); a present non-SUCCESS source is an explicit omission (PR #44
+    correction S2), never faked and never fatal. ``None`` when no usable
+    Effective Ramp exists (its omission is recorded).
+
+    This is the ONE assembly the exporter (``_excavations``) and the
+    Phase 23C result binding (``ExchangeService.observe_edge_centerlines``)
+    share, so a result resolves identities against the SAME centerline /
+    entity ids the bundle carried."""
     ramp = inputs.ramp
     if ramp is None or inputs.ramp_artifact is None:
         omissions.append(
@@ -780,7 +788,7 @@ def _excavations(
                 source_artifact=None,
             )
         )
-        return []
+        return None
     ramp_doc = ramp.document
     if ramp_doc.get("status") == "FAILED" or not ramp_doc.get("segments"):
         omissions.append(
@@ -791,7 +799,7 @@ def _excavations(
                 source_artifact=inputs.ramp_artifact,
             )
         )
-        return []
+        return None
     scenario = inputs.scenario
     accesses = inputs.accesses.document if inputs.accesses is not None else None
     levels = inputs.levels.document if inputs.levels is not None else None
@@ -828,6 +836,25 @@ def _excavations(
                 source_artifact="shafts.json",
             )
         )
+    return centerlines, aggregates
+
+
+def _excavations(
+    inputs: ExchangeInputs,
+    files: list[BundleFile],
+    entities: list[ExchangeEntity],
+    omissions: list[ExchangeOmission],
+) -> list[CenterlineEntity]:
+    assembled = assemble_centerlines(inputs, omissions)
+    if assembled is None:
+        return []
+    centerlines, aggregates = assembled
+    ramp = inputs.ramp
+    assert ramp is not None and inputs.ramp_artifact is not None  # assemble_centerlines
+    ramp_doc = ramp.document
+    scenario = inputs.scenario
+    accesses = inputs.accesses.document if inputs.accesses is not None else None
+    levels = inputs.levels.document if inputs.levels is not None else None
 
     # -- closed solids through the SAME sweep helpers the builders use ------ #
     try:

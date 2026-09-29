@@ -19,6 +19,7 @@ import { useScenarioStore } from './scenarioStore'
 import { useSliceStore } from './sliceStore'
 import { useTimelineStore } from './timelineStore'
 import { useViewerStore } from './viewerStore'
+import { useResultsStore } from './resultsStore'
 
 function scenario(id: string, orebodyType = 'TABULAR'): Scenario {
   return { id, name: id, orebody: { orebodyType } } as unknown as Scenario
@@ -63,6 +64,45 @@ beforeEach(() => {
   useSliceStore.setState(useSliceStore.getInitialState())
   useTimelineStore.setState(useTimelineStore.getInitialState())
   useViewerStore.setState(useViewerStore.getInitialState())
+  useResultsStore.setState(useResultsStore.getInitialState())
+})
+
+describe('Phase 23C simulation results are scenario-scoped', () => {
+  const axis = { kind: 'ELAPSED_SECONDS', unit: 's', sampleCount: 3, start: 0, end: 600 } as const
+  it('a scenario change releases the active results, their clocks and overlays', () => {
+    activateScenario(scenario('A'))
+    useResultsStore.getState().setActiveVentilation('aaaaaaaaaaaaaaaa', axis)
+    useResultsStore.getState().setActiveOperations('bbbbbbbbbbbbbbbb', axis)
+    useResultsStore.getState().setOperationsTime(300)
+    useResultsStore.getState().playOperations()
+    useResultsStore.getState().setVentilationRange({ min: 0, max: 5 })
+    activateScenario(scenario('B'))
+    const s = useResultsStore.getState()
+    expect(s.activeVentilationResultId).toBeNull()
+    expect(s.activeOperationsResultId).toBeNull()
+    expect(s.operationsTime).toBe(0)
+    expect(s.operationsPlaying).toBe(false)
+    expect(s.ventilationRange).toBeNull()
+    expect(s.ventilationOverlay).toBeNull()
+  })
+
+  it('a same-id scenario revision releases them too (results may be STALE now)', () => {
+    activateScenario(scenario('A'))
+    useResultsStore.getState().setActiveOperations('bbbbbbbbbbbbbbbb', axis)
+    activateScenarioRevision(scenario('A'))
+    expect(useResultsStore.getState().activeOperationsResultId).toBeNull()
+  })
+
+  it('the result clock is independent of the MineTimeline day cursor', () => {
+    activateScenario(scenario('A'))
+    useTimelineStore.getState().setRange(0, 900)
+    useTimelineStore.getState().setCurrentDay(400)
+    useResultsStore.getState().setActiveOperations('bbbbbbbbbbbbbbbb', axis)
+    useResultsStore.getState().setOperationsTime(250)
+    expect(useTimelineStore.getState().currentDay).toBe(400)
+    useTimelineStore.getState().setCurrentDay(10)
+    expect(useResultsStore.getState().operationsTime).toBe(250)
+  })
 })
 
 describe('scenario identity boundary', () => {
