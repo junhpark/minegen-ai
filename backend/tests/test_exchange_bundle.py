@@ -261,6 +261,40 @@ def test_world_only_export_tabular(client: TestClient, store: ScenarioStore) -> 
     assert export(client, sid).data == b.data
 
 
+def test_world_only_export_without_faults_is_not_a_500(client: TestClient) -> None:
+    """A scenario that declares no fault (rule 27: faults are scenario-declared)
+    exports: the empty fault MODEL is present, no surface file is faked (a
+    zero-vertex GLB is not a valid glTF) and every adapter package builds
+    from the bundle. Regression: the fault GLB writer raised on an empty
+    vertex set → bare 500."""
+    from tests.conftest import small_scenario
+
+    sc = small_scenario(with_fault=False)
+    payload = sc.model_dump(by_alias=True, exclude={"id", "schema_version"})
+    r = client.post("/api/v1/scenarios", json=payload)
+    assert r.status_code == 201, r.text
+    sid = str(r.json()["id"])
+    assert client.post(f"/api/v1/scenarios/{sid}/world/generate").status_code == 200
+    b = export(client, sid)
+    assert_integrity(b)
+    assert b.json("geology/faults.json")["faults"] == []
+    assert "geology/faults.dxf" not in b.files and "geology/faults.glb" not in b.files
+    assert any("no fault declared" in n for n in b.files["geology/faults.json"]["notes"])
+    assert not [e for e in b.manifest["entities"] if e["kind"] == "FAULT"]
+    assert "FAULTS" not in b.omissions()  # the authority exists and is exported
+    for target in ("unity", "unreal"):
+        r = client.post(f"/api/v1/scenarios/{sid}/export/{target}")
+        assert r.status_code == 200, r.text
+        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+            assets = [n for n in zf.namelist() if "/scene/assets/" in n]
+        assert sorted(a.split("/")[-1] for a in assets) == [
+            "orebody_orebody.glb",
+            "terrain_terrain_surface.glb",
+        ]
+    r = client.post(f"/api/v1/scenarios/{sid}/export/ventsim")
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "ADAPTER_REQUIRED_SOURCE_ABSENT"
+
+
 def test_world_only_export_ellipsoid(client: TestClient) -> None:
     sc = realize_scenario(ScenarioPreset.RANDOM_ELLIPSOID, 777, fault_count=1)
     r = client.post("/api/v1/scenarios", json=sc.model_dump(by_alias=True, mode="json"))

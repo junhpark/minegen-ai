@@ -650,6 +650,14 @@ def _faults(
             False,
         )
     )
+    if not faults:
+        # A scenario that declares no fault is a legitimate world (rule 27:
+        # faults are scenario-declared): the empty fault MODEL is exported and
+        # NO surface file is faked — a zero-vertex GLB is not a valid glTF and
+        # an empty DXF carries no entity. Not an omission: the authority exists
+        # and is exported (``faults: []``).
+        files[-1].notes.append("no fault declared: no fault surface file (dxf / glb) is emitted")
+        return
     doc = DxfDocument(
         polygons=[
             DxfPolygon(f.entity_id, "FAULT", f.polygon) for f in faults if f.polygon.shape[0] >= 3
