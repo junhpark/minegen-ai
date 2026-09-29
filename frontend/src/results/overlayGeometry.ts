@@ -79,10 +79,7 @@ export function buildVertexColors(
   return colors
 }
 
-export function edgeHex(
-  value: number | undefined,
-  range: DisplayRange | null,
-): string {
+export function edgeHex(value: number | undefined, range: DisplayRange | null): string {
   if (value === undefined || range === null || !Number.isFinite(value)) return NEUTRAL_COLOR
   return rgbToHex(valueRgb(value, range))
 }

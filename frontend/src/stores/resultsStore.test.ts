@@ -8,7 +8,23 @@ beforeEach(() => useResultsStore.setState(useResultsStore.getInitialState()))
 describe('results store', () => {
   it('activating a result starts its clock at the axis start and drops the previous overlay', () => {
     const s = useResultsStore.getState()
-    s.setVentilationOverlay({ resultId: 'x', geometry: { resultId: 'x', coordinateFrame: 'LOCAL_ENU_Z_UP', edges: [] }, frame: { resultId: 'x', metric: 'airflowM3s', unit: 'm3/s', timeAxisKind: 'STATIC', time: null, sampleTime: null, values: [], missingEdgeIds: [], min: null, max: null, signConvention: null } })
+    s.setVentilationOverlay({
+      resultId: 'x',
+      geometry: { resultId: 'x', coordinateFrame: 'LOCAL_ENU_Z_UP', edges: [] },
+      frame: {
+        resultId: 'x',
+        metric: 'airflowM3s',
+        unit: 'm3/s',
+        timeAxisKind: 'STATIC',
+        time: null,
+        sampleTime: null,
+        values: [],
+        missingEdgeIds: [],
+        min: null,
+        max: null,
+        signConvention: null,
+      },
+    })
     s.setActiveVentilation('aaaaaaaaaaaaaaaa', axis)
     expect(useResultsStore.getState().ventilationTime).toBe(10)
     expect(useResultsStore.getState().ventilationOverlay).toBeNull()

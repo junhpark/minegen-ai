@@ -30,7 +30,8 @@ export function VentilationResultLayer({ overlay }: { overlay: VentilationOverla
     [segments, edges, valueByEdge, range],
   )
   const arrows = useMemo(
-    () => (showArrows && overlay.frame.metric === 'airflowM3s' ? buildArrows(edges, valueByEdge) : []),
+    () =>
+      showArrows && overlay.frame.metric === 'airflowM3s' ? buildArrows(edges, valueByEdge) : [],
     [showArrows, overlay.frame.metric, edges, valueByEdge],
   )
   const geometry = useMemo(() => {

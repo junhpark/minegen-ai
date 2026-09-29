@@ -48,7 +48,13 @@ export const OPS_SUMMARY: ResultSummary = {
   metrics: [
     { name: 'utilization', unit: 'fraction', available: true, sampleCount: 9, min: 0.1, max: 0.9 },
   ],
-  counts: { edgeCount: 3, timeCount: 40, sampleCount: 160, vehicleCount: 4, edgeMetricSampleCount: 9 },
+  counts: {
+    edgeCount: 3,
+    timeCount: 40,
+    sampleCount: 160,
+    vehicleCount: 4,
+    edgeMetricSampleCount: 9,
+  },
   mineResultVersion: '1.0.0',
 }
 
@@ -91,7 +97,8 @@ export const VENT_FRAME: VentilationFrame = {
   missingEdgeIds: ['DRIFT:L01:00'],
   min: -8.5,
   max: -8.5,
-  signConvention: 'positive airflow flows from the MineNetwork edge sourceNodeId toward its targetNodeId',
+  signConvention:
+    'positive airflow flows from the MineNetwork edge sourceNodeId toward its targetNodeId',
 }
 
 export const OPS_FRAME: OperationsFrame = {

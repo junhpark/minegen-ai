@@ -52,7 +52,12 @@ describe('Simulation Results container', () => {
   })
 
   it('import and delete refresh the results list only', () => {
-    expect((panel.match(/invalidateQueries\(\{ queryKey: \['simulation-results', scenarioId\] \}\)/g) ?? []).length).toBe(2)
+    expect(
+      (
+        panel.match(/invalidateQueries\(\{ queryKey: \['simulation-results', scenarioId\] \}\)/g) ??
+        []
+      ).length,
+    ).toBe(2)
     expect(panel).not.toMatch(/invalidateQueries\(\{ queryKey: \['(?!simulation-results)/)
     for (const f of FORBIDDEN) expect(panel).not.toContain(f)
   })

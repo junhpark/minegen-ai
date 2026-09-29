@@ -47,11 +47,7 @@ export function rampRgb(t: number): [number, number, number] {
     if (x <= t1) {
       const [t0, c0] = STOPS[i - 1] as [number, [number, number, number]]
       const u = t1 === t0 ? 0 : (x - t0) / (t1 - t0)
-      return [
-        c0[0] + u * (c1[0] - c0[0]),
-        c0[1] + u * (c1[1] - c0[1]),
-        c0[2] + u * (c1[2] - c0[2]),
-      ]
+      return [c0[0] + u * (c1[0] - c0[0]), c0[1] + u * (c1[1] - c0[1]), c0[2] + u * (c1[2] - c0[2])]
     }
   }
   const last = STOPS[STOPS.length - 1] as [number, [number, number, number]]

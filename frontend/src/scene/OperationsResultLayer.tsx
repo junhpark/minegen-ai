@@ -75,7 +75,8 @@ export function OperationsResultLayer({
       ) : null}
       {showVehicles
         ? overlay.frame.vehicles.map((v) => {
-            const color = (v.status && STATUS_COLORS[v.status.toUpperCase()]) || DEFAULT_VEHICLE_COLOR
+            const color =
+              (v.status && STATUS_COLORS[v.status.toUpperCase()]) || DEFAULT_VEHICLE_COLOR
             return (
               <mesh
                 key={v.agentId}

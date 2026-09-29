@@ -256,8 +256,7 @@ export const api = {
       file,
       'application/zip',
     ),
-  listSimulationResults: (id: string) =>
-    request<ResultListPayload>(`/scenarios/${id}/results`),
+  listSimulationResults: (id: string) => request<ResultListPayload>(`/scenarios/${id}/results`),
   getSimulationResult: (id: string, resultId: string) =>
     request<ResultDetail>(`/scenarios/${id}/results/${resultId}`),
   deleteSimulationResult: (id: string, resultId: string) =>
@@ -273,9 +272,7 @@ export const api = {
   getVentilationFrame: (id: string, resultId: string, metric: string, time: number | null) =>
     request<VentilationFrame>(
       `/scenarios/${id}/results/${resultId}/ventilation?` +
-        new URLSearchParams(
-          time === null ? { metric } : { metric, time: String(time) },
-        ).toString(),
+        new URLSearchParams(time === null ? { metric } : { metric, time: String(time) }).toString(),
     ),
   getOperationsFrame: (id: string, resultId: string, time: number) =>
     request<OperationsFrame>(

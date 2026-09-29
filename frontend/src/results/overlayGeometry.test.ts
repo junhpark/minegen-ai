@@ -45,7 +45,13 @@ describe('airflow arrows', () => {
     const mt = midpointAndTangent(GEOMETRY.edges[0]!.points)
     expect(mt?.point).toEqual([30, 5, 100]) // 70 m polyline: 30 along +x, then 5 along +y
     expect(mt?.tangent).toEqual([0, 1, 0])
-    const arrows = buildArrows(GEOMETRY.edges, new Map([['RAMP:L01', -3], ['DRIFT:L01:00', 2]]))
+    const arrows = buildArrows(
+      GEOMETRY.edges,
+      new Map([
+        ['RAMP:L01', -3],
+        ['DRIFT:L01:00', 2],
+      ]),
+    )
     expect(arrows.map((a) => a.edgeId)).toEqual(['RAMP:L01', 'DRIFT:L01:00'])
     // negative airflow → reversed tangent (mine −y) → Three.js +z
     const plain = (v: readonly number[]) => v.map((x) => x + 0)

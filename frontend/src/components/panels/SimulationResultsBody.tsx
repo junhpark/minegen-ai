@@ -5,7 +5,13 @@ import { InfoPopover } from '@/components/ui/InfoPopover'
 import { Metrics } from '@/components/ui/MetricRow'
 import type { StatusTone } from '@/components/ui/presentation'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { displayRange, legendTicks, rgbToHex, rampRgb, type DisplayRange } from '@/results/colorScale'
+import {
+  displayRange,
+  legendTicks,
+  rgbToHex,
+  rampRgb,
+  type DisplayRange,
+} from '@/results/colorScale'
 import {
   APPLICATION_LABEL,
   COMPATIBILITY_LABEL,
@@ -375,12 +381,16 @@ function ResultCard({
     >
       <header className="mb-1 flex items-center justify-between gap-2">
         <h3 className="plate text-[12px] text-chalk">{resultTitle(r)}</h3>
-        <StatusBadge tone={compatibilityTone(r.compatibility)} label={COMPATIBILITY_LABEL[r.compatibility]} />
+        <StatusBadge
+          tone={compatibilityTone(r.compatibility)}
+          label={COMPATIBILITY_LABEL[r.compatibility]}
+        />
       </header>
       <div className="readout break-words text-[11px] text-chalk-dim">
-        {DOMAIN_LABEL[r.domain]} · {APPLICATION_LABEL[r.sourceApplication]} · {timeAxisLabel(r.timeAxis.kind)}
-        {r.timeAxis.kind === 'STATIC' ? '' : ` (${r.timeAxis.sampleCount} times)`} · {r.counts.edgeCount}{' '}
-        edges
+        {DOMAIN_LABEL[r.domain]} · {APPLICATION_LABEL[r.sourceApplication]} ·{' '}
+        {timeAxisLabel(r.timeAxis.kind)}
+        {r.timeAxis.kind === 'STATIC' ? '' : ` (${r.timeAxis.sampleCount} times)`} ·{' '}
+        {r.counts.edgeCount} edges
         {r.domain === 'OPERATIONS' ? ` · ${r.counts.vehicleCount} vehicles` : ''}
       </div>
       {stale ? <p className="mt-1 text-[11px] text-danger">{STALE_TEXT}</p> : null}
@@ -433,7 +443,9 @@ function ResultCard({
             {
               label: 'Metrics',
               value: available.length
-                ? available.map((m) => `${m.name} (${m.unit}) ${fmtValue(m.min)}…${fmtValue(m.max)}`).join('; ')
+                ? available
+                    .map((m) => `${m.name} (${m.unit}) ${fmtValue(m.min)}…${fmtValue(m.max)}`)
+                    .join('; ')
                 : 'none',
             },
           ]}
@@ -465,7 +477,10 @@ export function SimulationResultsBody(p: SimulationResultsBodyProps) {
             Import result
             <InfoPopover label="Import result">{IMPORT_INFO}</InfoPopover>
           </h3>
-          <StatusBadge tone={p.importing ? 'RUNNING' : 'INACTIVE'} label={p.importing ? 'Importing' : 'MineResult 1.0'} />
+          <StatusBadge
+            tone={p.importing ? 'RUNNING' : 'INACTIVE'}
+            label={p.importing ? 'Importing' : 'MineResult 1.0'}
+          />
         </header>
         <label className="flex items-center gap-2 text-[11px] text-chalk-dim">
           <span className="w-14 text-mute">Source</span>
@@ -490,9 +505,15 @@ export function SimulationResultsBody(p: SimulationResultsBodyProps) {
             data-testid="result-file-input"
           />
         </label>
-        {p.importing ? <p className="mt-1 text-[11px] text-mute">Importing and binding the package…</p> : null}
-        {p.importError ? <p className="mt-1 break-words text-[11px] text-danger">{p.importError}</p> : null}
-        {p.importNotice ? <p className="mt-1 text-[11px] text-chalk-dim">{p.importNotice}</p> : null}
+        {p.importing ? (
+          <p className="mt-1 text-[11px] text-mute">Importing and binding the package…</p>
+        ) : null}
+        {p.importError ? (
+          <p className="mt-1 break-words text-[11px] text-danger">{p.importError}</p>
+        ) : null}
+        {p.importNotice ? (
+          <p className="mt-1 text-[11px] text-chalk-dim">{p.importNotice}</p>
+        ) : null}
       </section>
       {p.listError ? (
         <p className="break-words px-4 py-3 text-[11px] text-danger" data-testid="results-error">

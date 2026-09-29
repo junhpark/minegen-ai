@@ -152,7 +152,12 @@ describe('Simulation Results body', () => {
     expect(html).toContain('>10x<')
     expect(html).toContain('1 vehicles in frame · 1 edges with')
     expect(html).toContain('frame 0.40 … 0.40')
-    expect(render({ activeOperationsResultId: OPS_SUMMARY.resultId, operations: { ...props().operations, playing: true } })).toContain('>Pause<')
+    expect(
+      render({
+        activeOperationsResultId: OPS_SUMMARY.resultId,
+        operations: { ...props().operations, playing: true },
+      }),
+    ).toContain('>Pause<')
   })
 
   it('an overlay refusal is shown verbatim and a missing frame reads as loading', () => {

@@ -201,7 +201,9 @@ export function MineScene() {
       {scene && ventilationOverlay && visible.has('ventilationResult') ? (
         <VentilationResultLayer overlay={ventilationOverlay} />
       ) : null}
-      {scene && operationsOverlay && (visible.has('operationsHeatmap') || visible.has('operationsVehicles')) ? (
+      {scene &&
+      operationsOverlay &&
+      (visible.has('operationsHeatmap') || visible.has('operationsVehicles')) ? (
         <OperationsResultLayer
           overlay={operationsOverlay}
           showHeatmap={visible.has('operationsHeatmap')}
