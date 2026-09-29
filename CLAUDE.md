@@ -2253,7 +2253,9 @@ code, the code and the rule win and the map is corrected.
      NOT_EXPORTED_BY_VERSION (the bundle's `NOT_IN_V1`, or a group this
      MineExchange version cannot carry) / UNSUPPORTED_BY_ADAPTER — a
      bundle-side absence is never conflated with a version gap or an
-     adapter gap; every value the target needs that no MineGen authority
+     adapter gap, and a production group is listed ONLY when the bundle
+     carries or omits it (one active method per bundle, rule 196 — an
+     inactive method's group is never a source); every value the target needs that no MineGen authority
      owns is NOT_PROVIDED, USER_REQUIRED or ADAPTER_DEFAULT_EXPLICIT (value,
      unit, scope, documented source, userOverride), and a number in a
      package that is neither in the bundle nor in `assumptions[]` is a

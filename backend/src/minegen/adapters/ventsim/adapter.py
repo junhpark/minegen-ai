@@ -31,7 +31,6 @@ from minegen.adapters.common import (
     CENTERLINES_DXF_PATH,
     MINE_EXCHANGE_1_2,
     NETWORK_PATH,
-    PRODUCTION_GROUPS,
     TIMELINE_GROUP,
     centerline_points,
     cross_section,
@@ -40,6 +39,7 @@ from minegen.adapters.common import (
     node_index,
     not_provided,
     polyline_length,
+    production_group_states,
     require_group,
     require_mine_exchange,
     shafts_state,
@@ -307,8 +307,9 @@ def build_ventsim_package(bundle: MineExchangeBundle) -> AdapterPackage:
             ),
             *[
                 source_state(bundle, g, consumed=False, detail_when_available="")
-                for g in ("CAPABILITY", "RENDER_GLB", *PRODUCTION_GROUPS)
+                for g in ("CAPABILITY", "RENDER_GLB")
             ],
+            *production_group_states(bundle, consumed=False, detail_when_available=""),
             source_state(bundle, TIMELINE_GROUP, consumed=False, detail_when_available=""),
             source_state(bundle, "FIELD_LATTICE", consumed=False, detail_when_available=""),
         ],

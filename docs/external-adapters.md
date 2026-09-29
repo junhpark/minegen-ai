@@ -168,6 +168,14 @@ development GLB) is `AVAILABLE` when at least one member was consumed and
 names the omitted members in `detail` and in `omissions[]`
 (`adapters/common.py::multi_member_group_state`).
 
+Production groups follow the bundle's ONE-active-group contract (rule 196):
+the adapter lists ONLY the production group whose document the bundle
+carries (`AVAILABLE` / `UNSUPPORTED_BY_ADAPTER` by consumption) or whose
+omission the bundle records (its own reason); an INACTIVE method's group
+(never carried, never mentioned by the bundle) is not a source of this
+bundle and is never listed (`adapters/common.py::production_group_states`)
+— a Longhole bundle yields `STOPES` only, never `CUT_FILL` / `ROOM_PILLAR`.
+
 Example: no shaft in the mine → `SHAFTS = ARTIFACT_ABSENT`. A shaft in the
 bundle but an adapter version without a vertical-airway mapping →
 `SHAFTS = UNSUPPORTED_BY_ADAPTER`. A 1.2-shaped bundle (no

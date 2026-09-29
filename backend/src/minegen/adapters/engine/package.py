@@ -26,12 +26,12 @@ from minegen.adapters.common import (
     MINE_EXCHANGE_1_2,
     MINE_EXCHANGE_1_3,
     NETWORK_PATH,
-    PRODUCTION_GROUPS,
     TIMELINE_GROUP,
     TIMELINE_PATH,
     multi_member_group_state,
     network_document,
     not_provided,
+    production_group_states,
     require_mine_exchange,
     shafts_state,
     source_state,
@@ -329,15 +329,9 @@ def _engine_package(bundle: MineExchangeBundle, *, target: str, adapter: str) ->
             source_state(
                 bundle, "CAPABILITY", consumed=True, detail_when_available="scene/capability.json"
             ),
-            *[
-                source_state(bundle, g, consumed=True, detail_when_available="production solids")
-                for g in PRODUCTION_GROUPS
-                if bundle.omission(g) is not None
-                or any(
-                    f.semantic_type in ("STOPE_SOLID", "CUT_SOLID", "BENCH_SOLID", "PILLAR_SOLID")
-                    for f in glb_files
-                )
-            ],
+            *production_group_states(
+                bundle, consumed=True, detail_when_available="production solids"
+            ),
             shafts_state(
                 bundle, consumed=True, detail_when_available="shaft centerline entities (ids)"
             ),

@@ -48,9 +48,18 @@ TIMELINE_PATH = "operations/timeline.json"
 CENTERLINES_HEADER = ("entityId", "kind", "levelId", "sequence", "x", "y", "z")
 #: the bundle group whose omission the timeline reader consults
 TIMELINE_GROUP = "TIMELINE"
-#: bundle groups whose ABSENCE the adapters report by omission record
+#: the ONE active production group per bundle (rule 196: exactly one
+#: production omission group / document per bundle — the active method's);
+#: an inactive method's group is never listed in the bundle and therefore
+#: never in an adapter's sourceStates
 PRODUCTION_GROUPS = ("STOPES", "CUT_FILL", "ROOM_PILLAR")
+PRODUCTION_DOCUMENTS: dict[str, str] = {
+    "STOPES": "production/stopes.json",
+    "CUT_FILL": "production/cut_fill.json",
+    "ROOM_PILLAR": "production/room_pillar.json",
+}
 
+_COMMON = "ADAPTER_COMMON"
 MINE_EXCHANGE_1_2 = (1, 2, 0)
 MINE_EXCHANGE_1_3 = (1, 3, 0)
 
@@ -117,6 +126,43 @@ def source_state(
         bundle_reason_code=None,
         detail="present in the bundle; not consumed by this adapter version",
     )
+
+
+def present_production_group(bundle: MineExchangeBundle) -> str | None:
+    """The production group whose document the bundle CARRIES (the active
+    method's), or None (world-only / production not generated)."""
+    present = [g for g, path in PRODUCTION_DOCUMENTS.items() if bundle.has(path)]
+    if len(present) > 1:
+        raise MineExchangeBundleInvalidError(
+            f"bundle carries several production documents {present}; exactly one active "
+            "production group is the MineExchange contract",
+            adapter=_COMMON,
+            source_group="PRODUCTION",
+        )
+    return present[0] if present else None
+
+
+def production_group_states(
+    bundle: MineExchangeBundle, *, consumed: bool, detail_when_available: str
+) -> list[AdapterSourceState]:
+    """Source states for the production groups: ONLY the group the bundle
+    carries (AVAILABLE / UNSUPPORTED_BY_ADAPTER by ``consumed``) or the
+    group the bundle records an omission for (its own reason). A group the
+    bundle neither carries nor mentions — an INACTIVE method — is not a
+    source of this bundle and is never listed (a listed state would claim a
+    provenance the bundle does not have)."""
+    out: list[AdapterSourceState] = []
+    present = present_production_group(bundle)
+    for group in PRODUCTION_GROUPS:
+        if group == present:
+            out.append(
+                source_state(
+                    bundle, group, consumed=consumed, detail_when_available=detail_when_available
+                )
+            )
+        elif bundle.omission(group) is not None:
+            out.append(source_state(bundle, group, consumed=consumed, detail_when_available=""))
+    return out
 
 
 def multi_member_group_state(

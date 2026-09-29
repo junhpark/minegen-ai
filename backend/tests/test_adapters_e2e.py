@@ -300,3 +300,38 @@ def test_e2e_partial_chain_refusals_are_typed(cut_fill: TabularStack) -> None:
     assert pkg.manifest["details"]["timelineIncluded"] is True
     v = _package(cut_fill.client, cut_fill.sid, "VENTSIM")
     assert v.manifest["details"]["airwayCount"] > 0
+
+
+# --------------------------------------------------------------------------- #
+# B1: production group provenance per method — active group only
+# --------------------------------------------------------------------------- #
+
+PRODUCTION_GROUPS = ("STOPES", "CUT_FILL", "ROOM_PILLAR")
+
+
+def _production_states(pkg: Package) -> dict[str, str]:
+    states = pkg.manifest["sourceStates"]
+    return {s["group"]: s["state"] for s in states if s["group"] in PRODUCTION_GROUPS}
+
+
+@pytest.mark.parametrize(
+    ("stack_name", "active"),
+    [("longhole", "STOPES"), ("cut_fill", "CUT_FILL"), ("room_pillar", "ROOM_PILLAR")],
+)
+def test_e2e_only_the_active_production_group_is_a_source(
+    request: pytest.FixtureRequest, stack_name: str, active: str
+) -> None:
+    stack: TabularStack = request.getfixturevalue(stack_name)
+    b = export(stack.client, stack.sid)
+    listed = {o["group"] for o in b.manifest["omissions"]} | {
+        f"{g}" for g in PRODUCTION_GROUPS if f"production/{g.lower()}.json" in b.entries
+    }
+    assert set(PRODUCTION_GROUPS) & listed == {active}  # the bundle itself lists ONE group
+    for target, expected in (
+        ("VENTSIM", "UNSUPPORTED_BY_ADAPTER"),
+        ("ANYLOGIC", "AVAILABLE"),
+        ("UNITY", "AVAILABLE"),
+        ("UNREAL", "AVAILABLE"),
+    ):
+        states = _production_states(_package(stack.client, stack.sid, target))
+        assert states == {active: expected}, (target, states)

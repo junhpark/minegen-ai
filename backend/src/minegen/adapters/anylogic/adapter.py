@@ -28,7 +28,7 @@ from minegen.adapters.common import (
     CENTERLINES_CSV_PATH,
     MINE_EXCHANGE_1_3,
     NETWORK_PATH,
-    PRODUCTION_GROUPS,
+    PRODUCTION_DOCUMENTS,
     TIMELINE_GROUP,
     TIMELINE_PATH,
     capability_document,
@@ -39,6 +39,7 @@ from minegen.adapters.common import (
     mining_method,
     network_document,
     not_provided,
+    production_group_states,
     require_group,
     require_mine_exchange,
     shafts_state,
@@ -70,9 +71,9 @@ PROGRESS_PATH = "data/development_progress.csv"
 STATES_PATH = "data/production_states.csv"
 TEMPLATE_PATH = "templates/simulation_inputs.csv"
 
-STOPES_DOC = "production/stopes.json"
-CUT_FILL_DOC = "production/cut_fill.json"
-ROOM_PILLAR_DOC = "production/room_pillar.json"
+STOPES_DOC = PRODUCTION_DOCUMENTS["STOPES"]
+CUT_FILL_DOC = PRODUCTION_DOCUMENTS["CUT_FILL"]
+ROOM_PILLAR_DOC = PRODUCTION_DOCUMENTS["ROOM_PILLAR"]
 
 #: operational parameters no MineGen authority owns (directive §40): the
 #: template carries the COLUMNS only; every value is blank
@@ -559,16 +560,9 @@ def build_anylogic_package(bundle: MineExchangeBundle) -> AdapterPackage:
                 consumed=True,
                 detail_when_available="typed may / may-not tags per edge",
             ),
-            *[
-                source_state(
-                    bundle,
-                    g,
-                    consumed=True,
-                    detail_when_available="production units",
-                )
-                for g in PRODUCTION_GROUPS
-                if g == production_kind or bundle.omission(g) is not None
-            ],
+            *production_group_states(
+                bundle, consumed=True, detail_when_available="production units"
+            ),
             shafts_state(bundle, consumed=True, detail_when_available="shaft edges"),
             source_state(bundle, "RENDER_GLB", consumed=False, detail_when_available=""),
             source_state(bundle, "FIELD_LATTICE", consumed=False, detail_when_available=""),

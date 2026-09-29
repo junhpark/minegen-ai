@@ -126,10 +126,20 @@ function ready(payload: { status: string } | null | undefined): boolean {
   return payload != null && payload.status === 'SUCCESS'
 }
 
+/**
+ * The Effective Ramp is consumable unless FAILED: `SUCCESS_WITH_FALLBACK`
+ * (a legacy segment on its revalidated raw centerline) still owns the
+ * effective centerlines the exporter and the Ventsim seed consume — the
+ * same rule the walkthrough applies.
+ */
+function rampUsable(payload: { status: string } | null | undefined): boolean {
+  return payload != null && payload.status !== 'FAILED'
+}
+
 export function describeExportTargets(scene: WorldScene | null): ExportTarget[] {
   const world = scene != null
   const network = world && ready(scene.network)
-  const ramp = world && ready(scene.smoothedDecline)
+  const ramp = world && rampUsable(scene.smoothedDecline)
   const timeline = world && ready(scene.timeline)
   const need = (ok: boolean, missing: string): [boolean, string] =>
     ok ? [true, 'Ready.'] : [false, world ? missing : 'Generate a world first.']

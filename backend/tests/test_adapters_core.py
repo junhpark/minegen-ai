@@ -350,3 +350,30 @@ def test_b9_package_builder_refuses_duplicate_and_unsafe_paths() -> None:
         pkg.add("../escape.csv", b"2", target_semantic="T", source_files=[])
     with pytest.raises(AdapterConversionFailedError, match="duplicate"):
         pkg.add(MANIFEST_PATH, b"{}", target_semantic="T", source_files=[])
+
+
+# --------------------------------------------------------------------------- #
+# production groups: only the bundle's ONE active group is a source
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("target", TARGETS)
+def test_production_source_states_list_only_the_bundles_own_group(
+    bundle: bytes, target: str
+) -> None:
+    """The synthetic mine is a Longhole scenario without stopes: the bundle
+    records ``STOPES: ARTIFACT_ABSENT`` and never mentions CUT_FILL /
+    ROOM_PILLAR. The adapter manifest mirrors exactly that — an inactive
+    method's group is not a source of this bundle and is never listed (a
+    listed state would claim a provenance the bundle does not have)."""
+    states = {s.group: s for s in build_package(target, bundle).manifest.source_states}
+    production = {g: st for g, st in states.items() if g in ("STOPES", "CUT_FILL", "ROOM_PILLAR")}
+    assert set(production) == {"STOPES"}
+    assert production["STOPES"].state == "ARTIFACT_ABSENT"
+    assert production["STOPES"].bundle_reason_code == "ARTIFACT_ABSENT"
+
+
+def test_present_production_group_is_the_one_carried_document(bundle: bytes) -> None:
+    from minegen.adapters.common import present_production_group
+
+    assert present_production_group(read_mine_exchange_bundle(bundle)) is None

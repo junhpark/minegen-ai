@@ -225,4 +225,18 @@ describe('describeExportTargets (Phase 23B)', () => {
     const full = scene({ smoothedDecline: ok, network: ok, timeline: ok })
     expect(Object.values(enabled(describeExportTargets(full))).every(Boolean)).toBe(true)
   })
+
+  it('a SUCCESS_WITH_FALLBACK ramp is a usable Effective Ramp for Ventsim (only FAILED is not)', () => {
+    const fallback = { status: 'SUCCESS_WITH_FALLBACK' } as never
+    expect(
+      enabled(describeExportTargets(scene({ smoothedDecline: fallback, network: ok }))).VENTSIM,
+    ).toBe(true)
+    expect(
+      enabled(describeExportTargets(scene({ smoothedDecline: failed, network: ok }))).VENTSIM,
+    ).toBe(false)
+    // the backend refuses a FAILED network, so the UI mirrors it
+    expect(
+      enabled(describeExportTargets(scene({ smoothedDecline: fallback, network: failed }))).VENTSIM,
+    ).toBe(false)
+  })
 })
