@@ -41,14 +41,46 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      stopeLength, minimumPillar} resolved by the
                                                      backend mining-method registry, rule 192)
     POST /api/v1/scenarios/{id}/export/mine-exchange MineExchange bundle (docs/mine-exchange.md);
-                                                     X-MineExchange-Version 1.2.0 since Phase 21B/C
-                                                     (1.1: semantics/mining_method.json, production
+                                                     X-MineExchange-Version 1.3.0 since Phase 23B
+                                                     (1.3: operations/timeline.json + tasks.csv, the
+                                                     MineTimeline projection with external target
+                                                     references, TIMELINE omission ARTIFACT_ABSENT /
+                                                     SOURCE_NOT_SUCCESS; 1.1: semantics/mining_method.json, production
                                                      stopes, STOPE entities; 1.2: typed method
                                                      parameters, production/cut_fill + room_pillar
                                                      with CUT / BACKFILL / ROOM / BENCH / PILLAR
                                                      entities, one production omission group per
                                                      bundle; 409 MINE_EXCHANGE_EXPORT_FAILED on a
                                                      method-authority or payload-shape mismatch)
+    POST /api/v1/scenarios/{id}/export/ventsim       Phase 23B (rules 207–212, docs/external-adapters.md
+    POST /api/v1/scenarios/{id}/export/anylogic      §23): application/zip adapter packages built
+    POST /api/v1/scenarios/{id}/export/unity         from the scenario's live MineExchange 1.3 bundle
+    POST /api/v1/scenarios/{id}/export/unreal        BYTES (AdapterService → ExchangeService only);
+                                                     headers X-Adapter-Name / X-Adapter-Version
+                                                     (0.1.0) / X-MineExchange-Version (1.3.0),
+                                                     filename minegen_<id>_<target>.zip; read-only,
+                                                     nothing generated or persisted, deterministic.
+                                                     VENTSIM: geometry / network SEED (verbatim
+                                                     centerline DXF, nodes.csv, airways.csv with
+                                                     manifest DXF handles, entity_map.csv) —
+                                                     requires centerlines + network; ANYLOGIC:
+                                                     operational data package (data/*.csv incl.
+                                                     timeline tasks / progress / states, blank
+                                                     templates/simulation_inputs.csv) — requires
+                                                     network + timeline; UNITY / UNREAL: engine
+                                                     import package (every GLB normalized to glTF
+                                                     Y-up, scene/entities.json identity authority,
+                                                     network / capability / timeline verbatim,
+                                                     import_settings.json) — partial on a
+                                                     world-only scenario. 409
+                                                     ADAPTER_REQUIRED_SOURCE_ABSENT /
+                                                     ADAPTER_SOURCE_NOT_SUCCESS /
+                                                     ADAPTER_MINEEXCHANGE_VERSION_UNSUPPORTED /
+                                                     ADAPTER_MINEEXCHANGE_BUNDLE_INVALID /
+                                                     ADAPTER_CONVERSION_FAILED, 422
+                                                     ADAPTER_TARGET_UNSUPPORTED (detail names
+                                                     adapter, group, subject, reason); every
+                                                     MineExchange refusal passes through unchanged
     GET  /api/v1/scenarios/{id}/analysis             Phase 22A/B (rules 197–202): synchronous
                                                      READ-ONLY mine analysis — development
                                                      lengths / GROSS excavation volumes per edge

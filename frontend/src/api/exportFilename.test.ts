@@ -46,6 +46,51 @@ describe('Phase 23A MineExchange download client', () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/scenarios\/s1\/export\/mine-exchange$/)
   })
 
+  it('POSTs an adapter export with no body and keeps the server filename (Phase 23B)', async () => {
+    for (const target of ['VENTSIM', 'ANYLOGIC', 'UNITY', 'UNREAL'] as const) {
+      const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+        expect(init?.method).toBe('POST')
+        expect(init?.body).toBeUndefined()
+        return Promise.resolve(
+          new Response(new Blob([new Uint8Array([80, 75, 3, 4])]), {
+            status: 200,
+            headers: {
+              'content-type': 'application/zip',
+              'content-disposition': `attachment; filename="minegen_s1_${target.toLowerCase()}.zip"`,
+            },
+          }),
+        )
+      })
+      vi.stubGlobal('fetch', fetchMock)
+      const file = await api.exportAdapter('s1', target)
+      expect(file.filename).toBe(`minegen_s1_${target.toLowerCase()}.zip`)
+      expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(
+        new RegExp(`/scenarios/s1/export/${target.toLowerCase()}$`),
+      )
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              detail: {
+                code: 'ADAPTER_REQUIRED_SOURCE_ABSENT',
+                message:
+                  'adapter=VENTSIM; group=NETWORK; reason=bundle group NETWORK is ARTIFACT_ABSENT',
+              },
+            }),
+            { status: 409, headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+      ),
+    )
+    await expect(api.exportAdapter('s1', 'VENTSIM')).rejects.toMatchObject({
+      status: 409,
+      code: 'ADAPTER_REQUIRED_SOURCE_ABSENT',
+    })
+  })
+
   it('maps a typed backend refusal to ApiError (existing error UI convention)', async () => {
     vi.stubGlobal(
       'fetch',

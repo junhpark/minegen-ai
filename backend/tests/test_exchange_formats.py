@@ -383,7 +383,7 @@ def test_m2_m3_manifest_hashes_match_and_no_unlisted_files() -> None:
         assert hashlib.sha256(entries[path]).hexdigest() == f.sha256
     assert set(entries) - set(listed) == {"manifest.json"}
     doc = json.loads(entries["manifest.json"])
-    assert doc["mineExchangeVersion"] == "1.2.0"
+    assert doc["mineExchangeVersion"] == "1.3.0"
     assert doc["coordinateSystem"]["name"] == COORDINATE_FRAME
     assert doc["coordinateSystem"]["crs"] == "LOCAL_SYNTHETIC"
     assert doc["units"]["length"] == "metre"

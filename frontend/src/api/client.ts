@@ -14,6 +14,7 @@ import type {
   MineAnalysisPayload,
 } from '@/types/analysis'
 import type { Capability } from '@/types/enums'
+import type { AdapterTarget } from '@/components/panels/exportContents'
 import type {
   AccessTargetsPayload,
   CapabilityGraphPayload,
@@ -202,6 +203,15 @@ export const api = {
       `/scenarios/${id}/export/mine-exchange`,
       { method: 'POST' },
       `minegen_${id}_mineexchange_v1.zip`,
+    ),
+  /** Phase 23B: an external adapter package (VENTSIM | ANYLOGIC | UNITY |
+   * UNREAL) built on the backend from the MineExchange bundle; typed 409
+   * refusals (ADAPTER_REQUIRED_SOURCE_ABSENT, …) travel as ApiError. */
+  exportAdapter: (id: string, target: AdapterTarget) =>
+    requestFile(
+      `/scenarios/${id}/export/${target.toLowerCase()}`,
+      { method: 'POST' },
+      `minegen_${id}_${target.toLowerCase()}.zip`,
     ),
   getDesignAssessment: (id: string) =>
     request<DesignAssessmentPayload>(`/scenarios/${id}/design/assessment`),

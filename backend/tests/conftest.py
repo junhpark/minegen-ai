@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from minegen.api.deps import (
+    get_adapter_service,
     get_analysis_service,
     get_design_service,
     get_exchange_service,
@@ -30,6 +31,7 @@ from minegen.core.models import (
 )
 from minegen.layout.search import LayoutSearchResult, LayoutV2Search
 from minegen.main import create_app
+from minegen.services.adapter_service import AdapterService
 from minegen.services.analysis_service import AnalysisService
 from minegen.services.design_service import DesignService
 from minegen.services.exchange_service import ExchangeService
@@ -60,6 +62,10 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     "test_exchange_production_methods": ("e2e",),
     # Phase 22A/B analysis over three real method chains (network + timeline)
     "test_analysis_api": ("e2e",),
+    # Phase 23B MineExchange 1.3 timeline + the adapters over the same three
+    # real method chains (three module-scoped stacks: minutes)
+    "test_exchange_timeline_e2e": ("e2e",),
+    "test_adapters_e2e": ("e2e",),
     "test_layout_v2_golden_smoke": ("golden",),
     # Phase 20B.x: the GEOMETRY-STRESS feasibility oracle (one full layout-v2 search)
     "test_geometry_stress_oracle": ("slow",),
@@ -262,7 +268,9 @@ def client(
         store, design_service
     )
     app.dependency_overrides[get_job_service] = lambda: job_service
-    app.dependency_overrides[get_exchange_service] = lambda: ExchangeService(store, world_service)
+    exchange_service = ExchangeService(store, world_service)
+    app.dependency_overrides[get_exchange_service] = lambda: exchange_service
+    app.dependency_overrides[get_adapter_service] = lambda: AdapterService(exchange_service)
     app.dependency_overrides[get_analysis_service] = lambda: AnalysisService(store)
     # the WebSocket handler resolves the registry without DI; point it at the same instance
     import minegen.api.jobs as jobs_module
