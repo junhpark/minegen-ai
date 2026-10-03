@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+#
+# Start the MineGen-AI frontend dev server (http://localhost:5173).
+#
+# Idempotent setup: runs ``npm ci`` on first use and whenever
+# ``package-lock.json`` changes. Set MINEGEN_SETUP_ONLY=1 to do the setup and
+# exit without starting Vite (what ``scripts/bin/dev-setup`` does).
+#
+# Codespaces: the API is not on localhost:8000 from the browser's point of
+# view, so VITE_API_BASE_URL is pointed at the forwarded 8000 origin (the
+# client falls back to http://localhost:8000 — ``src/api/client.ts``).
+#
+# Env overrides: HOST, PORT, VITE_API_BASE_URL.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$root/frontend"
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1 # macOS
+  fi
+}
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "frontend: npm not found — install Node 22 (see .devcontainer/devcontainer.json)." >&2
+  exit 1
+fi
+
+stamp="node_modules/.minegen-lock.sha256"
+want="$(sha256_of package-lock.json)"
+if [ ! -d node_modules ] || [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$want" ]; then
+  echo "frontend: installing dependencies (package-lock.json changed or first run)…"
+  npm ci
+  printf '%s\n' "$want" >"$stamp"
+fi
+
+if [ -n "${MINEGEN_SETUP_ONLY:-}" ]; then
+  echo "frontend: setup complete (MINEGEN_SETUP_ONLY set — Vite not started)."
+  exit 0
+fi
+
+if [ -n "${CODESPACE_NAME:-}" ] && [ -z "${VITE_API_BASE_URL:-}" ]; then
+  domain="${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
+  export VITE_API_BASE_URL="https://${CODESPACE_NAME}-8000.${domain}"
+  echo "frontend: VITE_API_BASE_URL=${VITE_API_BASE_URL}"
+fi
+
+exec npm run dev -- --host "${HOST:-0.0.0.0}" --port "${PORT:-5173}"

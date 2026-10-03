@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+#
+# Start the MineGen-AI backend dev server (http://localhost:8000, /docs).
+#
+# Idempotent setup: creates ``backend/.venv`` and runs the editable install on
+# first use, and re-installs whenever ``pyproject.toml`` changes — so a fresh
+# clone, a rebuilt Codespace or a venv that predates a new dependency all
+# recover without a manual step. Set MINEGEN_SETUP_ONLY=1 to do the setup and
+# exit without starting uvicorn (what ``scripts/bin/dev-setup`` does).
+#
+# Codespaces: the browser loads the frontend from
+# https://<codespace>-5173.<forwarding domain>, which is NOT the default CORS
+# allow-list (``config.py`` ships ["http://localhost:5173"]), so the forwarded
+# origin is added here. The 8000 port must be set to Public in the Ports panel
+# for the browser to reach the API.
+#
+# Env overrides: PYTHON (interpreter), HOST, PORT.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$root/backend"
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1 # macOS
+  fi
+}
+
+# -- interpreter: pyproject declares requires-python >= 3.12 ----------------- #
+py="${PYTHON:-}"
+if [ -z "$py" ]; then
+  # the environment default first (it IS 3.12 in the devcontainer), then the
+  # oldest supported explicit version — never silently newer than CI
+  for candidate in python3 python3.12 python3.13; do
+    if command -v "$candidate" >/dev/null 2>&1 &&
+      "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)'; then
+      py="$candidate"
+      break
+    fi
+  done
+fi
+if [ -z "$py" ]; then
+  echo "backend: Python >= 3.12 is required (pyproject requires-python)." >&2
+  echo "backend: install it or point PYTHON at a 3.12+ interpreter." >&2
+  exit 1
+fi
+
+# -- venv + editable install, re-run only when pyproject changes ------------- #
+[ -d .venv ] || "$py" -m venv .venv
+# shellcheck source=/dev/null
+source .venv/bin/activate
+
+stamp=".venv/.pyproject.sha256"
+want="$(sha256_of pyproject.toml)"
+if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$want" ]; then
+  echo "backend: installing dependencies (pyproject.toml changed or first run)…"
+  python -m pip install --quiet --upgrade pip
+  python -m pip install -e ".[dev]"
+  printf '%s\n' "$want" >"$stamp"
+fi
+
+if [ -n "${MINEGEN_SETUP_ONLY:-}" ]; then
+  echo "backend: setup complete (MINEGEN_SETUP_ONLY set — uvicorn not started)."
+  exit 0
+fi
+
+# -- forwarded origins inside a Codespace ----------------------------------- #
+if [ -n "${CODESPACE_NAME:-}" ] && [ -z "${MINEGEN_CORS_ORIGINS:-}" ]; then
+  domain="${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
+  export MINEGEN_CORS_ORIGINS="[\"https://${CODESPACE_NAME}-5173.${domain}\",\"http://localhost:5173\"]"
+  echo "backend: MINEGEN_CORS_ORIGINS=${MINEGEN_CORS_ORIGINS}"
+  echo "backend: set port 8000 to Public in the Ports panel so the browser may call it."
+fi
+
+exec uvicorn minegen.main:app --reload --app-dir src \
+  --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}"

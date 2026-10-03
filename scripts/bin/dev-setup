@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#
+# Prepare both dev environments without starting a server: the backend venv +
+# editable install and the frontend node_modules. Run by the devcontainer's
+# postCreateCommand so a new Codespace is ready before the first ``backend`` /
+# ``frontend`` call; safe to re-run at any time.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+MINEGEN_SETUP_ONLY=1 "$here/backend"
+MINEGEN_SETUP_ONLY=1 "$here/frontend"
+
+echo
+echo "dev-setup: ready. Start the servers in two terminals:"
+echo "  backend     # uvicorn on :8000 (OpenAPI at /docs)"
+echo "  frontend    # vite on :5173"

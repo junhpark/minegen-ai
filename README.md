@@ -50,6 +50,22 @@ platform. Research prototype / proof of concept.
 
 ## Run locally
 
+### Codespaces / devcontainer
+
+`.devcontainer/devcontainer.json` puts `scripts/bin` on `PATH`, so inside a
+Codespace or a VS Code devcontainer two commands are enough:
+
+    backend     # uvicorn on :8000 (OpenAPI at /docs)
+    frontend    # vite on :5173
+
+Both are idempotent: they create `backend/.venv` / `frontend/node_modules` on
+first use and re-install when `pyproject.toml` / `package-lock.json` changes.
+In a Codespace they also wire the forwarded origins (`MINEGEN_CORS_ORIGINS`,
+`VITE_API_BASE_URL`) — set port 8000 to **Public** in the Ports panel so the
+browser may call it. `scripts/bin/dev-setup` prepares both without starting a
+server (the devcontainer's `postCreateCommand`). They are convenience wrappers
+around the manual steps below, which stay authoritative.
+
 Backend (http://localhost:8000, OpenAPI at `/docs`):
 
     cd backend
