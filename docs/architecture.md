@@ -841,13 +841,22 @@ RMR-like 0-100 index, not measured RMR. Navigation: PERSON is an
 inspection pace (4.0 walk / 7.0 run m/s); VEHICLE drives WHERE THE
 CAMERA LOOKS (A/D steer the camera yaw at a bounded 60 deg/s on top of
 IJKL — no hidden heading state); DRONE flies along the full camera
-direction (pitch flies), which makes ramp following natural. A level
-teleport select ("Go to…") jumps to the portal or any on-decline
-LEVEL_ENTRY station via the SAME deterministic spawn rules at the
-station chainage — in temporal snapshots the station list derives from
-the ACTIVE-prefix centerline, so beyond-frontier entries are never
-offered. The minimap gained a longitudinal CH-RL profile strip fed by
-the same ACTIVE-prefix chainage points.
+direction (pitch flies), which makes ramp following natural. A ramp
+teleport select ("Go to…") jumps to the portal or any ramp turnout via
+the SAME deterministic spawn rules at the station chainage. Hardening
+H0 §3.2: the authority is the backend `RAMP_JUNCTION.chainage` (network
+node); without a network the same chainage is read from the level
+accesses (`rampJunctionChainage`), and failing that from the Effective
+Ramp's own segment boundaries (rule 155 — a PARAMETRIC_V2 segment ends at
+its `rampJunction`, a LEGACY segment at the level entry on the ramp), so
+the list exists whatever the level development did. The old
+LEVEL_ENTRY-within-15-m test is gone: a layout-v2 level entry sits
+≥ 6 × tunnel width off the ramp at the end of its access branch and is a
+branch teleport (later scope), never a ramp station. In temporal
+snapshots the station list derives from the ACTIVE-prefix centerline, so
+beyond-frontier turnouts are never offered. The minimap gained a
+longitudinal CH-RL profile strip fed by the same ACTIVE-prefix chainage
+points.
 
 Deferred to Phase 17+: orebody/fault randomization, irregular orebody +
 regularized ramp patterns, third-person/truck view, true 3D minimap,
