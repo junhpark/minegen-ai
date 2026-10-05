@@ -327,6 +327,28 @@ go under `geology`, not at the scenario root.
   communication or sensors touches nothing upstream and none of the other
   siblings. Regenerating any stage deletes every downstream artifact
   (rules 64/67/68/74/79/86/92/98).
+- "Reset from here" (hardening H1 §4.4): the same registry closure, run on
+  request instead of after a write. `services/workflow_stages.py` is the
+  ONE stage → artifact table (WORLD · TARGETS · DECLINE · SMOOTH · LAYOUT ·
+  LEVELS · EXCAVATION · SHAFTS · NETWORK · CAPABILITY · PRODUCTION ·
+  SCHEDULE · COMMUNICATION · SENSORS) and `reset_plan(stage, source,
+  derived_dir)` is the ONE function: the stage's own artifacts plus
+  `invalidated_by(own, active source)`, filtered to the files present on
+  disk. `GET …/design/reset-plan?from=<stage>` returns that plan (read-only;
+  the confirm dialog lists `willDelete`); `DELETE …/design/stages/{stage}`
+  computes the same plan under the scenario lock and unlinks exactly it
+  (maximal loop, one OSError afterwards, like the write cascade), dropping
+  the in-memory caches keyed on the deleted artifacts. STALE / MALFORMED
+  artifacts are deleted without being read (a recovery path);
+  `ramp_source.json` is never a stage target (rule 162); WORLD is a
+  preview-only root (its reset is the scenario PUT / world regeneration,
+  rules 40 / 46 — `RESET_STAGE_NOT_DELETABLE`); a stage none of whose own
+  artifacts exist is `RESET_TARGET_NOT_GENERATED` (404). An unusable
+  `ramp_source.json` plans the UNION of both chains, never a guessed
+  LEGACY (AC-01F A7). The frontend sends a stage id and empties the scene
+  slots named in `deleted[]` (`scene/artifactSlots.ts`, a file → slot
+  presentation mapping); it carries no dependency graph beyond the two
+  Effective-Ramp identity halves of rule 169.
 - Long-running work (rule 60): `services/job_service.py` — in-memory
   registry + 2-worker thread pool; one job per scenario at a time. Algorithms
   emit `ProgressEvent`s through a plain callback (`design/progress.py`);

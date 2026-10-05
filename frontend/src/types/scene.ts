@@ -786,6 +786,46 @@ export interface LayoutV2Catalogue {
   candidates: LayoutCandidateSummary[]
 }
 
+/**
+ * Hardening H1 §4.4 — "Reset from here". The workflow stage ids the backend
+ * owns (`services/workflow_stages.py`); the frontend sends a stage id and
+ * renders the backend's answer. WORLD is a preview-only root (a scenario PUT
+ * / world regeneration is its reset).
+ */
+export type WorkflowStage =
+  | 'WORLD'
+  | 'TARGETS'
+  | 'DECLINE'
+  | 'SMOOTH'
+  | 'LAYOUT'
+  | 'LEVELS'
+  | 'EXCAVATION'
+  | 'SHAFTS'
+  | 'NETWORK'
+  | 'CAPABILITY'
+  | 'PRODUCTION'
+  | 'SCHEDULE'
+  | 'COMMUNICATION'
+  | 'SENSORS'
+
+/** GET …/design/reset-plan?from=<stage>: what the DELETE would remove now */
+export interface ResetPlan {
+  from: WorkflowStage
+  activeSource: RampSource
+  stageArtifacts: string[]
+  present: boolean
+  /** derived file names, in deletion order — the confirm dialog lists these */
+  willDelete: string[]
+  closure: string[]
+}
+
+/** DELETE …/design/stages/{stage}: the files actually removed */
+export interface ResetResult {
+  from: WorkflowStage
+  activeSource: RampSource
+  deleted: string[]
+}
+
 /** GET …/design/ramp-source (rule 150): the explicit backend-owned source. */
 export interface RampSourceSummary {
   activeSource: RampSource

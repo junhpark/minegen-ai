@@ -348,6 +348,25 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  …/scene                                     includes "accessTargets", "decline",
                                                      "smoothedDecline", "tunnelMesh" and
                                                      "developmentMesh" (or null)
+    GET  /api/v1/scenarios/{id}/design/reset-plan?from=<stage>
+                                                     hardening H1 §4.4 "Reset from here": the
+                                                     read-only preview — the stage's own artifacts
+                                                     plus their registry invalidation closure under
+                                                     the active ramp source, as present on disk now
+                                                     ({from, activeSource, stageArtifacts, present,
+                                                     willDelete[], closure[]}). Stages: WORLD
+                                                     (preview only) · TARGETS · DECLINE · SMOOTH ·
+                                                     LAYOUT · LEVELS · EXCAVATION · SHAFTS · NETWORK
+                                                     · CAPABILITY · PRODUCTION · SCHEDULE ·
+                                                     COMMUNICATION · SENSORS (422 otherwise)
+    DELETE /api/v1/scenarios/{id}/design/stages/{stage}
+                                                     deletes exactly what the plan listed, under the
+                                                     scenario lock; STALE / MALFORMED artifacts are
+                                                     deletable (recovery), ramp_source.json is never
+                                                     a stage target (rule 162); 404
+                                                     RESET_TARGET_NOT_GENERATED when the stage has
+                                                     nothing of its own, 409 RESET_STAGE_NOT_DELETABLE
+                                                     for WORLD → {from, activeSource, deleted[]}
     POST /api/v1/scenarios/{id}/design/levels        Phase 08: synchronous level developments
                                                      (typed LevelsPayload; 409 SMOOTHED_NOT_GENERATED
                                                      without a Phase 05 artifact)

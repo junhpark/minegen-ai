@@ -25,6 +25,7 @@ from minegen.services.design_service import (
 )
 from minegen.services.effective_ramp import RampSourceSummary
 from minegen.services.job_service import JobAlreadyRunningError, JobService
+from minegen.services.workflow_stages import WorkflowStage
 from minegen.shafts.models import ShaftsPayload
 
 router = APIRouter(prefix="/scenarios/{scenario_id}/design", tags=["design"])
@@ -43,6 +44,29 @@ class LayoutCandidateRequest(ApiModel):
 
 class RampSourceRequest(ApiModel):
     active_source: Literal["LEGACY", "LAYOUT_V2"]
+
+
+class ResetPlanResponse(ApiModel):
+    """``GET …/design/reset-plan?from=<stage>`` (hardening H1 §4.4): the
+    files a reset from that stage deletes, observed now — the stage's own
+    artifacts plus their registry invalidation closure under the active ramp
+    source. The same function answers the DELETE."""
+
+    from_stage: WorkflowStage = Field(alias="from")
+    active_source: Literal["LEGACY", "LAYOUT_V2"]
+    stage_artifacts: list[str]
+    present: bool
+    will_delete: list[str]
+    closure: list[str]
+
+
+class ResetResponse(ApiModel):
+    """``DELETE …/design/stages/{stage}``: what was deleted (the plan's
+    ``willDelete`` at the moment of the delete)."""
+
+    from_stage: WorkflowStage = Field(alias="from")
+    active_source: Literal["LEGACY", "LAYOUT_V2"]
+    deleted: list[str]
 
 
 class LayoutActivateResponse(ApiModel):
@@ -224,6 +248,43 @@ def generate_levels(scenario_id: str, svc: Service) -> LevelsPayload:
         raise
     except Exception as exc:
         raise _fail(scenario_id, exc) from exc
+
+
+# -- hardening H1 §4.4: "Reset from here" (one backend closure) --------------- #
+
+
+@router.get("/reset-plan", response_model=ResetPlanResponse, response_model_by_alias=True)
+def get_reset_plan(
+    scenario_id: str,
+    svc: Service,
+    from_stage: Annotated[WorkflowStage, Query(alias="from")],
+) -> ResetPlanResponse:
+    """Read-only preview: exactly what ``DELETE …/design/stages/{stage}``
+    would delete now (same closure function, never a frontend mirror)."""
+    try:
+        plan = svc.reset_plan(scenario_id, from_stage)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _fail(scenario_id, exc) from exc
+    return ResetPlanResponse.model_validate(plan.to_dict())
+
+
+@router.delete("/stages/{stage}", response_model=ResetResponse, response_model_by_alias=True)
+def reset_stage(scenario_id: str, stage: WorkflowStage, svc: Service) -> ResetResponse:
+    """Delete the stage's own artifacts and their registry closure under the
+    scenario lock (STALE / MALFORMED included — a recovery path); 404
+    RESET_TARGET_NOT_GENERATED when the stage has nothing of its own, 409
+    RESET_STAGE_NOT_DELETABLE for the preview-only WORLD root."""
+    try:
+        plan, deleted = svc.reset_from(scenario_id, stage)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _fail(scenario_id, exc) from exc
+    return ResetResponse.model_validate(
+        {"from": plan.stage, "activeSource": plan.active_source, "deleted": list(deleted)}
+    )
 
 
 @router.get("/levels")

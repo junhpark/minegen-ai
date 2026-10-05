@@ -120,6 +120,12 @@ from minegen.services.effective_ramp import (
     write_ramp_source,
 )
 from minegen.services.scenario_service import ScenarioStore
+from minegen.services.workflow_stages import (
+    ResetPlan,
+    ResetStageNotDeletableError,
+    ResetTargetNotGeneratedError,
+    reset_plan,
+)
 from minegen.services.world_service import WorldService
 from minegen.shafts.models import ShaftsPayload
 from minegen.shafts.planner import ShaftPlanner
@@ -1077,6 +1083,82 @@ class DesignService:
 
     def levels(self, scenario_id: str) -> LevelsPayload:
         return self._require_model(scenario_id, LEVELS_ARTIFACT, LevelsPayload)
+
+    # -- "Reset from here" (hardening H1 §4.4) --------------------------------- #
+
+    def _reset_plan_locked(self, scenario_id: str, stage: str) -> ResetPlan:
+        """The plan as observed NOW. The active ramp source gates the ramp
+        owners' edges exactly as the write cascade reads it
+        (``_invalidate_downstream``); an unusable ``ramp_source.json`` plans
+        the UNION of both closures — strictly more, never a guessed LEGACY."""
+        derived = self.store.derived_dir(scenario_id)
+        try:
+            return reset_plan(stage, read_ramp_source(self._reader, scenario_id), derived)
+        except (ArtifactMalformedError, OSError):
+            plans = [reset_plan(stage, candidate, derived) for candidate in RAMP_SOURCES]
+            union: dict[str, None] = {}
+            closure: dict[str, None] = {}
+            for plan in plans:
+                for name in plan.will_delete:
+                    union.setdefault(name, None)
+                for name in plan.closure:
+                    closure.setdefault(name, None)
+            first = plans[0]
+            return ResetPlan(
+                stage=first.stage,
+                active_source=first.active_source,
+                stage_artifacts=first.stage_artifacts,
+                present=first.present,
+                will_delete=tuple(union),
+                closure=tuple(closure),
+            )
+
+    def reset_plan(self, scenario_id: str, stage: str) -> ResetPlan:
+        """Read-only preview of ``reset_from``: the files a reset from
+        ``stage`` deletes — the stage's own artifacts plus their registry
+        closure — observed under the scenario lock. Never writes."""
+        self.store.get(scenario_id)
+        with self.store.lock(scenario_id):
+            return self._reset_plan_locked(scenario_id, stage)
+
+    def reset_from(self, scenario_id: str, stage: str) -> tuple[ResetPlan, tuple[str, ...]]:
+        """Delete exactly what ``reset_plan`` lists, under the scenario lock
+        (the same lock the writers and ``WorldService.invalidate`` hold, rule
+        60). STALE / MALFORMED artifacts are deleted without being read —
+        this is a recovery path. ``WORLD`` is preview-only (typed refusal);
+        a stage none of whose own artifacts exist is a typed 404. The delete
+        loop is maximal (every other file still goes) and one OSError is
+        raised afterwards, as in the write cascade. In-memory caches keyed
+        on the deleted artifacts are dropped."""
+        self.store.get(scenario_id)
+        if stage == "WORLD":
+            raise ResetStageNotDeletableError(stage)
+        with self.store.lock(scenario_id):
+            plan = self._reset_plan_locked(scenario_id, stage)
+            if not plan.present:
+                raise ResetTargetNotGeneratedError(scenario_id, stage, plan.stage_artifacts)
+            derived = self.store.derived_dir(scenario_id)
+            deleted: list[str] = []
+            failed: list[str] = []
+            for name in plan.will_delete:
+                path = derived / name
+                try:
+                    if path.exists():
+                        path.unlink()
+                        deleted.append(name)
+                except OSError:
+                    failed.append(name)
+            if TARGETS_ARTIFACT in deleted:
+                self._targets.pop(scenario_id, None)
+            if LAYOUT_V2_ARTIFACT in deleted or LAYOUT_V2_SELECTED_ARTIFACT in deleted:
+                self._layouts.pop(scenario_id, None)
+                self._selected_policies.pop(scenario_id, None)
+            if failed:
+                raise OSError(
+                    f"scenario '{scenario_id}': reset from {stage} could not delete "
+                    + ", ".join(failed)
+                )
+        return plan, tuple(deleted)
 
     def _catalogue_level_exclusions(self, scenario_id: str) -> dict[str, str]:
         """``requiredLevels[].exclusionReason`` of the layout-v2 catalogue by

@@ -32,25 +32,28 @@ import type {
   CostEvaluationRow,
   DeclinePayload,
   DesignAssessmentPayload,
+  DevelopmentMeshReport,
   JobRecord,
   JobSubmission,
   LayoutV2Catalogue,
   LevelAccessesPayload,
   LevelsPayload,
+  NetworkPayload,
+  ProductionPayload,
   RampSource,
   RampSourceSummary,
-  NetworkPayload,
+  ResetPlan,
+  ResetResult,
   SensorPayload,
   ShaftsPayload,
   SliceAxis,
   SliceField,
   SlicePayload,
   SmoothedDeclinePayload,
-  ProductionPayload,
   StopesPayload,
   TimelinePayload,
-  DevelopmentMeshReport,
   TunnelMeshReport,
+  WorkflowStage,
   WorldScene,
   WorldStats,
 } from '@/types/scene'
@@ -287,6 +290,13 @@ export const api = {
   /** The ACTIVE effective ramp in the source-neutral contract. */
   getEffectiveRamp: (id: string) => request<SmoothedDeclinePayload>(`/scenarios/${id}/design/ramp`),
   /** Synchronous Phase 08 level developments (rules 71–74). */
+  /** Hardening H1 §4.4: read-only preview of "Reset from here" — the backend's
+   * registry closure, never a frontend dependency graph */
+  getResetPlan: (id: string, stage: WorkflowStage) =>
+    request<ResetPlan>(`/scenarios/${id}/design/reset-plan?from=${stage}`),
+  /** Hardening H1 §4.4: delete the stage's artifacts + closure (same function as the plan) */
+  resetStage: (id: string, stage: WorkflowStage) =>
+    request<ResetResult>(`/scenarios/${id}/design/stages/${stage}`, { method: 'DELETE' }),
   generateLevels: (id: string) =>
     request<LevelsPayload>(`/scenarios/${id}/design/levels`, { method: 'POST' }),
   getLevels: (id: string) => request<LevelsPayload>(`/scenarios/${id}/design/levels`),
