@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { api, ApiError } from '@/api/client'
 import { developmentMeshScope } from '@/components/panels/developmentMeshScope'
+import { levelCoverageLines } from '@/components/panels/levelCoverage'
 import { useJobPoll } from '@/components/panels/useJobPoll'
 import type { DesignTab } from '@/components/panels/workflowTabs'
 import { ActionButton } from '@/components/ui/ActionButton'
@@ -462,6 +463,15 @@ function DevelopView(p: DesignPanelBodyProps) {
           ) : null
         }
         failure={levels && levels.status !== 'SUCCESS' ? levels.failureReason : null}
+        notice={
+          levelCoverageLines(levels).length > 0 ? (
+            <div data-testid="level-coverage">
+              {levelCoverageLines(levels).map((line) => (
+                <div key={line}>{line}</div>
+              ))}
+            </div>
+          ) : null
+        }
         action={
           <ActionButton
             variant={nextActionVariant(levels !== null, p.levelsEnabled)}

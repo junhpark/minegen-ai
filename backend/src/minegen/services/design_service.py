@@ -1050,7 +1050,18 @@ class DesignService:
         entries = (
             entries_from_level_accesses(accesses_payload) if accesses_payload is not None else None
         )
-        payload = builder.build(smoothed_payload, source_revision, entries=entries)
+        # hardening H0 §3.1: under LAYOUT_V2 the catalogue records why a
+        # required level is not serviceable (rule 141); the builder reports
+        # every undeveloped required level with that typed reason
+        exclusion_reasons = (
+            self._catalogue_level_exclusions(scenario_id) if accesses_payload is not None else None
+        )
+        payload = builder.build(
+            smoothed_payload,
+            source_revision,
+            entries=entries,
+            level_exclusion_reasons=exclusion_reasons,
+        )
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):
             if self.levels_fingerprint(scenario_id) != fingerprint:
@@ -1066,6 +1077,19 @@ class DesignService:
 
     def levels(self, scenario_id: str) -> LevelsPayload:
         return self._require_model(scenario_id, LEVELS_ARTIFACT, LevelsPayload)
+
+    def _catalogue_level_exclusions(self, scenario_id: str) -> dict[str, str]:
+        """``requiredLevels[].exclusionReason`` of the layout-v2 catalogue by
+        level id (rule 141). A pre-hardening catalogue carries only
+        ``hasOrebodySection``; its false entries are the section exclusion."""
+        out: dict[str, str] = {}
+        for lv in self.layout_v2(scenario_id).get("requiredLevels", []):
+            reason = lv.get("exclusionReason")
+            if reason is None and lv.get("hasOrebodySection") is False:
+                reason = "NO_OREBODY_SECTION_AT_LEVEL"
+            if reason is not None:
+                out[str(lv["levelId"])] = str(reason)
+        return out
 
     # -- stopes (Phase 09, rules 75–80) --------------------------------------- #
 

@@ -1105,6 +1105,28 @@ bounding box, so an implicit body can own required levels without a
 section (reported `hasOrebodySection = false`, excluded from the
 serviceable set) — a documented discrepancy, not a second generator.
 
+Footwall-contact guard (hardening H0 §3.1, rule 141). The generator measures
+the top level from the bounding-box top — the HANGING-WALL top edge of a
+dipping slab — while the footwall top edge sits `thickness·cos(dip)` lower.
+A TABULAR level inside that band has ore above it and no footwall contact
+next to it: the legacy access targets reject it (`OUTSIDE_OREBODY_DIP_EXTENT`,
+`design.targets.has_footwall_contact`) and layout-v2 now applies the SAME
+function in `LevelSections` (`NO_FOOTWALL_CONTACT_AT_LEVEL`, excluded from
+the serviceable set, reported in `requiredLevels[]` as `serviceable = false`
+with `exclusionReason`, the down-dip `overshootM` and the dip-aware hint
+`minimumTopMiningMarginM = thickness·cos(dip)`). The level generator itself
+is untouched. `levels.json` reports every REQUIRED level without a
+development in `excludedLevels[]` (typed reason: the footwall guard, the
+section exclusion recorded by the catalogue, or `NO_LEVEL_ENTRY`) and the
+adjacent pairs that therefore carry no production in `unservedIntervals[]`
+(rules 76 / 195). Measured: RANDOM_TABULAR seed 42 (dip 61.6°, 24.9 m
+thick) — L01 overshoots by 2.12 m, every crosscut on it missed the slab by
+exactly that |sdf|; with the guard the layout serves L02–L13 (12 levels,
+SUCCESS). Golden census: RANDOM_TABULAR-101 / -105 / -106 overshoot 2.82 /
+7.14 / 1.68 m on L01 (the legacy chain already excluded them); every
+layout-v2 FULL_SUITE TABULAR case 0 (goldens unchanged). A
+`topMarginReference` option is a later, golden-changing item.
+
 Effective Ramp (rules 149–150): downstream builders take the ramp payload
 plus its owning artifact; `MineNetworkBuilder.build(..., geometry_artifact)`
 writes RAMP `geometryRef.artifact` as `decline_smoothed.json` or

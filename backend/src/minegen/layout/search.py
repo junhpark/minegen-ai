@@ -56,7 +56,7 @@ from minegen.layout.families import (
     enumerate_candidates,
     resolved_station_lengths,
 )
-from minegen.layout.levels import RequiredLevel
+from minegen.layout.levels import LevelExclusion, RequiredLevel
 from minegen.layout.materialize import (
     LAYOUT_V2_SELECTED_ARTIFACT,
     LEVEL_ACCESSES_ARTIFACT,
@@ -256,6 +256,7 @@ class LayoutV2Search:
             return self._result(
                 levels,
                 provider.serviceable,
+                provider.sections.excluded(),
                 portal,
                 generated,
                 results,
@@ -277,6 +278,7 @@ class LayoutV2Search:
             return self._result(
                 levels,
                 provider.serviceable,
+                provider.sections.excluded(),
                 portal,
                 generated,
                 results,
@@ -414,6 +416,7 @@ class LayoutV2Search:
         return self._result(
             levels,
             serviceable,
+            provider.sections.excluded(),
             portal,
             generated,
             results,
@@ -429,6 +432,7 @@ class LayoutV2Search:
         self,
         levels: list[RequiredLevel],
         serviceable: list[RequiredLevel],
+        exclusions: list[LevelExclusion],
         portal: FloatArray,
         generated: bool,
         results: list[CandidateResult],
@@ -440,9 +444,15 @@ class LayoutV2Search:
         track: Any,
     ) -> LayoutSearchResult:
         standoff = effective_footwall_standoff(self.cfg, self.scenario.ramp)[0]
+        serviceable_ids = [lv.level_id for lv in serviceable]
+        # rule 141: every non-serviceable required level carries its typed
+        # exclusion; the serviceable set and the exclusions partition `levels`
         return LayoutSearchResult(
             levels=levels,
-            serviceable_ids=[lv.level_id for lv in serviceable],
+            serviceable_ids=serviceable_ids,
+            level_exclusions={
+                exc.level_id: exc for exc in exclusions if exc.level_id not in serviceable_ids
+            },
             track=track.to_dict() if track is not None else None,
             portal=portal,
             portal_generated=generated,

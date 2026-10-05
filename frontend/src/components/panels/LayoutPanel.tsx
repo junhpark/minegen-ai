@@ -6,6 +6,7 @@ import { PanelSection } from '@/components/layout/PanelSection'
 import { assessmentKey } from '@/components/panels/assessmentKey'
 import { AlternativesTable, DesignAssessmentList } from '@/components/panels/DesignAssessment'
 import { compareCandidates } from '@/components/panels/layoutOrder'
+import { catalogueExcludedLines, catalogueLevelSummary } from '@/components/panels/levelCoverage'
 import { ActionButton } from '@/components/ui/ActionButton'
 import { artifactTone, nextActionVariant } from '@/components/ui/presentation'
 import { Disclosure } from '@/components/ui/Disclosure'
@@ -245,9 +246,16 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
               {catalogue.feasibleCount} feasible / {catalogue.candidateCount} enumerated
             </span>
           </div>
-          <div className="mt-1 text-mute">
-            {catalogue.serviceableLevelCount}/{catalogue.requiredLevels.length} levels with ore
-          </div>
+          <div className="mt-1 text-mute">{catalogueLevelSummary(catalogue)}</div>
+          {catalogueExcludedLines(catalogue).map((line) => (
+            <div
+              key={line}
+              className="mt-0.5 text-[11px] text-chalk-dim"
+              data-testid="level-excluded"
+            >
+              {line}
+            </div>
+          ))}
           <Disclosure label="Search details">
             <Metrics
               rows={[

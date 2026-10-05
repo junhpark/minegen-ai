@@ -1153,6 +1153,7 @@ def _synthetic_result(
     return LayoutSearchResult(
         levels=[],
         serviceable_ids=[],
+        level_exclusions={},
         track=None,
         portal=np.zeros(3),
         portal_generated=False,

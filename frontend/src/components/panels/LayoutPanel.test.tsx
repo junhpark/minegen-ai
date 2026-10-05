@@ -234,7 +234,8 @@ describe('LayoutPanel', () => {
   it('renders backend-authored candidate rows, scores and the winner mark', () => {
     const html = render(sceneWith({}))
     expect(html).toContain('2 feasible / 68 enumerated')
-    expect(html).toContain('1/2 levels with ore')
+    expect(html).toContain('1/2 levels serviceable')
+    expect(html).toContain('L02 excluded — no orebody section at this elevation')
     // Phase 20E §10: the clearance basis is a detail of the current result
     // and moved into the Search details disclosure — same backend values
     expect(html).toContain('Clearance basis')

@@ -740,17 +740,36 @@ export interface LayoutCandidateSummary {
   centerline?: { points: number[]; pointCount: number } | null
 }
 
+/**
+ * Why a REQUIRED level is not serviceable (rule 141, hardening H0 §3.1):
+ * the level plane misses the solid, or — TABULAR — its footwall contact lies
+ * beyond the slab's dip extent (ore above the level, none next to it).
+ * Backend-decided; the frontend only echoes it.
+ */
+export type LevelExclusionReason =
+  'NO_FOOTWALL_CONTACT_AT_LEVEL' | 'NO_OREBODY_SECTION_AT_LEVEL' | 'NO_LEVEL_ENTRY'
+
+export interface LayoutRequiredLevel {
+  levelId: string
+  index: number
+  elevation: number
+  /** the level plane cuts the solid (a level without footwall contact still has ore above it) */
+  hasOrebodySection: boolean
+  /** absent on pre-hardening catalogues (then: serviceable ⇔ hasOrebodySection) */
+  serviceable?: boolean
+  exclusionReason?: LevelExclusionReason | null
+  /** TABULAR: down-dip metres the footwall contact lies beyond the slab's up-dip edge */
+  overshootM?: number | null
+  /** TABULAR hint: thickness·cos(dip) — the top margin that gives every level a contact */
+  minimumTopMiningMarginM?: number | null
+}
+
 export interface LayoutV2Catalogue {
   layoutVersion: number
   status: 'SUCCESS' | 'NO_FEASIBLE_CANDIDATE'
   portal: [number, number, number]
   portalGenerated: boolean
-  requiredLevels: {
-    levelId: string
-    index: number
-    elevation: number
-    hasOrebodySection: boolean
-  }[]
+  requiredLevels: LayoutRequiredLevel[]
   serviceableLevelCount: number
   candidateCount: number
   feasibleCount: number
@@ -1436,6 +1455,31 @@ export interface LevelsPayload {
     totalDriftLength3d: number
     totalCrosscutLength3d: number
   } | null
+  /**
+   * Hardening H0 §3.1: every REQUIRED level without a development, with its
+   * typed reason, and the production intervals that go with it (absent on
+   * pre-hardening artifacts; empty when every level is developed).
+   */
+  excludedLevels?: ExcludedLevel[]
+  unservedIntervals?: UnservedInterval[]
+}
+
+export interface ExcludedLevel {
+  levelId: string
+  index: number
+  elevation: number
+  reason: LevelExclusionReason
+  overshootM: number | null
+  minimumTopMiningMarginM: number | null
+}
+
+/** an adjacent required-level pair with no production between them (rules 76 / 195) */
+export interface UnservedInterval {
+  upperLevelId: string
+  lowerLevelId: string
+  upperElevation: number
+  lowerElevation: number
+  reason: LevelExclusionReason
 }
 
 /** Typed RESERVED simulation attributes: later phases fill these; until

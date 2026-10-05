@@ -170,6 +170,37 @@ def footwall_contact_v_coord(orebody: TabularOrebody, z_level: float) -> float:
     return (z_level - float(c[2]) - q * float(orebody.w[2])) / float(orebody.v[2])
 
 
+def has_footwall_contact(orebody: TabularOrebody, z_level: float) -> bool:
+    """Rule 141 (hardening H0 §3.1): a TABULAR level is serviceable only when
+    its footwall contact lies inside the slab's dip extent. This is the ONE
+    guard — the legacy access targets (``OUTSIDE_OREBODY_DIP_EXTENT``) and
+    the layout-v2 serviceable set (``NO_FOOTWALL_CONTACT_AT_LEVEL``) both
+    call it, in exactly this expression. The level generator measures its
+    top level from the bounding-box top, i.e. the HANGING-WALL top edge; the
+    footwall top edge sits ``thickness·cos(dip)`` lower, so a level inside
+    ``[z_fw_top, z_max − top_margin]`` has ore above it but no footwall
+    contact next to it."""
+    return abs(footwall_contact_v_coord(orebody, z_level)) <= orebody.half_height
+
+
+def footwall_contact_overshoot(orebody: TabularOrebody, z_level: float) -> float:
+    """Down-dip metres by which the footwall contact at ``z_level`` lies
+    beyond the slab's dip extent (``> 0`` iff ``not has_footwall_contact``).
+    For a level above the footwall top edge it equals the distance from the
+    crosscut's would-be terminal to the slab's up-dip edge — the ``|sdf|``
+    the legacy level builder reported as its terminal error."""
+    return abs(footwall_contact_v_coord(orebody, z_level)) - orebody.half_height
+
+
+def minimum_top_margin_for_footwall_contact(orebody: TabularOrebody) -> float:
+    """The smallest ``top_mining_margin`` that puts the TOP required level at
+    or below the footwall's top edge — ``thickness·cos(dip)`` =
+    ``thickness·|w.z|`` — so every required level has a footwall contact.
+    A dip-aware TABULAR hint for the user; other orebody types have no
+    closed form and report none."""
+    return 2.0 * orebody.half_thickness * abs(float(orebody.w[2]))
+
+
 def generate_access_targets(
     world: SyntheticWorld,
     cfg: DesignConfig,
@@ -196,7 +227,7 @@ def generate_access_targets(
     levels: list[LevelAccessTargets] = []
     for li, z in enumerate(elevations):
         lid = level_id(li, z)
-        contact_ok = abs(footwall_contact_v_coord(ob, z)) <= ob.half_height
+        contact_ok = has_footwall_contact(ob, z)
         cands: list[AccessCandidate] = []
         for ci, u in enumerate(u_coords):
             p, v_coord, _ = footwall_candidate_position(

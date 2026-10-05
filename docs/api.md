@@ -353,6 +353,17 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      without a Phase 05 artifact)
     GET  /api/v1/scenarios/{id}/design/levels        Phase 08: persisted typed LevelsPayload
                                                      (409 LEVELS_NOT_GENERATED after invalidation)
+                                                     hardening H0 §3.1: excludedLevels[] {levelId,
+                                                     index, elevation, reason, overshootM,
+                                                     minimumTopMiningMarginM} and
+                                                     unservedIntervals[] {upperLevelId, lowerLevelId,
+                                                     upperElevation, lowerElevation, reason} list
+                                                     every REQUIRED level without a development
+                                                     (NO_FOOTWALL_CONTACT_AT_LEVEL |
+                                                     NO_OREBODY_SECTION_AT_LEVEL | NO_LEVEL_ENTRY);
+                                                     the layout-v2 catalogue's requiredLevels[]
+                                                     carry serviceable / exclusionReason /
+                                                     overshootM / minimumTopMiningMarginM
                                                      Phase 20C.2A: the payload declares
                                                      developmentGeometry (TABULAR_RULE_43 |
                                                      SECTION_FOOTWALL_OFFSET_TRACE); an implicit

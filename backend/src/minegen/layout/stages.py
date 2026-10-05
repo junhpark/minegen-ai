@@ -329,13 +329,16 @@ def level_service(
         sec = sections.section(lv)
         cr = find_crossing(points, lv.elevation)
         crossings.append(cr)
-        if sec.empty:
+        exclusion = sections.exclusion(lv)
+        if exclusion is not None:
+            # rule 141: NO_OREBODY_SECTION_AT_LEVEL or (TABULAR, hardening H0
+            # §3.1) NO_FOOTWALL_CONTACT_AT_LEVEL — the level is not serviceable
             records.append(
                 LevelServiceRecord(
                     lv.level_id,
                     lv.elevation,
                     False,
-                    unserved_reason=InfeasibleReason.NO_OREBODY_SECTION_AT_LEVEL.value,
+                    unserved_reason=exclusion.reason,
                 )
             )
             continue
@@ -400,12 +403,13 @@ def cheap_checks(
 
 #: stage-2 level-screen reasons that reject a candidate (closeout v3 §3.B).
 #: ACCESS_REACH_EXCEEDED is deliberately absent: it is a heuristic, not a
-#: physical infeasibility. NO_OREBODY_SECTION_AT_LEVEL never reaches the
-#: screen (the context carries serviceable levels only, rule 141).
+#: physical infeasibility. The two rule 141 exclusions never reach the
+#: screen (the context carries serviceable levels only).
 _HARD_SCREEN_REASONS = frozenset(
     {
         InfeasibleReason.NO_RL_CROSSING.value,
         InfeasibleReason.NO_OREBODY_SECTION_AT_LEVEL.value,
+        InfeasibleReason.NO_FOOTWALL_CONTACT_AT_LEVEL.value,
     }
 )
 

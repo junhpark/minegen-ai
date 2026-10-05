@@ -21,7 +21,7 @@ from minegen.layout.access import AnchorFailure, LevelAccessPlan, LevelDevelopme
 from minegen.layout.certification import ClearanceReport
 from minegen.layout.families import CandidateParams
 from minegen.layout.geometry import CenterlineDiagnostics
-from minegen.layout.levels import RequiredLevel
+from minegen.layout.levels import NO_OREBODY_SECTION_AT_LEVEL, LevelExclusion, RequiredLevel
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -204,7 +204,7 @@ def _finite_dict(d: dict[str, Any]) -> dict[str, Any]:
 @dataclass
 class LayoutSearchResult:
     levels: list[RequiredLevel]  # every required level from the generic generator
-    serviceable_ids: list[str]  # those intersecting the orebody solid
+    serviceable_ids: list[str]  # those the search can serve (rule 141)
     track: dict[str, Any] | None
     portal: FloatArray
     portal_generated: bool
@@ -219,10 +219,30 @@ class LayoutSearchResult:
     standoff: float
     performance: dict[str, Any]
     config: dict[str, Any]
+    #: rule 141 exclusions by level id (hardening H0 §3.1): why a required
+    #: level is not serviceable; empty when every level is
+    level_exclusions: dict[str, LevelExclusion] = field(default_factory=dict)
 
     @property
     def serviceable_levels(self) -> list[RequiredLevel]:
         return [lv for lv in self.levels if lv.level_id in self.serviceable_ids]
+
+    def _required_level_dict(self, lv: RequiredLevel) -> dict[str, Any]:
+        exc = self.level_exclusions.get(lv.level_id)
+        return {
+            "levelId": lv.level_id,
+            "index": lv.index,
+            "elevation": lv.elevation,
+            # the level plane intersects the solid (a TABULAR level without a
+            # footwall contact still has ore ABOVE it)
+            "hasOrebodySection": exc is None or exc.reason != NO_OREBODY_SECTION_AT_LEVEL,
+            "serviceable": lv.level_id in self.serviceable_ids,
+            "exclusionReason": exc.reason if exc is not None else None,
+            "overshootM": exc.overshoot_m if exc is not None else None,
+            "minimumTopMiningMarginM": (
+                exc.minimum_top_mining_margin_m if exc is not None else None
+            ),
+        }
 
     def candidate(self, candidate_id: str) -> CandidateResult | None:
         for c in self.candidates:
@@ -236,15 +256,7 @@ class LayoutSearchResult:
             "status": "SUCCESS" if self.winner_id is not None else "NO_FEASIBLE_CANDIDATE",
             "portal": [float(v) for v in self.portal],
             "portalGenerated": self.portal_generated,
-            "requiredLevels": [
-                {
-                    "levelId": lv.level_id,
-                    "index": lv.index,
-                    "elevation": lv.elevation,
-                    "hasOrebodySection": lv.level_id in self.serviceable_ids,
-                }
-                for lv in self.levels
-            ],
+            "requiredLevels": [self._required_level_dict(lv) for lv in self.levels],
             "serviceableLevelCount": len(self.serviceable_ids),
             "footwallTrack": self.track,
             "candidateCount": len(self.candidates),
