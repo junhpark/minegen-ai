@@ -755,13 +755,6 @@ export interface LayoutRequiredLevel {
   elevation: number
   /** the level plane cuts the solid (a level without footwall contact still has ore above it) */
   hasOrebodySection: boolean
-  /** absent on pre-hardening catalogues (then: serviceable ⇔ hasOrebodySection) */
-  serviceable?: boolean
-  exclusionReason?: LevelExclusionReason | null
-  /** TABULAR: down-dip metres the footwall contact lies beyond the slab's up-dip edge */
-  overshootM?: number | null
-  /** TABULAR hint: thickness·cos(dip) — the top margin that gives every level a contact */
-  minimumTopMiningMarginM?: number | null
 }
 
 export interface LayoutV2Catalogue {

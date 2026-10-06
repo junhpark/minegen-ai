@@ -1161,16 +1161,15 @@ class DesignService:
         return plan, tuple(deleted)
 
     def _catalogue_level_exclusions(self, scenario_id: str) -> dict[str, str]:
-        """``requiredLevels[].exclusionReason`` of the layout-v2 catalogue by
-        level id (rule 141). A pre-hardening catalogue carries only
-        ``hasOrebodySection``; its false entries are the section exclusion."""
+        """The section exclusion recorded by the layout-v2 catalogue
+        (``requiredLevels[].hasOrebodySection == false`` →
+        NO_OREBODY_SECTION_AT_LEVEL) by level id. The TABULAR footwall-contact
+        exclusion is never read from the catalogue: the level builder
+        re-derives it analytically (rule 141, READ ≠ TRUST)."""
         out: dict[str, str] = {}
         for lv in self.layout_v2(scenario_id).get("requiredLevels", []):
-            reason = lv.get("exclusionReason")
-            if reason is None and lv.get("hasOrebodySection") is False:
-                reason = "NO_OREBODY_SECTION_AT_LEVEL"
-            if reason is not None:
-                out[str(lv["levelId"])] = str(reason)
+            if lv.get("hasOrebodySection") is False:
+                out[str(lv["levelId"])] = "NO_OREBODY_SECTION_AT_LEVEL"
         return out
 
     # -- stopes (Phase 09, rules 75–80) --------------------------------------- #

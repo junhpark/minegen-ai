@@ -1174,10 +1174,13 @@ A TABULAR level inside that band has ore above it and no footwall contact
 next to it: the legacy access targets reject it (`OUTSIDE_OREBODY_DIP_EXTENT`,
 `design.targets.has_footwall_contact`) and layout-v2 now applies the SAME
 function in `LevelSections` (`NO_FOOTWALL_CONTACT_AT_LEVEL`, excluded from
-the serviceable set, reported in `requiredLevels[]` as `serviceable = false`
-with `exclusionReason`, the down-dip `overshootM` and the dip-aware hint
-`minimumTopMiningMarginM = thickness·cos(dip)`). The level generator itself
-is untouched. `levels.json` reports every REQUIRED level without a
+the serviceable set). The catalogue's `requiredLevels[]` WIRE SHAPE is
+unchanged (`levelId / index / elevation / hasOrebodySection`; the guard moves
+only `serviceableLevelCount` and the candidates' level service) — the
+persisted layout-v2 contract under the AC-01G characterization freeze is not
+widened — and the typed reason, the down-dip `overshootM` and the dip-aware
+hint `minimumTopMiningMarginM = thickness·cos(dip)` are reported ONLY in
+`levels.json`. The level generator itself is untouched. `levels.json` reports every REQUIRED level without a
 development in `excludedLevels[]` (typed reason: the footwall guard, the
 section exclusion recorded by the catalogue, or `NO_LEVEL_ENTRY`) and the
 adjacent pairs that therefore carry no production in `unservedIntervals[]`

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '@/api/client'
 import { DialogButton, ModalDialog } from '@/components/ui/ModalDialog'
 import type { MiningConfig } from '@/types/api'
+import { methodChangeApplyEnabled } from './methodChangeGate'
 
 interface Props {
   scenarioId: string
@@ -32,6 +33,10 @@ export function MethodChangeDialog({ scenarioId, mining, hasWorld, onCancel, onC
   const err = plan.error
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
+  const canApply = methodChangeApplyEnabled(hasWorld, {
+    isSuccess: plan.isSuccess,
+    isError: plan.isError,
+  })
   return (
     <ModalDialog
       title="Change mining method"
@@ -41,8 +46,19 @@ export function MethodChangeDialog({ scenarioId, mining, hasWorld, onCancel, onC
           <DialogButton kind="cancel" onClick={onCancel}>
             Cancel
           </DialogButton>
-          <DialogButton kind="confirm" onClick={() => onConfirm(mining)}>
-            Apply method
+          {hasWorld && plan.isError ? (
+            <DialogButton kind="confirm" onClick={() => void plan.refetch()}>
+              Retry
+            </DialogButton>
+          ) : null}
+          <DialogButton
+            kind="confirm"
+            disabled={!canApply}
+            onClick={() => {
+              if (canApply) onConfirm(mining)
+            }}
+          >
+            {hasWorld && !plan.isSuccess && !plan.isError ? 'Reading reset plan…' : 'Apply method'}
           </DialogButton>
         </>
       }
@@ -63,7 +79,7 @@ export function MethodChangeDialog({ scenarioId, mining, hasWorld, onCancel, onC
           )
         ) : errorText ? (
           <p role="alert" className="text-danger">
-            {errorText}
+            The reset plan could not be read — nothing is applied until it is: {errorText}
           </p>
         ) : (
           <p className="text-mute">Reading the reset plan…</p>

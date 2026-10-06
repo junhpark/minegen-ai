@@ -1,3 +1,4 @@
+import { developmentMeshScope } from '@/components/panels/developmentMeshScope'
 import type { AnalysisTab, DesignTab, SystemsTab } from '@/components/panels/workflowTabs'
 import type { AppMode } from '@/types/enums'
 import type { WorkflowStage, WorldScene } from '@/types/scene'
@@ -196,7 +197,14 @@ export function stageArtifactState(stage: StageId, input: StageInput): ArtifactS
       const t = stateOf(scene?.tunnelMesh)
       const d = stateOf(scene?.developmentMesh)
       if (t === 'FAILED' || d === 'FAILED') return 'FAILED'
-      return t === 'SUCCESS' && d === 'SUCCESS' ? 'SUCCESS' : 'ABSENT'
+      // review S1: an ACCESS-ONLY development sweep (no level development
+      // geometry — levels failed or absent) is not a completed Excavation
+      // for the stepper; the results column still reports it as ACCESS-ONLY
+      const accessOnly = developmentMeshScope(
+        scene?.developmentMesh ?? null,
+        scene?.levels ?? null,
+      ).accessOnly
+      return t === 'SUCCESS' && d === 'SUCCESS' && !accessOnly ? 'SUCCESS' : 'ABSENT'
     }
     case 'SHAFTS':
       return stateOf(scene?.shafts)

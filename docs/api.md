@@ -380,9 +380,12 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      every REQUIRED level without a development
                                                      (NO_FOOTWALL_CONTACT_AT_LEVEL |
                                                      NO_OREBODY_SECTION_AT_LEVEL | NO_LEVEL_ENTRY);
-                                                     the layout-v2 catalogue's requiredLevels[]
-                                                     carry serviceable / exclusionReason /
-                                                     overshootM / minimumTopMiningMarginM
+                                                     levels.json is the ONLY carrier of the
+                                                     reason — the layout-v2 catalogue's
+                                                     requiredLevels[] wire shape is unchanged
+                                                     (levelId / index / elevation /
+                                                     hasOrebodySection; the guard moves only
+                                                     serviceableLevelCount)
                                                      Phase 20C.2A: the payload declares
                                                      developmentGeometry (TABULAR_RULE_43 |
                                                      SECTION_FOOTWALL_OFFSET_TRACE); an implicit

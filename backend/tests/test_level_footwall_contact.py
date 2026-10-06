@@ -212,7 +212,7 @@ def test_stage2_level_service_records_the_footwall_exclusion(
     assert records[1].unserved_reason is None and records[1].within_reach
 
 
-def test_catalogue_required_levels_carry_the_typed_exclusion(
+def test_catalogue_wire_shape_is_unchanged_and_the_exclusion_stays_internal(
     seed_42: tuple[Scenario, TabularOrebody, list[RequiredLevel]],
 ) -> None:
     sc, ob, levels = seed_42
@@ -237,16 +237,22 @@ def test_catalogue_required_levels_carry_the_typed_exclusion(
         config={},
     )
     d = res.to_dict()
+    # the guard changes the serviceable SET only; the persisted layout_v2
+    # contract (AC-01G characterization freeze) keeps the Phase 20A shape
     assert d["serviceableLevelCount"] == 12
-    top, second = d["requiredLevels"][0], d["requiredLevels"][1]
+    for row in d["requiredLevels"]:
+        assert set(row) == {"levelId", "index", "elevation", "hasOrebodySection"}
+    top = d["requiredLevels"][0]
     assert top["levelId"] == "L01"
     assert top["hasOrebodySection"] is True  # ore above the level — the plane cuts the slab
-    assert top["serviceable"] is False
-    assert top["exclusionReason"] == NO_FOOTWALL_CONTACT_AT_LEVEL
-    assert top["overshootM"] == pytest.approx(EXPECTED_OVERSHOOT, abs=1e-3)
-    assert top["minimumTopMiningMarginM"] == pytest.approx(EXPECTED_MIN_TOP_MARGIN, abs=1e-2)
-    assert second["serviceable"] is True and second["exclusionReason"] is None
-    assert second["overshootM"] is None and second["minimumTopMiningMarginM"] is None
+    # the typed reason / overshoot / hint stay INTERNAL to the search result
+    # (consumed by the regression contract and the level builder) and reach
+    # the user only through levels.json
+    exc = res.level_exclusions["L01"]
+    assert exc.reason == NO_FOOTWALL_CONTACT_AT_LEVEL
+    assert exc.overshoot_m == pytest.approx(EXPECTED_OVERSHOOT, abs=1e-3)
+    assert exc.minimum_top_mining_margin_m == pytest.approx(EXPECTED_MIN_TOP_MARGIN, abs=1e-2)
+    assert "L02" not in res.level_exclusions
     assert res.serviceable_levels == levels[1:]
 
 

@@ -220,7 +220,9 @@ class LayoutSearchResult:
     performance: dict[str, Any]
     config: dict[str, Any]
     #: rule 141 exclusions by level id (hardening H0 §3.1): why a required
-    #: level is not serviceable; empty when every level is
+    #: level is not serviceable; empty when every level is. INTERNAL to the
+    #: search (the regression contract and the level builder consume it);
+    #: never serialized into the catalogue — its wire shape is unchanged.
     level_exclusions: dict[str, LevelExclusion] = field(default_factory=dict)
 
     @property
@@ -228,20 +230,19 @@ class LayoutSearchResult:
         return [lv for lv in self.levels if lv.level_id in self.serviceable_ids]
 
     def _required_level_dict(self, lv: RequiredLevel) -> dict[str, Any]:
+        # The persisted wire shape is the Phase 20A one and stays so: the
+        # footwall-contact guard (hardening H0 §3.1) changes the SERVICEABLE
+        # SET (`serviceableLevelCount`, the candidates' level service) but
+        # the typed exclusion, overshoot and margin hint are reported ONLY
+        # in `levels.json` (rule 141). `hasOrebodySection` keeps its meaning:
+        # the level plane intersects the solid (a TABULAR level without a
+        # footwall contact still has ore ABOVE it).
         exc = self.level_exclusions.get(lv.level_id)
         return {
             "levelId": lv.level_id,
             "index": lv.index,
             "elevation": lv.elevation,
-            # the level plane intersects the solid (a TABULAR level without a
-            # footwall contact still has ore ABOVE it)
             "hasOrebodySection": exc is None or exc.reason != NO_OREBODY_SECTION_AT_LEVEL,
-            "serviceable": lv.level_id in self.serviceable_ids,
-            "exclusionReason": exc.reason if exc is not None else None,
-            "overshootM": exc.overshoot_m if exc is not None else None,
-            "minimumTopMiningMarginM": (
-                exc.minimum_top_mining_margin_m if exc is not None else None
-            ),
         }
 
     def candidate(self, candidate_id: str) -> CandidateResult | None:

@@ -345,8 +345,8 @@ class LevelDevelopmentBuilder:
         footwall-contact guard, ``tabular_level_exclusion`` — the same
         judgement the layout-v2 serviceable set and the legacy targets
         make); for any other body it is the ACTIVE source's recorded
-        exclusion (``source_exclusion_reasons``, the catalogue's
-        ``requiredLevels[].exclusionReason`` — NO_OREBODY_SECTION_AT_LEVEL),
+        exclusion (``source_exclusion_reasons``, derived from the catalogue's
+        ``requiredLevels[].hasOrebodySection`` — NO_OREBODY_SECTION_AT_LEVEL),
         else ``NO_LEVEL_ENTRY``: the ramp source simply delivered no entry.
         Nothing is dropped silently."""
         sc = self.scenario

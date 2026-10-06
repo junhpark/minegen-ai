@@ -1038,13 +1038,18 @@ code, the code and the rule win and the map is corrected.
      chain's own guard); otherwise the level is
      NO_FOOTWALL_CONTACT_AT_LEVEL with `overshootM = |v| − half_height` and
      `minimumTopMiningMarginM = thickness·cos(dip)` (the smallest
-     `top_mining_margin` that restores contact). The catalogue reports
-     `requiredLevels[].serviceable / exclusionReason / overshootM /
-     minimumTopMiningMarginM`, `levels.json` reports `excludedLevels[]` and
-     `unservedIntervals[]`, and the level builder re-derives the TABULAR
-     exclusion analytically (READ ≠ TRUST — the catalogue reason is adopted
-     only for non-TABULAR bodies) and fails typed when asked to develop an
-     excluded level. Changing a margin is the user's explicit edit, never a
+     `top_mining_margin` that restores contact). The layout-v2 catalogue's
+     `requiredLevels[]` WIRE SHAPE is unchanged (`levelId / index /
+     elevation / hasOrebodySection`; the guard moves only
+     `serviceableLevelCount` and the candidates' level service — the
+     persisted layout_v2 contract under the AC-01G characterization freeze
+     is never widened by a hardening change); the typed reason, overshoot
+     and hint are reported ONLY in `levels.json` (`excludedLevels[]`,
+     `unservedIntervals[]`). The level builder re-derives the TABULAR
+     exclusion analytically with the same helper (READ ≠ TRUST — the
+     catalogue's `hasOrebodySection == false` is adopted only as the
+     non-TABULAR section exclusion) and fails typed when asked to develop
+     an excluded level. Changing a margin is the user's explicit edit, never a
      silent clamp.
 142. Finite declared enumeration. Layout-v2 candidates come only from the
      typed `scenario.layout` grids (SPIRAL, LONGITUDINAL, SWITCHBACK ×

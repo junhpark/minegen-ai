@@ -51,9 +51,15 @@ export function levelCoverageLines(levels: LevelsPayload | null): string[] {
   return [...excluded.map(excludedLevelLine), ...intervals.map(unservedIntervalLine)]
 }
 
-/** a pre-hardening catalogue carries only `hasOrebodySection` */
+/**
+ * The catalogue's wire shape is the Phase 20A one: `hasOrebodySection` is
+ * the only per-level flag. A TABULAR level excluded by the footwall-contact
+ * guard still HAS a section (ore above it), so it is counted out of
+ * `serviceableLevelCount` here and explained — with its reason, overshoot
+ * and margin hint — by `levels.json` once level development runs.
+ */
 export function isServiceable(lv: LayoutRequiredLevel): boolean {
-  return lv.serviceable ?? lv.hasOrebodySection
+  return lv.hasOrebodySection
 }
 
 /** "12/13 levels serviceable" — the catalogue's own count, never recounted */
@@ -61,17 +67,9 @@ export function catalogueLevelSummary(c: LayoutV2Catalogue): string {
   return `${String(c.serviceableLevelCount)}/${String(c.requiredLevels.length)} levels serviceable`
 }
 
-/** one line per non-serviceable required level of the catalogue */
+/** one line per required level the catalogue marks without an orebody section */
 export function catalogueExcludedLines(c: LayoutV2Catalogue): string[] {
   return c.requiredLevels
     .filter((lv) => !isServiceable(lv))
-    .map((lv) => {
-      const reason = lv.exclusionReason ?? 'NO_OREBODY_SECTION_AT_LEVEL'
-      let text = `${lv.levelId} excluded — ${exclusionReasonText(reason)}`
-      if (lv.overshootM !== null && lv.overshootM !== undefined) text += ` (${m2(lv.overshootM)})`
-      if (lv.minimumTopMiningMarginM !== null && lv.minimumTopMiningMarginM !== undefined) {
-        text += `; minimum topMiningMargin ${m2(lv.minimumTopMiningMarginM)}`
-      }
-      return text
-    })
+    .map((lv) => `${lv.levelId} excluded — ${exclusionReasonText('NO_OREBODY_SECTION_AT_LEVEL')}`)
 }

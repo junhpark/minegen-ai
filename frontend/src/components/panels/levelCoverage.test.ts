@@ -85,38 +85,20 @@ describe('level coverage (hardening H0 §3.1)', () => {
     ).toBe('No production interval L06–L07 (no orebody section at this elevation)')
   })
 
-  it('reads the catalogue count as given and lists the excluded levels', () => {
+  it('reads the catalogue count as given and lists only the section exclusions', () => {
+    // the catalogue keeps its Phase 20A wire shape: a TABULAR level excluded
+    // by the footwall guard still has a section and is explained by levels.json
     const catalogue = {
       requiredLevels: [
-        {
-          levelId: 'L01',
-          index: 0,
-          elevation: 105.5,
-          hasOrebodySection: true,
-          serviceable: false,
-          exclusionReason: 'NO_FOOTWALL_CONTACT_AT_LEVEL',
-          overshootM: 2.1206,
-          minimumTopMiningMarginM: 11.865,
-        },
-        {
-          levelId: 'L02',
-          index: 1,
-          elevation: 80.5,
-          hasOrebodySection: true,
-          serviceable: true,
-          exclusionReason: null,
-          overshootM: null,
-          minimumTopMiningMarginM: null,
-        },
-        // pre-hardening shape: serviceable ⇔ hasOrebodySection
+        { levelId: 'L01', index: 0, elevation: 105.5, hasOrebodySection: true },
+        { levelId: 'L02', index: 1, elevation: 80.5, hasOrebodySection: true },
         { levelId: 'L03', index: 2, elevation: 55.5, hasOrebodySection: false },
       ],
       serviceableLevelCount: 1,
     } as unknown as LayoutV2Catalogue
     expect(catalogueLevelSummary(catalogue)).toBe('1/3 levels serviceable')
-    expect(catalogue.requiredLevels.map(isServiceable)).toEqual([false, true, false])
+    expect(catalogue.requiredLevels.map(isServiceable)).toEqual([true, true, false])
     expect(catalogueExcludedLines(catalogue)).toEqual([
-      'L01 excluded — footwall contact above orebody top (2.12 m); minimum topMiningMargin 11.87 m',
       'L03 excluded — no orebody section at this elevation',
     ])
   })

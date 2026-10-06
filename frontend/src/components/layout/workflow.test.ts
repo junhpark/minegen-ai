@@ -113,6 +113,36 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
     expect(Object.values(g).filter((x) => x === 'NEXT')).toHaveLength(1)
   })
 
+  it('an ACCESS-ONLY development mesh next to failed levels is not a completed Excavation (S1)', () => {
+    const base = {
+      rampSource: { activeSource: 'LAYOUT_V2', available: true },
+      levels: failed('levels'),
+      tunnelMesh: ok('tunnel'),
+    }
+    const accessOnly = stageStatuses({
+      scenario: true,
+      scene: scene({
+        ...base,
+        developmentMesh: { status: 'SUCCESS', sources: { levels: false, levelAccesses: true } },
+      }),
+      shaftSpecCount: 0,
+      running: none,
+    })
+    expect(accessOnly.LEVELS).toBe('FAILED')
+    expect(accessOnly.EXCAVATION).not.toBe('DONE')
+    const full = stageStatuses({
+      scenario: true,
+      scene: scene({
+        ...base,
+        levels: ok('levels'),
+        developmentMesh: { status: 'SUCCESS', sources: { levels: true, levelAccesses: true } },
+      }),
+      shaftSpecCount: 0,
+      running: none,
+    })
+    expect(full.EXCAVATION).toBe('DONE')
+  })
+
   it('a layout with no feasible candidate is a failed stage; a running job shows as running', () => {
     const g = stageStatuses({
       scenario: true,
