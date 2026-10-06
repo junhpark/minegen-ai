@@ -131,10 +131,11 @@ describe('the layout and legacy endpoints are unchanged', () => {
   })
 })
 
-describe('switching a tab is presentation only (§19)', () => {
+describe('switching a stage is presentation only (§19, hardening H1 §4.2)', () => {
   const design = read(join(LAYOUT, 'DesignWorkspace.tsx'))
   const systems = read(join(LAYOUT, 'SystemsWorkspace.tsx'))
   const analysis = read(join(LAYOUT, 'AnalysisWorkspace.tsx'))
+  const stepper = read(join(LAYOUT, 'StepperBar.tsx'))
 
   it('every panel stays mounted and is gated on its own tab, never unmounted', () => {
     expect(design).toContain("<LayoutPanel active={tab === 'LAYOUT'} />")
@@ -151,13 +152,20 @@ describe('switching a tab is presentation only (§19)', () => {
     }
   })
 
-  it('the tab handlers only set tab state — they run no mutation', () => {
-    for (const src of [design, systems, analysis]) {
-      expect(src).toContain('onSelect={setTab}')
+  it('the stepper and the workspaces only set viewer state — they run no mutation', () => {
+    expect(stepper).toContain('setStage(st)')
+    expect(analysis).toContain('onSelect={setTab}')
+    for (const src of [design, systems, analysis, stepper]) {
       expect(src).not.toContain('mutate')
       expect(src).not.toContain('setLayerVisible')
       expect(src).not.toContain('api.')
     }
+  })
+
+  it('the stage keeps the panel tab in step (the panels keep their view contract)', () => {
+    const store = read(join(__dirname, '..', '..', 'stores', 'viewerStore.ts'))
+    expect(store).toContain('designTab: designTabFor(stage)')
+    expect(store).toContain('systemsTabFor(stage)')
   })
 })
 
@@ -174,16 +182,19 @@ describe('Systems navigation (§26 E)', () => {
   })
 })
 
-describe('the left panel keeps Layers reachable and independent (§6)', () => {
+describe('the View panel keeps Layers reachable and independent (§6, hardening H1 §4.2)', () => {
   const left = read(join(LAYOUT, 'LeftPanel.tsx'))
+  const right = read(join(LAYOUT, 'RightPanel.tsx'))
+  const view = read(join(HERE, 'ViewPanel.tsx'))
   const layers = read(join(HERE, 'LayerPanel.tsx'))
 
-  it('Layers sits outside the workflow tabs, at the bottom of the panel', () => {
-    expect(left).toContain('<LayerPanel />')
-    expect(left.indexOf('<LayerPanel />')).toBeGreaterThan(left.indexOf('Workspace />'))
-    expect(read(join(LAYOUT, 'DesignWorkspace.tsx'))).not.toContain('LayerPanel')
-    expect(read(join(LAYOUT, 'SystemsWorkspace.tsx'))).not.toContain('LayerPanel')
-    expect(read(join(LAYOUT, 'AnalysisWorkspace.tsx'))).not.toContain('LayerPanel')
+  it('the Visibility tree sits in the right column, outside every workflow panel', () => {
+    expect(right).toContain('<ViewPanel />')
+    expect(view).toContain('<LayerTree />')
+    for (const f of ['DesignWorkspace.tsx', 'SystemsWorkspace.tsx', 'AnalysisWorkspace.tsx']) {
+      expect(read(join(LAYOUT, f))).not.toContain('LayerTree')
+    }
+    expect(left).not.toContain('LayerTree')
   })
 
   it('the layer store contract is untouched: toggleLayer only', () => {
@@ -193,28 +204,35 @@ describe('the left panel keeps Layers reachable and independent (§6)', () => {
   })
 
   it('the slice query stays mounted while the section is collapsed', () => {
-    expect(layers).toContain('<SliceControls active={open} />')
+    expect(view).toContain('<SliceControls active={open} />')
     expect(layers).toContain('if (!scene || !active) return null')
   })
 
-  it('the panel is wide enough for the consolidated readouts (§15)', () => {
+  it('the controls column is wide enough for the consolidated readouts (§15)', () => {
     expect(left).toContain('w-[320px]')
   })
 })
 
-describe('the mode labels are presentation only (§3)', () => {
+describe('view modes are not workflow steps (hardening H1 §4.1)', () => {
   const top = read(join(LAYOUT, 'TopBar.tsx'))
+  const switcher = read(join(LAYOUT, 'ViewSwitcher.tsx'))
 
-  it('INFRASTRUCTURE reads Systems while the enum value is unchanged', () => {
-    expect(top).toContain("INFRASTRUCTURE: 'Systems'")
-    expect(top).toContain('APP_MODES.map')
-    expect(top).not.toContain("'Infra'")
+  it('the ribbon lists the seven steps and no view mode', () => {
+    expect(top).toContain('WORKFLOW_STEPS.map')
+    expect(top).not.toContain('APP_MODES')
+    expect(top).not.toContain("'WALKTHROUGH'")
   })
 
-  it('every mode keeps a full-word label', () => {
-    for (const label of ['Design', 'Systems', '4D', 'Walkthrough', 'Analysis']) {
-      expect(top).toContain(`'${label}'`)
-    }
-    expect(top).not.toContain("'Walk'")
+  it('3D | 4D | Walk live in the view switcher and keep the walkthrough readiness gate', () => {
+    for (const label of ['3D', '4D', 'Walk']) expect(switcher).toContain(`label: '${label}'`)
+    expect(switcher).toContain('temporalWalkthroughReadiness(')
+    expect(switcher).toContain('walkthroughReadiness(scene)')
+    expect(switcher).not.toContain('setStage')
+  })
+
+  it('INFRASTRUCTURE reads Systems while the enum value is unchanged', () => {
+    const workflow = read(join(LAYOUT, 'workflow.ts'))
+    expect(workflow).toContain("label: 'Systems'")
+    expect(workflow).toContain("return 'INFRASTRUCTURE'")
   })
 })

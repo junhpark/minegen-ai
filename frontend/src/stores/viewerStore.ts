@@ -5,6 +5,13 @@ import { useScenarioStore } from './scenarioStore'
 import { temporalSessionIdentity } from '@/walkthrough/temporalPlan'
 import type { WalkthroughNavigationMode } from '@/walkthrough/navigation'
 import type { AnalysisTab, DesignTab, SystemsTab } from '@/components/panels/workflowTabs'
+import {
+  analysisTabFor,
+  designTabFor,
+  modeForStage,
+  systemsTabFor,
+} from '@/components/layout/workflow'
+import type { StageId, ViewMode } from '@/types/workflow'
 
 export type CameraMode = 'orbit' | 'walkthrough'
 export type WalkthroughContext = 'STATIC_FINAL' | 'TIMELINE_SNAPSHOT'
@@ -38,6 +45,21 @@ export interface ViewerState {
   setDesignTab: (tab: DesignTab) => void
   setSystemsTab: (tab: SystemsTab) => void
   setAnalysisTab: (tab: AnalysisTab) => void
+  /**
+   * Hardening H1 §4.1–4.3 — the guided-workflow STAGE the controls column
+   * shows. Frontend-local presentation state like the tabs: never persisted,
+   * never a generation or a layer reset. Selecting a stage also selects the
+   * pre-shell tab of the panel that owns it and the application mode of its
+   * controls — unless a 4D / Walk VIEW is active, which is kept.
+   */
+  stage: StageId
+  setStage: (stage: StageId) => void
+  /** 3D | 4D | Walk — the viewport's view mode, chosen apart from the stage */
+  viewMode: () => ViewMode
+  setViewMode: (view: ViewMode) => void
+  /** camera preset request (nonce increments so the same preset can be re-applied) */
+  cameraPreset: { kind: 'ISO' | 'TOP' | 'FIT'; nonce: number }
+  requestCameraPreset: (kind: 'ISO' | 'TOP' | 'FIT') => void
 
   setMode: (mode: AppMode) => void
   setCameraMode: (cameraMode: CameraMode) => void
@@ -107,6 +129,41 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   analysisTab: 'OVERVIEW',
   setAnalysisTab: (analysisTab) => set({ analysisTab }),
 
+  stage: 'SCENARIO',
+  setStage: (stage) =>
+    set((s) => {
+      const next: Partial<ViewerState> = { stage, designTab: designTabFor(stage) }
+      const systems = systemsTabFor(stage)
+      if (systems) next.systemsTab = systems
+      const analysis = analysisTabFor(stage)
+      if (analysis && s.analysisTab === 'SIMULATION') next.analysisTab = analysis
+      // a 4D / Walk view is a VIEW choice and survives a stage change
+      if (s.mode !== '4D' && s.mode !== 'WALKTHROUGH') next.mode = modeForStage(stage)
+      return next
+    }),
+  viewMode: () => {
+    const m = get().mode
+    return m === '4D' ? '4D' : m === 'WALKTHROUGH' ? 'WALK' : '3D'
+  },
+  setViewMode: (view) => {
+    const s = get()
+    if (view === 'WALK') {
+      s.setMode('WALKTHROUGH')
+      return
+    }
+    if (view === '4D') {
+      if (s.mode === 'WALKTHROUGH') s.setMode('4D')
+      else set({ mode: '4D' })
+      return
+    }
+    // back to the 3D view of the current stage's controls
+    if (s.mode === 'WALKTHROUGH') s.setMode(modeForStage(s.stage))
+    else set({ mode: modeForStage(s.stage) })
+  },
+  cameraPreset: { kind: 'ISO', nonce: 0 },
+  requestCameraPreset: (kind) =>
+    set((s) => ({ cameraPreset: { kind, nonce: s.cameraPreset.nonce + 1 } })),
+
   setNavigationMode: (navigationMode) => set({ navigationMode }),
   setMode: (mode) =>
     set((s) => {
@@ -122,7 +179,9 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
           walkthroughSnapshotIdentity: temporal
             ? temporalSessionIdentity(useScenarioStore.getState().scene)
             : null,
-          walkthroughReturnMode: (temporal ? '4D' : 'DESIGN') as AppMode,
+          // leaving Walk returns to the view it was entered from: 4D, or the
+          // 3D view of the current stage's controls
+          walkthroughReturnMode: temporal ? '4D' : modeForStage(s.stage),
         }
       }
       // leaving WALKTHROUGH clears the temporal snapshot state (rule 112)

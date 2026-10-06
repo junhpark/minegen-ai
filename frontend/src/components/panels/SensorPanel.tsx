@@ -48,6 +48,7 @@ export function SensorPanel({ active = true }: { active?: boolean } = {}) {
   if (!active) return null
   return (
     <WorkflowCard
+      stage="SENSORS"
       title="Sensors"
       tone={artifactTone(sensors, generate.isPending)}
       info="Gas-sensor placement over the mine network: a deterministic greedy set-cover of monitoring demand along physical mine distance, never straight through rock. It is a monitoring-layout proxy — it does not represent gas transport, sensor response, detection probability or a calibrated sensing range, and communication, power and installation timing are not modelled."

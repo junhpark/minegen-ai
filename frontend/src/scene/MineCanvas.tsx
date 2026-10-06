@@ -1,6 +1,7 @@
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CameraPresets } from './CameraPresets'
 import { MineScene } from './MineScene'
 import { CoordinateReadout } from './CoordinateReadout'
 import { mineToThree } from '@/geometry/coordinateTransform'
@@ -75,9 +76,11 @@ export function MineCanvas() {
     temporalSessionIdentity(scene) !== walkthroughSnapshotIdentity
   useEffect(() => {
     if (mode === 'WALKTHROUGH' && (readiness !== 'READY' || sessionStale)) {
-      setMode(temporal ? walkthroughReturnMode : 'DESIGN')
+      // the store captured the return view at entry: 4D, or the 3D view of
+      // the current stage's controls (hardening H1 §4.1)
+      setMode(walkthroughReturnMode)
     }
-  }, [mode, readiness, sessionStale, setMode, temporal, walkthroughReturnMode])
+  }, [mode, readiness, sessionStale, setMode, walkthroughReturnMode])
   useEffect(() => {
     if (cameraMode !== 'walkthrough') setFocusedKind(null)
   }, [cameraMode])
@@ -89,8 +92,8 @@ export function MineCanvas() {
     if (selectedObjectId && resolvedSelection === null) select(null)
   }, [selectedObjectId, resolvedSelection, select])
   const leaveWalkthrough = useCallback(
-    () => setMode(temporal ? walkthroughReturnMode : 'DESIGN'),
-    [setMode, temporal, walkthroughReturnMode],
+    () => setMode(walkthroughReturnMode),
+    [setMode, walkthroughReturnMode],
   )
 
   const walkActiveIds =
@@ -140,6 +143,7 @@ export function MineCanvas() {
           >
             <color attach="background" args={['#0f1316']} />
             <MineScene />
+            {cameraMode === 'orbit' ? <CameraPresets onTarget={setTarget} /> : null}
             {walkable ? (
               <WalkthroughRuntime
                 meshUrl={`${API_BASE_URL}${scene.tunnelMesh!.meshUrl}`}

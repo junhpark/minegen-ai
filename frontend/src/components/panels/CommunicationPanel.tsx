@@ -48,6 +48,7 @@ export function CommunicationPanel({ active = true }: { active?: boolean } = {})
   if (!active) return null
   return (
     <WorkflowCard
+      stage="COMMUNICATION"
       title="Communication"
       tone={artifactTone(communication, generate.isPending)}
       info="Underground mesh-router placement and backhaul planning. Coverage and backhaul are measured along the physical mine network, never straight through rock, and every selected router is connected back to the portal. It is an explicit planning proxy — not a calibrated radio prediction, not a globally optimal design, and router installation timing is not modelled."
