@@ -69,6 +69,9 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     "test_exchange_timeline_e2e": ("e2e",),
     "test_adapters_e2e": ("e2e",),
     "test_results_e2e": ("e2e",),
+    # Hardening H1 §4.5: the guided-workflow shell in a real headless browser
+    # over a live backend + Vite dev server (one BASELINE chain: minutes)
+    "test_shell_e2e": ("e2e", "slow"),
     "test_layout_v2_golden_smoke": ("golden",),
     # Phase 20B.x: the GEOMETRY-STRESS feasibility oracle (one full layout-v2 search)
     "test_geometry_stress_oracle": ("slow",),

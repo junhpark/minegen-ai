@@ -161,52 +161,83 @@ implements numerics.
 The frontend never computes mine engineering quantities
 (CLAUDE.md rule 17, 32).
 
-## UI information architecture (Phase 20E)
+## UI information architecture (hardening H1 — guided workflow shell)
 
-Top-level application modes (the `AppMode` enum is unchanged; the
-`INFRASTRUCTURE` value is labelled "Systems"):
+The Phase 20E consolidation (one card layout, ⓘ popovers, `StatusBadge` as a
+presentation mapping, tabs as presentation events) is inherited; the panel
+STRUCTURE is the guided workflow shell of rule 191:
 
-    Design | Systems | 4D | Walkthrough | Analysis
+    ┌ MineGen-AI · File ▾ · 1 Setup · 2 Design · 3 Network · 4 Mining · 5 Systems · 6 Analysis · 7 Export ┐
+    │ [Scenario ✓][Method ✓] │ [Layout ●][Levels ○][Excavation ○][Shafts –] │ …   ← stepper          │
+    ├────────────┬───────────────────────────────────────┬─────────────────────────────────────────┤
+    │ CONTROLS   │  3D / 4D / Walk viewport (switcher)   │ STATUS & RESULTS — the current step's   │
+    │ one stage  │  Analysis: centre workspace           │ stage statuses · key metrics ·          │
+    │ one primary│                                       │ failureReason · Details ▸               │
+    │ Reset from │                                       ├─────────────────────────────────────────┤
+    │ here…      │                                       │ VIEW: presets · Visibility tree · slice │
+    ├────────────┴───────────────────────────────────────┴─────────────────────────────────────────┤
+    │ status bar: World · Ramp · Levels · Network · Timeline │ 4D control (4D view only)          │
+    └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
-Left panel:
+Vocabulary (`types/workflow.ts`): a STEP is a ribbon entry, a STAGE is a
+stepper chip and the unit of "Reset from here"; both are frontend-local
+viewer state (`viewerStore.stage`), never persisted. The pure model lives in
+`components/layout/workflow.ts` (`WORKFLOW_STEPS`, `stageStatuses` — exactly
+one NEXT stage, glyphs read from the scene manifest, `entryStageOf`,
+`resetStageFor`, the stage → Design/Systems/Analysis tab mapping that keeps
+the panel containers' `view` / `active` contract).
 
-    Scenario                     summary + ⓘ, Details / New scenario /
-                                 Saved scenarios disclosures, MineExchange
-                                 export and its current-contents readout
-    workflow tabs                Design:  Layout → Develop → Network → Mining
-                                 Systems: Communication | Sensors
-    Layers                       viewer control, always reachable, collapsed
-                                 by default (SliceControls stays mounted)
+| Step | Stages | Cards (controls → results) |
+| --- | --- | --- |
+| 1 Setup | Scenario, Method | Scenario (`SetupPanel`: **Create mine** = create + generate world, Randomize / Advanced secondary, saved mines in Details and under File › Open), Mining method (confirmation lists `reset-plan?from=WORLD`) |
+| 2 Design | Layout, Levels, Excavation, Shafts | Mine layout ("Option n" rows, Select / Activate; id and scores in Details), Design assessment (results only), Level development, Ramp tunnel mesh → Development mesh (one primary: the ramp mesh first), Shafts (optional while no spec is declared) |
+| 3 Network | Network, Capability | Mine network, Capabilities |
+| 4 Mining | Production, Schedule | Production (method-generic), Schedule |
+| 5 Systems | Communication, Sensors | Communication, Sensors |
+| 6 Analysis | Analysis | the Analysis workspace (Overview / Economics / Rules / Layout comparison / Simulation Results tabs) rendered full-window in the centre |
+| 7 Export | Export | Export (`ExportPanel`: target selector + one download; also File › Export) |
 
-Design tab contents:
+Column plumbing: every feature panel stays MOUNTED in the left column's
+panel container exactly as before (one container, one set of hooks each).
+A `WorkflowCard` that declares its `stage` renders its ACTION (title, ⓘ,
+notice, action, progress) into the controls host when its stage is current
+and its STATUS half (badge, key metrics, failure, Details) into the results
+host when its stage belongs to the current step — portals through
+`CardLayoutContext` (`components/ui/cardLayout.ts`, hosts in
+`components/layout/shellStore.ts`); without the context (tests, static
+markup) the card renders whole. Mounted cards report their badge tone to
+the shell store so the stepper can show ↻ for a running job (withdrawn on
+unmount — never a second status source). Inline notices of a stage
+(`StageSlot`) follow the same rule.
 
-| Tab | Cards |
-| --- | --- |
-| Layout | Mine layout (candidates, selection, activation), Design assessment, Legacy decline (Hybrid-A\*) — Advanced |
-| Develop | Level development, Development mesh, Ramp tunnel mesh, Shafts |
-| Network | Mine network, Capabilities (two separate cards: geometry ≠ topology ≠ capability) |
-| Mining | Mining method (registry selector + explicit method parameters, Phase 21B/C — Apply = scenario PUT + world regeneration), Production (method-generic action), Schedule |
+The view switcher (`ViewSwitcher`) owns `3D | 4D | Walk`; Walk keeps the
+static / temporal readiness gate and the rule 111 entry capture, and leaving
+Walk returns to the view it was entered from (4D, or the 3D view of the
+current stage). The status bar (`BottomBar`) shows the artifact chips and
+hosts the 4D `TimelineControl` only in the 4D view. The VIEW panel
+(`ViewPanel`) holds the camera presets (Iso / Top / Fit — applied inside the
+Canvas by `scene/CameraPresets.tsx`), the Visibility tree (`LayerTree`,
+grouped World › Design › Network › Production › Systems › Results › Legacy)
+and the field-slice controls, which stay mounted while collapsed.
 
-Every card follows one layout: `title + ⓘ` and a status badge, then the key
-metrics, then the action, then `Details ▸`. Status, key metrics and any
-backend `failureReason` are ALWAYS visible; only detailed numbers move into
-`Details`, and only legacy / diagnostic controls move into `Advanced`.
-Technical explanations live in the ⓘ popover
-(`components/ui/InfoPopover.tsx`), never as paragraphs in the primary view,
-and an ⓘ never holds an action.
+"Reset from here" (`ResetFromHere`, rule 219) previews the backend plan,
+confirms with the `willDelete` list verbatim, deletes through the same
+closure and empties the named scene slots (`scene/artifactSlots.ts`), then
+re-reads the scene manifest. The frontend has no dependency graph.
 
-The primitives are `components/ui/`: `InfoPopover`, `PanelTabs`,
-`StatusBadge`, `Disclosure`, `ActionButton`, `MetricRow` / `Metrics` and the
-composing `WorkflowCard`, with the presentation mappings (`artifactTone`,
-`nextActionVariant`) in `presentation.ts` and the pure interaction rules in
-`interaction.ts`. `StatusBadge` is a PRESENTATION MAPPING of the backend
-artifact status — no new status vocabulary exists.
+Junction diagnosis (hardening H0 §3.4): `docs/findings/h0-3.4-junction-seam.md`
+records that the ACCESS-ONLY inner-shell panel disappears once levels succeed
+(§3.1) and that a residual floor-seam sliver + wall fragments remain at the
+RAMP_ACCESS opening (typed finding, handled before the PR-2 H2-SH commit).
 
-Tab identity is frontend-local viewer state (`viewerStore.designTab` /
-`systemsTab`): it is never persisted to a scenario, and switching a tab
-issues no request. Every panel stays MOUNTED for every tab and renders only
-in its own context (`active` / `view` props), so each job poll, query and
-effect keeps its pre-20E lifetime.
+Browser-acceptance note (hardening H1 §4.5, `backend/tests/test_shell_e2e.py`,
+marker `e2e` + `slow`): the flow runs in Playwright Chromium over a live
+backend + Vite dev server. `drei <Text>` (troika-three-text) resolves its
+fallback fonts from a CDN; when that request cannot complete, React commits
+in the whole page stall every other update (measured: a plain `useState`
+counter commits 2, 4 of 4 clicks next to one `<Text>`), so the test serves a
+hermetic resolver + a local TTF through a request route. That is a property
+of the sandbox, not of the shell; the production bundle is unchanged.
 
 ## Decline design (decision record)
 
