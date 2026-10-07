@@ -156,13 +156,14 @@ def test_cf10_single_conservative_chain_lift_precedence_and_access_dependency(
             assert previous_cure["id"] in prep["dependencies"]
             assert prep["startDay"] >= previous_cure["endDay"] - 1e-9
         previous_cure = cure
-    # lift precedence follows from the chain: every cut of lift k+1 starts after
-    # the last cure of lift k (persisted order is lowest lift first)
+    # lift precedence follows from the chain: inside a panel every cut of lift
+    # k+1 starts after the last cure of lift k (persisted order is the panel
+    # start order, then the panel's lifts bottom → top)
     lifts = stopes["lifts"]
     assert len(lifts) >= 2
     by_lift: dict[tuple[str, int], list[dict[str, Any]]] = {}
     for c in cuts:
-        by_lift.setdefault((c["lowerLevelId"], c["liftIndex"]), []).append(c)
+        by_lift.setdefault((c["panelId"], c["liftIndex"]), []).append(c)
     ordered = sorted(by_lift, key=lambda k: min(cuts.index(c) for c in by_lift[k]))
     for lo, hi in pairwise(ordered):
         last_cure_lo = max(_unit_tasks(tl, c["id"], CF_CHAIN)[-1]["endDay"] for c in by_lift[lo])

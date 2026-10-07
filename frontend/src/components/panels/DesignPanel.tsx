@@ -1020,9 +1020,16 @@ function productionRows(
   if (production.method === 'CUT_AND_FILL' && 'cutCount' in m) {
     return [
       { label: 'Cuts / backfills', value: `${m.cutCount} / ${m.backfillCount}` },
+      { label: 'Blocks / panels', value: `${m.blockCount} / ${m.panelCount}` },
       { label: 'Lifts', value: `${m.liftCount} over ${m.levelIntervalCount} intervals` },
+      {
+        label: 'Cemented sill mats',
+        value: `${m.cementedBackfillCount} (${mm3(m.cementedBackfillVolumeM3)})`,
+      },
+      { label: 'Rib pillars (retained)', value: `${m.ribPillarCount}` },
       { label: 'Mean lift height', value: `${m.actualMeanLiftHeight.toFixed(2)} m` },
       { label: 'Mean cut length', value: `${m.actualMeanCutLength.toFixed(2)} m` },
+      { label: 'Mean panel length', value: `${m.actualMeanPanelLength.toFixed(2)} m` },
       { label: 'Geometric volume', value: mm3(m.totalGeometricVolumeM3) },
       { label: 'Tonnes (planning)', value: mt(m.totalTonnes) },
       { label: 'Grade proxy', value: m.weightedMeanGradeProxy?.toFixed(2) ?? '—' },

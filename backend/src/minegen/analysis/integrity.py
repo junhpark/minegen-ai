@@ -318,11 +318,16 @@ def verify_production_metrics(payload: ProductionPayload) -> None:
                     f"stopes.json cut {c.id} is not listed by lift {c.lift_index}"
                 )
         pairs = {(lift.lower_level_id, lift.upper_level_id) for lift in payload.lifts}
+        cemented = [b for b in payload.backfills if b.cemented]
         counts += [
             ("cutCount", metrics.cut_count, len(payload.cuts)),
             ("backfillCount", metrics.backfill_count, len(payload.backfills)),
             ("liftCount", metrics.lift_count, len(payload.lifts)),
             ("levelIntervalCount", metrics.level_interval_count, len(pairs)),
+            ("blockCount", metrics.block_count, len(payload.blocks)),
+            ("panelCount", metrics.panel_count, len(payload.panels)),
+            ("ribPillarCount", metrics.rib_pillar_count, len(payload.rib_pillars)),
+            ("cementedBackfillCount", metrics.cemented_backfill_count, len(cemented)),
         ]
         totals += [
             (
@@ -331,6 +336,16 @@ def verify_production_metrics(payload: ProductionPayload) -> None:
                 math.fsum(u.volume_m3 for u in units),
             ),
             ("totalTonnes", metrics.total_tonnes, math.fsum(u.tonnes for u in units)),
+            (
+                "cementedBackfillVolumeM3",
+                metrics.cemented_backfill_volume_m3,
+                math.fsum(b.volume_m3 for b in cemented),
+            ),
+            (
+                "totalRibPillarVolumeM3",
+                metrics.total_rib_pillar_volume_m3,
+                math.fsum(p.geometric_volume_m3 for p in payload.rib_pillars),
+            ),
         ]
     else:
         assert isinstance(metrics, RoomPillarMetrics)

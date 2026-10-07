@@ -15,7 +15,7 @@ import type {
   TimelinePayload,
 } from '@/types/scene'
 import { DesignPanelBody, type DesignPanelBodyProps } from './DesignPanel'
-import { LONGHOLE, METHOD_TABLE } from './miningMethod.fixture'
+import { CUT_FILL_DEFAULTS, LONGHOLE, METHOD_TABLE } from './miningMethod.fixture'
 import { DESIGN_TABS, type DesignTab } from './workflowTabs'
 
 function props(over: Partial<DesignPanelBodyProps> = {}): DesignPanelBodyProps {
@@ -149,12 +149,17 @@ describe('Design workflow tabs expose one context at a time', () => {
         method: 'CUT_AND_FILL',
         displayName: 'Cut & Fill',
         productionKind: 'CUT_FILL',
-        methodParameters: { kind: 'CUT_AND_FILL', liftHeightM: 4, cutLengthM: 15 },
+        methodParameters: CUT_FILL_DEFAULTS,
       },
     })
     const card = html.slice(html.indexOf('Mining method'), html.indexOf('>Production'))
     expect(card).toContain('Lift height (m)')
     expect(card).toContain('Cut length (m)')
+    expect(card).toContain('Panel length (m)')
+    expect(card).toContain('Stoping direction')
+    expect(card).toContain('Block order')
+    expect(card).toContain('Concurrent panels (max)')
+    expect(card).toContain('Sill mat cure (days)')
     expect(card).not.toContain('Stope length (m)')
     expect(html).toContain('Generate Cut &amp; Fill')
   })

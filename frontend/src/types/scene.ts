@@ -1295,8 +1295,48 @@ export interface ProductionReport {
   failureReason: string | null
 }
 
+export interface CutFillSequencing {
+  stopingDirection: 'OVERHAND' | 'UNDERHAND'
+  blockOrder: 'SHALLOW_TO_DEEP' | 'DEEP_TO_SHALLOW'
+  panelLengthM: number
+  ribPillarWidthM: number
+  maxConcurrentPanels: number
+  sillMatCureDays: number
+  blockOrderIds: string[]
+  panelStartOrder: string[]
+}
+
+export interface CutFillBlock {
+  id: string
+  lowerLevelId: string
+  upperLevelId: string
+  startOrder: number
+  vMin: number
+  vMax: number
+  verticalHeight: number
+  panelIds: string[]
+  liftIndices: number[]
+  sillMatRequired: boolean
+}
+
+export interface CutFillPanel {
+  id: string
+  blockId: string
+  panelIndex: number
+  lowerLevelId: string
+  upperLevelId: string
+  startOrder: number
+  uMin: number
+  uMax: number
+  strikeLength: number
+  accessDevelopmentId: string
+  cutIds: string[]
+}
+
 export interface CutFillLift {
   liftIndex: number
+  blockId: string
+  liftIndexInBlock: number
   lowerLevelId: string
   upperLevelId: string
   vMin: number
@@ -1308,7 +1348,11 @@ export interface CutFillLift {
 export interface CutFillCut {
   id: string
   method: 'CUT_AND_FILL'
+  blockId: string
+  panelId: string
+  panelIndex: number
   liftIndex: number
+  liftIndexInBlock: number
   cutIndex: number
   lowerLevelId: string
   upperLevelId: string
@@ -1330,6 +1374,23 @@ export interface CutFillBackfill {
   id: string
   sourceCutId: string
   volumeM3: number
+  /** cemented sill-mat fill (the bottom lift of a block mined above an
+   * unmined block); cures with sillMatCureDays — a semantic flag only */
+  cemented: boolean
+}
+
+/** RETAINED rib pillar between two panels — never scheduled, never tonnes. */
+export interface CutFillRibPillar {
+  id: string
+  blockId: string
+  leftPanelId: string
+  rightPanelId: string
+  localBounds: LocalBounds
+  geometry: SolidGeometry
+  geometricVolumeM3: number
+  tonnesEquivalent: number
+  meanGradeProxy: number | null
+  report: ProductionReport
 }
 
 export interface CutFillMetrics {
@@ -1337,12 +1398,20 @@ export interface CutFillMetrics {
   backfillCount: number
   liftCount: number
   levelIntervalCount: number
+  blockCount: number
+  panelCount: number
+  ribPillarCount: number
+  cementedBackfillCount: number
   totalGeometricVolumeM3: number
   totalTonnes: number
+  cementedBackfillVolumeM3: number
+  totalRibPillarVolumeM3: number
+  totalRibPillarTonnesEquivalent: number
   geometricExtractionFractionOfOrebody: number
   weightedMeanGradeProxy: number | null
   actualMeanLiftHeight: number
   actualMeanCutLength: number
+  actualMeanPanelLength: number
 }
 
 export interface CutFillPayload {
@@ -1350,9 +1419,13 @@ export interface CutFillPayload {
   failureReason: string | null
   sourceRevision: string
   method: 'CUT_AND_FILL'
+  sequencing: CutFillSequencing | null
+  blocks: CutFillBlock[]
+  panels: CutFillPanel[]
   lifts: CutFillLift[]
   cuts: CutFillCut[]
   backfills: CutFillBackfill[]
+  ribPillars: CutFillRibPillar[]
   metrics: CutFillMetrics | null
 }
 

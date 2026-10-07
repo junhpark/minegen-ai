@@ -249,7 +249,9 @@ def test_mx4_cut_fill_metrics_and_parameters_are_typed(
     b = cut_fill_bundle
     src = cut_fill.artifact(STOPES_ARTIFACT)
     doc = b.json("production/cut_fill.json")
-    assert doc["metrics"] == src["metrics"]  # every field named in the DTO, same values
+    # every field named in the DTO carries the source value (the H2-CF block /
+    # panel / rib-pillar / cemented metrics join the DTO in MineExchange 1.3.1)
+    assert doc["metrics"] == {k: src["metrics"][k] for k in doc["metrics"]}
     assert set(doc["metrics"]) == {
         "cutCount",
         "backfillCount",
@@ -263,9 +265,11 @@ def test_mx4_cut_fill_metrics_and_parameters_are_typed(
         "actualMeanCutLength",
     }
     mining = cut_fill.client.get(f"/api/v1/scenarios/{cut_fill.sid}").json()["mining"]
-    assert doc["parameters"] == mining["methodParameters"]
+    # the typed parameter DTO projects the scenario values it names (the
+    # H2-CF sequencing fields join it in MineExchange 1.3.1)
+    assert doc["parameters"] == {k: mining["methodParameters"][k] for k in doc["parameters"]}
     mm = b.json("semantics/mining_method.json")
-    assert mm["parameters"]["methodParameters"] == mining["methodParameters"]
+    assert mm["parameters"]["methodParameters"] == doc["parameters"]
     pr = mm["production"]
     assert pr["status"] == "SUCCESS" and pr["productionKind"] == "CUT_FILL"
     assert pr["stopeCount"] == 0 and pr["unitCount"] == len(src["cuts"])
