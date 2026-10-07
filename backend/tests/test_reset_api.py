@@ -10,6 +10,8 @@ on the cheapest real chain (world + access targets).
 from __future__ import annotations
 
 import json
+import threading
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -31,6 +33,7 @@ from minegen.core.artifacts import (
     TUNNEL_MESH_ARTIFACT,
     TUNNEL_MESH_GLB,
 )
+from minegen.services.job_service import JobService
 from minegen.services.scenario_service import ScenarioStore
 from tests.test_world_api import _create
 
@@ -194,3 +197,119 @@ def test_reset_from_targets_on_a_real_artifact(client: TestClient) -> None:
     assert client.get(f"/api/v1/scenarios/{sid}/scene").json()["accessTargets"] is None
     # regenerating after the reset works from scratch (the targets cache was dropped)
     assert client.post(f"{base}/targets").status_code == 200
+
+
+# -- PR #53 review B2: a reset never races a running job / a stale preview ---- #
+
+
+def test_a_running_job_refuses_the_preview_and_the_delete_until_it_finishes(
+    client: TestClient, store: ScenarioStore, job_service: JobService
+) -> None:
+    """A job's stale-input guard watches its UPSTREAM inputs only (rule 60);
+    a reset that deleted the artifact a running job is about to publish
+    would be undone by the publication. Both the preview and the delete are
+    typed 409 RESET_JOB_RUNNING (naming the job) while the scenario has a
+    non-terminal job, nothing is deleted, and both answer again once the job
+    is terminal — whatever its outcome."""
+    sid = _create(client)
+    client.post(f"/api/v1/scenarios/{sid}/world/generate")
+    base = f"/api/v1/scenarios/{sid}/design"
+    _fabricate(store, sid, LEVELS_ARTIFACT, NETWORK_ARTIFACT)
+    (store.derived_dir(sid) / RAMP_SOURCE_FILE).write_text(
+        json.dumps({"activeSource": "LAYOUT_V2"})
+    )
+    release = threading.Event()
+    started = threading.Event()
+
+    def work(_on_progress: Any) -> dict[str, Any]:
+        started.set()
+        release.wait(30.0)
+        return {}
+
+    job = job_service.submit(sid, "test", work)
+    assert started.wait(10.0)
+    try:
+        for attempt in (
+            lambda: client.get(f"{base}/reset-plan", params={"from": "LEVELS"}),
+            lambda: client.delete(f"{base}/stages/LEVELS"),
+            lambda: client.request(
+                "DELETE",
+                f"{base}/stages/LEVELS",
+                json={"expectedWillDelete": [LEVELS_ARTIFACT, NETWORK_ARTIFACT]},
+            ),
+        ):
+            r = attempt()
+            assert r.status_code == 409, r.text
+            detail = r.json()["detail"]
+            assert detail["code"] == "RESET_JOB_RUNNING" and detail["jobId"] == job.id
+            assert "nothing was deleted" in detail["message"]
+        # another scenario's job never gates this scenario
+        other = _create(client)
+        client.post(f"/api/v1/scenarios/{other}/world/generate")
+        _fabricate(store, other, LEVELS_ARTIFACT)
+        other_plan = client.get(f"/api/v1/scenarios/{other}/design/reset-plan?from=LEVELS")
+        assert other_plan.status_code == 200
+        assert {LEVELS_ARTIFACT, NETWORK_ARTIFACT} <= _files(store, sid)
+    finally:
+        release.set()
+    job_service.wait(job.id, timeout=30.0)
+    # terminal → the preview and the delete answer again
+    r = client.get(f"{base}/reset-plan", params={"from": "LEVELS"})
+    assert r.status_code == 200 and r.json()["willDelete"] == [LEVELS_ARTIFACT, NETWORK_ARTIFACT]
+    r = client.delete(f"{base}/stages/LEVELS")
+    assert r.status_code == 200 and r.json()["deleted"] == [LEVELS_ARTIFACT, NETWORK_ARTIFACT]
+
+
+def test_a_delete_against_a_stale_preview_is_refused_with_the_fresh_plan(
+    client: TestClient, store: ScenarioStore
+) -> None:
+    """The optional DELETE body carries the ``willDelete`` the user confirmed;
+    the plan recomputed under the lock must list exactly it (same files,
+    same order). A mine that changed in between is 409 RESET_PLAN_CHANGED
+    with the fresh plan in the refusal and NOTHING deleted; a matching body
+    (or none) deletes."""
+    sid = _create(client)
+    client.post(f"/api/v1/scenarios/{sid}/world/generate")
+    base = f"/api/v1/scenarios/{sid}/design"
+    (store.derived_dir(sid) / RAMP_SOURCE_FILE).write_text(
+        json.dumps({"activeSource": "LAYOUT_V2"})
+    )
+    _fabricate(store, sid, LEVELS_ARTIFACT)
+    previewed = client.get(f"{base}/reset-plan", params={"from": "LEVELS"}).json()["willDelete"]
+    assert previewed == [LEVELS_ARTIFACT]
+    # …the mine grows a network after the preview was read
+    _fabricate(store, sid, NETWORK_ARTIFACT)
+    r = client.request("DELETE", f"{base}/stages/LEVELS", json={"expectedWillDelete": previewed})
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert detail["code"] == "RESET_PLAN_CHANGED"
+    assert detail["plan"]["from"] == "LEVELS"
+    assert detail["plan"]["willDelete"] == [LEVELS_ARTIFACT, NETWORK_ARTIFACT]
+    assert "nothing was deleted" in detail["message"]
+    assert {LEVELS_ARTIFACT, NETWORK_ARTIFACT} <= _files(store, sid)
+    # order matters: the same files in another order are not the confirmed plan
+    r = client.request(
+        "DELETE",
+        f"{base}/stages/LEVELS",
+        json={"expectedWillDelete": [NETWORK_ARTIFACT, LEVELS_ARTIFACT]},
+    )
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "RESET_PLAN_CHANGED"
+    assert {LEVELS_ARTIFACT, NETWORK_ARTIFACT} <= _files(store, sid)
+    # the fresh plan, confirmed, deletes exactly it
+    r = client.request(
+        "DELETE", f"{base}/stages/LEVELS", json={"expectedWillDelete": detail["plan"]["willDelete"]}
+    )
+    assert r.status_code == 200 and r.json()["deleted"] == [LEVELS_ARTIFACT, NETWORK_ARTIFACT]
+    assert not ({LEVELS_ARTIFACT, NETWORK_ARTIFACT} & _files(store, sid))
+    # a body with no expectation and an explicit null stay the unguarded delete
+    _fabricate(store, sid, LEVELS_ARTIFACT)
+    r = client.request("DELETE", f"{base}/stages/LEVELS", json={"expectedWillDelete": None})
+    assert r.status_code == 200 and r.json()["deleted"] == [LEVELS_ARTIFACT]
+    _fabricate(store, sid, LEVELS_ARTIFACT)
+    r = client.request("DELETE", f"{base}/stages/LEVELS", json={})
+    assert r.status_code == 200 and r.json()["deleted"] == [LEVELS_ARTIFACT]
+    # malformed expectation → 422, never a delete
+    _fabricate(store, sid, LEVELS_ARTIFACT)
+    malformed = {"expectedWillDelete": "levels.json"}
+    r = client.request("DELETE", f"{base}/stages/LEVELS", json=malformed)
+    assert r.status_code == 422 and LEVELS_ARTIFACT in _files(store, sid)

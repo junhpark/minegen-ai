@@ -1913,9 +1913,18 @@ code, the code and the rule win and the map is corrected.
      lists every stage (`Scenario · Method | Layout · Levels · Excavation ·
      Shafts | Network · Capability | Production · Schedule | Communication
      · Sensors | Analysis | Export`) with one glyph each (✓ done · ● next ·
-     ○ waiting · ✗ failed · ↻ running · – optional), and exactly ONE stage
-     is NEXT. The glyph is a presentation of the artifact the stage owns
-     (`StatusBadge` semantics — the backend status, no new vocabulary);
+     ○ waiting · ✗ failed · ↻ running · – optional), and at most ONE stage
+     is NEXT: the first stage whose prerequisite is done (Excavation waits
+     for Levels; Analysis follows the last Systems stage and Export follows
+     Analysis, so the guided flow has no dead end); when a FAILED stage
+     blocks the chain no stage is NEXT and the failed stage is the focus.
+     Analysis and Export own no artifact and are completed by the viewer
+     (Analysis once opened, Export once a package was downloaded —
+     viewer-local, cleared on every scenario transition, counted only while
+     their prerequisite chain is done). The glyph is a presentation of the
+     artifact the stage owns (`StatusBadge` semantics — the backend status,
+     no new vocabulary); a stage hosting several cards aggregates their
+     reported tones per card instance (RUNNING wins, no overwrite);
      nothing in the shell decides whether an action is ENABLED, every
      feature keeps its own prerequisite logic. Three panes: CONTROLS (left)
      holds the current stage's parameters and its ONE primary action plus
@@ -2508,15 +2517,28 @@ code, the code and the rule win and the map is corrected.
      path); `ramp_source.json` is the root and is never touched (rule 162);
      a stage with no owned artifact is 404 RESET_TARGET_NOT_GENERATED and
      a non-deletable stage (WORLD — the scenario document is regenerated,
-     not reset) is 409 RESET_STAGE_NOT_DELETABLE. The frontend has NO
-     dependency graph of its own: it sends a stage id, shows `willDelete`
-     verbatim in the confirmation, empties exactly the scene slots the
-     response's `deleted[]` names (`scene/artifactSlots.ts`, a file → slot
-     presentation mapping, never a mirror closure), then re-reads the scene
-     manifest; `scene/invalidation.ts` keeps only the two Effective-Ramp
-     identity halves (rule 169). A mining-method change is the rule 40
-     scenario PUT, not a reset — its confirmation only displays the
-     `from=WORLD` plan.
+     not reset) is 409 RESET_STAGE_NOT_DELETABLE. A reset never races a
+     job: a job's stale-input guard fingerprints its UPSTREAM inputs only
+     (rule 60), never its own output, so the preview and the delete ask the
+     job registry under the same scenario lock (`JobService.running_job`,
+     the predicate `submit` uses; passed by the router, the design service
+     knows no jobs) and answer 409 RESET_JOB_RUNNING (`jobId`) while the
+     scenario has a QUEUED / RUNNING job — nothing deleted, the job never
+     cancelled. The DELETE accepts the previewed `willDelete` the user
+     confirmed (`expectedWillDelete`); a plan that differs under the lock is
+     409 RESET_PLAN_CHANGED with the fresh plan and nothing deleted. The
+     frontend has NO dependency graph of its own: it sends a stage id and
+     the confirmed list, disables the button while any mounted card reports
+     a running job, shows `willDelete` verbatim in the confirmation,
+     re-reads and re-shows the plan on RESET_PLAN_CHANGED, empties exactly
+     the scene slots the response's `deleted[]` names
+     (`scene/artifactSlots.ts`, a file → slot presentation mapping, never a
+     mirror closure), then re-reads the scene manifest;
+     `scene/invalidation.ts` keeps only the two Effective-Ramp identity
+     halves (rule 169). A mining-method change is the rule 40 scenario PUT,
+     not a reset — its confirmation displays the `from=WORLD` plan, read
+     afresh on every opening (per-opening query key, nothing cached), and
+     enables Apply only once that read completed with no fetch in flight.
 220. Walkthrough "Go To" authority is the ramp junction chainage
      (hardening H0 §3.2, `walkthrough/teleport.ts`). Teleport targets are
      the portal plus every main-ramp turnout, placed by backend chainage

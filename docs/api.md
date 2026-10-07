@@ -358,7 +358,9 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      (preview only) · TARGETS · DECLINE · SMOOTH ·
                                                      LAYOUT · LEVELS · EXCAVATION · SHAFTS · NETWORK
                                                      · CAPABILITY · PRODUCTION · SCHEDULE ·
-                                                     COMMUNICATION · SENSORS (422 otherwise)
+                                                     COMMUNICATION · SENSORS (422 otherwise); 409
+                                                     RESET_JOB_RUNNING ({jobId}) while the scenario
+                                                     has a QUEUED / RUNNING job (PR #53 review B2)
     DELETE /api/v1/scenarios/{id}/design/stages/{stage}
                                                      deletes exactly what the plan listed, under the
                                                      scenario lock; STALE / MALFORMED artifacts are
@@ -366,7 +368,14 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      a stage target (rule 162); 404
                                                      RESET_TARGET_NOT_GENERATED when the stage has
                                                      nothing of its own, 409 RESET_STAGE_NOT_DELETABLE
-                                                     for WORLD → {from, activeSource, deleted[]}
+                                                     for WORLD, 409 RESET_JOB_RUNNING ({jobId}) under
+                                                     a non-terminal job of the scenario; optional
+                                                     body {expectedWillDelete: [...]} = the previewed
+                                                     list the caller confirmed — the delete happens
+                                                     only if the plan under the lock still lists
+                                                     exactly it, else 409 RESET_PLAN_CHANGED
+                                                     ({plan: the fresh plan}, nothing deleted)
+                                                     → {from, activeSource, deleted[]}
     POST /api/v1/scenarios/{id}/design/levels        Phase 08: synchronous level developments
                                                      (typed LevelsPayload; 409 SMOOTHED_NOT_GENERATED
                                                      without a Phase 05 artifact)

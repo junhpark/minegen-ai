@@ -276,16 +276,23 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     _generate(page, "COMMUNICATION", "Plan communication")
     _generate(page, "SENSORS", "Place sensors")
 
-    # 6 Analysis opens in the centre workspace (no primary action)
+    # 6 Analysis is NEXT once the Systems stages are done (review round 2 S2:
+    # the guided flow has no dead end) and opens in the centre workspace (no
+    # primary action); opening it completes it for this viewer
+    _wait_glyph(page, "ANALYSIS", "NEXT")
+    _wait_glyph(page, "EXPORT", "WAITING")
     _click_stage(page, "ANALYSIS")
     page.wait_for_selector('[data-testid="analysis-center"]')
     assert _primaries(page) == 0
+    _wait_glyph(page, "ANALYSIS", "DONE")
+    _wait_glyph(page, "EXPORT", "NEXT")
 
-    # 7 Export: the MineExchange bundle downloads
+    # 7 Export: the MineExchange bundle downloads, which completes the stage
     _click_stage(page, "EXPORT")
     with page.expect_download(timeout=JOB_TIMEOUT_MS) as dl:
         _controls(page, "Export MineExchange").click()
     assert dl.value.suggested_filename.endswith(".zip")
+    _wait_glyph(page, "EXPORT", "DONE")
 
     # Reset from Levels: the dialog lists the backend plan; the closure is deleted
     derived = scenarios[0] / "derived"
@@ -298,6 +305,12 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     assert "layout_v2_selected.json" not in listed  # upstream is never part of the closure
     page.click('[role="dialog"] button:has-text("Delete")')
     _wait_glyph(page, "LEVELS", "NEXT")
+    # review round 2 S1 / S2: Excavation waits for Levels (the tunnel survives
+    # the reset, rule 74, but the stage is not next), and the viewer-completed
+    # Analysis / Export wait again behind the broken chain
+    _wait_glyph(page, "EXCAVATION", "WAITING")
+    _wait_glyph(page, "ANALYSIS", "WAITING")
+    _wait_glyph(page, "EXPORT", "WAITING")
     assert not (derived / "levels.json").exists()
     assert not (derived / "network.json").exists()
     assert (derived / "layout_v2_selected.json").exists()

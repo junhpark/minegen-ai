@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, ApiError } from '@/api/client'
+import { runningStages, useShellStore } from '@/components/layout/shellStore'
 import { resettable, resetStageFor, STAGE_LABEL } from '@/components/layout/workflow'
 import { DialogButton, ModalDialog } from '@/components/ui/ModalDialog'
 import { clearDeletedArtifacts } from '@/scene/artifactSlots'
@@ -18,6 +19,14 @@ import type { ResetPlan } from '@/types/scene'
  * frontend dependency graph), then the scene manifest is re-read so the
  * ramp-source summary reflects the backend. Nothing here decides what
  * depends on what.
+ *
+ * PR #53 review B2 — a reset never races a job: the button is disabled while
+ * any mounted card reports a running job (the backend refuses the same case
+ * with 409 RESET_JOB_RUNNING, shown verbatim when it is a job this view does
+ * not know about), and the delete carries the previewed list the user
+ * confirmed — a 409 RESET_PLAN_CHANGED (the mine changed since the preview)
+ * deletes nothing; the plan is re-read and shown again for a fresh
+ * confirmation.
  */
 export function ResetFromHere() {
   const stage = useViewerStore((s) => s.stage)
@@ -25,9 +34,12 @@ export function ResetFromHere() {
   const applyScene = useScenarioStore((s) => s.applyScene)
   const setScene = useScenarioStore((s) => s.setScene)
   const epoch = useScenarioStore((s) => s.epoch)
+  const tones = useShellStore((s) => s.stageTones)
   const [plan, setPlan] = useState<ResetPlan | null>(null)
+  const [planChanged, setPlanChanged] = useState(false)
   const target = resetStageFor(stage)
-  const enabled = scene !== null && resettable(stage)
+  const jobRunning = runningStages(tones).size > 0
+  const enabled = scene !== null && resettable(stage) && !jobRunning
 
   const preview = useMutation({
     mutationFn: async () => {
@@ -37,19 +49,33 @@ export function ResetFromHere() {
     onSuccess: setPlan,
   })
   const reset = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (confirmed: readonly string[]) => {
       if (!scene || !target) throw new Error('nothing to reset')
       const started = epoch
-      const result = await api.resetStage(scene.scenarioId, target)
+      const result = await api.resetStage(scene.scenarioId, target, confirmed)
       applyScene(started, (current) => clearDeletedArtifacts(current, result.deleted))
       // the backend summary (ramp source, availability) is re-read, never inferred
       const fresh = await api.getScene(scene.scenarioId)
       setScene(fresh, started)
       return result
     },
-    onSuccess: () => setPlan(null),
+    onSuccess: () => {
+      setPlan(null)
+      setPlanChanged(false)
+    },
+    onError: (e) => {
+      if (e instanceof ApiError && e.code === 'RESET_PLAN_CHANGED') {
+        // nothing was deleted; the current plan is read again and confirmed again
+        setPlanChanged(true)
+        preview.mutate()
+      }
+    },
   })
-  const err = preview.error ?? reset.error
+  const resetError =
+    reset.error instanceof ApiError && reset.error.code === 'RESET_PLAN_CHANGED'
+      ? null
+      : reset.error
+  const err = preview.error ?? resetError
   const errorText =
     err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
 
@@ -58,15 +84,20 @@ export function ResetFromHere() {
       <button
         type="button"
         disabled={!enabled || preview.isPending || reset.isPending}
-        onClick={() => preview.mutate()}
+        onClick={() => {
+          setPlanChanged(false)
+          preview.mutate()
+        }}
         data-testid="reset-from-here"
         className="plate w-full rounded-sm border border-rock-600 px-3 py-1.5 text-[12px] text-chalk-dim hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
         title={
           enabled
             ? `Delete the ${STAGE_LABEL[stage]} result and everything derived from it`
-            : target === 'WORLD'
-              ? 'Setup is the scenario document: regenerate the world or create a new mine instead'
-              : 'This stage owns no design artifact'
+            : jobRunning && scene !== null && resettable(stage)
+              ? 'A job is running — Reset waits until it finishes'
+              : target === 'WORLD'
+                ? 'Setup is the scenario document: regenerate the world or create a new mine instead'
+                : 'This stage owns no design artifact'
         }
       >
         {preview.isPending ? 'Reading reset plan…' : `Reset from ${STAGE_LABEL[stage]}…`}
@@ -87,16 +118,24 @@ export function ResetFromHere() {
               </DialogButton>
               <DialogButton
                 kind="danger"
-                disabled={!plan.present || reset.isPending}
-                onClick={() => reset.mutate()}
+                disabled={!plan.present || reset.isPending || preview.isPending}
+                onClick={() => reset.mutate(plan.willDelete)}
               >
                 {reset.isPending
                   ? 'Deleting…'
-                  : `Delete ${String(plan.willDelete.length)} file${plan.willDelete.length === 1 ? '' : 's'}`}
+                  : preview.isPending
+                    ? 'Re-reading plan…'
+                    : `Delete ${String(plan.willDelete.length)} file${plan.willDelete.length === 1 ? '' : 's'}`}
               </DialogButton>
             </>
           }
         >
+          {planChanged ? (
+            <p role="status" className="mb-2 text-warn" data-testid="reset-plan-changed">
+              The mine changed since this plan was read — nothing was deleted. The list below is the
+              current plan; confirm it again.
+            </p>
+          ) : null}
           {plan.present ? (
             <>
               <p className="mb-2">

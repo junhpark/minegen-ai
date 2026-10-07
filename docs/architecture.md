@@ -185,7 +185,16 @@ viewer state (`viewerStore.stage`), never persisted. The pure model lives in
 `components/layout/workflow.ts` (`WORKFLOW_STEPS`, `stageStatuses` — exactly
 one NEXT stage, glyphs read from the scene manifest, `entryStageOf`,
 `resetStageFor`, the stage → Design/Systems/Analysis tab mapping that keeps
-the panel containers' `view` / `active` contract).
+the panel containers' `view` / `active` contract). At most one stage is
+NEXT: Excavation waits for Levels, Analysis follows the last Systems stage
+and Export follows Analysis; when a FAILED stage blocks the chain no stage is
+NEXT and the failed stage is the focus. Analysis and Export own no artifact
+and are completed by the viewer (Analysis once opened, Export once a package
+was downloaded — `viewerStore.completedViewerStages`, cleared on every
+scenario transition); that completion counts only while their prerequisite
+chain is done. A stage that hosts several cards (Excavation) aggregates the
+tones its mounted cards report per card instance — RUNNING wins
+(`shellStore.stageTone`).
 
 | Step | Stages | Cards (controls → results) |
 | --- | --- | --- |
@@ -376,10 +385,26 @@ go under `geology`, not at the scenario root.
   rules 40 / 46 — `RESET_STAGE_NOT_DELETABLE`); a stage none of whose own
   artifacts exist is `RESET_TARGET_NOT_GENERATED` (404). An unusable
   `ramp_source.json` plans the UNION of both chains, never a guessed
-  LEGACY (AC-01F A7). The frontend sends a stage id and empties the scene
-  slots named in `deleted[]` (`scene/artifactSlots.ts`, a file → slot
-  presentation mapping); it carries no dependency graph beyond the two
-  Effective-Ramp identity halves of rule 169.
+  LEGACY (AC-01F A7). A reset never races a job (PR #53 review B2): a job's
+  stale-input guard fingerprints its UPSTREAM inputs only (rule 60), so a
+  job already running when the reset deleted the artifact it is about to
+  publish would republish it — therefore the preview and the delete both
+  ask the job registry under the scenario lock (`JobService.running_job`,
+  the same predicate `submit` uses; the router passes it, the design
+  service stays independent of jobs) and answer 409 `RESET_JOB_RUNNING`
+  (`jobId`) while a QUEUED / RUNNING job exists, deleting nothing. The
+  DELETE also accepts the previewed `willDelete` the user confirmed
+  (`expectedWillDelete`): the plan recomputed under the lock must list
+  exactly it, otherwise 409 `RESET_PLAN_CHANGED` carries the fresh plan and
+  nothing is deleted. The frontend sends a stage id and the confirmed list,
+  disables the button while any mounted card reports a running job, re-reads
+  and re-shows the plan on `RESET_PLAN_CHANGED`, empties the scene slots
+  named in `deleted[]` (`scene/artifactSlots.ts`, a file → slot presentation
+  mapping); it carries no dependency graph beyond the two Effective-Ramp
+  identity halves of rule 169. The mining-method confirmation reads the
+  `from=WORLD` plan afresh on every opening (per-opening query key, no
+  cache) and enables Apply only once that read completed with no fetch in
+  flight.
 - Long-running work (rule 60): `services/job_service.py` — in-memory
   registry + 2-worker thread pool; one job per scenario at a time. Algorithms
   emit `ProgressEvent`s through a plain callback (`design/progress.py`);

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from pydantic import Field
 
 from minegen.api.deps import get_design_service, get_job_service
@@ -67,6 +67,16 @@ class ResetResponse(ApiModel):
     from_stage: WorkflowStage = Field(alias="from")
     active_source: Literal["LEGACY", "LAYOUT_V2"]
     deleted: list[str]
+
+
+class ResetRequest(ApiModel):
+    """Optional ``DELETE …/design/stages/{stage}`` body (PR #53 review B2):
+    the ``willDelete`` list the caller previewed and confirmed. When present
+    the delete happens only if the plan recomputed under the scenario lock
+    lists exactly these files in this order — otherwise 409
+    RESET_PLAN_CHANGED with the fresh plan and nothing deleted."""
+
+    expected_will_delete: list[str] | None = None
 
 
 class LayoutActivateResponse(ApiModel):
@@ -257,12 +267,15 @@ def generate_levels(scenario_id: str, svc: Service) -> LevelsPayload:
 def get_reset_plan(
     scenario_id: str,
     svc: Service,
+    jobs: Jobs,
     from_stage: Annotated[WorkflowStage, Query(alias="from")],
 ) -> ResetPlanResponse:
     """Read-only preview: exactly what ``DELETE …/design/stages/{stage}``
-    would delete now (same closure function, never a frontend mirror)."""
+    would delete now (same closure function, never a frontend mirror). 409
+    RESET_JOB_RUNNING while the scenario has a QUEUED / RUNNING job — the
+    delete would be refused, so no preview is shown for it."""
     try:
-        plan = svc.reset_plan(scenario_id, from_stage)
+        plan = svc.reset_plan(scenario_id, from_stage, running_job=jobs.running_job)
     except HTTPException:
         raise
     except Exception as exc:
@@ -271,13 +284,27 @@ def get_reset_plan(
 
 
 @router.delete("/stages/{stage}", response_model=ResetResponse, response_model_by_alias=True)
-def reset_stage(scenario_id: str, stage: WorkflowStage, svc: Service) -> ResetResponse:
+def reset_stage(
+    scenario_id: str,
+    stage: WorkflowStage,
+    svc: Service,
+    jobs: Jobs,
+    body: Annotated[ResetRequest | None, Body()] = None,
+) -> ResetResponse:
     """Delete the stage's own artifacts and their registry closure under the
     scenario lock (STALE / MALFORMED included — a recovery path); 404
     RESET_TARGET_NOT_GENERATED when the stage has nothing of its own, 409
-    RESET_STAGE_NOT_DELETABLE for the preview-only WORLD root."""
+    RESET_STAGE_NOT_DELETABLE for the preview-only WORLD root, 409
+    RESET_JOB_RUNNING under a non-terminal job of the scenario, 409
+    RESET_PLAN_CHANGED (with the fresh plan) when the optional body's
+    ``expectedWillDelete`` no longer matches the plan under the lock."""
     try:
-        plan, deleted = svc.reset_from(scenario_id, stage)
+        plan, deleted = svc.reset_from(
+            scenario_id,
+            stage,
+            expected_will_delete=None if body is None else body.expected_will_delete,
+            running_job=jobs.running_job,
+        )
     except HTTPException:
         raise
     except Exception as exc:

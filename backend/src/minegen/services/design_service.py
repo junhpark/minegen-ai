@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar
@@ -121,7 +122,9 @@ from minegen.services.effective_ramp import (
 )
 from minegen.services.scenario_service import ScenarioStore
 from minegen.services.workflow_stages import (
+    ResetJobRunningError,
     ResetPlan,
+    ResetPlanChangedError,
     ResetStageNotDeletableError,
     ResetTargetNotGeneratedError,
     reset_plan,
@@ -255,6 +258,13 @@ def artifact_fingerprint(store: ScenarioStore, scenario_id: str, name: str) -> I
 
 
 _Model = TypeVar("_Model", bound=ApiModel)
+
+#: PR #53 review B2 — asked under the scenario lock by ``reset_plan`` /
+#: ``reset_from``: the id of the scenario's QUEUED / RUNNING job, or ``None``.
+#: The design service stays independent of the job registry (rule 60: the
+#: algorithms and services know nothing about jobs); the router passes
+#: ``JobService.running_job``.
+RunningJobProbe = Callable[[str], "str | None"]
 
 
 def _commit_mesh(commit_path: Path, report_revision: str, glb_revision: str | None) -> None:
@@ -1113,15 +1123,43 @@ class DesignService:
                 closure=tuple(closure),
             )
 
-    def reset_plan(self, scenario_id: str, stage: str) -> ResetPlan:
+    @staticmethod
+    def _refuse_under_running_job(
+        scenario_id: str, stage: str, running_job: RunningJobProbe | None
+    ) -> None:
+        """PR #53 review B2: a reset never races a QUEUED / RUNNING job of the
+        scenario. The probe is asked under the scenario lock, which a job
+        must take to persist (rule 60): a job that is still non-terminal
+        here has NOT published yet and would republish over the reset, so
+        the reset is refused typed; a job that is terminal has published
+        already and its output is deleted deterministically."""
+        if running_job is None:
+            return
+        job_id = running_job(scenario_id)
+        if job_id is not None:
+            raise ResetJobRunningError(scenario_id, stage, job_id)
+
+    def reset_plan(
+        self, scenario_id: str, stage: str, *, running_job: RunningJobProbe | None = None
+    ) -> ResetPlan:
         """Read-only preview of ``reset_from``: the files a reset from
         ``stage`` deletes — the stage's own artifacts plus their registry
-        closure — observed under the scenario lock. Never writes."""
+        closure — observed under the scenario lock. Never writes. Refused
+        (RESET_JOB_RUNNING) while ``running_job`` names a non-terminal job,
+        so a preview is never shown for a delete that would be refused."""
         self.store.get(scenario_id)
         with self.store.lock(scenario_id):
+            self._refuse_under_running_job(scenario_id, stage, running_job)
             return self._reset_plan_locked(scenario_id, stage)
 
-    def reset_from(self, scenario_id: str, stage: str) -> tuple[ResetPlan, tuple[str, ...]]:
+    def reset_from(
+        self,
+        scenario_id: str,
+        stage: str,
+        *,
+        expected_will_delete: Sequence[str] | None = None,
+        running_job: RunningJobProbe | None = None,
+    ) -> tuple[ResetPlan, tuple[str, ...]]:
         """Delete exactly what ``reset_plan`` lists, under the scenario lock
         (the same lock the writers and ``WorldService.invalidate`` hold, rule
         60). STALE / MALFORMED artifacts are deleted without being read —
@@ -1129,14 +1167,25 @@ class DesignService:
         a stage none of whose own artifacts exist is a typed 404. The delete
         loop is maximal (every other file still goes) and one OSError is
         raised afterwards, as in the write cascade. In-memory caches keyed
-        on the deleted artifacts are dropped."""
+        on the deleted artifacts are dropped.
+
+        PR #53 review B2: under the lock the scenario must have no
+        non-terminal job (RESET_JOB_RUNNING) and, when the caller passes the
+        ``willDelete`` it confirmed, the recomputed plan must list exactly
+        those files in that order (RESET_PLAN_CHANGED carries the fresh
+        plan); either refusal deletes nothing."""
         self.store.get(scenario_id)
         if stage == "WORLD":
             raise ResetStageNotDeletableError(stage)
         with self.store.lock(scenario_id):
+            self._refuse_under_running_job(scenario_id, stage, running_job)
             plan = self._reset_plan_locked(scenario_id, stage)
             if not plan.present:
                 raise ResetTargetNotGeneratedError(scenario_id, stage, plan.stage_artifacts)
+            if expected_will_delete is not None:
+                expected = tuple(expected_will_delete)
+                if expected != plan.will_delete:
+                    raise ResetPlanChangedError(scenario_id, stage, expected, plan)
             derived = self.store.derived_dir(scenario_id)
             deleted: list[str] = []
             failed: list[str] = []

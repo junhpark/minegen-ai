@@ -38,6 +38,8 @@ from minegen.core.artifacts import (
 from minegen.services.workflow_stages import (
     STAGE_ARTIFACTS,
     WORKFLOW_STAGES,
+    ResetJobRunningError,
+    ResetPlanChangedError,
     ResetStageNotDeletableError,
     ResetTargetNotGeneratedError,
     reset_closure,
@@ -161,3 +163,21 @@ def test_reset_plan_lists_exactly_the_closure_files_present_on_disk(tmp_path: Pa
 def test_unknown_stage_is_an_error_never_an_empty_closure() -> None:
     with pytest.raises(KeyError):
         reset_closure("STOPES", "LEGACY")
+
+
+def test_the_b2_refusals_are_typed_409s_that_carry_their_extras(tmp_path: Path) -> None:
+    """PR #53 review B2: a running job and a stale preview are typed refusals
+    (409) — the first names the job, the second carries the fresh plan — and
+    the service raises them before touching a file."""
+    running = ResetJobRunningError("scn", "LEVELS", "job1")
+    assert running.code == "RESET_JOB_RUNNING" and running.http_status == 409
+    assert running.wire_extras() == {"jobId": "job1"}
+    assert "nothing was deleted" in str(running)
+    (tmp_path / LEVELS_ARTIFACT).write_text("{")
+    (tmp_path / NETWORK_ARTIFACT).write_text("{")
+    plan = reset_plan("LEVELS", "LAYOUT_V2", tmp_path)
+    changed = ResetPlanChangedError("scn", "LEVELS", (LEVELS_ARTIFACT,), plan)
+    assert changed.code == "RESET_PLAN_CHANGED" and changed.http_status == 409
+    assert changed.wire_extras() == {"plan": plan.to_dict()}
+    assert changed.wire_extras()["plan"]["willDelete"] == [LEVELS_ARTIFACT, NETWORK_ARTIFACT]
+    assert "nothing was deleted" in str(changed)

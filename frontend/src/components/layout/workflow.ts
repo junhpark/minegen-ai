@@ -146,8 +146,8 @@ export function resettable(stage: StageId): boolean {
 // stage status glyphs
 // --------------------------------------------------------------------------- //
 
-/** ✓ done · ● next · ○ waiting · ✗ failed · ↻ running · – optional / not applicable */
-export type StageGlyph = 'DONE' | 'NEXT' | 'WAITING' | 'FAILED' | 'RUNNING' | 'OPTIONAL' | 'NA'
+/** ✓ done · ● next · ○ waiting · ✗ failed · ↻ running · – optional */
+export type StageGlyph = 'DONE' | 'NEXT' | 'WAITING' | 'FAILED' | 'RUNNING' | 'OPTIONAL'
 
 export const GLYPH_TEXT: Record<StageGlyph, string> = {
   DONE: '✓',
@@ -156,7 +156,6 @@ export const GLYPH_TEXT: Record<StageGlyph, string> = {
   FAILED: '✗',
   RUNNING: '↻',
   OPTIONAL: '–',
-  NA: '–',
 }
 
 export interface StageInput {
@@ -168,6 +167,13 @@ export interface StageInput {
   shaftSpecCount: number
   /** stages with a running job / pending request */
   running: ReadonlySet<StageId>
+  /**
+   * Review round 2 S2 — the two stages that own no artifact (Analysis is a
+   * read-only projection, Export a download) are completed by the VIEWER:
+   * Analysis once it was opened, Export once a package was downloaded.
+   * Viewer-local, cleared on every scenario transition, never persisted.
+   */
+  completed: ReadonlySet<StageId>
 }
 
 type ArtifactState = 'ABSENT' | 'SUCCESS' | 'FAILED'
@@ -222,17 +228,29 @@ export function stageArtifactState(stage: StageId, input: StageInput): ArtifactS
       return stateOf(scene?.sensors)
     case 'ANALYSIS':
     case 'EXPORT':
-      return 'ABSENT'
+      // viewer-completed stages (S2): no artifact, so no backend status
+      return input.completed.has(stage) ? 'SUCCESS' : 'ABSENT'
   }
 }
 
-/** the stage whose completion a stage waits for (workflow prerequisite — a
- * presentation of the dependency chain, never the enabled condition) */
+/** the stages whose completion is viewer-local (S2) — their DONE counts only
+ * while their prerequisite chain is done, since the mine they were completed
+ * on may have been reset since */
+const VIEWER_COMPLETED: ReadonlySet<StageId> = new Set<StageId>(['ANALYSIS', 'EXPORT'])
+
+/**
+ * The stage whose completion a stage waits for (workflow prerequisite — a
+ * presentation of the dependency chain, never the enabled condition).
+ * Review round 2: Excavation waits for Levels (S1 — a failed Levels stage is
+ * the focus, not an Excavation it cannot complete); Analysis follows the
+ * last Systems stage and Export follows Analysis (S2 — the guided flow has
+ * no dead end: once the mine is built, Analysis is next, then Export).
+ */
 const PREREQUISITE: Partial<Record<StageId, StageId>> = {
   METHOD: 'SCENARIO',
   LAYOUT: 'METHOD',
   LEVELS: 'LAYOUT',
-  EXCAVATION: 'LAYOUT',
+  EXCAVATION: 'LEVELS',
   SHAFTS: 'LEVELS',
   NETWORK: 'LEVELS',
   CAPABILITY: 'NETWORK',
@@ -240,17 +258,30 @@ const PREREQUISITE: Partial<Record<StageId, StageId>> = {
   SCHEDULE: 'PRODUCTION',
   COMMUNICATION: 'NETWORK',
   SENSORS: 'NETWORK',
+  ANALYSIS: 'SENSORS',
+  EXPORT: 'ANALYSIS',
 }
 
 /**
- * One glyph per stage. Exactly one stage is NEXT: the first stage (in
+ * One glyph per stage. At most one stage is NEXT: the first stage (in
  * stepper order) that is neither done, optional nor failed and whose
- * prerequisite is done.
+ * prerequisite is done. When a FAILED stage blocks the chain no stage is
+ * NEXT — the failed stage is the focus (`entryStageOf` opens it).
  */
 export function stageStatuses(input: StageInput): Record<StageId, StageGlyph> {
   const states = Object.fromEntries(
     STAGE_IDS.map((s) => [s, stageArtifactState(s, input)]),
   ) as Record<StageId, ArtifactState>
+  const done = (stage: StageId): boolean => {
+    if (states[stage] !== 'SUCCESS') return false
+    if (!VIEWER_COMPLETED.has(stage)) return true
+    const pre = PREREQUISITE[stage]
+    return pre === undefined || done(pre)
+  }
+  const ready = (stage: StageId): boolean => {
+    const pre = PREREQUISITE[stage]
+    return pre === undefined || done(pre)
+  }
   const out = {} as Record<StageId, StageGlyph>
   let nextTaken = false
   for (const stage of STAGE_IDS) {
@@ -258,26 +289,19 @@ export function stageStatuses(input: StageInput): Record<StageId, StageGlyph> {
       out[stage] = 'RUNNING'
       continue
     }
-    if (stage === 'ANALYSIS' || stage === 'EXPORT') {
-      out[stage] = 'NA'
-      continue
-    }
     if (stage === 'SHAFTS' && input.shaftSpecCount === 0 && states.SHAFTS === 'ABSENT') {
       out[stage] = 'OPTIONAL'
       continue
     }
-    const state = states[stage]
-    if (state === 'SUCCESS') {
+    if (done(stage)) {
       out[stage] = 'DONE'
       continue
     }
-    if (state === 'FAILED') {
+    if (states[stage] === 'FAILED') {
       out[stage] = 'FAILED'
       continue
     }
-    const pre = PREREQUISITE[stage]
-    const ready = pre === undefined || states[pre] === 'SUCCESS'
-    if (ready && !nextTaken) {
+    if (ready(stage) && !nextTaken) {
       out[stage] = 'NEXT'
       nextTaken = true
     } else {

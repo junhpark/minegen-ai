@@ -78,13 +78,19 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
   })
 
   it('with nothing loaded the first stage is NEXT and everything else waits', () => {
-    const g = stageStatuses({ scenario: false, scene: null, shaftSpecCount: 0, running: none })
+    const g = stageStatuses({
+      scenario: false,
+      scene: null,
+      shaftSpecCount: 0,
+      running: none,
+      completed: none,
+    })
     expect(g.SCENARIO).toBe('NEXT')
     expect(g.METHOD).toBe('WAITING')
     expect(g.LAYOUT).toBe('WAITING')
     expect(g.SHAFTS).toBe('OPTIONAL')
-    expect(g.ANALYSIS).toBe('NA')
-    expect(g.EXPORT).toBe('NA')
+    expect(g.ANALYSIS).toBe('WAITING')
+    expect(g.EXPORT).toBe('WAITING')
     expect(Object.values(g).filter((x) => x === 'NEXT')).toHaveLength(1)
   })
 
@@ -100,6 +106,7 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
       }),
       shaftSpecCount: 0,
       running: none,
+      completed: none,
     })
     expect(g.SCENARIO).toBe('DONE')
     expect(g.METHOD).toBe('DONE')
@@ -127,9 +134,15 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
       }),
       shaftSpecCount: 0,
       running: none,
+      completed: none,
     })
     expect(accessOnly.LEVELS).toBe('FAILED')
     expect(accessOnly.EXCAVATION).not.toBe('DONE')
+    // round 2 S1: Excavation waits for Levels — the failed stage is the focus,
+    // nothing is NEXT while it blocks the chain
+    expect(accessOnly.EXCAVATION).toBe('WAITING')
+    expect(Object.values(accessOnly).filter((x) => x === 'NEXT')).toHaveLength(0)
+    expect(entryStageOf('DESIGN', accessOnly)).toBe('LEVELS')
     const full = stageStatuses({
       scenario: true,
       scene: scene({
@@ -139,6 +152,7 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
       }),
       shaftSpecCount: 0,
       running: none,
+      completed: none,
     })
     expect(full.EXCAVATION).toBe('DONE')
   })
@@ -149,10 +163,57 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
       scene: scene({ layoutV2: { status: 'NO_FEASIBLE_CANDIDATE' } }),
       shaftSpecCount: 2,
       running: new Set(['LEVELS'] as const),
+      completed: none,
     })
     expect(g.LAYOUT).toBe('FAILED')
     expect(g.LEVELS).toBe('RUNNING')
     expect(g.SHAFTS).toBe('WAITING') // declared shafts are a real stage
+  })
+
+  it('Analysis follows the last Systems stage and Export follows Analysis; the viewer completes them (S2)', () => {
+    const built = scene({
+      rampSource: { activeSource: 'LAYOUT_V2', available: true },
+      levels: ok('levels'),
+      tunnelMesh: ok('tunnel'),
+      developmentMesh: { status: 'SUCCESS', sources: { levels: true, levelAccesses: true } },
+      network: ok('network'),
+      capabilityGraph: ok('capability'),
+      stopes: ok('stopes'),
+      timeline: ok('timeline'),
+      communication: ok('communication'),
+      sensors: ok('sensors'),
+    })
+    const input = { scenario: true, scene: built, shaftSpecCount: 0, running: none }
+    const g = stageStatuses({ ...input, completed: none })
+    expect(g.SENSORS).toBe('DONE')
+    expect(g.ANALYSIS).toBe('NEXT')
+    expect(g.EXPORT).toBe('WAITING')
+    expect(Object.values(g).filter((x) => x === 'NEXT')).toHaveLength(1)
+    // opening Analysis completes it for this viewer; Export becomes next
+    const analysed = stageStatuses({ ...input, completed: new Set(['ANALYSIS'] as const) })
+    expect(analysed.ANALYSIS).toBe('DONE')
+    expect(analysed.EXPORT).toBe('NEXT')
+    // a downloaded package completes Export: the whole flow is done, nothing is next
+    const exported = stageStatuses({
+      ...input,
+      completed: new Set(['ANALYSIS', 'EXPORT'] as const),
+    })
+    expect(exported.EXPORT).toBe('DONE')
+    expect(Object.values(exported).filter((x) => x === 'NEXT')).toHaveLength(0)
+    // a viewer completion never counts while its chain is broken (the mine
+    // was reset): Analysis waits again, and so does the Export behind it
+    const reset = stageStatuses({
+      ...input,
+      scene: scene({ ...built, sensors: null }),
+      completed: new Set(['ANALYSIS', 'EXPORT'] as const),
+    })
+    expect(reset.SENSORS).toBe('NEXT')
+    expect(reset.ANALYSIS).toBe('WAITING')
+    expect(reset.EXPORT).toBe('WAITING')
+    // Analysis is still before Export even when the user never opened it
+    const skipped = stageStatuses({ ...input, completed: new Set(['EXPORT'] as const) })
+    expect(skipped.ANALYSIS).toBe('NEXT')
+    expect(skipped.EXPORT).toBe('WAITING')
   })
 
   it('a ribbon step opens its next / failed stage, else its first stage', () => {
@@ -161,6 +222,7 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
       scene: scene({ rampSource: { activeSource: 'LAYOUT_V2', available: true } }),
       shaftSpecCount: 0,
       running: none,
+      completed: none,
     })
     expect(entryStageOf('DESIGN', g)).toBe('LEVELS')
     expect(entryStageOf('SETUP', g)).toBe('SCENARIO')

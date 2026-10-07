@@ -143,6 +143,57 @@ class ResetStageNotDeletableError(RuntimeError):
         self.stage = stage
 
 
+class ResetJobRunningError(RuntimeError):
+    """A reset — preview or delete — while the scenario has a QUEUED / RUNNING
+    job (PR #53 review B2). A job's stale-input guard fingerprints its
+    UPSTREAM inputs only (rule 60), never its own output, so a job that was
+    already running when a reset deleted the artifact it is about to publish
+    would republish it and silently undo the reset. The reset is refused
+    typed; the job is never cancelled and nothing is deleted."""
+
+    code = "RESET_JOB_RUNNING"
+    http_status = 409
+
+    def __init__(self, scenario_id: str, stage: str, job_id: str) -> None:
+        super().__init__(
+            f"scenario '{scenario_id}' has job '{job_id}' running; a reset from {stage} "
+            "waits until it finishes (nothing was deleted)"
+        )
+        self.scenario_id = scenario_id
+        self.stage = stage
+        self.job_id = job_id
+
+    def wire_extras(self) -> dict[str, Any]:
+        return {"jobId": self.job_id}
+
+
+class ResetPlanChangedError(RuntimeError):
+    """``DELETE …/design/stages/{stage}`` carried the ``willDelete`` the user
+    confirmed (``expectedWillDelete``) and the plan recomputed under the
+    scenario lock differs: the mine changed between the preview and the
+    confirmation. Nothing is deleted; the fresh plan travels with the
+    refusal so the caller re-confirms against it (PR #53 review B2)."""
+
+    code = "RESET_PLAN_CHANGED"
+    http_status = 409
+
+    def __init__(
+        self, scenario_id: str, stage: str, expected: tuple[str, ...], plan: ResetPlan
+    ) -> None:
+        super().__init__(
+            f"scenario '{scenario_id}': the reset plan from {stage} changed since it was "
+            f"previewed (confirmed {list(expected)}, now {list(plan.will_delete)}); "
+            "nothing was deleted — review the current plan and confirm again"
+        )
+        self.scenario_id = scenario_id
+        self.stage = stage
+        self.expected = expected
+        self.plan = plan
+
+    def wire_extras(self) -> dict[str, Any]:
+        return {"plan": self.plan.to_dict()}
+
+
 def stage_artifacts(stage: str) -> tuple[str, ...]:
     try:
         return STAGE_ARTIFACTS[stage]  # type: ignore[index]

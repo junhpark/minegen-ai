@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { api, ApiError } from '@/api/client'
 import { developmentMeshScope } from '@/components/panels/developmentMeshScope'
@@ -163,7 +163,17 @@ export function DesignPanel({ view }: { view: DesignTab }) {
   // parameters only (rule 124).
   // hardening H1 §4.3: a method change on a mine with a world is confirmed
   // first (the dialog lists the backend reset plan); the PUT runs on confirm
-  const [pendingMethod, setPendingMethod] = useState<MiningConfig | null>(null)
+  // review round 2 B1: every opening of the confirmation is a new attempt,
+  // so the dialog reads the reset plan afresh (never a cached answer)
+  const [pendingMethod, setPendingMethod] = useState<{
+    mining: MiningConfig
+    attempt: number
+  } | null>(null)
+  const methodAttempt = useRef(0)
+  const openMethodChange = (mining: MiningConfig) => {
+    methodAttempt.current += 1
+    setPendingMethod({ mining, attempt: methodAttempt.current })
+  }
   const applyMethod = useMutation({
     mutationFn: async (mining: MiningConfig) => {
       if (!scene || !scenarioDoc) throw new Error('load a scenario first')
@@ -268,7 +278,8 @@ export function DesignPanel({ view }: { view: DesignTab }) {
       {scenarioDoc ? (
         <MethodChangeDialog
           scenarioId={scenarioDoc.id}
-          mining={pendingMethod}
+          mining={pendingMethod?.mining ?? null}
+          attempt={pendingMethod?.attempt ?? 0}
           hasWorld={scene !== null}
           onCancel={() => setPendingMethod(null)}
           onConfirm={(mining) => {
@@ -325,7 +336,7 @@ export function DesignPanel({ view }: { view: DesignTab }) {
         scenarioIdentity={`${scenarioDoc?.id ?? ''}:${epoch}`}
         methodPending={applyMethod.isPending}
         methodEnabled={scenarioDoc !== null && scene !== null && !applyMethod.isPending}
-        onApplyMethod={(mining) => (scene ? setPendingMethod(mining) : applyMethod.mutate(mining))}
+        onApplyMethod={(mining) => (scene ? openMethodChange(mining) : applyMethod.mutate(mining))}
         production={production}
         productionPending={generateProduction.isPending}
         productionEnabled={

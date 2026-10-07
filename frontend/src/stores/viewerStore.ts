@@ -54,6 +54,14 @@ export interface ViewerState {
    */
   stage: StageId
   setStage: (stage: StageId) => void
+  /**
+   * Review round 2 S2 — the stages that own no artifact and are completed by
+   * the viewer: Analysis once opened (`setStage('ANALYSIS')`), Export once a
+   * package was downloaded (`markViewerStageComplete('EXPORT')`). Stepper
+   * presentation only; cleared with the scenario-scoped state.
+   */
+  completedViewerStages: ReadonlySet<StageId>
+  markViewerStageComplete: (stage: StageId) => void
   /** 3D | 4D | Walk — the viewport's view mode, chosen apart from the stage */
   viewMode: () => ViewMode
   setViewMode: (view: ViewMode) => void
@@ -130,9 +138,19 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   setAnalysisTab: (analysisTab) => set({ analysisTab }),
 
   stage: 'SCENARIO',
+  completedViewerStages: new Set<StageId>(),
+  markViewerStageComplete: (stage) =>
+    set((s) =>
+      s.completedViewerStages.has(stage)
+        ? {}
+        : { completedViewerStages: new Set(s.completedViewerStages).add(stage) },
+    ),
   setStage: (stage) =>
     set((s) => {
       const next: Partial<ViewerState> = { stage, designTab: designTabFor(stage) }
+      if (stage === 'ANALYSIS' && !s.completedViewerStages.has(stage)) {
+        next.completedViewerStages = new Set(s.completedViewerStages).add(stage)
+      }
       const systems = systemsTabFor(stage)
       if (systems) next.systemsTab = systems
       const analysis = analysisTabFor(stage)
@@ -218,5 +236,6 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
       walkthroughContext: null,
       walkthroughSnapshotDay: null,
       walkthroughSnapshotIdentity: null,
+      completedViewerStages: new Set<StageId>(),
     }),
 }))

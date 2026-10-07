@@ -1,4 +1,4 @@
-import { useContext, useEffect, type ReactNode } from 'react'
+import { useContext, useEffect, useId, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useShellStore } from '@/components/layout/shellStore'
 import type { StageId } from '@/types/workflow'
@@ -54,12 +54,15 @@ export function WorkflowCard(p: Props) {
   const reportTone = useShellStore((s) => s.reportTone)
   const { stage, tone } = p
   // the stepper's ↻ glyph: a mounted staged card reports the tone its badge
-  // shows and withdraws it on unmount (never a second status source)
+  // shows and withdraws it on unmount (never a second status source); the
+  // report is keyed per card instance so sibling cards of one stage never
+  // overwrite each other (review round 2 S3)
+  const reporter = useId()
   useEffect(() => {
     if (stage === undefined) return undefined
-    reportTone(stage, tone)
-    return () => reportTone(stage, null)
-  }, [stage, tone, reportTone])
+    reportTone(stage, reporter, tone)
+    return () => reportTone(stage, reporter, null)
+  }, [stage, reporter, tone, reportTone])
   if (layout.placement === 'SPLIT' && p.stage !== undefined) {
     const hasControls = p.action !== undefined || p.notice || p.progress
     const controls =

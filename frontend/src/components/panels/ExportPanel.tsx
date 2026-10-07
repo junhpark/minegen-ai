@@ -10,6 +10,7 @@ import {
 import { ActionButton } from '@/components/ui/ActionButton'
 import { WorkflowCard } from '@/components/ui/WorkflowCard'
 import { useScenarioStore } from '@/stores/scenarioStore'
+import { useViewerStore } from '@/stores/viewerStore'
 import { saveFile } from '@/utils/download'
 
 const INPUT =
@@ -26,6 +27,7 @@ const INPUT =
 export function ExportPanel() {
   const scenario = useScenarioStore((s) => s.scenario)
   const scene = useScenarioStore((s) => s.scene)
+  const markViewerStageComplete = useViewerStore((s) => s.markViewerStageComplete)
   const [exportTarget, setExportTarget] = useState<ExportTargetKey>('MINE_EXCHANGE')
   const exportTargets = describeExportTargets(scene ?? null)
   const selectedTarget = exportTargets.find((t) => t.key === exportTarget) ?? exportTargets[0]
@@ -38,6 +40,8 @@ export function ExportPanel() {
           : await api.exportAdapter(scenario.id, exportTarget)
       saveFile(file.blob, file.filename)
     },
+    // S2: a downloaded package completes the Export stage for this viewer
+    onSuccess: () => markViewerStageComplete('EXPORT'),
   })
   const error = exportPackage.error
   const errorText =
