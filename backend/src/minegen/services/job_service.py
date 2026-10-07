@@ -84,9 +84,9 @@ class JobService:
     ) -> JobRecord:
         """``work(on_progress)`` runs on the pool and returns the result payload."""
         with self._lock:
-            for j in self._jobs.values():
-                if j.scenario_id == scenario_id and j.status not in TERMINAL:
-                    raise JobAlreadyRunningError(scenario_id, j.id)
+            running = self._running_locked(scenario_id)
+            if running is not None:
+                raise JobAlreadyRunningError(scenario_id, running)
             job = JobRecord(id=uuid.uuid4().hex[:12], scenario_id=scenario_id, kind=kind)
             self._jobs[job.id] = job
 
@@ -128,6 +128,20 @@ class JobService:
         return job
 
     # -- queries ----------------------------------------------------------- #
+
+    def _running_locked(self, scenario_id: str) -> str | None:
+        """The id of the scenario's QUEUED / RUNNING job, if any (caller holds
+        ``_lock``). ONE predicate: ``submit`` refuses a second job on it and
+        a stage reset refuses to delete under it (PR #53 review B2)."""
+        for j in self._jobs.values():
+            if j.scenario_id == scenario_id and j.status not in TERMINAL:
+                return j.id
+        return None
+
+    def running_job(self, scenario_id: str) -> str | None:
+        """The scenario's non-terminal job id, or ``None``."""
+        with self._lock:
+            return self._running_locked(scenario_id)
 
     def get(self, job_id: str) -> JobRecord:
         with self._lock:

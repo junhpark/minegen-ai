@@ -33,8 +33,12 @@ FAST = WORKFLOWS / "verify-fast.yml"
 FULL_ARTIFACTS = {
     "full-backend": "verification-full-backend",
     "full-frontend": "verification-full-frontend",
+    # PR #53 review round 3 B3: the guided-workflow browser e2e as its own
+    # component (the backend job has no frontend toolchain and would skip it)
+    "full-e2e": "verification-full-e2e",
     "release-authority": "verification-release-authority",
 }
+COMPONENT_JOBS = ("full-backend", "full-frontend", "full-e2e")
 FAST_ARTIFACT = "verification-fast"
 
 
@@ -167,21 +171,21 @@ def test_w5_release_authority_needs_both_components_and_always_runs(
     full: dict[str, Any],
 ) -> None:
     job = full["jobs"]["release-authority"]
-    assert set(job.get("needs") or []) == {"full-backend", "full-frontend"}, job.get("needs")
+    assert set(job.get("needs") or []) == set(COMPONENT_JOBS), job.get("needs")
     # a failed or missing component must produce a RECORDED withheld verdict,
     # never a skipped job — so the job runs regardless of upstream outcome
     assert job.get("if") == "always()"
     downloads = _steps_using(job, "actions/download-artifact")
     names = {(s.get("with") or {}).get("name") for s in downloads}
-    assert names == {FULL_ARTIFACTS["full-backend"], FULL_ARTIFACTS["full-frontend"]}, names
+    assert names == {FULL_ARTIFACTS[j] for j in COMPONENT_JOBS}, names
     # a missing artifact must not abort before the verdict is written
     assert all(s.get("continue-on-error") is True for s in downloads), downloads
     runs = "\n".join(_run_steps(job))
     assert "scripts/verify.py authority" in runs
     # both component summaries are passed EVERY time; a missing path is a typed
     # reason inside the verdict (COMPONENT_SUMMARY_MISSING), not a smaller set
-    assert "full-backend/verification-summary.json" in runs
-    assert "full-frontend/verification-summary.json" in runs
+    for job_id in COMPONENT_JOBS:
+        assert f"{job_id}/verification-summary.json" in runs, job_id
 
 
 # --------------------------------------------------------------------------- #
@@ -198,7 +202,11 @@ def test_components_run_verify_py_with_exactly_one_component_flag(full: dict[str
     assert "--backend-only" not in frontend
     # the frontend summary is produced by the runner, never assembled by hand
     assert "verification-summary.json" not in frontend
-    for job_id in ("full-backend", "full-frontend"):
+    e2e = "\n".join(_run_steps(full["jobs"]["full-e2e"]))
+    assert "scripts/verify.py full --e2e-only" in e2e
+    assert "--backend-only" not in e2e and "--frontend-only" not in e2e
+    assert "verification-summary.json" not in e2e
+    for job_id in COMPONENT_JOBS:
         runs = _run_steps(full["jobs"][job_id])
         assert not any("verify.py authority" in r for r in runs), (
             f"{job_id} must not aggregate: the verdict belongs to release-authority only"
@@ -211,3 +219,20 @@ def test_fast_is_a_pull_request_feedback_loop_not_a_release_gate(fast: dict[str,
     runs = "\n".join(_run_steps(next(iter(fast["jobs"].values()))))
     assert "scripts/verify.py fast" in runs
     assert "verify.py authority" not in runs
+
+
+def test_the_e2e_component_prepares_the_full_toolchain_the_browser_test_needs(
+    full: dict[str, Any],
+) -> None:
+    """Round 3 B3: the browser e2e is a REQUIRED gate, so its job must set up
+    Python (backend + pytest), Node (the Vite dev server) and the Playwright
+    Chromium — on the backend job the test skips for lack of node_modules,
+    which is exactly the gap this job closes."""
+    job = full["jobs"]["full-e2e"]
+    assert _steps_using(job, "actions/setup-python"), "no Python setup"
+    assert _steps_using(job, "actions/setup-node"), "no Node setup"
+    runs = "\n".join(_run_steps(job))
+    assert "npm ci" in runs
+    assert 'pip install -e ".[dev]"' in runs
+    assert "playwright install" in runs and "chromium" in runs
+    _assert_evidence_upload(_upload(job, FULL_ARTIFACTS["full-e2e"]))

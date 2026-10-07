@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { PanelSection } from '@/components/layout/PanelSection'
@@ -22,44 +22,38 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
     rows: [
       { id: 'terrain', label: 'Terrain', phase: 2 },
       { id: 'orebody', label: 'Orebody', phase: 2 },
+      { id: 'faults', label: 'Faults', phase: 2 },
       // §3: explicit opt-in viewer layer, default OFF
       { id: 'rockQuality', label: 'Field slice', phase: 2 },
-      { id: 'faults', label: 'Faults', phase: 2 },
     ],
   },
   {
     title: 'Design',
     rows: [
       { id: 'smoothedDecline', label: 'Effective ramp (active design)', phase: 5 },
-      { id: 'layoutV2', label: 'Layout v2 selected candidate', phase: 20 },
+      { id: 'layoutV2', label: 'Layout candidate', phase: 20 },
       { id: 'levelAccesses', label: 'Ramp junctions & level accesses', phase: 20 },
       { id: 'levels', label: 'Level drifts (centerline)', phase: 8 },
       { id: 'crosscuts', label: 'Crosscuts (centerline)', phase: 8 },
+      { id: 'tunnelMesh', label: 'Ramp tunnel mesh', phase: 6 },
+      { id: 'developmentMesh', label: 'Development mesh (access · drift · crosscut)', phase: 20 },
+      { id: 'ramp', label: 'Ramp', phase: 6 },
       { id: 'shafts', label: 'Shafts (axis · stations · station drives)', phase: 20 },
     ],
   },
   {
-    title: 'Excavations',
+    title: 'Network',
+    rows: [{ id: 'networkGraph', label: 'Network graph', phase: 7 }],
+  },
+  {
+    title: 'Production',
     rows: [
-      { id: 'tunnelMesh', label: 'Ramp tunnel mesh', phase: 6 },
-      { id: 'developmentMesh', label: 'Development mesh (access · drift · crosscut)', phase: 20 },
-      { id: 'ramp', label: 'Ramp', phase: 6 },
       { id: 'stopes', label: 'Production (stopes · cuts · rooms)', phase: 9 },
       { id: 'backfill', label: 'Backfill', phase: 10 },
-      { id: 'networkGraph', label: 'Network graph', phase: 7 },
     ],
   },
   {
-    // closeout v3 §1.C: legacy diagnostic layers, default OFF
-    title: 'Legacy decline (advanced)',
-    rows: [
-      { id: 'accessTargets', label: 'Access targets (legacy)', phase: 3 },
-      // §2: default OFF, and suppressed outright in 4D / TIMELINE_SNAPSHOT
-      { id: 'rawSearchPath', label: 'Raw Hybrid-A* search path', phase: 4 },
-    ],
-  },
-  {
-    title: 'Infrastructure',
+    title: 'Systems',
     rows: [
       { id: 'routers', label: 'Routers', phase: 11 },
       { id: 'coverage', label: 'Communication coverage', phase: 11 },
@@ -69,11 +63,20 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
   },
   {
     // Phase 23C: external simulation results (MineResult overlays)
-    title: 'Simulation results',
+    title: 'Results',
     rows: [
       { id: 'ventilationResult', label: 'Ventilation overlay (active result)', phase: 20 },
       { id: 'operationsHeatmap', label: 'Operations edge heatmap', phase: 20 },
       { id: 'operationsVehicles', label: 'Operations vehicles', phase: 20 },
+    ],
+  },
+  {
+    // closeout v3 §1.C: legacy diagnostic layers, default OFF
+    title: 'Legacy decline (advanced)',
+    rows: [
+      { id: 'accessTargets', label: 'Access targets (legacy)', phase: 3 },
+      // §2: default OFF, and suppressed outright in 4D / TIMELINE_SNAPSHOT
+      { id: 'rawSearchPath', label: 'Raw Hybrid-A* search path', phase: 4 },
     ],
   },
 ]
@@ -92,59 +95,50 @@ const FIELDS: { id: SliceField; label: string }[] = [
 const AXES: SliceAxis[] = ['x', 'y', 'z']
 
 /**
- * Phase 20E §6 — viewer layer visibility.
- *
- * Layers are a viewer control independent of the current workflow, so the
- * section stays at the bottom of the left panel and is always reachable, but
- * it is COLLAPSED by default so it no longer dominates the panel. The layer
- * visibility state and the store contract are unchanged, and `SliceControls`
- * stays mounted while collapsed so the field-slice fetch keeps running
- * independently of visibility.
+ * Viewer layer visibility — the Visibility tree of the View panel
+ * (hardening H1 §4.2; Phase 20E §6 kept Layers reachable and independent
+ * of the workflow). The layer visibility state and the store contract are
+ * unchanged: a checkbox toggles one layer and nothing else.
  */
-export function LayerPanel() {
+export function LayerTree() {
   const visible = useViewerStore((s) => s.visibleLayers)
   const toggle = useViewerStore((s) => s.toggleLayer)
-  const [open, setOpen] = useState(false)
-
   return (
     <>
-      <PanelSection title="Layers" collapsible open={open} onToggle={() => setOpen((v) => !v)}>
-        {LAYER_GROUPS.map((g) => (
-          <div key={g.title} className="mb-3 last:mb-0">
-            <div className="readout mb-1 text-[10px] text-mute">{g.title}</div>
-            <ul className="flex flex-col">
-              {g.rows.map((r) => {
-                const available = r.phase <= CURRENT_PHASE
-                return (
-                  <li key={r.id}>
-                    <label
-                      className={[
-                        'flex items-center gap-2 rounded-sm px-1 py-0.5',
-                        available ? 'text-chalk hover:bg-rock-700/60' : 'text-mute',
-                      ].join(' ')}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={visible.has(r.id)}
-                        onChange={() => toggle(r.id)}
-                        disabled={!available}
-                        className="accent-lamp"
-                      />
-                      <span className="flex-1">{r.label}</span>
-                      {!available ? (
-                        <span className="readout text-[10px]">
-                          P{String(r.phase).padStart(2, '0')}
-                        </span>
-                      ) : null}
-                    </label>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-        ))}
-      </PanelSection>
-      <SliceControls active={open} />
+      {LAYER_GROUPS.map((g) => (
+        <div key={g.title} className="mb-3 last:mb-0">
+          <div className="readout mb-1 text-[10px] text-mute">{g.title}</div>
+          <ul className="flex flex-col">
+            {g.rows.map((r) => {
+              const available = r.phase <= CURRENT_PHASE
+              return (
+                <li key={r.id}>
+                  <label
+                    className={[
+                      'flex items-center gap-2 rounded-sm px-1 py-0.5',
+                      available ? 'text-chalk hover:bg-rock-700/60' : 'text-mute',
+                    ].join(' ')}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={visible.has(r.id)}
+                      onChange={() => toggle(r.id)}
+                      disabled={!available}
+                      className="accent-lamp"
+                    />
+                    <span className="flex-1">{r.label}</span>
+                    {!available ? (
+                      <span className="readout text-[10px]">
+                        P{String(r.phase).padStart(2, '0')}
+                      </span>
+                    ) : null}
+                  </label>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ))}
     </>
   )
 }
@@ -152,7 +146,7 @@ export function LayerPanel() {
 /** Field / axis / index picker for the spatial-field slice layer. `active`
  * decides only whether it RENDERS: the slice query stays mounted so slice
  * COMPUTATION remains independent of slice VISIBILITY. */
-function SliceControls({ active }: { active: boolean }) {
+export function SliceControls({ active }: { active: boolean }) {
   const scene = useScenarioStore((s) => s.scene)
   const { field, axis, index, slice, setField, setAxis, setIndex, setSlice } = useSliceStore()
   const scenarioId = scene?.scenarioId

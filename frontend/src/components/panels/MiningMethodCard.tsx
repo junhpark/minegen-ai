@@ -79,6 +79,7 @@ export function MiningMethodCard({ summary, identity, pending, enabled, onApply 
   const mp = draft.methodParameters
   return (
     <WorkflowCard
+      stage="METHOD"
       title="Mining method"
       tone={activeImplemented ? 'ACTIVE' : 'INACTIVE'}
       statusLabel={IMPLEMENTATION_LABEL[summary.implementationStatus]}

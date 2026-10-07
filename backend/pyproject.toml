@@ -38,6 +38,13 @@ dev = [
     # Already present transitively (uvicorn[standard] → pyyaml); declared here
     # so the tests never depend on a runtime extra's dependency tree.
     "pyyaml>=6.0",
+    # Hardening H1 §4.5: the guided-workflow shell acceptance is a real-browser
+    # flow (Setup → Export, Reset from here, one primary button) driven from
+    # pytest (tests/test_shell_e2e.py, marker e2e — FULL only). Nothing else
+    # in the repo drives a browser, so the dependency enters with this phase
+    # (rule 15). The browser binary is provisioned by the environment
+    # (PLAYWRIGHT_BROWSERS_PATH / MINEGEN_E2E_CHROMIUM); never by pip.
+    "playwright>=1.49",
 ]
 
 [tool.setuptools.packages.find]

@@ -32,25 +32,28 @@ import type {
   CostEvaluationRow,
   DeclinePayload,
   DesignAssessmentPayload,
+  DevelopmentMeshReport,
   JobRecord,
   JobSubmission,
   LayoutV2Catalogue,
   LevelAccessesPayload,
   LevelsPayload,
+  NetworkPayload,
+  ProductionPayload,
   RampSource,
   RampSourceSummary,
-  NetworkPayload,
+  ResetPlan,
+  ResetResult,
   SensorPayload,
   ShaftsPayload,
   SliceAxis,
   SliceField,
   SlicePayload,
   SmoothedDeclinePayload,
-  ProductionPayload,
   StopesPayload,
   TimelinePayload,
-  DevelopmentMeshReport,
   TunnelMeshReport,
+  WorkflowStage,
   WorldScene,
   WorldStats,
 } from '@/types/scene'
@@ -65,6 +68,10 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
+    /** the backend `ErrorDetail` beyond code / message (a reset refusal's
+     * `jobId` or fresh `plan`, a scene's `artifacts[]`), verbatim — data to
+     * display, never a decision */
+    public readonly detail: Record<string, unknown> | null = null,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -75,12 +82,14 @@ export class ApiError extends Error {
 async function apiErrorOf(res: Response): Promise<ApiError> {
   let code = 'HTTP_ERROR'
   let message = `${res.status} ${res.statusText}`
+  let detail: Record<string, unknown> | null = null
   try {
     const body = (await res.json()) as { detail?: unknown }
     const d = body.detail
     if (d && typeof d === 'object' && 'code' in d && 'message' in d) {
       code = String((d as { code: unknown }).code)
       message = String((d as { message: unknown }).message)
+      detail = d
     } else if (typeof d === 'string') {
       message = d
     } else if (Array.isArray(d)) {
@@ -90,7 +99,7 @@ async function apiErrorOf(res: Response): Promise<ApiError> {
   } catch {
     // body was not JSON
   }
-  return new ApiError(res.status, code, message)
+  return new ApiError(res.status, code, message, detail)
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -287,6 +296,20 @@ export const api = {
   /** The ACTIVE effective ramp in the source-neutral contract. */
   getEffectiveRamp: (id: string) => request<SmoothedDeclinePayload>(`/scenarios/${id}/design/ramp`),
   /** Synchronous Phase 08 level developments (rules 71–74). */
+  /** Hardening H1 §4.4: read-only preview of "Reset from here" — the backend's
+   * registry closure, never a frontend dependency graph */
+  getResetPlan: (id: string, stage: WorkflowStage) =>
+    request<ResetPlan>(`/scenarios/${id}/design/reset-plan?from=${stage}`),
+  /** Hardening H1 §4.4: delete the stage's artifacts + closure (same function
+   * as the plan). `expectedWillDelete` is the previewed list the user
+   * confirmed: the backend deletes only if its plan under the lock still
+   * lists exactly it (409 RESET_PLAN_CHANGED otherwise; 409 RESET_JOB_RUNNING
+   * while a job of the scenario is running). */
+  resetStage: (id: string, stage: WorkflowStage, expectedWillDelete?: readonly string[]) =>
+    request<ResetResult>(`/scenarios/${id}/design/stages/${stage}`, {
+      method: 'DELETE',
+      ...(expectedWillDelete ? { body: JSON.stringify({ expectedWillDelete }) } : {}),
+    }),
   generateLevels: (id: string) =>
     request<LevelsPayload>(`/scenarios/${id}/design/levels`, { method: 'POST' }),
   getLevels: (id: string) => request<LevelsPayload>(`/scenarios/${id}/design/levels`),

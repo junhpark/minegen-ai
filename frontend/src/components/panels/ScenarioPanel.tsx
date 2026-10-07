@@ -10,37 +10,40 @@ import {
   realizeRequest,
   realizedSummary,
 } from '@/scenario/builder'
+import { loadScene, openScenario } from '@/scenario/openScenario'
 import {
   SCENARIO_PRESETS,
   type Scenario,
   type ScenarioCreate,
   type ScenarioPreset,
 } from '@/types/api'
-import { PanelSection } from '@/components/layout/PanelSection'
 import { ActionButton } from '@/components/ui/ActionButton'
-import { nextActionVariant } from '@/components/ui/presentation'
 import { Disclosure } from '@/components/ui/Disclosure'
-import { StatusBadge } from '@/components/ui/StatusBadge'
-import { ExportContents } from '@/components/panels/ExportContents'
-import {
-  type ExportTargetKey,
-  describeExportContents,
-  describeExportTargets,
-} from '@/components/panels/exportContents'
+import { WorkflowCard } from '@/components/ui/WorkflowCard'
 import { activateScenario, scenarioEpoch } from '@/stores/scenarioSession'
 import { useScenarioStore } from '@/stores/scenarioStore'
-import { saveFile } from '@/utils/download'
+import { useViewerStore } from '@/stores/viewerStore'
 import { fmtMeters } from '@/utils/format'
 
+const INPUT =
+  'w-full rounded-sm border border-rock-700 bg-rock-900 px-2 py-1 text-chalk focus:border-lamp focus:outline-none'
+
 /**
- * Scenario creation / selection and world generation. Parameters shown here
- * are echoed from the backend document, not computed.
+ * Hardening H1 §4.3 — the Setup › Scenario stage.
+ *
+ * ONE primary action, "Create mine": the backend realizes preset + seed (the
+ * panel never draws a random number — rule 119/124), persists the explicit
+ * document the user reviewed, generates its world and loads the scene; the
+ * shell then moves to the Method stage. Randomize (preview the deterministic
+ * realization) and the Advanced editor are secondary; the saved list lives
+ * under File › Open and in the Details of this card. Parameters shown are
+ * echoed from the backend document, not computed.
  */
-export function ScenarioPanel() {
+export function SetupPanel() {
   const qc = useQueryClient()
   const scenario = useScenarioStore((s) => s.scenario)
   const scene = useScenarioStore((s) => s.scene)
-  const setScene = useScenarioStore((s) => s.setScene)
+  const setStage = useViewerStore((s) => s.setStage)
   const [name, setName] = useState('Synthetic Gold Mine 001')
   const [seed, setSeed] = useState(DEFAULT_BUILDER.seed)
   const [preset, setPreset] = useState<ScenarioPreset>(DEFAULT_BUILDER.preset)
@@ -50,28 +53,8 @@ export function ScenarioPanel() {
   const [realized, setRealized] = useState<ScenarioCreate | null>(null)
   const [draft, setDraft] = useState<ScenarioCreate | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
-  // Phase 20E §7: creating a mine is the primary action until one exists;
-  // afterwards the form collapses so the summary leads the panel
-  const [newOpen, setNewOpen] = useState(true)
-  // Phase 17 (rule 119): the panel never draws random numbers — it asks the
-  // backend to realize preset+seed and shows/creates the result verbatim
 
   const list = useQuery({ queryKey: ['scenarios'], queryFn: api.listScenarios })
-
-  /** `epoch` is captured before the request: a manifest that arrives after
-   * the user moved on to another scenario is dropped by the store (§1). */
-  const loadScene = async (id: string, epoch: number) => {
-    try {
-      const sc = await api.getScene(id)
-      setScene(sc, epoch)
-    } catch (e) {
-      if (e instanceof ApiError && e.code === 'WORLD_NOT_GENERATED') {
-        setScene(null, epoch)
-        return
-      }
-      throw e
-    }
-  }
 
   const realize = useMutation({
     mutationFn: () => api.realizeScenario(realizeRequest({ preset, seed, faultCount })),
@@ -88,31 +71,28 @@ export function ScenarioPanel() {
     setDraft(null)
   }
 
+  // "Create mine" = create + generate world in one step (§4.3)
   const create = useMutation({
     mutationFn: async () => {
       // the edited draft is authoritative: never re-realize over user edits
       const resolved =
         draft ?? (await api.realizeScenario(realizeRequest({ preset, seed, faultCount })))
-      return api.createScenario({ ...resolved, name })
-    },
-    onSuccess: (s) => {
+      const s = await api.createScenario({ ...resolved, name })
       // one scenario-identity transition clears everything derived (§1)
-      activateScenario(s)
-      setNewOpen(false)
-      void qc.invalidateQueries({ queryKey: ['scenarios'] })
-    },
-  })
-
-  const load = useMutation({
-    mutationFn: async (id: string) => {
-      const s = await api.getScenario(id)
       const epoch = activateScenario(s)
-      await loadScene(id, epoch)
+      await api.generateWorld(s.id)
+      await loadScene(s.id, epoch)
       return s
     },
-    onSuccess: () => setNewOpen(false),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['scenarios'] })
+      setStage('METHOD')
+    },
   })
 
+  const load = useMutation({ mutationFn: openScenario })
+
+  // a scenario loaded without a world (or a deliberate regeneration)
   const generate = useMutation({
     mutationFn: async () => {
       if (!scenario) throw new Error('no scenario selected')
@@ -122,34 +102,10 @@ export function ScenarioPanel() {
     },
   })
 
-  // Phase 23A / 23B: one export action over a compact target selector. The
-  // backend is the only authority on what a package contains (MineExchange
-  // manifest omissions, adapter_manifest.json); the panel mirrors each
-  // adapter's required sources from the scene and generates nothing.
-  const [exportTarget, setExportTarget] = useState<ExportTargetKey>('MINE_EXCHANGE')
-  const exportTargets = describeExportTargets(scene ?? null)
-  const selectedTarget = exportTargets.find((t) => t.key === exportTarget) ?? exportTargets[0]
-  const exportPackage = useMutation({
-    mutationFn: async () => {
-      if (!scenario) throw new Error('no scenario selected')
-      const file =
-        exportTarget === 'MINE_EXCHANGE'
-          ? await api.exportMineExchange(scenario.id)
-          : await api.exportAdapter(scenario.id, exportTarget)
-      saveFile(file.blob, file.filename)
-    },
-  })
-
-  const error = realize.error ?? create.error ?? load.error ?? generate.error ?? exportPackage.error
+  const error = realize.error ?? create.error ?? load.error ?? generate.error
   const errorText =
     error instanceof ApiError ? `${error.code}: ${error.message}` : error ? error.message : null
-
-  const input =
-    'w-full rounded-sm border border-rock-700 bg-rock-900 px-2 py-1 text-chalk focus:border-lamp focus:outline-none'
-
-  // Phase 20E §7: the export state stays one click away with its count on
-  // the trigger, so the workflow tabs are not pushed below the fold
-  const exportLayers = describeExportContents(scene, (scenario?.shafts?.specs.length ?? 0) > 0)
+  const busy = create.isPending || generate.isPending || load.isPending
 
   const design = scene?.rampSource.available
     ? scene.rampSource.activeSource === 'LAYOUT_V2'
@@ -157,221 +113,175 @@ export function ScenarioPanel() {
       : 'Legacy decline'
     : 'no design yet'
 
+  // ONE primary: creating a mine while none exists, else generating the
+  // missing world of a loaded scenario; with a world both are secondary
+  const createVariant = scenario === null && !busy ? 'primary' : 'secondary'
+  const worldVariant = scenario !== null && scene === null && !busy ? 'primary' : 'secondary'
+
   return (
-    <PanelSection
+    <WorkflowCard
+      stage="SCENARIO"
       title="Scenario"
+      tone={scenario ? (scene ? 'READY' : 'NOT_GENERATED') : 'NOT_GENERATED'}
+      statusLabel={scenario ? (scene ? 'World ready' : 'No world') : 'No mine'}
       info="A synthetic mine: terrain, an authoritative orebody solid and seeded numerical rock-quality and grade fields, plus the declared fault planes. Every stochastic parameter is drawn once by the backend when you randomize, then persisted resolved, so the same scenario always reproduces the same world. It is a synthetic sandbox — never a measured, estimated or imported orebody."
-      status={
+      summary={
         scenario ? (
-          <StatusBadge
-            tone={scene ? 'READY' : 'NOT_GENERATED'}
-            label={scene ? 'World ready' : 'No world'}
-          />
-        ) : null
-      }
-    >
-      {scenario ? (
-        <div className="mb-2">
-          <div className="truncate text-[13px] text-chalk" title={scenario.name}>
-            {scenario.name}
-          </div>
-          <div className="readout text-[11px] text-mute">
-            {scenario.orebody.orebodyType} · seed {scenario.seed} · {design}
-          </div>
-        </div>
-      ) : (
-        <p className="mb-2 text-[11px] text-mute">
-          No scenario yet — create a synthetic mine below, then generate its world.
-        </p>
-      )}
-
-      <ActionButton
-        variant={nextActionVariant(scene !== null, scenario !== null && !generate.isPending)}
-        disabled={!scenario || generate.isPending}
-        onClick={() => generate.mutate()}
-      >
-        {generate.isPending ? 'Generating world…' : scene ? 'Regenerate world' : 'Generate world'}
-      </ActionButton>
-
-      {errorText ? (
-        <p role="alert" className="mt-2 text-[11px] text-danger">
-          {errorText}
-        </p>
-      ) : null}
-
-      {scenario ? (
-        <Disclosure label="Details">
-          <ParametersPanel scenario={scenario} />
-        </Disclosure>
-      ) : null}
-
-      <Disclosure label="New scenario" open={newOpen} onToggle={() => setNewOpen((v) => !v)}>
-        <label className="mb-2 block">
-          <span className="mb-1 block text-[11px] text-chalk-dim">Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} className={input} />
-        </label>
-        <label className="mb-2 block">
-          <span className="mb-1 block text-[11px] text-chalk-dim">Preset</span>
-          <select
-            value={preset}
-            onChange={(e) => {
-              setPreset(e.target.value as ScenarioPreset)
-              invalidateDraft()
-            }}
-            className={input}
-          >
-            {SCENARIO_PRESETS.map((p) => (
-              <option key={p} value={p}>
-                {presetLabel(p)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="mb-2 grid grid-cols-[1fr_auto_auto] items-end gap-2">
-          <label className="block">
-            <span className="mb-1 block text-[11px] text-chalk-dim">Seed</span>
-            <input
-              type="number"
-              value={seed}
-              onChange={(e) => {
-                setSeed(Number(e.target.value))
-                invalidateDraft()
-              }}
-              className={`readout ${input}`}
-            />
-          </label>
-          <label className="block w-16">
-            <span className="mb-1 block text-[11px] text-chalk-dim">Faults</span>
-            <input
-              type="number"
-              min={0}
-              max={6}
-              value={faultCountEnabled(preset) ? faultCount : 1}
-              disabled={!faultCountEnabled(preset)}
-              onChange={(e) => {
-                setFaultCount(Math.max(0, Math.min(6, Number(e.target.value))))
-                invalidateDraft()
-              }}
-              className={`readout ${input} disabled:opacity-50`}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => realize.mutate()}
-            disabled={realize.isPending}
-            className="plate rounded-sm border border-rock-600 px-2 py-1 text-[12px] text-chalk hover:bg-rock-700 disabled:opacity-50"
-            title="Preview the deterministic realization for this preset + seed"
-          >
-            {realize.isPending ? '…' : 'Randomize'}
-          </button>
-        </div>
-        {draft ? (
           <>
-            <div className="readout mb-2 rounded-sm border border-rock-700 bg-rock-900/60 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
-              {realizedSummary(draft).map((line) => (
-                <div key={line}>{line}</div>
-              ))}
-              <div className="mt-1 text-mute">
-                {realized && JSON.stringify(draft) !== JSON.stringify(realized)
-                  ? 'Edited — your values will be persisted as-is.'
-                  : 'Same seed always reproduces this exact mine.'}
-              </div>
+            <div className="truncate text-[12px] text-chalk" title={scenario.name}>
+              {scenario.name}
             </div>
+            <div>
+              {scenario.orebody.orebodyType} · seed {scenario.seed} · {design}
+            </div>
+          </>
+        ) : (
+          'No mine yet — create one in the Scenario stage.'
+        )
+      }
+      action={
+        <div data-testid="setup-form">
+          <label className="mb-2 block">
+            <span className="mb-1 block text-[11px] text-chalk-dim">Name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
+          </label>
+          <label className="mb-2 block">
+            <span className="mb-1 block text-[11px] text-chalk-dim">Preset</span>
+            <select
+              value={preset}
+              onChange={(e) => {
+                setPreset(e.target.value as ScenarioPreset)
+                invalidateDraft()
+              }}
+              className={INPUT}
+            >
+              {SCENARIO_PRESETS.map((p) => (
+                <option key={p} value={p}>
+                  {presetLabel(p)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="mb-2 grid grid-cols-[1fr_auto_auto] items-end gap-2">
+            <label className="block">
+              <span className="mb-1 block text-[11px] text-chalk-dim">Seed</span>
+              <input
+                type="number"
+                value={seed}
+                onChange={(e) => {
+                  setSeed(Number(e.target.value))
+                  invalidateDraft()
+                }}
+                className={`readout ${INPUT}`}
+              />
+            </label>
+            <label className="block w-16">
+              <span className="mb-1 block text-[11px] text-chalk-dim">Faults</span>
+              <input
+                type="number"
+                min={0}
+                max={6}
+                value={faultCountEnabled(preset) ? faultCount : 1}
+                disabled={!faultCountEnabled(preset)}
+                onChange={(e) => {
+                  setFaultCount(Math.max(0, Math.min(6, Number(e.target.value))))
+                  invalidateDraft()
+                }}
+                className={`readout ${INPUT} disabled:opacity-50`}
+              />
+            </label>
             <button
               type="button"
-              onClick={() => setAdvancedOpen((v) => !v)}
-              className="mb-2 w-full rounded-sm border border-rock-700 px-2 py-1 text-left text-[11px] text-chalk-dim hover:bg-rock-800"
+              onClick={() => realize.mutate()}
+              disabled={realize.isPending || busy}
+              className="plate rounded-sm border border-rock-600 px-2 py-1 text-[12px] text-chalk hover:bg-rock-700 disabled:opacity-50"
+              title="Preview the deterministic realization for this preset + seed"
             >
-              {advancedOpen ? '▾' : '▸'} Advanced
+              {realize.isPending ? '…' : 'Randomize'}
             </button>
-            {advancedOpen ? <AdvancedScenarioEditor draft={draft} onChange={setDraft} /> : null}
-          </>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => create.mutate()}
-          disabled={create.isPending}
-          className="plate w-full rounded-sm border border-rock-600 px-3 py-1.5 text-[13px] text-chalk hover:bg-rock-700 disabled:opacity-50"
-        >
-          {create.isPending ? 'Creating…' : 'New synthetic mine'}
-        </button>
-      </Disclosure>
-
-      <Disclosure
-        label="Saved scenarios"
-        hint={list.isSuccess ? String(list.data.length) : undefined}
-      >
-        {list.isSuccess && list.data.length > 0 ? (
-          <div className="mt-3">
-            <span className="mb-1 block text-[11px] text-chalk-dim">Saved scenarios</span>
-            <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto">
-              {list.data.map((s) => (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => load.mutate(s.id)}
-                    className={[
-                      'flex w-full items-center justify-between rounded-sm px-2 py-1 text-left hover:bg-rock-700/60',
-                      scenario?.id === s.id ? 'bg-rock-700 text-chalk' : 'text-chalk-dim',
-                    ].join(' ')}
-                  >
-                    <span className="truncate">{s.name}</span>
-                    <span className="readout text-[10px] text-mute">#{s.seed}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
           </div>
-        ) : null}
-      </Disclosure>
-
-      <div className="mt-3 border-t border-rock-700 pt-2">
-        <label className="mb-1 block text-[11px] uppercase tracking-wide text-mute">
-          Export
-          <select
-            data-testid="export-target-select"
-            className={`${input} mt-1`}
-            value={exportTarget}
-            disabled={!scenario || exportPackage.isPending}
-            onChange={(e) => setExportTarget(e.target.value as ExportTargetKey)}
+          {draft ? (
+            <>
+              <div className="readout mb-2 rounded-sm border border-rock-700 bg-rock-900/60 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
+                {realizedSummary(draft).map((line) => (
+                  <div key={line}>{line}</div>
+                ))}
+                <div className="mt-1 text-mute">
+                  {realized && JSON.stringify(draft) !== JSON.stringify(realized)
+                    ? 'Edited — your values will be persisted as-is.'
+                    : 'Same seed always reproduces this exact mine.'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen((v) => !v)}
+                className="mb-2 w-full rounded-sm border border-rock-700 px-2 py-1 text-left text-[11px] text-chalk-dim hover:bg-rock-800"
+              >
+                {advancedOpen ? '▾' : '▸'} Advanced
+              </button>
+              {advancedOpen ? <AdvancedScenarioEditor draft={draft} onChange={setDraft} /> : null}
+            </>
+          ) : null}
+          <ActionButton
+            variant={createVariant}
+            disabled={busy}
+            onClick={() => create.mutate()}
+            title="Persist the reviewed scenario and generate its world in one step"
           >
-            {exportTargets.map((t) => (
-              <option key={t.key} value={t.key}>
-                {t.label} — {t.description}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="mb-1 text-[11px] text-chalk-dim" data-testid="export-target-reason">
-          {selectedTarget?.description}
-          {selectedTarget && !selectedTarget.enabled ? ` · ${selectedTarget.reason}` : ''}
-        </p>
-        <ActionButton
-          variant="secondary"
-          disabled={!scenario || !scene || !selectedTarget?.enabled || exportPackage.isPending}
-          title={
-            exportTarget === 'MINE_EXCHANGE'
-              ? 'Download the MineExchange bundle of the currently available mine state (a world-only export is valid; missing layers are recorded in the manifest)'
-              : `${selectedTarget?.label ?? ''} package built on the backend from the MineExchange bundle; adapter_manifest.json records sources, assumptions and omissions. ${selectedTarget?.reason ?? ''}`
-          }
-          onClick={() => exportPackage.mutate()}
-        >
-          {exportPackage.isPending
-            ? 'Preparing export…'
-            : `Export ${selectedTarget?.label ?? 'MineExchange'} (.zip)`}
-        </ActionButton>
-        <Disclosure
-          label="Export contents"
-          hint={
-            exportLayers.length > 0
-              ? `${String(exportLayers.filter((l) => l.state === 'INCLUDED').length)} / ${String(exportLayers.length)}`
-              : undefined
-          }
-        >
-          <ExportContents layers={exportLayers} />
-        </Disclosure>
-      </div>
-    </PanelSection>
+            {create.isPending ? 'Creating mine…' : 'Create mine'}
+          </ActionButton>
+          {scenario ? (
+            <div className="mt-1.5">
+              <ActionButton
+                variant={worldVariant}
+                disabled={busy}
+                onClick={() => generate.mutate()}
+                title="Regenerate the world of the loaded scenario from its persisted document (same seed, same world)"
+              >
+                {generate.isPending
+                  ? 'Generating world…'
+                  : scene
+                    ? 'Regenerate world'
+                    : 'Generate world'}
+              </ActionButton>
+            </div>
+          ) : null}
+          {errorText ? (
+            <p role="alert" className="mt-2 text-[11px] text-danger">
+              {errorText}
+            </p>
+          ) : null}
+          <Disclosure
+            label="Saved mines"
+            hint={list.isSuccess ? String(list.data.length) : undefined}
+          >
+            {list.isSuccess && list.data.length > 0 ? (
+              <ul className="mt-1 flex max-h-40 flex-col gap-1 overflow-y-auto">
+                {list.data.map((s) => (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => load.mutate(s.id)}
+                      disabled={busy}
+                      className={[
+                        'flex w-full items-center justify-between rounded-sm px-2 py-1 text-left hover:bg-rock-700/60',
+                        scenario?.id === s.id ? 'bg-rock-700 text-chalk' : 'text-chalk-dim',
+                      ].join(' ')}
+                    >
+                      <span className="truncate">{s.name}</span>
+                      <span className="readout text-[10px] text-mute">#{s.seed}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-mute">No saved mines yet.</p>
+            )}
+          </Disclosure>
+        </div>
+      }
+      details={scenario ? <ParametersPanel scenario={scenario} /> : null}
+    />
   )
 }
 

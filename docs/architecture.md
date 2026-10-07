@@ -161,52 +161,107 @@ implements numerics.
 The frontend never computes mine engineering quantities
 (CLAUDE.md rule 17, 32).
 
-## UI information architecture (Phase 20E)
+## UI information architecture (hardening H1 — guided workflow shell)
 
-Top-level application modes (the `AppMode` enum is unchanged; the
-`INFRASTRUCTURE` value is labelled "Systems"):
+The Phase 20E consolidation (one card layout, ⓘ popovers, `StatusBadge` as a
+presentation mapping, tabs as presentation events) is inherited; the panel
+STRUCTURE is the guided workflow shell of rule 191:
 
-    Design | Systems | 4D | Walkthrough | Analysis
+    ┌ MineGen-AI · File ▾ · 1 Setup · 2 Design · 3 Network · 4 Mining · 5 Systems · 6 Analysis · 7 Export ┐
+    │ [Scenario ✓][Method ✓] │ [Layout ●][Levels ○][Excavation ○][Shafts –] │ …   ← stepper          │
+    ├────────────┬───────────────────────────────────────┬─────────────────────────────────────────┤
+    │ CONTROLS   │  3D / 4D / Walk viewport (switcher)   │ STATUS & RESULTS — the current step's   │
+    │ one stage  │  Analysis: centre workspace           │ stage statuses · key metrics ·          │
+    │ one primary│                                       │ failureReason · Details ▸               │
+    │ Reset from │                                       ├─────────────────────────────────────────┤
+    │ here…      │                                       │ VIEW: presets · Visibility tree · slice │
+    ├────────────┴───────────────────────────────────────┴─────────────────────────────────────────┤
+    │ status bar: World · Ramp · Levels · Network · Timeline │ 4D control (4D view only)          │
+    └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
-Left panel:
+Vocabulary (`types/workflow.ts`): a STEP is a ribbon entry, a STAGE is a
+stepper chip and the unit of "Reset from here"; both are frontend-local
+viewer state (`viewerStore.stage`), never persisted. The pure model lives in
+`components/layout/workflow.ts` (`WORKFLOW_STEPS`, `stageStatuses` — exactly
+one NEXT stage, glyphs read from the scene manifest, `entryStageOf`,
+`resetStageFor`, the stage → Design/Systems/Analysis tab mapping that keeps
+the panel containers' `view` / `active` contract). At most one stage is
+NEXT: Excavation waits for Levels, Analysis follows the last Systems stage
+and Export follows Analysis; when a FAILED stage blocks the chain no stage is
+NEXT and the failed stage is the focus. Analysis and Export own no artifact
+and are completed by the viewer (Analysis once opened, Export once a package
+was downloaded — `viewerStore.completedViewerStages`, cleared on every
+scenario transition); that completion counts only while their prerequisite
+chain is done. The completion is bound to the SCENE REVISION it was made
+on (`scenarioStore.sceneRevision`, advanced by every accepted scene write —
+a transition, a re-read, a partial artifact update, a reset): a completion
+of another revision counts for nothing (`completedStagesFor`), so a reset or
+regeneration never revives an old Analysis ✓ / Export ✓. Analysis completes
+only when its centre workspace is actually SHOWN (`AnalysisCenter` mounted
+over a scene), never by the stage click — opening the stage from a 4D / Walk
+view leaves that view explicitly — and Export completes for the revision the
+downloaded package was exported from (read from the store when the request
+is sent). The revision moves only when the scene actually changes: an
+`applyScene` updater that keeps the scene object is revision-neutral, and a
+terminal job record is never refetched on window focus / reconnect / remount
+(`useJobPoll` and the layout poll read by interval only, `staleTime:
+Infinity`) — measured in the browser e2e, the download's focus change used
+to refetch the finished mesh jobs, re-apply their identical results as new
+scene revisions and drop the completions just made. A stage that hosts several cards
+(Excavation) aggregates the tones its mounted cards report per card instance
+— RUNNING wins (`shellStore.stageTone`).
 
-    Scenario                     summary + ⓘ, Details / New scenario /
-                                 Saved scenarios disclosures, MineExchange
-                                 export and its current-contents readout
-    workflow tabs                Design:  Layout → Develop → Network → Mining
-                                 Systems: Communication | Sensors
-    Layers                       viewer control, always reachable, collapsed
-                                 by default (SliceControls stays mounted)
+| Step | Stages | Cards (controls → results) |
+| --- | --- | --- |
+| 1 Setup | Scenario, Method | Scenario (`SetupPanel`: **Create mine** = create + generate world, Randomize / Advanced secondary, saved mines in Details and under File › Open), Mining method (confirmation lists `reset-plan?from=WORLD`) |
+| 2 Design | Layout, Levels, Excavation, Shafts | Mine layout ("Option n" rows, Select / Activate; id and scores in Details), Design assessment (results only), Level development, Ramp tunnel mesh → Development mesh (one primary: the ramp mesh first), Shafts (optional while no spec is declared) |
+| 3 Network | Network, Capability | Mine network, Capabilities |
+| 4 Mining | Production, Schedule | Production (method-generic), Schedule |
+| 5 Systems | Communication, Sensors | Communication, Sensors |
+| 6 Analysis | Analysis | the Analysis workspace (Overview / Economics / Rules / Layout comparison / Simulation Results tabs) rendered full-window in the centre |
+| 7 Export | Export | Export (`ExportPanel`: target selector + one download; also File › Export) |
 
-Design tab contents:
+Column plumbing: every feature panel stays MOUNTED in the left column's
+panel container exactly as before (one container, one set of hooks each).
+A `WorkflowCard` that declares its `stage` renders its ACTION (title, ⓘ,
+notice, action, progress) into the controls host when its stage is current
+and its STATUS half (badge, key metrics, failure, Details) into the results
+host when its stage belongs to the current step — portals through
+`CardLayoutContext` (`components/ui/cardLayout.ts`, hosts in
+`components/layout/shellStore.ts`); without the context (tests, static
+markup) the card renders whole. Mounted cards report their badge tone to
+the shell store so the stepper can show ↻ for a running job (withdrawn on
+unmount — never a second status source). Inline notices of a stage
+(`StageSlot`) follow the same rule.
 
-| Tab | Cards |
-| --- | --- |
-| Layout | Mine layout (candidates, selection, activation), Design assessment, Legacy decline (Hybrid-A\*) — Advanced |
-| Develop | Level development, Development mesh, Ramp tunnel mesh, Shafts |
-| Network | Mine network, Capabilities (two separate cards: geometry ≠ topology ≠ capability) |
-| Mining | Mining method (registry selector + explicit method parameters, Phase 21B/C — Apply = scenario PUT + world regeneration), Production (method-generic action), Schedule |
+The view switcher (`ViewSwitcher`) owns `3D | 4D | Walk`; Walk keeps the
+static / temporal readiness gate and the rule 111 entry capture, and leaving
+Walk returns to the view it was entered from (4D, or the 3D view of the
+current stage). The status bar (`BottomBar`) shows the artifact chips and
+hosts the 4D `TimelineControl` only in the 4D view. The VIEW panel
+(`ViewPanel`) holds the camera presets (Iso / Top / Fit — applied inside the
+Canvas by `scene/CameraPresets.tsx`), the Visibility tree (`LayerTree`,
+grouped World › Design › Network › Production › Systems › Results › Legacy)
+and the field-slice controls, which stay mounted while collapsed.
 
-Every card follows one layout: `title + ⓘ` and a status badge, then the key
-metrics, then the action, then `Details ▸`. Status, key metrics and any
-backend `failureReason` are ALWAYS visible; only detailed numbers move into
-`Details`, and only legacy / diagnostic controls move into `Advanced`.
-Technical explanations live in the ⓘ popover
-(`components/ui/InfoPopover.tsx`), never as paragraphs in the primary view,
-and an ⓘ never holds an action.
+"Reset from here" (`ResetFromHere`, rule 219) previews the backend plan,
+confirms with the `willDelete` list verbatim, deletes through the same
+closure and empties the named scene slots (`scene/artifactSlots.ts`), then
+re-reads the scene manifest. The frontend has no dependency graph.
 
-The primitives are `components/ui/`: `InfoPopover`, `PanelTabs`,
-`StatusBadge`, `Disclosure`, `ActionButton`, `MetricRow` / `Metrics` and the
-composing `WorkflowCard`, with the presentation mappings (`artifactTone`,
-`nextActionVariant`) in `presentation.ts` and the pure interaction rules in
-`interaction.ts`. `StatusBadge` is a PRESENTATION MAPPING of the backend
-artifact status — no new status vocabulary exists.
+Junction diagnosis (hardening H0 §3.4): `docs/findings/h0-3.4-junction-seam.md`
+records that the ACCESS-ONLY inner-shell panel disappears once levels succeed
+(§3.1) and that a residual floor-seam sliver + wall fragments remain at the
+RAMP_ACCESS opening (typed finding, handled before the PR-2 H2-SH commit).
 
-Tab identity is frontend-local viewer state (`viewerStore.designTab` /
-`systemsTab`): it is never persisted to a scenario, and switching a tab
-issues no request. Every panel stays MOUNTED for every tab and renders only
-in its own context (`active` / `view` props), so each job poll, query and
-effect keeps its pre-20E lifetime.
+Browser-acceptance note (hardening H1 §4.5, `backend/tests/test_shell_e2e.py`,
+marker `e2e` + `slow`): the flow runs in Playwright Chromium over a live
+backend + Vite dev server. `drei <Text>` (troika-three-text) resolves its
+fallback fonts from a CDN; when that request cannot complete, React commits
+in the whole page stall every other update (measured: a plain `useState`
+counter commits 2, 4 of 4 clicks next to one `<Text>`), so the test serves a
+hermetic resolver + a local TTF through a request route. That is a property
+of the sandbox, not of the shell; the production bundle is unchanged.
 
 ## Decline design (decision record)
 
@@ -327,6 +382,44 @@ go under `geology`, not at the scenario root.
   communication or sensors touches nothing upstream and none of the other
   siblings. Regenerating any stage deletes every downstream artifact
   (rules 64/67/68/74/79/86/92/98).
+- "Reset from here" (hardening H1 §4.4): the same registry closure, run on
+  request instead of after a write. `services/workflow_stages.py` is the
+  ONE stage → artifact table (WORLD · TARGETS · DECLINE · SMOOTH · LAYOUT ·
+  LEVELS · EXCAVATION · SHAFTS · NETWORK · CAPABILITY · PRODUCTION ·
+  SCHEDULE · COMMUNICATION · SENSORS) and `reset_plan(stage, source,
+  derived_dir)` is the ONE function: the stage's own artifacts plus
+  `invalidated_by(own, active source)`, filtered to the files present on
+  disk. `GET …/design/reset-plan?from=<stage>` returns that plan (read-only;
+  the confirm dialog lists `willDelete`); `DELETE …/design/stages/{stage}`
+  computes the same plan under the scenario lock and unlinks exactly it
+  (maximal loop, one OSError afterwards, like the write cascade), dropping
+  the in-memory caches keyed on the deleted artifacts. STALE / MALFORMED
+  artifacts are deleted without being read (a recovery path);
+  `ramp_source.json` is never a stage target (rule 162); WORLD is a
+  preview-only root (its reset is the scenario PUT / world regeneration,
+  rules 40 / 46 — `RESET_STAGE_NOT_DELETABLE`); a stage none of whose own
+  artifacts exist is `RESET_TARGET_NOT_GENERATED` (404). An unusable
+  `ramp_source.json` plans the UNION of both chains, never a guessed
+  LEGACY (AC-01F A7). A reset never races a job (PR #53 review B2): a job's
+  stale-input guard fingerprints its UPSTREAM inputs only (rule 60), so a
+  job already running when the reset deleted the artifact it is about to
+  publish would republish it — therefore the preview and the delete both
+  ask the job registry under the scenario lock (`JobService.running_job`,
+  the same predicate `submit` uses; the router passes it, the design
+  service stays independent of jobs) and answer 409 `RESET_JOB_RUNNING`
+  (`jobId`) while a QUEUED / RUNNING job exists, deleting nothing. The
+  DELETE also accepts the previewed `willDelete` the user confirmed
+  (`expectedWillDelete`): the plan recomputed under the lock must list
+  exactly it, otherwise 409 `RESET_PLAN_CHANGED` carries the fresh plan and
+  nothing is deleted. The frontend sends a stage id and the confirmed list,
+  disables the button while any mounted card reports a running job, re-reads
+  and re-shows the plan on `RESET_PLAN_CHANGED`, empties the scene slots
+  named in `deleted[]` (`scene/artifactSlots.ts`, a file → slot presentation
+  mapping); it carries no dependency graph beyond the two Effective-Ramp
+  identity halves of rule 169. The mining-method confirmation reads the
+  `from=WORLD` plan afresh on every opening (per-opening query key, no
+  cache) and enables Apply only once that read completed with no fetch in
+  flight.
 - Long-running work (rule 60): `services/job_service.py` — in-memory
   registry + 2-worker thread pool; one job per scenario at a time. Algorithms
   emit `ProgressEvent`s through a plain callback (`design/progress.py`);
@@ -841,13 +934,22 @@ RMR-like 0-100 index, not measured RMR. Navigation: PERSON is an
 inspection pace (4.0 walk / 7.0 run m/s); VEHICLE drives WHERE THE
 CAMERA LOOKS (A/D steer the camera yaw at a bounded 60 deg/s on top of
 IJKL — no hidden heading state); DRONE flies along the full camera
-direction (pitch flies), which makes ramp following natural. A level
-teleport select ("Go to…") jumps to the portal or any on-decline
-LEVEL_ENTRY station via the SAME deterministic spawn rules at the
-station chainage — in temporal snapshots the station list derives from
-the ACTIVE-prefix centerline, so beyond-frontier entries are never
-offered. The minimap gained a longitudinal CH-RL profile strip fed by
-the same ACTIVE-prefix chainage points.
+direction (pitch flies), which makes ramp following natural. A ramp
+teleport select ("Go to…") jumps to the portal or any ramp turnout via
+the SAME deterministic spawn rules at the station chainage. Hardening
+H0 §3.2: the authority is the backend `RAMP_JUNCTION.chainage` (network
+node); without a network the same chainage is read from the level
+accesses (`rampJunctionChainage`), and failing that from the Effective
+Ramp's own segment boundaries (rule 155 — a PARAMETRIC_V2 segment ends at
+its `rampJunction`, a LEGACY segment at the level entry on the ramp), so
+the list exists whatever the level development did. The old
+LEVEL_ENTRY-within-15-m test is gone: a layout-v2 level entry sits
+≥ 6 × tunnel width off the ramp at the end of its access branch and is a
+branch teleport (later scope), never a ramp station. In temporal
+snapshots the station list derives from the ACTIVE-prefix centerline, so
+beyond-frontier turnouts are never offered. The minimap gained a
+longitudinal CH-RL profile strip fed by the same ACTIVE-prefix chainage
+points.
 
 Deferred to Phase 17+: orebody/fault randomization, irregular orebody +
 regularized ramp patterns, third-person/truck view, true 3D minimap,
@@ -1104,6 +1206,31 @@ CONNECTION_POINT_INVALID. The generic level generator works from the
 bounding box, so an implicit body can own required levels without a
 section (reported `hasOrebodySection = false`, excluded from the
 serviceable set) — a documented discrepancy, not a second generator.
+
+Footwall-contact guard (hardening H0 §3.1, rule 141). The generator measures
+the top level from the bounding-box top — the HANGING-WALL top edge of a
+dipping slab — while the footwall top edge sits `thickness·cos(dip)` lower.
+A TABULAR level inside that band has ore above it and no footwall contact
+next to it: the legacy access targets reject it (`OUTSIDE_OREBODY_DIP_EXTENT`,
+`design.targets.has_footwall_contact`) and layout-v2 now applies the SAME
+function in `LevelSections` (`NO_FOOTWALL_CONTACT_AT_LEVEL`, excluded from
+the serviceable set). The catalogue's `requiredLevels[]` WIRE SHAPE is
+unchanged (`levelId / index / elevation / hasOrebodySection`; the guard moves
+only `serviceableLevelCount` and the candidates' level service) — the
+persisted layout-v2 contract under the AC-01G characterization freeze is not
+widened — and the typed reason, the down-dip `overshootM` and the dip-aware
+hint `minimumTopMiningMarginM = thickness·cos(dip)` are reported ONLY in
+`levels.json`. The level generator itself is untouched. `levels.json` reports every REQUIRED level without a
+development in `excludedLevels[]` (typed reason: the footwall guard, the
+section exclusion recorded by the catalogue, or `NO_LEVEL_ENTRY`) and the
+adjacent pairs that therefore carry no production in `unservedIntervals[]`
+(rules 76 / 195). Measured: RANDOM_TABULAR seed 42 (dip 61.6°, 24.9 m
+thick) — L01 overshoots by 2.12 m, every crosscut on it missed the slab by
+exactly that |sdf|; with the guard the layout serves L02–L13 (12 levels,
+SUCCESS). Golden census: RANDOM_TABULAR-101 / -105 / -106 overshoot 2.82 /
+7.14 / 1.68 m on L01 (the legacy chain already excluded them); every
+layout-v2 FULL_SUITE TABULAR case 0 (goldens unchanged). A
+`topMarginReference` option is a later, golden-changing item.
 
 Effective Ramp (rules 149–150): downstream builders take the ramp payload
 plus its owning artifact; `MineNetworkBuilder.build(..., geometry_artifact)`
@@ -1523,9 +1650,12 @@ teardown fingerprint check. Cached verification fixtures
 FULL re-derives cleanly — a mismatch is an explicit STALE VERIFICATION
 FIXTURE failure. Outputs: `backend/.verification/verification-summary.json`
 plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
-`verify-full.yml` (backend + frontend component jobs aggregated by the
-`Release Authority` job — the ONE CI release verdict, AC-01H); the original
-`ci.yml` was retired after same-revision equivalence was proven.
+`verify-full.yml` (backend + frontend + e2e component jobs aggregated by the
+`Release Authority` job — the ONE CI release verdict, AC-01H; the e2e
+component runs the guided-workflow browser test as a REQUIRED gate under
+`MINEGEN_E2E_REQUIRED=1`, since the backend runner skips it for lack of the
+frontend toolchain and a skip is not evidence — PR #53 review round 3); the
+original `ci.yml` was retired after same-revision equivalence was proven.
 
 ## Phase 23A — MineExchange Core v1 (rule 190)
 

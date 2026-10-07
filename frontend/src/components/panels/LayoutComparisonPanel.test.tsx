@@ -149,6 +149,7 @@ describe('Layout comparison — availability', () => {
 describe('Layout comparison inside the Analysis panel', () => {
   const props = (over: Partial<AnalysisPanelBodyProps>): AnalysisPanelBodyProps => ({
     view: 'LAYOUT_COMPARISON',
+    levels: null,
     scenarioId: 'scn-a',
     analysis: FULL,
     analysisError: null,

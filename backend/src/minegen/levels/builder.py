@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any, Literal
 
 import numpy as np
@@ -42,8 +43,19 @@ import numpy.typing as npt
 from minegen.core.models import Scenario
 from minegen.design.cost_field import DesignCostEvaluator
 from minegen.design.profile import boundary_points, build_profile, required_clearance
+from minegen.design.targets import (
+    footwall_contact_overshoot,
+    has_footwall_contact,
+    minimum_top_margin_for_footwall_contact,
+)
 from minegen.layout.families import build_footwall_track
-from minegen.layout.levels import LevelSections, required_levels
+from minegen.layout.levels import (
+    NO_FOOTWALL_CONTACT_AT_LEVEL,
+    NO_OREBODY_SECTION_AT_LEVEL,
+    LevelSections,
+    required_levels,
+    tabular_level_exclusion,
+)
 from minegen.layout.sections import (
     TRACE_RESAMPLE_SPACING,
     OffsetTrace,
@@ -55,11 +67,13 @@ from minegen.levels.models import (
     Development,
     DevelopmentKind,
     DevelopmentReport,
+    ExcludedLevel,
     ExcludedStation,
     LevelsMetrics,
     LevelsPayload,
     LevelSummary,
     ProductionDevelopment,
+    UnservedInterval,
 )
 from minegen.mining.methods.contracts import (
     ProductionAccessPattern,
@@ -316,16 +330,107 @@ class LevelDevelopmentBuilder:
 
     # -- build --------------------------------------------------------------- #
 
+    # -- required-level report (hardening H0 §3.1, rule 141) ---------------- #
+
+    def required_level_report(
+        self,
+        entries: list[LevelEntrySpec],
+        source_exclusion_reasons: dict[str, str] | None = None,
+    ) -> tuple[list[ExcludedLevel], list[UnservedInterval]]:
+        """Every REQUIRED level (the one rule 141 generator) that received no
+        level entry, with its typed reason, and the adjacent required-level
+        pairs that therefore carry no production interval.
+
+        The reason is decided here for a TABULAR body (the analytic
+        footwall-contact guard, ``tabular_level_exclusion`` — the same
+        judgement the layout-v2 serviceable set and the legacy targets
+        make); for any other body it is the ACTIVE source's recorded
+        exclusion (``source_exclusion_reasons``, derived from the catalogue's
+        ``requiredLevels[].hasOrebodySection`` — NO_OREBODY_SECTION_AT_LEVEL),
+        else ``NO_LEVEL_ENTRY``: the ramp source simply delivered no entry.
+        Nothing is dropped silently."""
+        sc = self.scenario
+        levels = required_levels(
+            self.orebody,
+            sc.mining.sublevel_interval,
+            sc.design.top_mining_margin,
+            sc.design.bottom_mining_margin,
+        )
+        developed = {e.level_id for e in entries}
+        source_reasons = source_exclusion_reasons or {}
+        excluded: list[ExcludedLevel] = []
+        for lv in levels:
+            if lv.level_id in developed:
+                continue
+            exc = (
+                tabular_level_exclusion(self.orebody, lv)
+                if isinstance(self.orebody, TabularOrebody)
+                else None
+            )
+            if exc is not None:
+                excluded.append(
+                    ExcludedLevel(
+                        level_id=lv.level_id,
+                        index=lv.index,
+                        elevation=lv.elevation,
+                        reason=NO_FOOTWALL_CONTACT_AT_LEVEL,
+                        overshoot_m=exc.overshoot_m,
+                        minimum_top_mining_margin_m=exc.minimum_top_mining_margin_m,
+                    )
+                )
+            elif not isinstance(self.orebody, TabularOrebody) and source_reasons.get(
+                lv.level_id
+            ) in (NO_OREBODY_SECTION_AT_LEVEL, NO_FOOTWALL_CONTACT_AT_LEVEL):
+                # READ ≠ TRUST: a TABULAR body is judged analytically above; the
+                # recorded reason is adopted only where no analytic guard exists
+                excluded.append(
+                    ExcludedLevel(
+                        level_id=lv.level_id,
+                        index=lv.index,
+                        elevation=lv.elevation,
+                        reason=source_reasons[lv.level_id],
+                    )
+                )
+            else:
+                excluded.append(
+                    ExcludedLevel(
+                        level_id=lv.level_id,
+                        index=lv.index,
+                        elevation=lv.elevation,
+                        reason="NO_LEVEL_ENTRY",
+                    )
+                )
+        by_id = {e.level_id: e for e in excluded}
+        unserved: list[UnservedInterval] = []
+        for upper, lower in pairwise(levels):
+            exc_lv = by_id.get(upper.level_id) or by_id.get(lower.level_id)
+            if exc_lv is None:
+                continue
+            unserved.append(
+                UnservedInterval(
+                    upper_level_id=upper.level_id,
+                    lower_level_id=lower.level_id,
+                    upper_elevation=upper.elevation,
+                    lower_elevation=lower.elevation,
+                    reason=exc_lv.reason,
+                )
+            )
+        return excluded, unserved
+
     def build(
         self,
         smoothed_payload: dict[str, Any],
         source_revision: str,
         entries: list[LevelEntrySpec] | None = None,
+        level_exclusion_reasons: dict[str, str] | None = None,
     ) -> LevelsPayload:
         """``entries`` are the authoritative LEVEL_ENTRY positions. They MUST
         be supplied for a PARAMETRIC_V2 ramp (its segment ends are ramp
         junctions, not level entries — rule 157); for a LEGACY ramp they
-        default to the Phase 05 segment ends."""
+        default to the Phase 05 segment ends. ``level_exclusion_reasons``
+        (level id → typed reason) is the active source's record of why a
+        required level has no entry, consulted only for non-TABULAR bodies
+        (see ``required_level_report``)."""
         smoothed_status = smoothed_payload.get("status")
         if smoothed_status not in CONSUMABLE_SMOOTHED_STATUSES:
             return _failed(
@@ -356,6 +461,13 @@ class LevelDevelopmentBuilder:
         if not entries:
             return _failed(source_revision, "no level entries to develop")
 
+        # hardening H0 §3.1 (rule 141): every required level is developed or
+        # reported — decided once, before dispatch, so both backbone
+        # contracts persist the same report
+        excluded_levels, unserved_intervals = self.required_level_report(
+            entries, level_exclusion_reasons
+        )
+
         # Phase 21A (rule 192): WHAT production development the method
         # requires is the plan's answer; WHERE it is built and whether it is
         # valid stays here
@@ -376,7 +488,15 @@ class LevelDevelopmentBuilder:
                     "trace anchors with straight rule 43 anchors — one selection "
                     "cannot carry two backbone contracts",
                 )
-            return self._build_curved(entries, source_revision, entry_source, production, pattern)
+            return self._build_curved(
+                entries,
+                source_revision,
+                entry_source,
+                production,
+                pattern,
+                excluded_levels,
+                unserved_intervals,
+            )
         if not isinstance(self.orebody, TabularOrebody):
             return _failed(
                 source_revision,
@@ -449,6 +569,22 @@ class LevelDevelopmentBuilder:
             if not any(abs(u_entry - s) <= WELD_TOLERANCE for s in breakpoints):
                 breakpoints = sorted([*breakpoints, u_entry])
             level_valid = True
+
+            # hardening H0 §3.1: an entry on a level without a footwall
+            # contact can never reach the slab — say so ONCE, typed, instead
+            # of leaving every station's terminal-sdf failure to explain it.
+            # The geometry below is still built so the artifact stays
+            # inspectable; the hard validation is unchanged.
+            z_entry = float(entry[2])
+            if not has_footwall_contact(ob, z_entry):
+                level_valid = False
+                fail(
+                    f"{level_id}: {NO_FOOTWALL_CONTACT_AT_LEVEL} — the footwall contact at "
+                    f"z = {z_entry:.2f} m lies {footwall_contact_overshoot(ob, z_entry):.3f} m "
+                    "down-dip beyond the orebody's dip extent (ore above the level, none next "
+                    f"to it); the top level has a footwall contact for topMiningMargin ≥ "
+                    f"{minimum_top_margin_for_footwall_contact(ob):.2f} m"
+                )
 
             # -- drift pieces (split at every breakpoint, rule 73) ---------- #
             piece_count = 0
@@ -590,6 +726,8 @@ class LevelDevelopmentBuilder:
             developments=developments,
             levels=summaries,
             metrics=metrics,
+            excluded_levels=excluded_levels,
+            unserved_intervals=unserved_intervals,
         )
 
     # -- curved section-trace development (Phase 20C.2A) --------------------- #
@@ -633,6 +771,8 @@ class LevelDevelopmentBuilder:
         entry_source: Literal["LEGACY_RAMP_SEGMENT", "LEVEL_ACCESS"],
         production: ProductionDevelopment,
         pattern: ProductionAccessPattern | None,
+        excluded_levels: list[ExcludedLevel],
+        unserved_intervals: list[UnservedInterval],
     ) -> LevelsPayload:
         """Level development along the curved SECTION_FOOTWALL_OFFSET_TRACE
         backbone (Phase 20C.2A A4). The offset trace is rebuilt
@@ -941,4 +1081,6 @@ class LevelDevelopmentBuilder:
             developments=developments,
             levels=summaries,
             metrics=metrics,
+            excluded_levels=excluded_levels,
+            unserved_intervals=unserved_intervals,
         )

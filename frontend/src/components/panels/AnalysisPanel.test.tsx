@@ -12,6 +12,7 @@ import {
   type AnalysisPanelBodyProps,
   ECONOMICS_NOT_CONFIGURED_TEXT,
 } from './AnalysisPanel'
+import type { LevelsPayload } from '@/types/scene'
 import { ANALYSIS_TABS } from './workflowTabs'
 
 function props(over: Partial<AnalysisPanelBodyProps> = {}): AnalysisPanelBodyProps {
@@ -21,6 +22,7 @@ function props(over: Partial<AnalysisPanelBodyProps> = {}): AnalysisPanelBodyPro
     analysis: FULL,
     analysisError: null,
     loading: false,
+    levels: null,
     assessment: null,
     assessmentError: null,
     assessmentLoading: false,
@@ -87,6 +89,47 @@ describe('Overview', () => {
     expect(html).toContain('57.5 m/kt')
     expect(html).toContain('Longhole Open Stoping')
     expect(html).not.toContain('Planning economics') // economics lives on its own tab
+  })
+
+  it('shows the level-coverage report of the levels artifact when levels are excluded (hardening H0 §3.1)', () => {
+    const levels: LevelsPayload = {
+      status: 'SUCCESS',
+      failureReason: null,
+      sourceRevision: 'r',
+      developments: [],
+      levels: [],
+      metrics: null,
+      excludedLevels: [
+        {
+          levelId: 'L01',
+          index: 0,
+          elevation: 105.5,
+          reason: 'NO_FOOTWALL_CONTACT_AT_LEVEL',
+          overshootM: 2.1206,
+          minimumTopMiningMarginM: 11.865,
+        },
+      ],
+      unservedIntervals: [
+        {
+          upperLevelId: 'L01',
+          lowerLevelId: 'L02',
+          upperElevation: 105.5,
+          lowerElevation: 80.5,
+          reason: 'NO_FOOTWALL_CONTACT_AT_LEVEL',
+        },
+      ],
+    }
+    const html = render({ levels })
+    expect(html).toContain('Level coverage')
+    expect(html).toContain(
+      'Top level L01 excluded — footwall contact above orebody top (2.12 m). Minimum topMiningMargin for L01: 11.87 m',
+    )
+    expect(html).toContain('No production interval L01–L02')
+    // nothing excluded → no card
+    expect(
+      render({ levels: { ...levels, excludedLevels: [], unservedIntervals: [] } }),
+    ).not.toContain('Level coverage')
+    expect(render()).not.toContain('Level coverage')
   })
 
   it('never uses resource / reserve vocabulary', () => {

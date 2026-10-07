@@ -1,14 +1,16 @@
 import { useMutation } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { api, ApiError } from '@/api/client'
 import { developmentMeshScope } from '@/components/panels/developmentMeshScope'
+import { levelCoverageLines } from '@/components/panels/levelCoverage'
 import { useJobPoll } from '@/components/panels/useJobPoll'
 import type { DesignTab } from '@/components/panels/workflowTabs'
 import { ActionButton } from '@/components/ui/ActionButton'
 import { artifactTone, nextActionVariant } from '@/components/ui/presentation'
 import { Metrics } from '@/components/ui/MetricRow'
-import { WorkflowCard } from '@/components/ui/WorkflowCard'
+import { StageSlot, WorkflowCard } from '@/components/ui/WorkflowCard'
+import { MethodChangeDialog } from '@/components/panels/MethodChangeDialog'
 import { MiningMethodCard } from '@/components/panels/MiningMethodCard'
 import {
   PRODUCTION_ACTION,
@@ -159,6 +161,19 @@ export function DesignPanel({ view }: { view: DesignTab }) {
   // is a pure function of the persisted document (rule 119), so the same seed
   // reproduces it — and a scene reload. The frontend submits explicit
   // parameters only (rule 124).
+  // hardening H1 §4.3: a method change on a mine with a world is confirmed
+  // first (the dialog lists the backend reset plan); the PUT runs on confirm
+  // review round 2 B1: every opening of the confirmation is a new attempt,
+  // so the dialog reads the reset plan afresh (never a cached answer)
+  const [pendingMethod, setPendingMethod] = useState<{
+    mining: MiningConfig
+    attempt: number
+  } | null>(null)
+  const methodAttempt = useRef(0)
+  const openMethodChange = (mining: MiningConfig) => {
+    methodAttempt.current += 1
+    setPendingMethod({ mining, attempt: methodAttempt.current })
+  }
   const applyMethod = useMutation({
     mutationFn: async (mining: MiningConfig) => {
       if (!scene || !scenarioDoc) throw new Error('load a scenario first')
@@ -259,81 +274,96 @@ export function DesignPanel({ view }: { view: DesignTab }) {
     message(generateTimeline.error)
 
   return (
-    <DesignPanelBody
-      view={view}
-      rampSource={rampSource}
-      candidateId={smoothed?.candidateId ?? null}
-      rampReady={rampReady}
-      levels={levels}
-      levelsPending={generateLevels.isPending}
-      levelsEnabled={rampReady && !generateLevels.isPending}
-      onGenerateLevels={() => generateLevels.mutate()}
-      developmentMesh={developmentMesh}
-      developmentMeshJob={devMeshJob.data ?? null}
-      developmentMeshBusy={generateDevelopmentMesh.isPending || devMeshRunning}
-      developmentMeshEnabled={
-        developmentMeshReady &&
-        !generateDevelopmentMesh.isPending &&
-        !devMeshRunning &&
-        !generateLevels.isPending
-      }
-      onGenerateDevelopmentMesh={() => generateDevelopmentMesh.mutate()}
-      tunnel={tunnel}
-      tunnelJob={tunnelJob.data ?? null}
-      tunnelBusy={generateTunnel.isPending || tunnelRunning}
-      tunnelEnabled={rampReady && !generateTunnel.isPending && !tunnelRunning}
-      onGenerateTunnel={() => generateTunnel.mutate()}
-      shafts={shafts}
-      shaftSpecCount={shaftSpecCount}
-      shaftsPending={generateShafts.isPending}
-      shaftsEnabled={levelsReady && !generateShafts.isPending && !generateLevels.isPending}
-      onGenerateShafts={() => generateShafts.mutate()}
-      network={network}
-      networkPending={generateNetwork.isPending}
-      networkEnabled={
-        rampReady && levelsReady && !generateNetwork.isPending && !generateLevels.isPending
-      }
-      onGenerateNetwork={() => generateNetwork.mutate()}
-      capabilityGraph={capabilityGraph}
-      capabilityPending={generateCapabilityGraph.isPending}
-      capabilityEnabled={
-        network !== null &&
-        network.status !== 'FAILED' &&
-        !generateCapabilityGraph.isPending &&
-        !generateNetwork.isPending
-      }
-      onGenerateCapabilityGraph={() => generateCapabilityGraph.mutate()}
-      miningMethod={miningMethod}
-      scenarioIdentity={`${scenarioDoc?.id ?? ''}:${epoch}`}
-      methodPending={applyMethod.isPending}
-      methodEnabled={scenarioDoc !== null && scene !== null && !applyMethod.isPending}
-      onApplyMethod={(mining) => applyMethod.mutate(mining)}
-      production={production}
-      productionPending={generateProduction.isPending}
-      productionEnabled={
-        levelsReady &&
-        miningMethod?.implementationStatus === 'IMPLEMENTED' &&
-        !generateProduction.isPending &&
-        !generateLevels.isPending &&
-        !applyMethod.isPending
-      }
-      onGenerateProduction={() => generateProduction.mutate()}
-      timeline={timeline}
-      timelinePending={generateTimeline.isPending}
-      timelineEnabled={
-        network !== null &&
-        network.status !== 'FAILED' &&
-        production !== null &&
-        production.status !== 'FAILED' &&
-        !generateTimeline.isPending &&
-        !generateProduction.isPending &&
-        !generateNetwork.isPending
-      }
-      onGenerateTimeline={() => generateTimeline.mutate()}
-      developError={developError}
-      networkError={networkError}
-      miningError={miningError}
-    />
+    <>
+      {scenarioDoc ? (
+        <MethodChangeDialog
+          scenarioId={scenarioDoc.id}
+          mining={pendingMethod?.mining ?? null}
+          attempt={pendingMethod?.attempt ?? 0}
+          hasWorld={scene !== null}
+          onCancel={() => setPendingMethod(null)}
+          onConfirm={(mining) => {
+            setPendingMethod(null)
+            applyMethod.mutate(mining)
+          }}
+        />
+      ) : null}
+      <DesignPanelBody
+        view={view}
+        rampSource={rampSource}
+        candidateId={smoothed?.candidateId ?? null}
+        rampReady={rampReady}
+        levels={levels}
+        levelsPending={generateLevels.isPending}
+        levelsEnabled={rampReady && !generateLevels.isPending}
+        onGenerateLevels={() => generateLevels.mutate()}
+        developmentMesh={developmentMesh}
+        developmentMeshJob={devMeshJob.data ?? null}
+        developmentMeshBusy={generateDevelopmentMesh.isPending || devMeshRunning}
+        developmentMeshEnabled={
+          developmentMeshReady &&
+          !generateDevelopmentMesh.isPending &&
+          !devMeshRunning &&
+          !generateLevels.isPending
+        }
+        onGenerateDevelopmentMesh={() => generateDevelopmentMesh.mutate()}
+        tunnel={tunnel}
+        tunnelJob={tunnelJob.data ?? null}
+        tunnelBusy={generateTunnel.isPending || tunnelRunning}
+        tunnelEnabled={rampReady && !generateTunnel.isPending && !tunnelRunning}
+        onGenerateTunnel={() => generateTunnel.mutate()}
+        shafts={shafts}
+        shaftSpecCount={shaftSpecCount}
+        shaftsPending={generateShafts.isPending}
+        shaftsEnabled={levelsReady && !generateShafts.isPending && !generateLevels.isPending}
+        onGenerateShafts={() => generateShafts.mutate()}
+        network={network}
+        networkPending={generateNetwork.isPending}
+        networkEnabled={
+          rampReady && levelsReady && !generateNetwork.isPending && !generateLevels.isPending
+        }
+        onGenerateNetwork={() => generateNetwork.mutate()}
+        capabilityGraph={capabilityGraph}
+        capabilityPending={generateCapabilityGraph.isPending}
+        capabilityEnabled={
+          network !== null &&
+          network.status !== 'FAILED' &&
+          !generateCapabilityGraph.isPending &&
+          !generateNetwork.isPending
+        }
+        onGenerateCapabilityGraph={() => generateCapabilityGraph.mutate()}
+        miningMethod={miningMethod}
+        scenarioIdentity={`${scenarioDoc?.id ?? ''}:${epoch}`}
+        methodPending={applyMethod.isPending}
+        methodEnabled={scenarioDoc !== null && scene !== null && !applyMethod.isPending}
+        onApplyMethod={(mining) => (scene ? openMethodChange(mining) : applyMethod.mutate(mining))}
+        production={production}
+        productionPending={generateProduction.isPending}
+        productionEnabled={
+          levelsReady &&
+          miningMethod?.implementationStatus === 'IMPLEMENTED' &&
+          !generateProduction.isPending &&
+          !generateLevels.isPending &&
+          !applyMethod.isPending
+        }
+        onGenerateProduction={() => generateProduction.mutate()}
+        timeline={timeline}
+        timelinePending={generateTimeline.isPending}
+        timelineEnabled={
+          network !== null &&
+          network.status !== 'FAILED' &&
+          production !== null &&
+          production.status !== 'FAILED' &&
+          !generateTimeline.isPending &&
+          !generateProduction.isPending &&
+          !generateNetwork.isPending
+        }
+        onGenerateTimeline={() => generateTimeline.mutate()}
+        developError={developError}
+        networkError={networkError}
+        miningError={miningError}
+      />
+    </>
   )
 }
 
@@ -447,10 +477,13 @@ function DevelopView(p: DesignPanelBodyProps) {
   const byKind = developmentMesh?.byKind ?? null
   return (
     <>
-      <NoDesignNotice rampReady={p.rampReady} />
-      <ErrorLine text={p.developError} />
+      <StageSlot stages={['LEVELS', 'EXCAVATION', 'SHAFTS']}>
+        <NoDesignNotice rampReady={p.rampReady} />
+        <ErrorLine text={p.developError} />
+      </StageSlot>
 
       <WorkflowCard
+        stage="LEVELS"
         title="Level development"
         tone={artifactTone(levels, p.levelsPending)}
         info="Drifts and crosscuts on each required level, anchored exactly at the level entry that the ramp's level access reaches. The backend owns the geometry; this panel echoes it."
@@ -462,6 +495,15 @@ function DevelopView(p: DesignPanelBodyProps) {
           ) : null
         }
         failure={levels && levels.status !== 'SUCCESS' ? levels.failureReason : null}
+        notice={
+          levelCoverageLines(levels).length > 0 ? (
+            <div data-testid="level-coverage">
+              {levelCoverageLines(levels).map((line) => (
+                <div key={line}>{line}</div>
+              ))}
+            </div>
+          ) : null
+        }
         action={
           <ActionButton
             variant={nextActionVariant(levels !== null, p.levelsEnabled)}
@@ -505,6 +547,7 @@ function DevelopView(p: DesignPanelBodyProps) {
       />
 
       <WorkflowCard
+        stage="EXCAVATION"
         title="Development mesh"
         tone={artifactTone(developmentMesh, p.developmentMeshBusy)}
         info="The excavation volume of the level access, drift and crosscut centerlines, swept with the same gravity-aligned profile as the ramp tunnel. Junction openings are typed local cuts; there is no general boolean union yet, so a neighbouring tube's inner wall can stay visible at a turnout."
@@ -531,7 +574,11 @@ function DevelopView(p: DesignPanelBodyProps) {
         }
         action={
           <ActionButton
-            variant={nextActionVariant(developmentMesh !== null, p.developmentMeshEnabled)}
+            variant={
+              tunnel === null
+                ? 'secondary'
+                : nextActionVariant(developmentMesh !== null, p.developmentMeshEnabled)
+            }
             disabled={!p.developmentMeshEnabled}
             onClick={p.onGenerateDevelopmentMesh}
           >
@@ -572,6 +619,7 @@ function DevelopView(p: DesignPanelBodyProps) {
       />
 
       <WorkflowCard
+        stage="EXCAVATION"
         title="Ramp tunnel mesh"
         tone={artifactTone(tunnel, p.tunnelBusy)}
         info="The ramp excavation volume: a closed tube swept along the validated ramp centerline with a gravity-aligned floor, so the profile never banks. Nominal volume is the profile area times the 3-D centerline length; the closed-mesh signed volume is computed separately as a quality check."
@@ -629,6 +677,7 @@ function DevelopView(p: DesignPanelBodyProps) {
       />
 
       <WorkflowCard
+        stage="SHAFTS"
         title="Shafts"
         tone={artifactTone(shafts, p.shaftsPending)}
         info="Optional vertical infrastructure declared in the scenario, never a ramp layout family. Each declared shaft gets a collar on the terrain, one station per required level welded onto an existing level node, and a sump bottom. The ramp always remains the mine's primary access."
@@ -721,10 +770,13 @@ function NetworkView(p: DesignPanelBodyProps) {
   const egress = capabilityGraph?.egressAdvisory ?? null
   return (
     <>
-      <NoDesignNotice rampReady={p.rampReady} />
-      <ErrorLine text={p.networkError} />
+      <StageSlot stages={['NETWORK', 'CAPABILITY']}>
+        <NoDesignNotice rampReady={p.rampReady} />
+        <ErrorLine text={p.networkError} />
+      </StageSlot>
 
       <WorkflowCard
+        stage="NETWORK"
         title="Mine network"
         tone={artifactTone(network, p.networkPending)}
         info="Where connections exist: the mine as a graph of portals, ramp junctions, level entries, junctions, stope accesses and shaft nodes, joined by ramp, level-access, drift, crosscut and shaft edges. It answers connectivity and surface-egress questions and is the topology the schedule and the infrastructure planning build on. It is rebuilt from the authoritative centerlines rather than incrementally patched."
@@ -786,6 +838,7 @@ function NetworkView(p: DesignPanelBodyProps) {
       />
 
       <WorkflowCard
+        stage="CAPABILITY"
         title="Capabilities"
         tone={artifactTone(capabilityGraph, p.capabilityPending)}
         info="What each connection MAY be used for — personnel, haulage, ventilation path, utilities, emergency egress — as typed tags over the network's node and edge ids. It is a separate layer from the network's geometry and topology, and it is never a capacity: tonnes per hour, people per hour, airflow and hoist cycles are not modelled. Dual egress is reported as a design advisory only, never as regulatory compliance."
@@ -861,8 +914,10 @@ function MiningView(p: DesignPanelBodyProps) {
     production && production.status === 'SUCCESS' ? productionSummary(production) : null
   return (
     <>
-      <NoDesignNotice rampReady={p.rampReady} />
-      <ErrorLine text={p.miningError} />
+      <StageSlot stages={['METHOD', 'PRODUCTION', 'SCHEDULE']}>
+        <NoDesignNotice rampReady={p.rampReady} />
+        <ErrorLine text={p.miningError} />
+      </StageSlot>
       {miningMethod ? (
         <MiningMethodCard
           identity={p.scenarioIdentity}
@@ -874,6 +929,7 @@ function MiningView(p: DesignPanelBodyProps) {
       ) : null}
 
       <WorkflowCard
+        stage="PRODUCTION"
         title="Production"
         tone={artifactTone(production, p.productionPending)}
         info="The planned production volumes of the scenario's mining method — longhole stopes between adjacent levels, Cut & Fill lifts of cuts with their 1:1 backfills, or Room & Pillar rooms (heading and benches) with retained pillars — as orebody-aligned prisms the backend generated from the level development. Volume, tonnes and the grade proxy are deterministic planning quantities — never resources, reserves, a feasibility grade or a geotechnical pillar design."
@@ -901,6 +957,7 @@ function MiningView(p: DesignPanelBodyProps) {
       />
 
       <WorkflowCard
+        stage="SCHEDULE"
         title="Schedule"
         tone={artifactTone(timeline, p.timelinePending)}
         info="An earliest-start baseline over a precedence-only task graph: each task starts when its dependencies end. There are no resource limits and no optimization, so it is a synthetic planning baseline — never a production forecast. It overlays temporal state on the existing geometry and owns no geometry itself."

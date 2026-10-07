@@ -86,6 +86,12 @@ from minegen.services.design_service import (
     UnsupportedOrebodyError,
 )
 from minegen.services.scenario_service import ScenarioNotFoundError
+from minegen.services.workflow_stages import (
+    ResetJobRunningError,
+    ResetPlanChangedError,
+    ResetStageNotDeletableError,
+    ResetTargetNotGeneratedError,
+)
 from minegen.services.world_service import WorldArtifactIncompatibleError
 
 __all__ = [
@@ -174,6 +180,12 @@ CODE_LADDER: Final[tuple[tuple[type[Exception], str], ...]] = (
     (ReadSnapshotChangedError, "READ_SNAPSHOT_CHANGED"),
     # Phase 22A (directive §9): two authoritative analysis sources disagree
     (AnalysisSourceInconsistentError, "ANALYSIS_SOURCE_INCONSISTENT"),
+    # hardening H1 §4.4: "Reset from here" (services/workflow_stages.py)
+    (ResetTargetNotGeneratedError, "RESET_TARGET_NOT_GENERATED"),
+    (ResetStageNotDeletableError, "RESET_STAGE_NOT_DELETABLE"),
+    # PR #53 review B2: a reset never races a running job / a stale preview
+    (ResetJobRunningError, "RESET_JOB_RUNNING"),
+    (ResetPlanChangedError, "RESET_PLAN_CHANGED"),
 )
 
 #: status + message per wire code, transcribed from the router bodies at HEAD
@@ -308,6 +320,18 @@ ERRORS: Final[dict[str, ErrorSpec]] = {
     "SCENE_ARTIFACT_INVALID": ErrorSpec(409, None, "AC-01F A14"),
     "READ_SNAPSHOT_CHANGED": ErrorSpec(409, None, "AC-01F A9"),
     "ANALYSIS_SOURCE_INCONSISTENT": ErrorSpec(409, None, "Phase 22A directive §9"),
+    "RESET_TARGET_NOT_GENERATED": ErrorSpec(
+        404, None, "hardening H1 §4.4 services/workflow_stages.py::ResetTargetNotGeneratedError"
+    ),
+    "RESET_STAGE_NOT_DELETABLE": ErrorSpec(
+        409, None, "hardening H1 §4.4 services/workflow_stages.py::ResetStageNotDeletableError"
+    ),
+    "RESET_JOB_RUNNING": ErrorSpec(
+        409, None, "PR #53 review B2 services/workflow_stages.py::ResetJobRunningError"
+    ),
+    "RESET_PLAN_CHANGED": ErrorSpec(
+        409, None, "PR #53 review B2 services/workflow_stages.py::ResetPlanChangedError"
+    ),
 }
 
 #: the per-router drift that stays (A6): a router row REPLACES the base row.
@@ -368,4 +392,7 @@ def guard(scenario_id: str, exc: Exception, *, router: str) -> HTTPException | N
         return error_response(
             spec.status, code, spec.detail(scenario_id, exc), artifacts=list(exc.failures)
         )
+    if isinstance(exc, ResetJobRunningError | ResetPlanChangedError):
+        # PR #53 review B2: the refusal names the job / carries the fresh plan
+        return error_response(spec.status, code, spec.detail(scenario_id, exc), **exc.wire_extras())
     return error_response(spec.status, code, spec.detail(scenario_id, exc))

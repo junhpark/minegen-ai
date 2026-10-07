@@ -740,17 +740,29 @@ export interface LayoutCandidateSummary {
   centerline?: { points: number[]; pointCount: number } | null
 }
 
+/**
+ * Why a REQUIRED level is not serviceable (rule 141, hardening H0 §3.1):
+ * the level plane misses the solid, or — TABULAR — its footwall contact lies
+ * beyond the slab's dip extent (ore above the level, none next to it).
+ * Backend-decided; the frontend only echoes it.
+ */
+export type LevelExclusionReason =
+  'NO_FOOTWALL_CONTACT_AT_LEVEL' | 'NO_OREBODY_SECTION_AT_LEVEL' | 'NO_LEVEL_ENTRY'
+
+export interface LayoutRequiredLevel {
+  levelId: string
+  index: number
+  elevation: number
+  /** the level plane cuts the solid (a level without footwall contact still has ore above it) */
+  hasOrebodySection: boolean
+}
+
 export interface LayoutV2Catalogue {
   layoutVersion: number
   status: 'SUCCESS' | 'NO_FEASIBLE_CANDIDATE'
   portal: [number, number, number]
   portalGenerated: boolean
-  requiredLevels: {
-    levelId: string
-    index: number
-    elevation: number
-    hasOrebodySection: boolean
-  }[]
+  requiredLevels: LayoutRequiredLevel[]
   serviceableLevelCount: number
   candidateCount: number
   feasibleCount: number
@@ -765,6 +777,46 @@ export interface LayoutV2Catalogue {
   performance: Record<string, number>
   searchConfig: Record<string, unknown>
   candidates: LayoutCandidateSummary[]
+}
+
+/**
+ * Hardening H1 §4.4 — "Reset from here". The workflow stage ids the backend
+ * owns (`services/workflow_stages.py`); the frontend sends a stage id and
+ * renders the backend's answer. WORLD is a preview-only root (a scenario PUT
+ * / world regeneration is its reset).
+ */
+export type WorkflowStage =
+  | 'WORLD'
+  | 'TARGETS'
+  | 'DECLINE'
+  | 'SMOOTH'
+  | 'LAYOUT'
+  | 'LEVELS'
+  | 'EXCAVATION'
+  | 'SHAFTS'
+  | 'NETWORK'
+  | 'CAPABILITY'
+  | 'PRODUCTION'
+  | 'SCHEDULE'
+  | 'COMMUNICATION'
+  | 'SENSORS'
+
+/** GET …/design/reset-plan?from=<stage>: what the DELETE would remove now */
+export interface ResetPlan {
+  from: WorkflowStage
+  activeSource: RampSource
+  stageArtifacts: string[]
+  present: boolean
+  /** derived file names, in deletion order — the confirm dialog lists these */
+  willDelete: string[]
+  closure: string[]
+}
+
+/** DELETE …/design/stages/{stage}: the files actually removed */
+export interface ResetResult {
+  from: WorkflowStage
+  activeSource: RampSource
+  deleted: string[]
 }
 
 /** GET …/design/ramp-source (rule 150): the explicit backend-owned source. */
@@ -1436,6 +1488,31 @@ export interface LevelsPayload {
     totalDriftLength3d: number
     totalCrosscutLength3d: number
   } | null
+  /**
+   * Hardening H0 §3.1: every REQUIRED level without a development, with its
+   * typed reason, and the production intervals that go with it (absent on
+   * pre-hardening artifacts; empty when every level is developed).
+   */
+  excludedLevels?: ExcludedLevel[]
+  unservedIntervals?: UnservedInterval[]
+}
+
+export interface ExcludedLevel {
+  levelId: string
+  index: number
+  elevation: number
+  reason: LevelExclusionReason
+  overshootM: number | null
+  minimumTopMiningMarginM: number | null
+}
+
+/** an adjacent required-level pair with no production between them (rules 76 / 195) */
+export interface UnservedInterval {
+  upperLevelId: string
+  lowerLevelId: string
+  upperElevation: number
+  lowerElevation: number
+  reason: LevelExclusionReason
 }
 
 /** Typed RESERVED simulation attributes: later phases fill these; until

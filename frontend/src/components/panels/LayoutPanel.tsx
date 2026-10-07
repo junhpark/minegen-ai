@@ -2,15 +2,15 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/api/client'
 import { JobProgress } from '@/components/panels/JobProgress'
-import { PanelSection } from '@/components/layout/PanelSection'
 import { assessmentKey } from '@/components/panels/assessmentKey'
 import { AlternativesTable, DesignAssessmentList } from '@/components/panels/DesignAssessment'
 import { compareCandidates } from '@/components/panels/layoutOrder'
+import { catalogueExcludedLines, catalogueLevelSummary } from '@/components/panels/levelCoverage'
 import { ActionButton } from '@/components/ui/ActionButton'
 import { artifactTone, nextActionVariant } from '@/components/ui/presentation'
 import { Disclosure } from '@/components/ui/Disclosure'
 import { Metrics } from '@/components/ui/MetricRow'
-import { StatusBadge } from '@/components/ui/StatusBadge'
+import { WorkflowCard } from '@/components/ui/WorkflowCard'
 import { afterLayoutActivate, afterLayoutRegen, afterLayoutSelect } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
@@ -60,6 +60,11 @@ export function LayoutPanel({ active = true }: { active?: boolean } = {}) {
     queryKey: ['job', 'layout', epoch, jobId],
     queryFn: () => api.getJob(jobId as string),
     enabled: jobId !== null,
+    // the interval is the only reader; a terminal record is never refetched
+    // (a refetch would re-apply the same catalogue as a new scene revision)
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     refetchInterval: (q) => {
       const s = q.state.data?.status
       return s === 'SUCCEEDED' || s === 'FAILED' ? false : 500
@@ -191,32 +196,8 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
 
   const layoutActive = active === 'LAYOUT_V2' && (rampSource?.available ?? false)
 
-  return (
-    <PanelSection
-      title="Mine layout"
-      info="Enumerates a finite declared grid of ramp families (spiral, longitudinal, switchback) from the authoritative portal, validates every delivered centerline against every required level, and ranks the feasible ones. Hard constraints stay hard: a violated constraint makes a candidate infeasible and is never turned into a score penalty. The Development / Geology / Geometry scores are planning comparators, not a cost estimate and not an optimality claim."
-      status={catalogue ? <StatusBadge tone={artifactTone(catalogue, running)} /> : null}
-    >
-      <div className="readout mb-2 text-[11px]" aria-label="current design">
-        <div className="flex justify-between">
-          <span className="text-mute">Current design</span>
-          <span className={layoutActive ? 'text-lamp' : 'text-chalk-dim'}>
-            {layoutActive
-              ? `Layout v2 · ${rampSource?.candidateId ?? '—'} (active)`
-              : active === 'LEGACY' && (rampSource?.available ?? false)
-                ? 'Legacy decline (Hybrid-A*) — advanced'
-                : 'none yet'}
-          </span>
-        </div>
-        {rampSource ? (
-          <div className="mt-1 text-mute">
-            {rampSource.available
-              ? `${rampSource.sourceKind ?? '—'} · ${String(rampSource.segmentCount)} segments · ${rampSource.owningArtifact}`
-              : 'generate candidates, then Select or Activate one to make it the design'}
-          </div>
-        ) : null}
-      </div>
-
+  const generateAction = (
+    <>
       <ActionButton
         variant={nextActionVariant(catalogue !== null, !(!scene || p.busy))}
         onClick={p.onGenerate}
@@ -228,53 +209,16 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
             ? 'Regenerate candidates'
             : 'Generate candidates'}
       </ActionButton>
-      {job && (running || job.status === 'FAILED') ? <JobProgress job={job} /> : null}
       {p.errorText ? (
         <p role="alert" className="mt-2 text-[11px] text-danger">
           {p.errorText}
         </p>
       ) : null}
-
       {catalogue ? (
         <div className="readout mt-2 text-[11px]">
-          <div className="flex justify-between text-chalk-dim">
-            <span className={catalogue.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
-              {catalogue.status === 'SUCCESS' ? 'SUCCESS' : 'NO FEASIBLE CANDIDATE'}
-            </span>
-            <span>
-              {catalogue.feasibleCount} feasible / {catalogue.candidateCount} enumerated
-            </span>
-          </div>
-          <div className="mt-1 text-mute">
-            {catalogue.serviceableLevelCount}/{catalogue.requiredLevels.length} levels with ore
-          </div>
-          <Disclosure label="Search details">
-            <Metrics
-              rows={[
-                {
-                  label: 'Clearance basis',
-                  value: `${catalogue.clearanceBasis}${
-                    catalogue.clearanceBasis !== 'EXACT'
-                      ? ` (−${catalogue.clearanceErrorBound.toFixed(1)} m)`
-                      : ''
-                  } ≥ ${catalogue.requiredClearance.toFixed(1)} m`,
-                },
-                { label: 'Access reach', value: `${catalogue.accessReach.toFixed(0)} m` },
-                {
-                  label: 'Search time',
-                  value: `${(catalogue.performance.totalSeconds ?? 0).toFixed(1)} s`,
-                },
-              ]}
-            />
-            <label className="mt-1 flex items-center gap-1 text-mute">
-              <input
-                type="checkbox"
-                checked={p.showAll}
-                onChange={(e) => p.onShowAll(e.target.checked)}
-              />
-              show infeasible candidates
-            </label>
-          </Disclosure>
+          {/* hardening H1 §4.3: candidates read "Option n" in rank order;
+              the candidate id, family parameters and scores stay in Details
+              (the enumeration itself is unchanged) */}
           <ul className="mt-1 max-h-56 overflow-y-auto" aria-label="layout candidates">
             {candidates.map((c) => (
               <li key={c.candidateId}>
@@ -282,14 +226,16 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
                   type="button"
                   onClick={() => p.onPick(c.candidateId)}
                   aria-pressed={picked === c.candidateId}
+                  data-candidate-id={c.candidateId}
                   className={`flex w-full flex-col py-0.5 text-left ${
                     picked === c.candidateId ? 'text-lamp' : 'text-chalk-dim'
                   }`}
                 >
                   <span className="flex w-full justify-between">
                     <span>
-                      {c.rank !== null ? `#${String(c.rank)} ` : ''}
-                      <span className="text-mute">{c.family}</span> {shortId(c)}
+                      {c.rank !== null ? `Option ${String(c.rank)} ` : ''}
+                      <span className="text-mute">{c.family}</span>
+                      {c.rank === null ? ` ${shortId(c)}` : ''}
                       {c.candidateId === catalogue.winnerId ? ' ★' : ''}
                       {c.candidateId === rampSource?.candidateId && active === 'LAYOUT_V2'
                         ? ' (active)'
@@ -323,15 +269,14 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
               </li>
             ))}
           </ul>
-          {picked ? (
-            /* §28: the per-candidate metric block is DETAIL — the ranked list
-               above already says which candidate wins and why */
-            <Disclosure label="Candidate details" hint={shortPick(catalogue, picked)}>
-              <CandidateDetail
-                candidate={catalogue.candidates.find((c) => c.candidateId === picked) ?? null}
-              />
-            </Disclosure>
-          ) : null}
+          <label className="mt-1 flex items-center gap-1 text-mute">
+            <input
+              type="checkbox"
+              checked={p.showAll}
+              onChange={(e) => p.onShowAll(e.target.checked)}
+            />
+            show infeasible candidates
+          </label>
           <div className="mt-2 flex gap-1">
             <button
               type="button"
@@ -345,9 +290,14 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
               type="button"
               disabled={!picked || p.busy || !isFeasible(catalogue, picked)}
               onClick={() => picked && p.onActivate(picked)}
-              className="plate flex-1 rounded-sm bg-lamp px-2 py-1 text-[12px] text-rock-950 hover:bg-lamp-deep hover:text-chalk disabled:cursor-not-allowed disabled:opacity-40"
+              data-variant={layoutActive ? 'secondary' : 'primary'}
+              className={`plate flex-1 rounded-sm px-2 py-1 text-[12px] disabled:cursor-not-allowed disabled:opacity-40 ${
+                layoutActive
+                  ? 'border border-lamp text-lamp hover:bg-lamp hover:text-rock-950'
+                  : 'bg-lamp text-rock-950 hover:bg-lamp-deep hover:text-chalk'
+              }`}
             >
-              {p.activating ? 'Activating…' : 'Activate as ramp source'}
+              {p.activating ? 'Activating…' : 'Activate'}
             </button>
           </div>
         </div>
@@ -357,20 +307,118 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
           for every orebody type.
         </p>
       )}
+    </>
+  )
+
+  return (
+    <>
+      <WorkflowCard
+        stage="LAYOUT"
+        title="Mine layout"
+        tone={artifactTone(catalogue, running)}
+        info="Enumerates a finite declared grid of ramp families (spiral, longitudinal, switchback) from the authoritative portal, validates every delivered centerline against every required level, and ranks the feasible ones. Hard constraints stay hard: a violated constraint makes a candidate infeasible and is never turned into a score penalty. The Development / Geology / Geometry scores are planning comparators, not a cost estimate and not an optimality claim."
+        summary={
+          <div aria-label="current design">
+            <div className="flex justify-between">
+              <span className="text-mute">Current design</span>
+              <span className={layoutActive ? 'text-lamp' : 'text-chalk-dim'}>
+                {layoutActive
+                  ? `Layout v2 · ${rampSource?.candidateId ?? '—'} (active)`
+                  : active === 'LEGACY' && (rampSource?.available ?? false)
+                    ? 'Legacy decline (Hybrid-A*) — advanced'
+                    : 'none yet'}
+              </span>
+            </div>
+            {rampSource ? (
+              <div className="mt-1 text-mute">
+                {rampSource.available
+                  ? `${rampSource.sourceKind ?? '—'} · ${String(rampSource.segmentCount)} segments · ${rampSource.owningArtifact}`
+                  : 'generate candidates, then Select or Activate one to make it the design'}
+              </div>
+            ) : null}
+            {catalogue ? (
+              <>
+                <div className="mt-1 flex justify-between text-chalk-dim">
+                  <span className={catalogue.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
+                    {catalogue.status === 'SUCCESS' ? 'SUCCESS' : 'NO FEASIBLE CANDIDATE'}
+                  </span>
+                  <span>
+                    {catalogue.feasibleCount} feasible / {catalogue.candidateCount} enumerated
+                  </span>
+                </div>
+                <div className="mt-1 text-mute">{catalogueLevelSummary(catalogue)}</div>
+                {catalogueExcludedLines(catalogue).map((line) => (
+                  <div
+                    key={line}
+                    className="mt-0.5 text-[11px] text-chalk-dim"
+                    data-testid="level-excluded"
+                  >
+                    {line}
+                  </div>
+                ))}
+              </>
+            ) : null}
+          </div>
+        }
+        action={generateAction}
+        progress={job && (running || job.status === 'FAILED') ? <JobProgress job={job} /> : null}
+        details={
+          catalogue ? (
+            <>
+              <Metrics
+                rows={[
+                  {
+                    label: 'Clearance basis',
+                    value: `${catalogue.clearanceBasis}${
+                      catalogue.clearanceBasis !== 'EXACT'
+                        ? ` (−${catalogue.clearanceErrorBound.toFixed(1)} m)`
+                        : ''
+                    } ≥ ${catalogue.requiredClearance.toFixed(1)} m`,
+                  },
+                  { label: 'Access reach', value: `${catalogue.accessReach.toFixed(0)} m` },
+                  {
+                    label: 'Search time',
+                    value: `${(catalogue.performance.totalSeconds ?? 0).toFixed(1)} s`,
+                  },
+                ]}
+              />
+              {picked ? (
+                <Disclosure label="Candidate details" hint={shortPick(catalogue, picked)}>
+                  <CandidateDetail
+                    candidate={catalogue.candidates.find((c) => c.candidateId === picked) ?? null}
+                  />
+                </Disclosure>
+              ) : null}
+            </>
+          ) : null
+        }
+        detailsLabel="Search details"
+      />
       {/* Phase 20D.3 (PR #43 correction): the assessment is shown for EVERY
           design — a LEGACY-only scene keeps its generic network / capability
           / egress checks; a catalogue is not a prerequisite */}
-      {p.assessment ? (
-        <>
-          <DesignAssessmentList assessment={p.assessment} />
-          <AlternativesTable assessment={p.assessment} />
-        </>
-      ) : p.assessmentError ? (
-        <div className="mt-2 text-[11px] text-mute" aria-label="design assessment unavailable">
-          design assessment unavailable — {p.assessmentError}
-        </div>
+      {p.assessment || p.assessmentError ? (
+        <WorkflowCard
+          stage="LAYOUT"
+          title="Design assessment"
+          tone={p.assessment ? 'READY' : 'NOT_GENERATED'}
+          statusLabel={p.assessment ? 'Read-only' : 'Unavailable'}
+          info="A read-only projection of the persisted design: the layout ranking, the selection, the active ramp source and the capability graph as typed engineering checks and a candidate comparison. It never creates geometry, changes feasibility or re-ranks. Dual egress is a design advisory, not a statutory compliance determination."
+          summary={
+            p.assessment ? (
+              <>
+                <DesignAssessmentList assessment={p.assessment} />
+                <AlternativesTable assessment={p.assessment} />
+              </>
+            ) : (
+              <span aria-label="design assessment unavailable">
+                design assessment unavailable — {p.assessmentError}
+              </span>
+            )
+          }
+        />
       ) : null}
-    </PanelSection>
+    </>
   )
 }
 

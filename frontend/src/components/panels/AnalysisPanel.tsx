@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '@/api/client'
 import { InfoPopover } from '@/components/ui/InfoPopover'
 import { Metrics } from '@/components/ui/MetricRow'
+import { artifactTone } from '@/components/ui/presentation'
 import { WorkflowCard } from '@/components/ui/WorkflowCard'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import type {
@@ -11,7 +12,7 @@ import type {
   MineAnalysisPayload,
   ProductionDetail,
 } from '@/types/analysis'
-import type { DesignAssessmentPayload } from '@/types/scene'
+import type { DesignAssessmentPayload, LevelsPayload } from '@/types/scene'
 import {
   AVAILABILITY_LABEL,
   availabilityTone,
@@ -30,6 +31,7 @@ import { assessmentKey } from './assessmentKey'
 import { CashflowTable } from './CashflowTable'
 import { EconomicsConfigEditor } from './EconomicsConfigEditor'
 import { economicsIdentity } from './economicsDraft'
+import { levelCoverageLines } from './levelCoverage'
 import { LayoutComparisonBody } from './LayoutComparisonPanel'
 import { RulebookBody } from './RulebookPanel'
 import type { AnalysisTab } from './workflowTabs'
@@ -110,6 +112,7 @@ export function AnalysisPanel({ view }: { view: AnalysisTab }) {
       analysis={analysis.data ?? null}
       analysisError={errorText(analysis.error)}
       loading={analysis.isPending && scenarioId !== null}
+      levels={scene?.levels ?? null}
       assessment={assessment.data ?? null}
       assessmentError={errorText(assessment.error)}
       assessmentLoading={assessment.isPending && scene !== null}
@@ -132,6 +135,8 @@ export interface AnalysisPanelBodyProps {
   analysis: MineAnalysisPayload | null
   analysisError: string | null
   loading: boolean
+  /** the scene's levels.json — its level-coverage report is shown on Overview (hardening H0 §3.1) */
+  levels: LevelsPayload | null
   assessment: DesignAssessmentPayload | null
   assessmentError: string | null
   assessmentLoading: boolean
@@ -187,7 +192,7 @@ export function AnalysisPanelBody(p: AnalysisPanelBodyProps) {
     return <p className="px-4 py-3 text-[11px] text-mute">{p.loading ? 'Loading analysis…' : ''}</p>
   }
   return p.view === 'OVERVIEW' ? (
-    <OverviewCards analysis={p.analysis} />
+    <OverviewCards analysis={p.analysis} levels={p.levels} />
   ) : (
     <EconomicsCards {...p} analysis={p.analysis} />
   )
@@ -197,13 +202,38 @@ export function AnalysisPanelBody(p: AnalysisPanelBodyProps) {
 // Overview
 // --------------------------------------------------------------------------- //
 
-function OverviewCards({ analysis }: { analysis: MineAnalysisPayload }) {
+function OverviewCards({
+  analysis,
+  levels,
+}: {
+  analysis: MineAnalysisPayload
+  levels: LevelsPayload | null
+}) {
   const dev = analysis.development
   const prod = analysis.production
   const sched = analysis.schedule
   const ratios = analysis.ratios
+  const coverage = levelCoverageLines(levels)
   return (
     <>
+      {coverage.length > 0 ? (
+        <WorkflowCard
+          title="Level coverage"
+          tone={artifactTone(levels, false)}
+          statusLabel="Levels excluded"
+          info="Required levels the level development did not receive, as reported by the backend level artifact (rule 141): a TABULAR level above the footwall's top edge has ore above it but no footwall contact next to it, so no drift or crosscut can reach the slab there; the production interval below it is unserved. The dip-aware hint is the top mining margin that would give every level a footwall contact."
+          summary={<span data-testid="level-coverage-summary">{coverage[0]}</span>}
+          details={
+            coverage.length > 1 ? (
+              <div className="flex flex-col gap-y-0.5 text-chalk-dim">
+                {coverage.slice(1).map((line) => (
+                  <div key={line}>{line}</div>
+                ))}
+              </div>
+            ) : null
+          }
+        />
+      ) : null}
       <WorkflowCard
         title="Development"
         tone={availabilityTone(dev.availability)}

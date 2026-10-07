@@ -30,6 +30,7 @@ export function ActionButton({ variant, onClick, disabled = false, title, childr
       onClick={onClick}
       disabled={disabled}
       title={title}
+      data-variant={variant}
       className={`plate w-full rounded-sm px-3 py-1.5 text-[13px] disabled:cursor-not-allowed disabled:opacity-40 ${STYLE[variant]}`}
     >
       {children}

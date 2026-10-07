@@ -1031,7 +1031,26 @@ code, the code and the rule win and the map is corrected.
      section at its elevation (conservative bounding box of an implicit body)
      is reported (`hasOrebodySection = false`, NO_OREBODY_SECTION_AT_LEVEL)
      and excluded from the serviceable set, never silently dropped or
-     re-derived.
+     re-derived. Serviceable = orebody section exists AND a footwall contact
+     exists (hardening H0 §3.1): for a TABULAR body the rule 43 footwall
+     line at `z_level` must meet the body, `|footwall_contact_v_coord| <=
+     half_height` (`design/targets.py::has_footwall_contact`, the legacy
+     chain's own guard); otherwise the level is
+     NO_FOOTWALL_CONTACT_AT_LEVEL with `overshootM = |v| − half_height` and
+     `minimumTopMiningMarginM = thickness·cos(dip)` (the smallest
+     `top_mining_margin` that restores contact). The layout-v2 catalogue's
+     `requiredLevels[]` WIRE SHAPE is unchanged (`levelId / index /
+     elevation / hasOrebodySection`; the guard moves only
+     `serviceableLevelCount` and the candidates' level service — the
+     persisted layout_v2 contract under the AC-01G characterization freeze
+     is never widened by a hardening change); the typed reason, overshoot
+     and hint are reported ONLY in `levels.json` (`excludedLevels[]`,
+     `unservedIntervals[]`). The level builder re-derives the TABULAR
+     exclusion analytically with the same helper (READ ≠ TRUST — the
+     catalogue's `hasOrebodySection == false` is adopted only as the
+     non-TABULAR section exclusion) and fails typed when asked to develop
+     an excluded level. Changing a margin is the user's explicit edit, never a
+     silent clamp.
 142. Finite declared enumeration. Layout-v2 candidates come only from the
      typed `scenario.layout` grids (SPIRAL, LONGITUDINAL, SWITCHBACK ×
      target gradients) in a frozen order (family order, then declared
@@ -1609,6 +1628,13 @@ code, the code and the rule win and the map is corrected.
      VERIFICATION FIXTURE failure, never auto-rewritten. A FULL result is
      merge evidence only for the exact HEAD it ran on. Faster verification
      never changes a production threshold, golden expectation or hard gate.
+     The guided-workflow browser e2e (`tests/test_shell_e2e.py`) is a
+     REQUIRED release gate (`pytest-e2e`, `RELEASE_E2E_GATES`): the CI
+     `full-e2e` component runs it under `MINEGEN_E2E_REQUIRED=1`, where a
+     missing toolchain or browser FAILS instead of skipping and the gate
+     refuses a run that executed nothing or skipped anything — a skipped
+     e2e inside the unfiltered backend pytest is counted, never evidence,
+     and `Release Authority` needs all three components.
 
 182. Shaft = infrastructure primitive, never a layout family (Phase 20C.2B).
      `scenario.shafts.specs` declares explicit vertical shafts (empty =
@@ -1887,27 +1913,65 @@ code, the code and the rule win and the map is corrected.
      projection defect is a typed 409 MINE_EXCHANGE_EXPORT_FAILED, never a
      bare 500 or a silent null.
 
-191. UI consolidation is presentation only (Phase 20E). The left panel is
-     Scenario summary → workflow tabs → Layers: Design is
-     `Layout | Develop | Network | Mining`, Systems (the user-facing label
-     of the unchanged `INFRASTRUCTURE` mode) is
-     `Communication | Sensors`, and Layers stays reachable at the bottom,
-     collapsed. Every feature card reads `title + ⓘ` / status / key metrics
-     / action / `Details ▸`: the status, the key metrics and any backend
-     `failureReason` are ALWAYS visible, detailed result numbers live in
-     `Details`, technical explanations live in the ⓘ popover (never a
-     control inside it, never a hover-only tooltip) and only legacy or
-     diagnostic controls live in `Advanced`. Implementation-phase and rule
-     numbers stay in code and docs, never in user-facing copy. `StatusBadge`
-     is a PRESENTATION MAPPING of the backend artifact status and
-     introduces no new status vocabulary; a button's variant decides style
-     only and never its enabled condition. Switching a tab is a
-     presentation event: tab identity is frontend-local viewer state, is
-     never persisted to a scenario, and performs no generation, mutation,
-     regeneration or layer reset — every panel stays MOUNTED and renders
-     only in its own context, so each job poll, query and effect keeps its
-     lifetime. The API, DTOs, artifacts, invalidation chain, geometry and
-     goldens are untouched.
+191. Guided workflow shell (hardening H1 §4, replaces the Phase 20E left-
+     panel structure; its principles are inherited). ORDER IS THE SCREEN:
+     the ribbon lists the seven steps `1 Setup · 2 Design · 3 Network ·
+     4 Mining · 5 Systems · 6 Analysis · 7 Export`, the stepper under it
+     lists every stage (`Scenario · Method | Layout · Levels · Excavation ·
+     Shafts | Network · Capability | Production · Schedule | Communication
+     · Sensors | Analysis | Export`) with one glyph each (✓ done · ● next ·
+     ○ waiting · ✗ failed · ↻ running · – optional), and at most ONE stage
+     is NEXT: the first stage whose prerequisite is done (Excavation waits
+     for Levels; Analysis follows the last Systems stage and Export follows
+     Analysis, so the guided flow has no dead end); when a FAILED stage
+     blocks the chain no stage is NEXT and the failed stage is the focus.
+     Analysis and Export own no artifact and are completed by the viewer —
+     Analysis once its centre workspace was actually SHOWN (mounted over a
+     scene; a stage click alone never completes it, and opening it from a
+     4D / Walk view leaves that view explicitly), Export once a package was
+     downloaded — BOUND to the scene revision they were made on
+     (`scenarioStore.sceneRevision`, advanced by every accepted scene
+     write): a completion of another revision counts for nothing, so a
+     reset or regeneration never revives an old ✓; counted only while their
+     prerequisite chain is done. The glyph is a presentation of the
+     artifact the stage owns (`StatusBadge` semantics — the backend status,
+     no new vocabulary); a stage hosting several cards aggregates their
+     reported tones per card instance (RUNNING wins, no overwrite);
+     nothing in the shell decides whether an action is ENABLED, every
+     feature keeps its own prerequisite logic. Three panes: CONTROLS (left)
+     holds the current stage's parameters and its ONE primary action plus
+     "Reset from here"; STATUS & RESULTS (right) holds the current step's
+     stage statuses, key metrics, backend `failureReason` and `Details ▸`,
+     above the VIEW panel (camera presets, Visibility tree, field slice —
+     viewer-local) and the Inspector; the status bar holds the World ·
+     Ramp · Levels · Network · Timeline chips and the 4D control in the 4D
+     view. At most one enabled primary button exists in the DOM at any
+     time (`button[data-variant="primary"]`, e2e-asserted). `3D | 4D |
+     Walk` are VIEW modes of the viewport (a switcher over the canvas,
+     never ribbon steps; Walk keeps its readiness gate and its entry
+     semantics, rules 111–118); Analysis is a centre workspace, never a
+     column. Setup = Scenario ("Create mine" = create + world in one step;
+     Randomize and Advanced are secondary; saved mines under File › Open)
+     then Method (decided BEFORE the layout; a later change is the rule 40
+     scenario PUT behind a confirmation that lists the backend
+     `reset-plan?from=WORLD` verbatim). Layout candidates read "Option n"
+     in rank order; the candidate id, family parameters and scores stay in
+     Details (rule 142 enumeration unchanged). Export is reachable from the
+     ribbon AND File › Export — two paths, one implementation; File › Import
+     results opens Analysis › Simulation Results. Every staged card keeps
+     the `title + ⓘ` / status / key metrics / action / `Details ▸` layout:
+     status, key metrics and any backend `failureReason` are ALWAYS visible,
+     technical explanations live in the ⓘ popover (a portal with viewport
+     clamp, never a control inside it, never hover-only), only legacy or
+     diagnostic controls live in `Advanced`, and implementation-phase and
+     rule numbers stay out of user-facing copy. A stage change is a
+     presentation event: stage and tab identity are frontend-local viewer
+     state, never persisted to a scenario, and perform no generation,
+     mutation, regeneration or layer reset — every feature panel stays
+     MOUNTED in one container (its cards render into the two columns
+     through portals, `CardLayoutContext`), so each job poll, query and
+     effect keeps its lifetime. The API, DTOs, artifacts, invalidation
+     chain, geometry and goldens are untouched by the shell.
 
 192. Mining-method registry is the single dispatch authority (Phase 21A).
      `mining/methods/registry.py::plan_for(method)` resolves EVERY
@@ -2454,3 +2518,49 @@ code, the code and the rule win and the map is corrected.
      list on import / delete (no epoch bump, no scene reload), never shows
      results in the walkthrough and never invents a route, a value or a
      collider.
+219. Reset is a registry-closure deletion with ONE authority (hardening H1
+     §4.4). The backend artifact registry's `invalidated_by` closure
+     (`services/workflow_stages.py`: stage → owned artifacts) decides what
+     "Reset from here" removes; `GET …/design/reset-plan?from=<stage>` is
+     the read-only preview and `DELETE …/design/stages/<stage>` the
+     execution, both the output of the SAME function (`reset_plan` /
+     `reset_from`) under the per-scenario store lock, cache entries popped
+     with the files. STALE / MALFORMED artifacts are deletable (a recovery
+     path); `ramp_source.json` is the root and is never touched (rule 162);
+     a stage with no owned artifact is 404 RESET_TARGET_NOT_GENERATED and
+     a non-deletable stage (WORLD — the scenario document is regenerated,
+     not reset) is 409 RESET_STAGE_NOT_DELETABLE. A reset never races a
+     job: a job's stale-input guard fingerprints its UPSTREAM inputs only
+     (rule 60), never its own output, so the preview and the delete ask the
+     job registry under the same scenario lock (`JobService.running_job`,
+     the predicate `submit` uses; passed by the router, the design service
+     knows no jobs) and answer 409 RESET_JOB_RUNNING (`jobId`) while the
+     scenario has a QUEUED / RUNNING job — nothing deleted, the job never
+     cancelled. The DELETE accepts the previewed `willDelete` the user
+     confirmed (`expectedWillDelete`); a plan that differs under the lock is
+     409 RESET_PLAN_CHANGED with the fresh plan and nothing deleted. The
+     frontend has NO dependency graph of its own: it sends a stage id and
+     the confirmed list, disables the button while any mounted card reports
+     a running job, shows `willDelete` verbatim in the confirmation,
+     re-reads and re-shows the plan on RESET_PLAN_CHANGED, empties exactly
+     the scene slots the response's `deleted[]` names
+     (`scene/artifactSlots.ts`, a file → slot presentation mapping, never a
+     mirror closure), then re-reads the scene manifest;
+     `scene/invalidation.ts` keeps only the two Effective-Ramp identity
+     halves (rule 169). A mining-method change is the rule 40 scenario PUT,
+     not a reset — its confirmation displays the `from=WORLD` plan, read
+     afresh on every opening (per-opening query key, nothing cached), and
+     enables Apply only once that read completed with no fetch in flight.
+220. Walkthrough "Go To" authority is the ramp junction chainage
+     (hardening H0 §3.2, `walkthrough/teleport.ts`). Teleport targets are
+     the portal plus every main-ramp turnout, placed by backend chainage
+     in this explicit fallback order and never by position guessing:
+     NETWORK_RAMP_JUNCTION (`network.json` RAMP_JUNCTION nodes' ramp
+     chainage) → LEVEL_ACCESS_JUNCTION (`level_accesses.json`
+     `rampJunctionChainage`) → RAMP_SEGMENT_BOUNDARY (the effective ramp's
+     segment ends — the LEGACY level entries) → NONE (portal only). The
+     resolved authority is reported with the targets; a chainage outside
+     the walkable centerline extent is dropped, ids are deduplicated and
+     the list is sorted by chainage, so a failed level development never
+     hides a turnout that the ramp already has. Branch teleport stays later
+     scope (rule 187).

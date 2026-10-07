@@ -256,6 +256,7 @@ describe('RulebookBody', () => {
 describe('Rules tab inside the Analysis panel', () => {
   const props = (over: Partial<AnalysisPanelBodyProps>): AnalysisPanelBodyProps => ({
     view: 'RULES',
+    levels: null,
     scenarioId: 'scn-a',
     analysis: FULL,
     analysisError: null,

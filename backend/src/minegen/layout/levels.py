@@ -36,7 +36,13 @@ import numpy as np
 import numpy.typing as npt
 from scipy.spatial import cKDTree
 
-from minegen.design.targets import generate_level_elevations, level_id
+from minegen.design.targets import (
+    footwall_contact_overshoot,
+    generate_level_elevations,
+    has_footwall_contact,
+    level_id,
+    minimum_top_margin_for_footwall_contact,
+)
 from minegen.layout.sections import (
     FootwallTrace,
     LevelSectionGeometry,
@@ -48,12 +54,18 @@ from minegen.layout.sections import (
     build_section_geometry,
     validate_section_budgets,
 )
-from minegen.world.orebody import Orebody
+from minegen.world.orebody import Orebody, TabularOrebody
 
 FloatArray = npt.NDArray[np.float64]
 
 #: bisection depth of the access-distance refinement (2 m / 2^24 ≈ 0.1 µm)
 REFINEMENT_ITERATIONS = 24
+
+#: typed reasons a REQUIRED level is excluded from the SERVICEABLE set
+#: (rule 141). String constants, not the ``InfeasibleReason`` enum, because
+#: ``layout.families`` imports this module; the enum carries the same values.
+NO_OREBODY_SECTION_AT_LEVEL = "NO_OREBODY_SECTION_AT_LEVEL"
+NO_FOOTWALL_CONTACT_AT_LEVEL = "NO_FOOTWALL_CONTACT_AT_LEVEL"
 
 
 @dataclass(frozen=True)
@@ -61,6 +73,50 @@ class RequiredLevel:
     level_id: str
     index: int  # 0 = top
     elevation: float
+
+
+@dataclass(frozen=True)
+class LevelExclusion:
+    """Why a required level is NOT serviceable (rule 141, hardening H0 §3.1):
+    ``NO_OREBODY_SECTION_AT_LEVEL`` — the level plane misses the solid
+    (conservative bounding box of an implicit body); or
+    ``NO_FOOTWALL_CONTACT_AT_LEVEL`` — a TABULAR level with ore above it
+    but no footwall contact next to it (``overshoot_m`` down-dip metres
+    beyond the slab's up-dip edge; ``minimum_top_mining_margin_m`` =
+    ``thickness·cos(dip)``, the top margin that would give every level a
+    contact). Reported, never silently dropped."""
+
+    level_id: str
+    index: int
+    elevation: float
+    reason: str
+    overshoot_m: float | None = None
+    minimum_top_mining_margin_m: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "levelId": self.level_id,
+            "index": self.index,
+            "elevation": self.elevation,
+            "reason": self.reason,
+            "overshootM": self.overshoot_m,
+            "minimumTopMiningMarginM": self.minimum_top_mining_margin_m,
+        }
+
+
+def tabular_level_exclusion(orebody: TabularOrebody, level: RequiredLevel) -> LevelExclusion | None:
+    """The ONE TABULAR footwall-contact judgement (same guard as the legacy
+    access targets, ``design.targets.has_footwall_contact``)."""
+    if has_footwall_contact(orebody, level.elevation):
+        return None
+    return LevelExclusion(
+        level.level_id,
+        level.index,
+        level.elevation,
+        NO_FOOTWALL_CONTACT_AT_LEVEL,
+        overshoot_m=footwall_contact_overshoot(orebody, level.elevation),
+        minimum_top_mining_margin_m=minimum_top_margin_for_footwall_contact(orebody),
+    )
 
 
 def required_levels(
@@ -179,6 +235,19 @@ class LevelSections:
         self.sections: dict[str, LevelSection] = {
             lv.level_id: build_level_section(orebody, lv.elevation, spacing) for lv in levels
         }
+        # rule 141 serviceability, decided ONCE per level in level order: an
+        # empty section first (no ore on the plane at all), then — for a
+        # TABULAR body — the footwall-contact guard the legacy targets apply
+        self._exclusions: dict[str, LevelExclusion] = {}
+        for lv in levels:
+            if self.sections[lv.level_id].empty:
+                self._exclusions[lv.level_id] = LevelExclusion(
+                    lv.level_id, lv.index, lv.elevation, NO_OREBODY_SECTION_AT_LEVEL
+                )
+            elif isinstance(orebody, TabularOrebody):
+                exc = tabular_level_exclusion(orebody, lv)
+                if exc is not None:
+                    self._exclusions[lv.level_id] = exc
         self._geometry: dict[str, LevelSectionGeometry] = {}
         self._by_id: dict[str, RequiredLevel] = {lv.level_id: lv for lv in levels}
         # trace caches (Phase 20C.2A A2): typed failures are cached and
@@ -284,13 +353,28 @@ class LevelSections:
     def all_present(self) -> bool:
         return all(not s.empty for s in self.sections.values())
 
+    def exclusion(self, level: RequiredLevel) -> LevelExclusion | None:
+        """Why ``level`` is not serviceable, or ``None`` when it is."""
+        return self._exclusions.get(level.level_id)
+
+    def excluded(self) -> list[LevelExclusion]:
+        """Every excluded required level, in level order."""
+        return [
+            self._exclusions[lv.level_id] for lv in self.levels if lv.level_id in self._exclusions
+        ]
+
     def serviceable(self) -> list[RequiredLevel]:
-        """Required levels that actually intersect the orebody solid. The
-        generic elevation generator works from the bounding box, which is
+        """Required levels that can actually be served (rule 141).
+
+        The generic elevation generator works from the bounding box, which is
         CONSERVATIVE for implicit bodies (rule 138), so it can emit levels
-        above the real top / below the real bottom of a WARPED_VEIN. Such a
-        level has no ore to serve: it is reported
-        (``NO_OREBODY_SECTION_AT_LEVEL``) and excluded from the
-        all-levels-served requirement. For analytic bodies the box is exact
-        and every level is serviceable."""
-        return [lv for lv in self.levels if not self.section(lv).empty]
+        above the real top / below the real bottom of a WARPED_VEIN: no ore
+        on the plane at all (``NO_OREBODY_SECTION_AT_LEVEL``). For a TABULAR
+        body the box is exact and every level intersects the slab, but the
+        top level is measured from the HANGING-WALL top edge, so a level may
+        have ore above it and no footwall contact next to it
+        (``NO_FOOTWALL_CONTACT_AT_LEVEL`` — the same guard the legacy access
+        targets apply as ``OUTSIDE_OREBODY_DIP_EXTENT``). Either way the level
+        is reported through ``exclusion()`` / ``excluded()`` and left out of
+        the all-levels-served requirement, never silently dropped."""
+        return [lv for lv in self.levels if lv.level_id not in self._exclusions]

@@ -234,12 +234,20 @@ describe('LayoutPanel', () => {
   it('renders backend-authored candidate rows, scores and the winner mark', () => {
     const html = render(sceneWith({}))
     expect(html).toContain('2 feasible / 68 enumerated')
-    expect(html).toContain('1/2 levels with ore')
+    expect(html).toContain('1/2 levels serviceable')
+    expect(html).toContain('L02 excluded — no orebody section at this elevation')
     // Phase 20E §10: the clearance basis is a detail of the current result
     // and moved into the Search details disclosure — same backend values
     expect(html).toContain('Clearance basis')
     expect(html).toContain('COARSE_CONSERVATIVE (−10.8 m) ≥ 10.6 m')
-    expect(html).toContain('#1 ')
+    // hardening H1 §4.3: candidates read "Option n" in rank order; the id
+    // stays in the Candidate details (the enumeration is unchanged)
+    expect(html).toContain('Option 1 ')
+    expect(html).toContain('Option 2 ')
+    expect(html).not.toContain('#1 ')
+    const rows = html.slice(html.indexOf('aria-label="layout candidates"'), html.indexOf('Select'))
+    expect(rows).not.toContain('n1-CW-e+0-g0.120')
+    expect(html).toContain('>Activate<')
     expect(html).toContain('2.174')
     expect(html).toContain('D 1.23 · G 0.06 · M 0.88')
     expect(html).toContain('★')

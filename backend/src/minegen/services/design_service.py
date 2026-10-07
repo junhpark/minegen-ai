@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar
@@ -120,6 +121,14 @@ from minegen.services.effective_ramp import (
     write_ramp_source,
 )
 from minegen.services.scenario_service import ScenarioStore
+from minegen.services.workflow_stages import (
+    ResetJobRunningError,
+    ResetPlan,
+    ResetPlanChangedError,
+    ResetStageNotDeletableError,
+    ResetTargetNotGeneratedError,
+    reset_plan,
+)
 from minegen.services.world_service import WorldService
 from minegen.shafts.models import ShaftsPayload
 from minegen.shafts.planner import ShaftPlanner
@@ -249,6 +258,13 @@ def artifact_fingerprint(store: ScenarioStore, scenario_id: str, name: str) -> I
 
 
 _Model = TypeVar("_Model", bound=ApiModel)
+
+#: PR #53 review B2 — asked under the scenario lock by ``reset_plan`` /
+#: ``reset_from``: the id of the scenario's QUEUED / RUNNING job, or ``None``.
+#: The design service stays independent of the job registry (rule 60: the
+#: algorithms and services know nothing about jobs); the router passes
+#: ``JobService.running_job``.
+RunningJobProbe = Callable[[str], "str | None"]
 
 
 def _commit_mesh(commit_path: Path, report_revision: str, glb_revision: str | None) -> None:
@@ -1050,7 +1066,18 @@ class DesignService:
         entries = (
             entries_from_level_accesses(accesses_payload) if accesses_payload is not None else None
         )
-        payload = builder.build(smoothed_payload, source_revision, entries=entries)
+        # hardening H0 §3.1: under LAYOUT_V2 the catalogue records why a
+        # required level is not serviceable (rule 141); the builder reports
+        # every undeveloped required level with that typed reason
+        exclusion_reasons = (
+            self._catalogue_level_exclusions(scenario_id) if accesses_payload is not None else None
+        )
+        payload = builder.build(
+            smoothed_payload,
+            source_revision,
+            entries=entries,
+            level_exclusion_reasons=exclusion_reasons,
+        )
         serialized = json.dumps(payload.model_dump(mode="json", by_alias=True))
         with self.store.lock(scenario_id):
             if self.levels_fingerprint(scenario_id) != fingerprint:
@@ -1066,6 +1093,133 @@ class DesignService:
 
     def levels(self, scenario_id: str) -> LevelsPayload:
         return self._require_model(scenario_id, LEVELS_ARTIFACT, LevelsPayload)
+
+    # -- "Reset from here" (hardening H1 §4.4) --------------------------------- #
+
+    def _reset_plan_locked(self, scenario_id: str, stage: str) -> ResetPlan:
+        """The plan as observed NOW. The active ramp source gates the ramp
+        owners' edges exactly as the write cascade reads it
+        (``_invalidate_downstream``); an unusable ``ramp_source.json`` plans
+        the UNION of both closures — strictly more, never a guessed LEGACY."""
+        derived = self.store.derived_dir(scenario_id)
+        try:
+            return reset_plan(stage, read_ramp_source(self._reader, scenario_id), derived)
+        except (ArtifactMalformedError, OSError):
+            plans = [reset_plan(stage, candidate, derived) for candidate in RAMP_SOURCES]
+            union: dict[str, None] = {}
+            closure: dict[str, None] = {}
+            for plan in plans:
+                for name in plan.will_delete:
+                    union.setdefault(name, None)
+                for name in plan.closure:
+                    closure.setdefault(name, None)
+            first = plans[0]
+            return ResetPlan(
+                stage=first.stage,
+                active_source=first.active_source,
+                stage_artifacts=first.stage_artifacts,
+                present=first.present,
+                will_delete=tuple(union),
+                closure=tuple(closure),
+            )
+
+    @staticmethod
+    def _refuse_under_running_job(
+        scenario_id: str, stage: str, running_job: RunningJobProbe | None
+    ) -> None:
+        """PR #53 review B2: a reset never races a QUEUED / RUNNING job of the
+        scenario. The probe is asked under the scenario lock, which a job
+        must take to persist (rule 60): a job that is still non-terminal
+        here has NOT published yet and would republish over the reset, so
+        the reset is refused typed; a job that is terminal has published
+        already and its output is deleted deterministically."""
+        if running_job is None:
+            return
+        job_id = running_job(scenario_id)
+        if job_id is not None:
+            raise ResetJobRunningError(scenario_id, stage, job_id)
+
+    def reset_plan(
+        self, scenario_id: str, stage: str, *, running_job: RunningJobProbe | None = None
+    ) -> ResetPlan:
+        """Read-only preview of ``reset_from``: the files a reset from
+        ``stage`` deletes — the stage's own artifacts plus their registry
+        closure — observed under the scenario lock. Never writes. Refused
+        (RESET_JOB_RUNNING) while ``running_job`` names a non-terminal job,
+        so a preview is never shown for a delete that would be refused."""
+        self.store.get(scenario_id)
+        with self.store.lock(scenario_id):
+            self._refuse_under_running_job(scenario_id, stage, running_job)
+            return self._reset_plan_locked(scenario_id, stage)
+
+    def reset_from(
+        self,
+        scenario_id: str,
+        stage: str,
+        *,
+        expected_will_delete: Sequence[str] | None = None,
+        running_job: RunningJobProbe | None = None,
+    ) -> tuple[ResetPlan, tuple[str, ...]]:
+        """Delete exactly what ``reset_plan`` lists, under the scenario lock
+        (the same lock the writers and ``WorldService.invalidate`` hold, rule
+        60). STALE / MALFORMED artifacts are deleted without being read —
+        this is a recovery path. ``WORLD`` is preview-only (typed refusal);
+        a stage none of whose own artifacts exist is a typed 404. The delete
+        loop is maximal (every other file still goes) and one OSError is
+        raised afterwards, as in the write cascade. In-memory caches keyed
+        on the deleted artifacts are dropped.
+
+        PR #53 review B2: under the lock the scenario must have no
+        non-terminal job (RESET_JOB_RUNNING) and, when the caller passes the
+        ``willDelete`` it confirmed, the recomputed plan must list exactly
+        those files in that order (RESET_PLAN_CHANGED carries the fresh
+        plan); either refusal deletes nothing."""
+        self.store.get(scenario_id)
+        if stage == "WORLD":
+            raise ResetStageNotDeletableError(stage)
+        with self.store.lock(scenario_id):
+            self._refuse_under_running_job(scenario_id, stage, running_job)
+            plan = self._reset_plan_locked(scenario_id, stage)
+            if not plan.present:
+                raise ResetTargetNotGeneratedError(scenario_id, stage, plan.stage_artifacts)
+            if expected_will_delete is not None:
+                expected = tuple(expected_will_delete)
+                if expected != plan.will_delete:
+                    raise ResetPlanChangedError(scenario_id, stage, expected, plan)
+            derived = self.store.derived_dir(scenario_id)
+            deleted: list[str] = []
+            failed: list[str] = []
+            for name in plan.will_delete:
+                path = derived / name
+                try:
+                    if path.exists():
+                        path.unlink()
+                        deleted.append(name)
+                except OSError:
+                    failed.append(name)
+            if TARGETS_ARTIFACT in deleted:
+                self._targets.pop(scenario_id, None)
+            if LAYOUT_V2_ARTIFACT in deleted or LAYOUT_V2_SELECTED_ARTIFACT in deleted:
+                self._layouts.pop(scenario_id, None)
+                self._selected_policies.pop(scenario_id, None)
+            if failed:
+                raise OSError(
+                    f"scenario '{scenario_id}': reset from {stage} could not delete "
+                    + ", ".join(failed)
+                )
+        return plan, tuple(deleted)
+
+    def _catalogue_level_exclusions(self, scenario_id: str) -> dict[str, str]:
+        """The section exclusion recorded by the layout-v2 catalogue
+        (``requiredLevels[].hasOrebodySection == false`` →
+        NO_OREBODY_SECTION_AT_LEVEL) by level id. The TABULAR footwall-contact
+        exclusion is never read from the catalogue: the level builder
+        re-derives it analytically (rule 141, READ ≠ TRUST)."""
+        out: dict[str, str] = {}
+        for lv in self.layout_v2(scenario_id).get("requiredLevels", []):
+            if lv.get("hasOrebodySection") is False:
+                out[str(lv["levelId"])] = "NO_OREBODY_SECTION_AT_LEVEL"
+        return out
 
     # -- stopes (Phase 09, rules 75–80) --------------------------------------- #
 

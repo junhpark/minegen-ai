@@ -348,11 +348,53 @@ meters (`docs/coordinate-system.md`). Schemas live in
     GET  …/scene                                     includes "accessTargets", "decline",
                                                      "smoothedDecline", "tunnelMesh" and
                                                      "developmentMesh" (or null)
+    GET  /api/v1/scenarios/{id}/design/reset-plan?from=<stage>
+                                                     hardening H1 §4.4 "Reset from here": the
+                                                     read-only preview — the stage's own artifacts
+                                                     plus their registry invalidation closure under
+                                                     the active ramp source, as present on disk now
+                                                     ({from, activeSource, stageArtifacts, present,
+                                                     willDelete[], closure[]}). Stages: WORLD
+                                                     (preview only) · TARGETS · DECLINE · SMOOTH ·
+                                                     LAYOUT · LEVELS · EXCAVATION · SHAFTS · NETWORK
+                                                     · CAPABILITY · PRODUCTION · SCHEDULE ·
+                                                     COMMUNICATION · SENSORS (422 otherwise); 409
+                                                     RESET_JOB_RUNNING ({jobId}) while the scenario
+                                                     has a QUEUED / RUNNING job (PR #53 review B2)
+    DELETE /api/v1/scenarios/{id}/design/stages/{stage}
+                                                     deletes exactly what the plan listed, under the
+                                                     scenario lock; STALE / MALFORMED artifacts are
+                                                     deletable (recovery), ramp_source.json is never
+                                                     a stage target (rule 162); 404
+                                                     RESET_TARGET_NOT_GENERATED when the stage has
+                                                     nothing of its own, 409 RESET_STAGE_NOT_DELETABLE
+                                                     for WORLD, 409 RESET_JOB_RUNNING ({jobId}) under
+                                                     a non-terminal job of the scenario; optional
+                                                     body {expectedWillDelete: [...]} = the previewed
+                                                     list the caller confirmed — the delete happens
+                                                     only if the plan under the lock still lists
+                                                     exactly it, else 409 RESET_PLAN_CHANGED
+                                                     ({plan: the fresh plan}, nothing deleted)
+                                                     → {from, activeSource, deleted[]}
     POST /api/v1/scenarios/{id}/design/levels        Phase 08: synchronous level developments
                                                      (typed LevelsPayload; 409 SMOOTHED_NOT_GENERATED
                                                      without a Phase 05 artifact)
     GET  /api/v1/scenarios/{id}/design/levels        Phase 08: persisted typed LevelsPayload
                                                      (409 LEVELS_NOT_GENERATED after invalidation)
+                                                     hardening H0 §3.1: excludedLevels[] {levelId,
+                                                     index, elevation, reason, overshootM,
+                                                     minimumTopMiningMarginM} and
+                                                     unservedIntervals[] {upperLevelId, lowerLevelId,
+                                                     upperElevation, lowerElevation, reason} list
+                                                     every REQUIRED level without a development
+                                                     (NO_FOOTWALL_CONTACT_AT_LEVEL |
+                                                     NO_OREBODY_SECTION_AT_LEVEL | NO_LEVEL_ENTRY);
+                                                     levels.json is the ONLY carrier of the
+                                                     reason — the layout-v2 catalogue's
+                                                     requiredLevels[] wire shape is unchanged
+                                                     (levelId / index / elevation /
+                                                     hasOrebodySection; the guard moves only
+                                                     serviceableLevelCount)
                                                      Phase 20C.2A: the payload declares
                                                      developmentGeometry (TABULAR_RULE_43 |
                                                      SECTION_FOOTWALL_OFFSET_TRACE); an implicit

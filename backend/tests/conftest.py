@@ -69,6 +69,9 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     "test_exchange_timeline_e2e": ("e2e",),
     "test_adapters_e2e": ("e2e",),
     "test_results_e2e": ("e2e",),
+    # Hardening H1 §4.5: the guided-workflow shell in a real headless browser
+    # over a live backend + Vite dev server (one BASELINE chain: minutes)
+    "test_shell_e2e": ("e2e", "slow"),
     "test_layout_v2_golden_smoke": ("golden",),
     # Phase 20B.x: the GEOMETRY-STRESS feasibility oracle (one full layout-v2 search)
     "test_geometry_stress_oracle": ("slow",),
@@ -198,6 +201,9 @@ TEST_MARKERS: dict[str, tuple[str, ...]] = {
     "test_performance_key_order_with_section_geometry": ("slow",),
     # Phase 20C.4 service reference on a fresh WARPED-307 world + search
     "test_reference_delta_is_positive_on_the_failing_307_spiral": ("slow",),
+    # hardening H0 §3.1: the seed-42 layout-v2 chain (≈ 25 s search); the
+    # 12-case RANDOM_TABULAR guard parity in the same module stays FAST (≈ 6 s)
+    "test_seed_42_layout_v2_chain_develops_twelve_levels_with_l01_excluded": ("slow",),
     "test_307_failing_candidates_now_hold_the_separation_at_every_rl_crossing": ("slow",),
 }
 #: fixtures whose mere request makes a test expensive (a clean WARPED-301

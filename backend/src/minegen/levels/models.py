@@ -76,6 +76,44 @@ class ExcludedStation(ApiModel):
     probe_length: float
 
 
+class ExcludedLevel(ApiModel):
+    """A REQUIRED level (rule 141 generator) that received no level
+    development, with its typed reason (hardening H0 §3.1):
+
+    ``NO_FOOTWALL_CONTACT_AT_LEVEL`` — TABULAR: the level plane cuts the slab
+    but its footwall contact lies ``overshoot_m`` down-dip metres beyond the
+    slab's up-dip edge (ore above the level, none next to it);
+    ``minimum_top_mining_margin_m`` = ``thickness·cos(dip)`` is the top
+    margin that gives every level a contact.
+    ``NO_OREBODY_SECTION_AT_LEVEL`` — the level plane misses the solid
+    (conservative bounding box of an implicit body).
+    ``NO_LEVEL_ENTRY`` — the active ramp source delivered no level entry for
+    the level (a legacy decline that stopped early, an access that is not OK).
+
+    Reported, never silently dropped (rule 141 precedent)."""
+
+    level_id: str
+    index: int
+    elevation: float
+    reason: Literal["NO_FOOTWALL_CONTACT_AT_LEVEL", "NO_OREBODY_SECTION_AT_LEVEL", "NO_LEVEL_ENTRY"]
+    overshoot_m: float | None = None
+    minimum_top_mining_margin_m: float | None = None
+
+
+class UnservedInterval(ApiModel):
+    """An adjacent REQUIRED level pair with no production between them: at
+    least one of the two levels is excluded, so no stope / cut / room can
+    span the interval (rules 76 / 195 — production spans adjacent COMPLETED
+    levels). ``reason`` is the excluded level's reason (the upper one when
+    both are excluded)."""
+
+    upper_level_id: str
+    lower_level_id: str
+    upper_elevation: float
+    lower_elevation: float
+    reason: Literal["NO_FOOTWALL_CONTACT_AT_LEVEL", "NO_OREBODY_SECTION_AT_LEVEL", "NO_LEVEL_ENTRY"]
+
+
 class LevelSummary(ApiModel):
     level_id: str
     candidate_id: str
@@ -128,3 +166,9 @@ class LevelsPayload(ApiModel):
     developments: list[Development]
     levels: list[LevelSummary]
     metrics: LevelsMetrics | None
+    #: hardening H0 §3.1: every REQUIRED level without a development and the
+    #: production intervals that go with it — explicit, in level order;
+    #: empty lists when every required level is developed (absent on
+    #: pre-hardening artifacts)
+    excluded_levels: list[ExcludedLevel] = []
+    unserved_intervals: list[UnservedInterval] = []

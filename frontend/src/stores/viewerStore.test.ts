@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useViewerStore } from './viewerStore'
+import { completedStagesFor, useViewerStore } from './viewerStore'
 
 describe('viewerStore', () => {
   beforeEach(() => {
@@ -44,6 +44,59 @@ describe('viewerStore', () => {
     useViewerStore.getState().resetScenarioScopedState()
     expect(useViewerStore.getState().selectedObjectId).toBeNull()
     expect(useViewerStore.getState().visibleLayers.has('rawSearchPath')).toBe(true)
+  })
+
+  it('a viewer completion counts only for the scene revision it was made on (round 3 B2)', () => {
+    const st = () => useViewerStore.getState()
+    st().markViewerStageComplete('ANALYSIS', 7)
+    expect(completedStagesFor(st().completedViewerStages, 7)).toEqual(new Set(['ANALYSIS']))
+    // the mine moved on (reset / regeneration): nothing carries over
+    expect(completedStagesFor(st().completedViewerStages, 8)).toEqual(new Set())
+    st().markViewerStageComplete('EXPORT', 7)
+    expect(completedStagesFor(st().completedViewerStages, 7)).toEqual(
+      new Set(['ANALYSIS', 'EXPORT']),
+    )
+    // a completion on a NEW revision starts a new set (no revival of the old one)
+    st().markViewerStageComplete('ANALYSIS', 8)
+    expect(completedStagesFor(st().completedViewerStages, 8)).toEqual(new Set(['ANALYSIS']))
+    expect(completedStagesFor(st().completedViewerStages, 7)).toEqual(new Set())
+    // a completion of an older revision never clobbers the current set
+    st().markViewerStageComplete('EXPORT', 7)
+    expect(completedStagesFor(st().completedViewerStages, 8)).toEqual(new Set(['ANALYSIS']))
+    expect(completedStagesFor(st().completedViewerStages, 7)).toEqual(new Set())
+    // marking the same completion again is a no-op (no re-render churn)
+    const before = st().completedViewerStages
+    st().markViewerStageComplete('ANALYSIS', 8)
+    expect(st().completedViewerStages).toBe(before)
+    // the scenario-scoped reset drops every completion
+    st().resetScenarioScopedState()
+    expect(completedStagesFor(st().completedViewerStages, 8)).toEqual(new Set())
+  })
+
+  it('a stage click never completes Analysis; opening it from 4D / Walk leaves that view (round 3 B1)', () => {
+    const st = () => useViewerStore.getState()
+    st().setStage('ANALYSIS')
+    expect(completedStagesFor(st().completedViewerStages, 0)).toEqual(new Set())
+    expect(st().mode).toBe('ANALYSIS')
+    // from 4D: the Analysis workspace renders only in the ANALYSIS mode, so
+    // the view is left explicitly instead of surviving the stage change
+    st().setStage('LEVELS')
+    st().setViewMode('4D')
+    expect(st().mode).toBe('4D')
+    st().setStage('ANALYSIS')
+    expect(st().mode).toBe('ANALYSIS')
+    // from Walk: the exit clears the walkthrough snapshot state (rule 112)
+    st().setStage('LEVELS')
+    st().setMode('WALKTHROUGH')
+    expect(st().mode).toBe('WALKTHROUGH')
+    st().setStage('ANALYSIS')
+    expect(st().mode).toBe('ANALYSIS')
+    expect(st().cameraMode).toBe('orbit')
+    expect(st().walkthroughContext).toBeNull()
+    // every other stage keeps a 4D view (a VIEW choice survives a stage change)
+    st().setViewMode('4D')
+    st().setStage('EXPORT')
+    expect(st().mode).toBe('4D')
   })
 
   it('switches camera mode when entering WALKTHROUGH', () => {
