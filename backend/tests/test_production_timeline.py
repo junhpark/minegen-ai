@@ -141,45 +141,258 @@ def test_cf9_every_cut_has_the_five_task_chain_and_the_four_state_transitions(
     assert tl["metrics"]["totalScheduledTonnes"] == pytest.approx(sum(c["tonnes"] for c in cuts))
 
 
-def test_cf10_single_conservative_chain_lift_precedence_and_access_dependency(
+def _panel_window(tl: dict[str, Any], panel: dict[str, Any]) -> tuple[float, float]:
+    """A panel is IN PRODUCTION from its first PREP start to its last CURE end."""
+    by_id = _tasks_by_id(tl)
+    starts = [by_id[f"TASK:PREP:{cid}"]["startDay"] for cid in panel["cutIds"]]
+    ends = [by_id[f"TASK:CURE:{cid}"]["endDay"] for cid in panel["cutIds"]]
+    return min(starts), max(ends)
+
+
+def _max_active_panels(tl: dict[str, Any], panels: list[dict[str, Any]]) -> int:
+    """The largest number of panels in production at any instant (windows are
+    half-open ``[start, end)``; evaluated at every window boundary)."""
+    windows = [_panel_window(tl, p) for p in panels]
+    days = sorted({d for w in windows for d in w})
+    return max(sum(1 for s, e in windows if s <= d < e) for d in days)
+
+
+def test_cf10_panel_chains_block_access_and_concurrency_precedence(
+    cf_case: dict[str, Any],
+) -> None:
+    """H2-CF: cuts are serial INSIDE a panel (previous CURE → next PREP),
+    every PREP depends on the panel's own access crosscut, panel k + N
+    depends on panel k's last CURE (N = maxConcurrentPanels) and there is
+    no global previous-cure chain."""
+    stopes, tl = cf_case["stopes"], cf_case["timeline"]
+    assert tl["status"] == "SUCCESS", tl.get("failureReason")
+    seq = stopes["sequencing"]
+    n_max = seq["maxConcurrentPanels"]
+    assert n_max == 2
+    panels = {p["id"]: p for p in stopes["panels"]}
+    order = seq["panelStartOrder"]
+    last_cure: dict[str, dict[str, Any]] = {}
+    for rank, pid in enumerate(order):
+        panel = panels[pid]
+        access = _dev_task_of(tl, panel["accessDevelopmentId"])
+        previous_cure: dict[str, Any] | None = None
+        for cid in panel["cutIds"]:
+            prep, _, _, _, cure = _unit_tasks(tl, cid, CF_CHAIN)
+            assert access["id"] in prep["dependencies"]
+            assert prep["startDay"] >= access["endDay"] - 1e-9
+            if previous_cure is not None:
+                assert previous_cure["id"] in prep["dependencies"]
+                assert prep["startDay"] >= previous_cure["endDay"] - 1e-9
+            elif rank >= n_max:
+                gate = last_cure[order[rank - n_max]]
+                assert gate["id"] in prep["dependencies"]
+                assert prep["startDay"] >= gate["endDay"] - 1e-9
+            previous_cure = cure
+        assert previous_cure is not None
+        last_cure[pid] = previous_cure
+    # no global chain: the first cut of panel 2 (rank 1) does NOT wait for
+    # panel 1 (rank 0) — the two start panels overlap in time
+    w0, w1 = _panel_window(tl, panels[order[0]]), _panel_window(tl, panels[order[1]])
+    assert w1[0] < w0[1] and w0[0] < w1[1]
+    first_prep_rank1 = _unit_tasks(tl, panels[order[1]]["cutIds"][0], CF_CHAIN)[0]
+    assert not any(d.startswith("TASK:CURE:") for d in first_prep_rank1["dependencies"])
+    # lift precedence inside a panel: lift k+1 starts after lift k's last cure
+    for panel in panels.values():
+        by_lift: dict[int, list[str]] = {}
+        for cid in panel["cutIds"]:
+            cut = next(c for c in stopes["cuts"] if c["id"] == cid)
+            by_lift.setdefault(cut["liftIndexInBlock"], []).append(cid)
+        for lo, hi in pairwise(sorted(by_lift)):
+            last_cure_lo = max(_unit_tasks(tl, c, CF_CHAIN)[-1]["endDay"] for c in by_lift[lo])
+            first_prep_hi = min(_unit_tasks(tl, c, CF_CHAIN)[0]["startDay"] for c in by_lift[hi])
+            assert first_prep_hi >= last_cure_lo - 1e-9
+    assert tl["metrics"]["firstStopingDay"] == pytest.approx(
+        min(_unit_tasks(tl, c["id"], CF_CHAIN)[1]["startDay"] for c in stopes["cuts"])
+    )
+
+
+def test_cf13_active_panels_never_exceed_the_concurrency_bound(cf_case: dict[str, Any]) -> None:
+    stopes, tl = cf_case["stopes"], cf_case["timeline"]
+    n_max = stopes["sequencing"]["maxConcurrentPanels"]
+    observed = _max_active_panels(tl, stopes["panels"])
+    assert observed <= n_max
+    assert observed == n_max, "the bound must actually be used by the fixture"
+
+
+def test_cf14_first_production_precedes_ramp_completion_under_shallow_to_deep(
     cf_case: dict[str, Any],
 ) -> None:
     stopes, tl = cf_case["stopes"], cf_case["timeline"]
-    cuts = stopes["cuts"]
-    previous_cure: dict[str, Any] | None = None
-    for c in cuts:
-        prep, _, _, _, cure = _unit_tasks(tl, c["id"], CF_CHAIN)
-        access = _dev_task_of(tl, c["accessDevelopmentId"])
-        assert access["id"] in prep["dependencies"]
-        assert prep["startDay"] >= access["endDay"] - 1e-9
-        if previous_cure is not None:
-            assert previous_cure["id"] in prep["dependencies"]
-            assert prep["startDay"] >= previous_cure["endDay"] - 1e-9
-        previous_cure = cure
-    # lift precedence follows from the chain: inside a panel every cut of lift
-    # k+1 starts after the last cure of lift k (persisted order is the panel
-    # start order, then the panel's lifts bottom → top)
-    lifts = stopes["lifts"]
-    assert len(lifts) >= 2
-    by_lift: dict[tuple[str, int], list[dict[str, Any]]] = {}
-    for c in cuts:
-        by_lift.setdefault((c["panelId"], c["liftIndex"]), []).append(c)
-    ordered = sorted(by_lift, key=lambda k: min(cuts.index(c) for c in by_lift[k]))
-    for lo, hi in pairwise(ordered):
-        last_cure_lo = max(_unit_tasks(tl, c["id"], CF_CHAIN)[-1]["endDay"] for c in by_lift[lo])
-        first_prep_hi = min(_unit_tasks(tl, c["id"], CF_CHAIN)[0]["startDay"] for c in by_lift[hi])
-        assert first_prep_hi >= last_cure_lo - 1e-9
-    # exactly one cut is worked at a time: STOPING windows never overlap
+    assert stopes["sequencing"]["blockOrder"] == "SHALLOW_TO_DEEP"
+    m = tl["metrics"]
+    assert m["firstStopingDay"] is not None
+    assert m["firstStopingDay"] < m["rampCompletionDay"]
+    # the first panel started belongs to the TOP block
+    first = stopes["sequencing"]["panelStartOrder"][0]
+    top_block = stopes["sequencing"]["blockOrderIds"][0]
+    assert next(p for p in stopes["panels"] if p["id"] == first)["blockId"] == top_block
+    level_ids = [lv["levelId"] for lv in cf_case["levels"]["levels"]]
+    assert top_block == f"BLOCK:{level_ids[1]}-{level_ids[0]}"
+
+
+def test_cf15_cemented_sill_mats_cure_with_sill_mat_cure_days_and_gate_the_block_below(
+    cf_case: dict[str, Any],
+) -> None:
+    stopes, tl = cf_case["stopes"], cf_case["timeline"]
+    sc = with_method(small_scenario(), MiningMethodType.CUT_AND_FILL)
+    sill_days = stopes["sequencing"]["sillMatCureDays"]
+    assert sill_days == 28.0 and sc.schedule.backfill_cure_days == 7.0
+    cuts = {c["id"]: c for c in stopes["cuts"]}
+    blocks = {b["id"]: b for b in stopes["blocks"]}
+    cemented = {b["sourceCutId"] for b in stopes["backfills"] if b["cemented"]}
+    assert cemented
+    for c in stopes["cuts"]:
+        cure = _unit_tasks(tl, c["id"], CF_CHAIN)[-1]
+        expected = sill_days if c["id"] in cemented else sc.schedule.backfill_cure_days
+        assert cure["durationDays"] == pytest.approx(expected), c["id"]
+        assert cure["basis"]["quantity"] == pytest.approx(expected)
+    # vertical precedence: the lower block's TOP lift (same panel index) waits
+    # for every cemented sill-mat cure of the block directly above
+    panels = {p["id"]: p for p in stopes["panels"]}
+    gated = 0
+    for lower in blocks.values():
+        above = next(
+            (b for b in blocks.values() if b["lowerLevelId"] == lower["upperLevelId"]), None
+        )
+        if above is None:
+            continue
+        assert above["sillMatRequired"]
+        for pid in lower["panelIds"]:
+            p_index = panels[pid]["panelIndex"]
+            top = max(cuts[c]["liftIndexInBlock"] for c in panels[pid]["cutIds"])
+            first_top_cut = next(
+                c for c in panels[pid]["cutIds"] if cuts[c]["liftIndexInBlock"] == top
+            )
+            prep = _unit_tasks(tl, first_top_cut, CF_CHAIN)[0]
+            above_panel = next(
+                panels[x] for x in above["panelIds"] if panels[x]["panelIndex"] == p_index
+            )
+            sill_cures = [
+                f"TASK:CURE:{c}" for c in above_panel["cutIds"] if cuts[c]["liftIndexInBlock"] == 0
+            ]
+            assert sill_cures and all(x in prep["dependencies"] for x in sill_cures)
+            for x in sill_cures:
+                assert prep["startDay"] >= _tasks_by_id(tl)[x]["endDay"] - 1e-9
+            gated += 1
+    assert gated > 0
+
+
+def _rebuild(cf_case: dict[str, Any], **params: Any) -> tuple[dict[str, Any], TimelinePayload]:
+    """Regenerate production over the SAME levels / network for a parameter
+    variant (panel length unchanged → the per-panel accesses stay valid) and
+    schedule it."""
+    from minegen.mining.methods.cut_fill import generate_cut_fill
+    from minegen.scheduling.builder import MineTimelineBuilder
+    from tests.test_cut_fill import cf_scenario
+
+    sc = cf_scenario(with_method(small_scenario(), MiningMethodType.CUT_AND_FILL), **params)
+    world = generate_world(sc)
+    prod = generate_cut_fill(sc, world, cf_case["levels"], None, "rev").model_dump(  # type: ignore[arg-type]
+        mode="json", by_alias=True
+    )
+    assert prod["status"] == "SUCCESS", prod["failureReason"]
+    tl = MineTimelineBuilder(sc).build(
+        cf_case["network"],
+        prod,
+        cf_case["ramp"],
+        cf_case["levels"],
+        "rev",
+        accesses_payload=cf_case["accesses"],
+    )
+    return prod, tl
+
+
+def test_cf16_deep_to_shallow_gates_a_block_on_the_backfilled_block_below(
+    cf_case: dict[str, Any],
+) -> None:
+    prod, out = _rebuild(cf_case, blockOrder="DEEP_TO_SHALLOW")
+    assert out.status == "SUCCESS", out.failure_reason
+    tl = out.model_dump(mode="json", by_alias=True)
+    assert not any(b["cemented"] for b in prod["backfills"])
+    sc = with_method(small_scenario(), MiningMethodType.CUT_AND_FILL)
+    for c in prod["cuts"]:
+        cure = _unit_tasks(tl, c["id"], CF_CHAIN)[-1]
+        assert cure["durationDays"] == pytest.approx(sc.schedule.backfill_cure_days)
+    panels = {p["id"]: p for p in prod["panels"]}
+    blocks = {b["id"]: b for b in prod["blocks"]}
+    cuts = {c["id"]: c for c in prod["cuts"]}
+    deepest = prod["sequencing"]["blockOrderIds"][0]
+    level_ids = [lv["levelId"] for lv in cf_case["levels"]["levels"]]
+    assert deepest == f"BLOCK:{level_ids[-1]}-{level_ids[-2]}"
+    gated = 0
+    for upper in blocks.values():
+        below = next(
+            (b for b in blocks.values() if b["upperLevelId"] == upper["lowerLevelId"]), None
+        )
+        if below is None:
+            continue
+        for pid in upper["panelIds"]:
+            p_index = panels[pid]["panelIndex"]
+            first_cut = panels[pid]["cutIds"][0]
+            assert cuts[first_cut]["liftIndexInBlock"] == 0
+            prep = _unit_tasks(tl, first_cut, CF_CHAIN)[0]
+            below_panel = next(
+                panels[x] for x in below["panelIds"] if panels[x]["panelIndex"] == p_index
+            )
+            last_cure = f"TASK:CURE:{below_panel['cutIds'][-1]}"
+            assert last_cure in prep["dependencies"]
+            assert prep["startDay"] >= _tasks_by_id(tl)[last_cure]["endDay"] - 1e-9
+            gated += 1
+    assert gated > 0
+    # the first panel started belongs to the DEEPEST block: production waits
+    # for the ramp to reach the bottom
+    assert tl["metrics"]["firstStopingDay"] >= tl["metrics"]["rampCompletionDay"] - 1e-9
+
+
+def test_cf17_single_concurrent_panel_is_one_serial_front(cf_case: dict[str, Any]) -> None:
+    prod, out = _rebuild(cf_case, maxConcurrentPanels=1)
+    assert out.status == "SUCCESS", out.failure_reason
+    tl = out.model_dump(mode="json", by_alias=True)
+    order = prod["sequencing"]["panelStartOrder"]
+    panels = {p["id"]: p for p in prod["panels"]}
+    assert _max_active_panels(tl, prod["panels"]) == 1
+    for prev, nxt in pairwise(order):
+        last_cure = f"TASK:CURE:{panels[prev]['cutIds'][-1]}"
+        first_prep = _unit_tasks(tl, panels[nxt]["cutIds"][0], CF_CHAIN)[0]
+        assert last_cure in first_prep["dependencies"]
+    # STOPING windows never overlap anywhere in the mine
     windows = sorted(
         (
             _unit_tasks(tl, c["id"], CF_CHAIN)[1]["startDay"],
             _unit_tasks(tl, c["id"], CF_CHAIN)[1]["endDay"],
         )
-        for c in cuts
+        for c in prod["cuts"]
     )
     for (_, e0), (s1, _) in pairwise(windows):
         assert s1 >= e0 - 1e-9
-    assert tl["metrics"]["firstStopingDay"] == pytest.approx(windows[0][0])
+
+
+def test_cf18_rib_pillars_are_never_scheduled(cf_case: dict[str, Any]) -> None:
+    prod, out = _rebuild(cf_case, ribPillarWidthM=6.0)
+    assert out.status == "SUCCESS", out.failure_reason
+    tl = out.model_dump(mode="json", by_alias=True)
+    pillar_ids = {p["id"] for p in prod["ribPillars"]}
+    assert pillar_ids
+    assert not any(t["targetId"] in pillar_ids for t in tl["tasks"])
+    assert not any(u["unitId"] in pillar_ids for u in tl["production"]["units"])
+    assert not any("PILLAR" in t["id"] for t in tl["tasks"])
+    assert tl["metrics"]["productionObjectCount"] == len(prod["cuts"])
+    assert tl["metrics"]["totalScheduledTonnes"] == pytest.approx(prod["metrics"]["totalTonnes"])
+
+
+def test_cf19_underhand_payload_is_refused_by_the_schedule_too(cf_case: dict[str, Any]) -> None:
+    """READ ≠ TRUST: a persisted payload claiming UNDERHAND sequencing never
+    receives an OVERHAND schedule."""
+    out = _cf_timeline(
+        cf_case, lambda d: d["sequencing"].__setitem__("stopingDirection", "UNDERHAND")
+    )
+    assert out.status == "FAILED"
+    assert (out.failure_reason or "").startswith("UNSUPPORTED_STOPING_DIRECTION")
 
 
 def test_cf11_production_block_replaces_stopes_and_is_absent_for_longhole(
@@ -205,14 +418,27 @@ def test_cf_missing_production_access_is_a_typed_failure(cf_case: dict[str, Any]
     from minegen.scheduling.builder import MineTimelineBuilder
 
     sc = with_method(small_scenario(), MiningMethodType.CUT_AND_FILL)
-    stopes = {**cf_case["stopes"], "cuts": [dict(c) for c in cf_case["stopes"]["cuts"]]}
-    stopes["cuts"][0]["accessDevelopmentId"] = "CROSSCUT:L99:S+00"
+    stopes = json.loads(json.dumps(cf_case["stopes"]))
+    victim = stopes["panels"][0]
+    victim["accessDevelopmentId"] = "CROSSCUT:L99:S+00"
+    for c in stopes["cuts"]:
+        if c["panelId"] == victim["id"]:
+            c["accessDevelopmentId"] = "CROSSCUT:L99:S+00"
     out = MineTimelineBuilder(sc).build(
         cf_case["network"], stopes, {}, cf_case["levels"], "rev", accesses_payload=None
     )
     assert out.status == "FAILED"
     assert "CROSSCUT:L99:S+00" in (out.failure_reason or "")
     assert "no development task" in (out.failure_reason or "")
+    # a cut disagreeing with its panel's access is an integrity defect
+    stopes = json.loads(json.dumps(cf_case["stopes"]))
+    stopes["cuts"][0]["accessDevelopmentId"] = "CROSSCUT:L99:S+00"
+    out = MineTimelineBuilder(sc).build(
+        cf_case["network"], stopes, {}, cf_case["levels"], "rev", accesses_payload=None
+    )
+    assert out.status == "FAILED"
+    assert "CUT_AND_FILL production integrity" in (out.failure_reason or "")
+    assert "mined from" in (out.failure_reason or "")
 
 
 def test_builder_refuses_a_payload_of_another_method_through_the_plan(

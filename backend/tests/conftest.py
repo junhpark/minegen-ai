@@ -111,6 +111,11 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     # run. Marked at module level so the baseline-integrity tests travel with
     # the comparison tests.
     "test_layout_characterization": ("slow",),
+    # Hardening PR-2 H2-CF: the Cut & Fill schedule characterization record
+    # (one module-scoped layout chain of the small scenario, ≈ 30 s); the
+    # schedule semantics themselves are pinned by the FAST tests in
+    # ``test_production_timeline.py`` — this module is the refactor net.
+    "test_cut_fill_characterization": ("slow",),
 }
 #: test function name (any module) → markers
 TEST_MARKERS: dict[str, tuple[str, ...]] = {

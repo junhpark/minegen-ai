@@ -1,0 +1,54 @@
+{
+  "generatedFromGitSha": "926d07b8329c9612e60962c20d774149fccb77c3",
+  "label": "after",
+  "levels": {
+    "crosscutCount": 16,
+    "levelCount": 4,
+    "stationsPerLevel": 4,
+    "status": "SUCCESS"
+  },
+  "production": {
+    "backfillCount": 336,
+    "blockCount": 3,
+    "cementedBackfillCount": 32,
+    "cutCount": 336,
+    "cutIdDigest": "4e786e477f082e958b0f04c24388985d1ecaa988281193277d2bbb004442dc53",
+    "levelIntervalCount": 3,
+    "liftCount": 21,
+    "panelCount": 12,
+    "ribPillarCount": 0,
+    "sequencing": {
+      "blockOrder": "SHALLOW_TO_DEEP",
+      "maxConcurrentPanels": 2,
+      "panelLengthM": 60.0,
+      "ribPillarWidthM": 0.0,
+      "sillMatCureDays": 28.0,
+      "stopingDirection": "OVERHAND"
+    },
+    "status": "SUCCESS",
+    "totalGeometricVolumeM3": 191551.9990456642,
+    "totalTonnes": 536345.5973278597
+  },
+  "scenario": "tests.conftest.small_scenario(seed 42) + CUT_AND_FILL canonical defaults",
+  "timeline": {
+    "cureDurations": [
+      7.0,
+      28.0
+    ],
+    "dependencyDigest": "c4f3d3106a8cda3251011aff598c3b5e2e2fbf44c20a18f30a78996bad8b7fb3",
+    "endDay": 3293.685054956718,
+    "firstStopingDay": 298.17839147118497,
+    "maxConcurrentCuts": 2,
+    "maxConcurrentPanels": 2,
+    "maxConcurrentStoping": 1,
+    "prepDependencyKinds": {
+      "CURE_BACKFILL": 366,
+      "DEVELOP_CROSSCUT": 336
+    },
+    "productionTaskCount": 1680,
+    "rampCompletionDay": 371.46377187450696,
+    "status": "SUCCESS",
+    "taskCount": 1729,
+    "taskIdDigest": "19808380360747079dde236fa575f6f1c0234b11b4aeadfdb8572f9710e87dc2"
+  }
+}

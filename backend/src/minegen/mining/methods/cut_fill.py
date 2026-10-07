@@ -542,97 +542,195 @@ class CutFillPlan:
         production_payload: dict[str, Any],
         ctx: ProductionScheduleContext,
     ) -> ProductionScheduleSpec | str:
-        """ONE conservative Cut & Fill chain over the persisted cut order
-        (lowest lift first, cuts along strike, snake): every cut runs
-        PREP → STOPING → MUCKING → BACKFILL → CURE, its preparation depends
-        on the development task of its own production access AND on the
-        previous cut's cure — so a lift is only mined once the lift below is
-        fully backfilled and cured, and no two cuts are worked at once.
-        A deterministic sequencing BASELINE (rule 82), never a resource
-        optimization; rates come from ``scenario.schedule`` only."""
-        # semantic integrity FIRST (review blocker 4): the schedule derives
-        # BACKFILL / CURE tasks from the persisted 1:1 backfill relation and
-        # must never invent them for a cut whose backfill record is missing
+        """H2-CF panel-precedence schedule (rule 82: a deterministic
+        precedence baseline, never a resource solver).
+
+        * Every cut runs PREP → STOPING → MUCKING → BACKFILL → CURE; the CURE
+          of a CEMENTED sill-mat fill lasts ``sillMatCureDays``, every other
+          fill ``schedule.backfillCureDays``.
+        * Inside a PANEL the cuts are serial in the persisted panel order
+          (lifts bottom → top, snake): each PREP depends on the previous
+          cut's CURE. There is no global previous-cure chain.
+        * Block access: every PREP depends on the development task of the
+          panel's own production access crosscut on the lower level (which
+          already depends, through the development DAG, on the level drift,
+          the level access and the ramp reaching that junction).
+        * Concurrency: with ``N = maxConcurrentPanels`` the first PREP of
+          panel ``k + N`` (global start order) depends on the last CURE of
+          panel ``k`` — an explicit precedence rule, never a capacity.
+        * Vertical precedence between the blocks of one panel index:
+          SHALLOW_TO_DEEP — the first PREP of the lower block's TOP lift
+          depends on every cemented sill-mat CURE of the block directly
+          above (same panel index); DEEP_TO_SHALLOW — the first PREP of the
+          upper block's bottom lift depends on the last CURE of the block
+          directly below (same panel index), so a block is only mined onto
+          a fully backfilled block.
+        Rib pillars are retained material and receive no task."""
+        # semantic integrity FIRST (review blocker 4 + H2-CF structure): the
+        # schedule derives BACKFILL / CURE tasks and the panel / block
+        # precedence from persisted relations and must never invent them
         integrity = cut_fill_integrity(production_payload)
         if integrity is not None:
             return integrity
         sch = ctx.schedule
+        sequencing = production_payload["sequencing"]
+        if sequencing is None:
+            return "CUT_AND_FILL: SUCCESS payload carries no sequencing block"
+        if str(sequencing["stopingDirection"]) != "OVERHAND":
+            return _unsupported_direction(str(sequencing["stopingDirection"]))
+        max_concurrent = int(sequencing["maxConcurrentPanels"])
+        sill_cure_days = float(sequencing["sillMatCureDays"])
+        shallow_first = str(sequencing["blockOrder"]) == "SHALLOW_TO_DEEP"
+        cut_by_id = {str(c["id"]): c for c in production_payload["cuts"]}
+        backfill_by_cut = {str(b["sourceCutId"]): b for b in production_payload["backfills"]}
+        panel_by_id = {str(p["id"]): p for p in production_payload["panels"]}
+        block_by_id = {str(b["id"]): b for b in production_payload["blocks"]}
+        panel_order = [str(pid) for pid in sequencing["panelStartOrder"]]
+        # the block directly above / below a block: level ids are listed top →
+        # bottom in the levels artifact, so a block's upper level is the next
+        # block's lower level
+        block_above = {
+            bid: nxt
+            for bid, b in block_by_id.items()
+            for nxt, other in block_by_id.items()
+            if str(other["lowerLevelId"]) == str(b["upperLevelId"])
+        }
+        block_below = {above: below for below, above in block_above.items()}
+
+        def panel_of(block_id_: str, panel_index: int) -> dict[str, Any] | None:
+            for pid in block_by_id[block_id_]["panelIds"]:
+                candidate: dict[str, Any] = panel_by_id[str(pid)]
+                if int(candidate["panelIndex"]) == panel_index:
+                    return candidate
+            return None
+
+        def cure_ids(cids: list[str]) -> list[str]:
+            return [f"TASK:CURE:{cid}" for cid in cids]
+
         tasks: list[ProductionTaskSpec] = []
         units: list[ProductionUnitSpec] = []
-        previous_cure: str | None = None
         kind: ProductionTargetKind = "CUT"
-        for cut in production_payload["cuts"]:
-            cid = str(cut["id"])
-            access_task = access_task_for(cut, ctx.development_task_by_edge, "cut")
+        last_cure_of_panel: dict[str, str] = {}
+        for rank, pid in enumerate(panel_order):
+            panel = panel_by_id[pid]
+            block = block_by_id[str(panel["blockId"])]
+            panel_cut_ids = [str(cid) for cid in panel["cutIds"]]
+            if not panel_cut_ids:
+                return f"CUT_AND_FILL: panel {pid} carries no cuts"
+            access_task = access_task_for(panel, ctx.development_task_by_edge, "panel")
             if access_task.startswith("!"):
                 return access_task[1:]
-            tonnes = float(cut["tonnes"])
-            volume = float(cut["geometricVolumeM3"])
-            prep_deps = sorted({access_task} | ({previous_cure} if previous_cure else set()))
-            chain = [
-                fixed_days_task(
-                    f"TASK:PREP:{cid}",
-                    TaskType.STOPE_PREPARATION,
-                    kind,
-                    cid,
-                    float(sch.stope_preparation_days),
-                    prep_deps,
-                ),
-                rate_task(
-                    f"TASK:STOPING:{cid}",
-                    TaskType.STOPING,
-                    kind,
-                    cid,
-                    tonnes,
-                    "t",
-                    float(sch.stoping_tonnes_per_day),
-                    [f"TASK:PREP:{cid}"],
-                ),
-                rate_task(
-                    f"TASK:MUCKING:{cid}",
-                    TaskType.MUCKING,
-                    kind,
-                    cid,
-                    tonnes,
-                    "t",
-                    float(sch.mucking_tonnes_per_day),
-                    [f"TASK:STOPING:{cid}"],
-                ),
-                rate_task(
-                    f"TASK:BACKFILL:{cid}",
-                    TaskType.BACKFILL,
-                    kind,
-                    cid,
-                    volume,
-                    "m3",
-                    float(sch.backfill_m3_per_day),
-                    [f"TASK:MUCKING:{cid}"],
-                ),
-                fixed_days_task(
-                    f"TASK:CURE:{cid}",
-                    TaskType.CURE_BACKFILL,
-                    kind,
-                    cid,
-                    float(sch.backfill_cure_days),
-                    [f"TASK:BACKFILL:{cid}"],
-                ),
-            ]
-            for task in chain:
-                if not (task.duration_days > 0.0 and math.isfinite(task.duration_days)):
-                    return f"non-positive duration for {task.id}"
-            tasks.extend(chain)
-            units.append(
-                ProductionUnitSpec(
-                    unit_id=cid,
-                    transitions=[
-                        ProductionStateSpec(f"TASK:STOPING:{cid}", "start", ObjectState.ACTIVE),
-                        ProductionStateSpec(f"TASK:STOPING:{cid}", "end", ObjectState.MINED),
-                        ProductionStateSpec(f"TASK:MUCKING:{cid}", "end", ObjectState.VOID),
-                        ProductionStateSpec(f"TASK:BACKFILL:{cid}", "end", ObjectState.BACKFILLED),
-                    ],
+            top_lift = max(int(cut_by_id[cid]["liftIndexInBlock"]) for cid in panel_cut_ids)
+            previous_cure: str | None = None
+            seen_lifts: set[int] = set()
+            for cid in panel_cut_ids:
+                cut = cut_by_id[cid]
+                backfill = backfill_by_cut[cid]
+                lift_in_block = int(cut["liftIndexInBlock"])
+                first_of_lift = lift_in_block not in seen_lifts
+                seen_lifts.add(lift_in_block)
+                deps: set[str] = {access_task}
+                if previous_cure is not None:
+                    deps.add(previous_cure)
+                if previous_cure is None and rank >= max_concurrent:
+                    deps.add(last_cure_of_panel[panel_order[rank - max_concurrent]])
+                if first_of_lift:
+                    p_index = int(panel["panelIndex"])
+                    if shallow_first and lift_in_block == top_lift:
+                        above = block_above.get(str(block["id"]))
+                        if above is not None and bool(block_by_id[above]["sillMatRequired"]):
+                            sill_panel = panel_of(above, p_index)
+                            if sill_panel is None:
+                                return f"CUT_AND_FILL: block {above} has no panel {p_index}"
+                            deps.update(
+                                cure_ids(
+                                    [
+                                        str(x)
+                                        for x in sill_panel["cutIds"]
+                                        if int(cut_by_id[str(x)]["liftIndexInBlock"]) == 0
+                                    ]
+                                )
+                            )
+                    if not shallow_first and lift_in_block == 0:
+                        below = block_below.get(str(block["id"]))
+                        if below is not None:
+                            below_panel = panel_of(below, p_index)
+                            if below_panel is None:
+                                return f"CUT_AND_FILL: block {below} has no panel {p_index}"
+                            deps.add(cure_ids([str(below_panel["cutIds"][-1])])[0])
+                tonnes = float(cut["tonnes"])
+                volume = float(cut["geometricVolumeM3"])
+                cure_days = (
+                    sill_cure_days if bool(backfill["cemented"]) else float(sch.backfill_cure_days)
                 )
-            )
-            previous_cure = f"TASK:CURE:{cid}"
+                chain = [
+                    fixed_days_task(
+                        f"TASK:PREP:{cid}",
+                        TaskType.STOPE_PREPARATION,
+                        kind,
+                        cid,
+                        float(sch.stope_preparation_days),
+                        sorted(deps),
+                    ),
+                    rate_task(
+                        f"TASK:STOPING:{cid}",
+                        TaskType.STOPING,
+                        kind,
+                        cid,
+                        tonnes,
+                        "t",
+                        float(sch.stoping_tonnes_per_day),
+                        [f"TASK:PREP:{cid}"],
+                    ),
+                    rate_task(
+                        f"TASK:MUCKING:{cid}",
+                        TaskType.MUCKING,
+                        kind,
+                        cid,
+                        tonnes,
+                        "t",
+                        float(sch.mucking_tonnes_per_day),
+                        [f"TASK:STOPING:{cid}"],
+                    ),
+                    rate_task(
+                        f"TASK:BACKFILL:{cid}",
+                        TaskType.BACKFILL,
+                        kind,
+                        cid,
+                        volume,
+                        "m3",
+                        float(sch.backfill_m3_per_day),
+                        [f"TASK:MUCKING:{cid}"],
+                    ),
+                    fixed_days_task(
+                        f"TASK:CURE:{cid}",
+                        TaskType.CURE_BACKFILL,
+                        kind,
+                        cid,
+                        cure_days,
+                        [f"TASK:BACKFILL:{cid}"],
+                    ),
+                ]
+                for task in chain:
+                    if not (task.duration_days > 0.0 and math.isfinite(task.duration_days)):
+                        return f"non-positive duration for {task.id}"
+                tasks.extend(chain)
+                units.append(
+                    ProductionUnitSpec(
+                        unit_id=cid,
+                        transitions=[
+                            ProductionStateSpec(f"TASK:STOPING:{cid}", "start", ObjectState.ACTIVE),
+                            ProductionStateSpec(f"TASK:STOPING:{cid}", "end", ObjectState.MINED),
+                            ProductionStateSpec(f"TASK:MUCKING:{cid}", "end", ObjectState.VOID),
+                            ProductionStateSpec(
+                                f"TASK:BACKFILL:{cid}", "end", ObjectState.BACKFILLED
+                            ),
+                        ],
+                    )
+                )
+                previous_cure = f"TASK:CURE:{cid}"
+            assert previous_cure is not None
+            last_cure_of_panel[pid] = previous_cure
         return ProductionScheduleSpec(
             target_kind=kind,
             tasks=tasks,

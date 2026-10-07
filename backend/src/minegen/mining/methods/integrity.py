@@ -126,6 +126,12 @@ def _cut_fill_structure(
                 f"{CUT_FILL_TAG}: cut {c['id']} names block {c['blockId']} but its panel "
                 f"belongs to {panel['blockId']}"
             )
+        if str(panel["accessDevelopmentId"]) != str(c["accessDevelopmentId"]):
+            return (
+                f"{CUT_FILL_TAG}: cut {c['id']} names production access "
+                f"{c['accessDevelopmentId']} but its panel is mined from "
+                f"{panel['accessDevelopmentId']}"
+            )
     # cemented sill mat: exactly the bottom lift of a sill-mat block
     cut_by_id = {str(c["id"]): c for c in cuts}
     for b in backfills:
