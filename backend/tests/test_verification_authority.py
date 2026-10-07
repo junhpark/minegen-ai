@@ -54,7 +54,12 @@ def _steps(names: list[str], failing: set[str] | None = None) -> list[dict[str, 
     return out
 
 
-ALL_GATES = list(verify.RELEASE_BACKEND_GATES) + list(verify.RELEASE_FRONTEND_GATES)
+ALL_GATES = (
+    list(verify.RELEASE_BACKEND_GATES)
+    + list(verify.RELEASE_FRONTEND_GATES)
+    + list(verify.RELEASE_E2E_GATES)
+)
+ALL_COMPONENTS = ("backendFullSuite", "frontendFullSuite", "e2eFullSuite")
 CLEAN_SOURCE = {
     "startHead": "a" * 40,
     "endHead": "a" * 40,
@@ -96,7 +101,7 @@ def test_release_authority_is_granted_only_by_a_complete_clean_full_run() -> Non
     verdict = _evaluate()
     assert verdict["release"] is True
     assert verdict["reasons"] == []
-    assert verdict["components"] == {"backendFullSuite": True, "frontendFullSuite": True}
+    assert verdict["components"] == {c: True for c in ALL_COMPONENTS}
     assert verdict["requiredGates"] == {g: "PASS" for g in ALL_GATES}
     assert verdict["pytestFullUnfiltered"] is True
     assert verdict["coverageProof"] is True
@@ -118,7 +123,7 @@ def test_the_ac_f01_shape_is_no_longer_authority() -> None:
     assert "WORKTREE_DIRTY_AT_END" in verdict["reasons"]
     assert "COVERAGE_PROOF_MISSING" in verdict["reasons"]
     assert {f"GATE_NOT_RUN:{g}" for g in ALL_GATES} <= set(verdict["reasons"])
-    assert verdict["components"] == {"backendFullSuite": False, "frontendFullSuite": False}
+    assert verdict["components"] == {c: False for c in ALL_COMPONENTS}
 
 
 def test_backend_only_full_run_is_a_component_never_release_evidence() -> None:
@@ -127,8 +132,12 @@ def test_backend_only_full_run_is_a_component_never_release_evidence() -> None:
     assert verdict["release"] is False
     assert verdict["components"]["backendFullSuite"] is True
     assert verdict["components"]["frontendFullSuite"] is False
-    assert set(verdict["reasons"]) == {f"GATE_NOT_RUN:{g}" for g in verify.RELEASE_FRONTEND_GATES}
+    assert verdict["components"]["e2eFullSuite"] is False
+    assert set(verdict["reasons"]) == {
+        f"GATE_NOT_RUN:{g}" for g in verify.RELEASE_FRONTEND_GATES + verify.RELEASE_E2E_GATES
+    }
     assert verdict["requiredGates"]["fe-build"] == "NOT_RUN"
+    assert verdict["requiredGates"]["pytest-e2e"] == "NOT_RUN"
 
 
 @pytest.mark.parametrize(
@@ -150,7 +159,7 @@ def test_source_that_is_dirty_or_moved_never_carries_authority(
     assert verdict["release"] is False
     assert reason in verdict["reasons"]
     assert verdict["sourceClean"] is False
-    assert verdict["components"] == {"backendFullSuite": False, "frontendFullSuite": False}
+    assert verdict["components"] == {c: False for c in ALL_COMPONENTS}
 
 
 def test_a_failed_gate_withholds_authority_and_names_it() -> None:
@@ -203,7 +212,7 @@ def test_a_non_full_tier_is_never_release_evidence(mode: str) -> None:
     verdict = _evaluate(mode=mode)
     assert verdict["release"] is False
     assert f"MODE_NOT_FULL:{mode}" in verdict["reasons"]
-    assert verdict["components"] == {"backendFullSuite": False, "frontendFullSuite": False}
+    assert verdict["components"] == {c: False for c in ALL_COMPONENTS}
 
 
 def test_pull_request_ci_records_the_merge_simulation_separately_from_the_pr_head() -> None:
@@ -265,12 +274,27 @@ def _summary(label: str, gates: list[str], **over: Any) -> dict[str, Any]:
 def test_aggregate_grants_authority_when_components_cover_every_gate_at_one_revision() -> None:
     backend = _summary("full-backend", list(verify.RELEASE_BACKEND_GATES))
     frontend = _summary("full-frontend", list(verify.RELEASE_FRONTEND_GATES), coverage=None)
-    verdict = verify.aggregate_authority([backend, frontend])
+    e2e = _summary("full-e2e", list(verify.RELEASE_E2E_GATES), coverage=None)
+    verdict = verify.aggregate_authority([backend, frontend, e2e])
     assert verdict["release"] is True, verdict["reasons"]
     assert verdict["reasons"] == []
     assert verdict["certifiedSha"] == "a" * 40
     assert verdict["gateSource"]["pytest-full"] == "full-backend"
     assert verdict["gateSource"]["fe-build"] == "full-frontend"
+    assert verdict["gateSource"]["pytest-e2e"] == "full-e2e"
+
+
+def test_aggregate_without_the_browser_e2e_component_is_not_authority() -> None:
+    """Round 3 B3: the backend + frontend pair that used to be the whole
+    verdict no longer is — the browser e2e is a required gate that the
+    unfiltered backend pytest may have SKIPPED on a runner without the
+    frontend toolchain, so a third component must prove it ran."""
+    backend = _summary("full-backend", list(verify.RELEASE_BACKEND_GATES))
+    frontend = _summary("full-frontend", list(verify.RELEASE_FRONTEND_GATES), coverage=None)
+    verdict = verify.aggregate_authority([backend, frontend])
+    assert verdict["release"] is False
+    assert "GATE_NOT_PASSED_BY_ANY_COMPONENT:pytest-e2e" in verdict["reasons"]
+    assert verdict["gateSource"]["pytest-e2e"] is None
 
 
 def test_aggregate_refuses_components_that_certify_different_revisions() -> None:
@@ -353,18 +377,24 @@ def test_authority_subcommand_writes_a_verdict_and_exits_nonzero_when_withheld(
     monkeypatch.setattr(verify, "VERIFICATION", tmp_path)
     backend = tmp_path / "backend.json"
     frontend = tmp_path / "frontend.json"
+    e2e = tmp_path / "e2e.json"
     # no explicit label in the files: the CLI must name components by file stem
     be = _summary("", list(verify.RELEASE_BACKEND_GATES))
     fe = _summary("", list(verify.RELEASE_FRONTEND_GATES), coverage=None)
-    be.pop("label")
-    fe.pop("label")
+    ee = _summary("", list(verify.RELEASE_E2E_GATES), coverage=None)
+    for doc in (be, fe, ee):
+        doc.pop("label")
     backend.write_text(json.dumps(be), encoding="utf-8")
     frontend.write_text(json.dumps(fe), encoding="utf-8")
-    assert verify.main(["authority", str(backend), str(frontend)]) == 0
+    e2e.write_text(json.dumps(ee), encoding="utf-8")
+    assert verify.main(["authority", str(backend), str(frontend), str(e2e)]) == 0
     written = json.loads((tmp_path / "release-authority.json").read_text(encoding="utf-8"))
     # the label defaults to the file stem, so the verdict says who proved what
     assert written["release"] is True
     assert written["gateSource"]["mypy"] == "backend"
+    assert written["gateSource"]["pytest-e2e"] == "e2e"
+    # the pre-round-3 pair alone is withheld: the browser gate has no owner
+    assert verify.main(["authority", str(backend), str(frontend)]) == 1
     assert verify.main(["authority", str(backend)]) == 1
 
 
@@ -520,6 +550,12 @@ def _stub_runner(monkeypatch: Any, tmp_path: Path) -> list[str]:
         calls.append("frontend_full")
         self.steps.extend(_steps(list(verify.RELEASE_FRONTEND_GATES)))
 
+    def e2e_full(self: Any) -> None:
+        calls.append("e2e_full")
+        step = _steps(list(verify.RELEASE_E2E_GATES))[0]
+        step.update({"testsPassed": 1, "testsFailed": 0, "testsSkipped": 0, "required": True})
+        self.steps.append(step)
+
     def coverage() -> dict[str, Any]:
         calls.append("collection_coverage")
         return {**GOOD_COVERAGE, "collectedFull": 3, "collectedAll": 3, "excludedFromFastIds": []}
@@ -527,6 +563,7 @@ def _stub_runner(monkeypatch: Any, tmp_path: Path) -> list[str]:
     monkeypatch.setattr(verify.Runner, "backend_static", backend_static)
     monkeypatch.setattr(verify.Runner, "pytest", pytest_)
     monkeypatch.setattr(verify.Runner, "frontend_full", frontend_full)
+    monkeypatch.setattr(verify.Runner, "e2e_full", e2e_full)
     monkeypatch.setattr(verify, "collection_coverage", coverage)
     # a clean, unchanged source so the component evidence is judged on its gates
     monkeypatch.setattr(
@@ -558,7 +595,11 @@ def test_frontend_only_runs_the_five_frontend_gates_and_nothing_backend(
     assert summary["mode"] == "FULL"
     authority = summary["authority"]
     assert authority["release"] is False
-    assert authority["components"] == {"backendFullSuite": False, "frontendFullSuite": True}
+    assert authority["components"] == {
+        "backendFullSuite": False,
+        "frontendFullSuite": True,
+        "e2eFullSuite": False,
+    }
     assert {f"GATE_NOT_RUN:{g}" for g in verify.RELEASE_BACKEND_GATES} <= set(authority["reasons"])
     assert "COVERAGE_PROOF_MISSING" in authority["reasons"]
     assert authority["requiredGates"]["pytest-full"] == "NOT_RUN"
@@ -574,13 +615,50 @@ def test_backend_only_names_itself_and_stays_a_component(tmp_path: Path, monkeyp
     assert summary["component"] == "full-backend"
     authority = summary["authority"]
     assert authority["release"] is False
-    assert authority["components"] == {"backendFullSuite": True, "frontendFullSuite": False}
-    assert {f"GATE_NOT_RUN:{g}" for g in verify.RELEASE_FRONTEND_GATES} == set(authority["reasons"])
+    assert authority["components"] == {
+        "backendFullSuite": True,
+        "frontendFullSuite": False,
+        "e2eFullSuite": False,
+    }
+    assert {
+        f"GATE_NOT_RUN:{g}" for g in verify.RELEASE_FRONTEND_GATES + verify.RELEASE_E2E_GATES
+    } == set(authority["reasons"])
 
 
-def test_the_two_component_flags_are_mutually_exclusive() -> None:
+def test_e2e_only_runs_the_required_browser_gate_and_nothing_else(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """``verify.py full --e2e-only`` (round 3 B3): the e2e component. No
+    static checks, no unfiltered pytest, no frontend gates, no coverage
+    proof; it names itself ``full-e2e`` and is e2e component evidence only."""
+    calls = _stub_runner(monkeypatch, tmp_path)
+    assert verify.main(["full", "--e2e-only"]) == 0
+    assert calls == ["e2e_full"]
+    summary = _written(tmp_path)
+    assert summary["component"] == "full-e2e"
+    authority = summary["authority"]
+    assert authority["release"] is False
+    assert authority["components"] == {
+        "backendFullSuite": False,
+        "frontendFullSuite": False,
+        "e2eFullSuite": True,
+    }
+    assert authority["requiredGates"]["pytest-e2e"] == "PASS"
+    assert authority["requiredGates"]["pytest-full"] == "NOT_RUN"
+    assert "collectionCoverage" not in summary
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--backend-only", "--frontend-only"],
+        ["--backend-only", "--e2e-only"],
+        ["--frontend-only", "--e2e-only"],
+    ],
+)
+def test_the_component_flags_are_mutually_exclusive(flags: list[str]) -> None:
     with pytest.raises(SystemExit) as exc:
-        verify.main(["full", "--backend-only", "--frontend-only"])
+        verify.main(["full", *flags])
     assert exc.value.code == 2  # argparse usage error
 
 
@@ -589,17 +667,23 @@ def test_the_default_full_run_is_the_whole_set_and_names_itself_full(
 ) -> None:
     calls = _stub_runner(monkeypatch, tmp_path)
     assert verify.main(["full"]) == 0
-    assert calls == ["backend_static", "pytest:pytest-full", "frontend_full", "collection_coverage"]
+    assert calls == [
+        "backend_static",
+        "pytest:pytest-full",
+        "frontend_full",
+        "e2e_full",
+        "collection_coverage",
+    ]
     summary = _written(tmp_path)
     assert summary["component"] == "full"
     assert summary["authority"]["release"] is True
 
 
-def test_the_two_real_component_summaries_aggregate_to_one_release_verdict(
+def test_the_real_component_summaries_aggregate_to_one_release_verdict(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     """End to end through the CLI, exactly as the Release Authority job does:
-    two summaries WRITTEN BY the component modes, aggregated by ``authority``.
+    the summaries WRITTEN BY the component modes, aggregated by ``authority``.
     The components name themselves, so the verdict says who proved what."""
     _stub_runner(monkeypatch, tmp_path)
     assert verify.main(["full", "--backend-only"]) == 0
@@ -610,8 +694,12 @@ def test_the_two_real_component_summaries_aggregate_to_one_release_verdict(
     frontend = tmp_path / "full-frontend" / "verification-summary.json"
     frontend.parent.mkdir()
     (tmp_path / "verification-summary.json").rename(frontend)
+    assert verify.main(["full", "--e2e-only"]) == 0
+    e2e = tmp_path / "full-e2e" / "verification-summary.json"
+    e2e.parent.mkdir()
+    (tmp_path / "verification-summary.json").rename(e2e)
 
-    assert verify.main(["authority", str(backend), str(frontend)]) == 0
+    assert verify.main(["authority", str(backend), str(frontend), str(e2e)]) == 0
     verdict = json.loads((tmp_path / "release-authority.json").read_text(encoding="utf-8"))
     assert verdict["release"] is True
     assert verdict["reasons"] == []
@@ -621,6 +709,7 @@ def test_the_two_real_component_summaries_aggregate_to_one_release_verdict(
     # file names
     assert {verdict["gateSource"][g] for g in verify.RELEASE_BACKEND_GATES} == {"full-backend"}
     assert {verdict["gateSource"][g] for g in verify.RELEASE_FRONTEND_GATES} == {"full-frontend"}
+    assert {verdict["gateSource"][g] for g in verify.RELEASE_E2E_GATES} == {"full-e2e"}
 
 
 def test_a_missing_component_file_is_a_withheld_verdict_not_a_smaller_aggregate(

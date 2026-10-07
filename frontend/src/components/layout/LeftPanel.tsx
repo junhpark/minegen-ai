@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { AnalysisWorkspace } from '@/components/layout/AnalysisWorkspace'
 import { DesignWorkspace } from '@/components/layout/DesignWorkspace'
 import { ResetFromHere } from '@/components/layout/ResetFromHere'
@@ -7,6 +7,7 @@ import { SystemsWorkspace } from '@/components/layout/SystemsWorkspace'
 import { STAGE_LABEL, stepOf } from '@/components/layout/workflow'
 import { ExportPanel } from '@/components/panels/ExportPanel'
 import { SetupPanel } from '@/components/panels/ScenarioPanel'
+import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 
 /**
@@ -54,8 +55,18 @@ export function LeftPanel() {
 }
 
 /** the centre workspace of the Analysis step (PR-1: the existing Analysis
- * panel placed full-window; charts follow in PR-2) */
+ * panel placed full-window; charts follow in PR-2). Round 3 B1: being
+ * MOUNTED — actually shown — over a scene is what completes the Analysis
+ * stage for that scene revision; a stage click alone never does. A scene
+ * that changes while the workspace stays open completes again for the new
+ * revision (the user is looking at the new mine's analysis). */
 export function AnalysisCenter() {
+  const hasScene = useScenarioStore((s) => s.scene !== null)
+  const sceneRevision = useScenarioStore((s) => s.sceneRevision)
+  const markViewerStageComplete = useViewerStore((s) => s.markViewerStageComplete)
+  useEffect(() => {
+    if (hasScene) markViewerStageComplete('ANALYSIS', sceneRevision)
+  }, [hasScene, sceneRevision, markViewerStageComplete])
   return (
     <div
       className="absolute inset-0 z-10 overflow-y-auto bg-rock-900"

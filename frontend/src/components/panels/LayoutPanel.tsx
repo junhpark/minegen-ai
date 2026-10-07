@@ -60,6 +60,11 @@ export function LayoutPanel({ active = true }: { active?: boolean } = {}) {
     queryKey: ['job', 'layout', epoch, jobId],
     queryFn: () => api.getJob(jobId as string),
     enabled: jobId !== null,
+    // the interval is the only reader; a terminal record is never refetched
+    // (a refetch would re-apply the same catalogue as a new scene revision)
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     refetchInterval: (q) => {
       const s = q.state.data?.status
       return s === 'SUCCEEDED' || s === 'FAILED' ? false : 500

@@ -192,9 +192,24 @@ NEXT and the failed stage is the focus. Analysis and Export own no artifact
 and are completed by the viewer (Analysis once opened, Export once a package
 was downloaded — `viewerStore.completedViewerStages`, cleared on every
 scenario transition); that completion counts only while their prerequisite
-chain is done. A stage that hosts several cards (Excavation) aggregates the
-tones its mounted cards report per card instance — RUNNING wins
-(`shellStore.stageTone`).
+chain is done. The completion is bound to the SCENE REVISION it was made
+on (`scenarioStore.sceneRevision`, advanced by every accepted scene write —
+a transition, a re-read, a partial artifact update, a reset): a completion
+of another revision counts for nothing (`completedStagesFor`), so a reset or
+regeneration never revives an old Analysis ✓ / Export ✓. Analysis completes
+only when its centre workspace is actually SHOWN (`AnalysisCenter` mounted
+over a scene), never by the stage click — opening the stage from a 4D / Walk
+view leaves that view explicitly — and Export completes for the revision the
+downloaded package was exported from (read from the store when the request
+is sent). The revision moves only when the scene actually changes: an
+`applyScene` updater that keeps the scene object is revision-neutral, and a
+terminal job record is never refetched on window focus / reconnect / remount
+(`useJobPoll` and the layout poll read by interval only, `staleTime:
+Infinity`) — measured in the browser e2e, the download's focus change used
+to refetch the finished mesh jobs, re-apply their identical results as new
+scene revisions and drop the completions just made. A stage that hosts several cards
+(Excavation) aggregates the tones its mounted cards report per card instance
+— RUNNING wins (`shellStore.stageTone`).
 
 | Step | Stages | Cards (controls → results) |
 | --- | --- | --- |
@@ -1635,9 +1650,12 @@ teardown fingerprint check. Cached verification fixtures
 FULL re-derives cleanly — a mismatch is an explicit STALE VERIFICATION
 FIXTURE failure. Outputs: `backend/.verification/verification-summary.json`
 plus per-step logs (git-ignored). CI: `verify-fast.yml` (feedback) and
-`verify-full.yml` (backend + frontend component jobs aggregated by the
-`Release Authority` job — the ONE CI release verdict, AC-01H); the original
-`ci.yml` was retired after same-revision equivalence was proven.
+`verify-full.yml` (backend + frontend + e2e component jobs aggregated by the
+`Release Authority` job — the ONE CI release verdict, AC-01H; the e2e
+component runs the guided-workflow browser test as a REQUIRED gate under
+`MINEGEN_E2E_REQUIRED=1`, since the backend runner skips it for lack of the
+frontend toolchain and a skip is not evidence — PR #53 review round 3); the
+original `ci.yml` was retired after same-revision equivalence was proven.
 
 ## Phase 23A — MineExchange Core v1 (rule 190)
 

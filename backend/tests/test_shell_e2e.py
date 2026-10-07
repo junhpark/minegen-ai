@@ -12,7 +12,9 @@ The stack is real: a uvicorn backend on a temporary data directory and the
 Vite dev server pointed at it, both on free ports; the browser is the
 Playwright Chromium (``MINEGEN_E2E_CHROMIUM`` or the Playwright default).
 The test is skipped — never silently passed — when Playwright, Node or the
-browser are unavailable. Marker ``e2e`` + ``slow`` (FULL only).
+browser are unavailable — unless ``MINEGEN_E2E_REQUIRED=1`` (the FULL e2e
+release gate, PR #53 review round 3 B3), where every such condition is a
+FAILURE: a required gate never skips. Marker ``e2e`` + ``slow`` (FULL only).
 """
 
 from __future__ import annotations
@@ -31,7 +33,21 @@ from typing import Any
 
 import pytest
 
-playwright = pytest.importorskip("playwright.sync_api")
+#: round 3 B3 — under the release gate a missing prerequisite fails the test
+REQUIRED = os.environ.get("MINEGEN_E2E_REQUIRED") == "1"
+
+
+def _unavailable(reason: str) -> None:
+    """Skip, or FAIL when the e2e is a required gate (a skip is not evidence)."""
+    if REQUIRED:
+        pytest.fail(f"required browser e2e cannot run: {reason}")
+    pytest.skip(reason)
+
+
+if REQUIRED:
+    import playwright.sync_api as playwright  # a missing Playwright fails collection
+else:
+    playwright = pytest.importorskip("playwright.sync_api")
 
 REPO = Path(__file__).resolve().parents[2]
 FRONTEND = REPO / "frontend"
@@ -82,7 +98,7 @@ def _chromium_path() -> str | None:
 @pytest.fixture(scope="module")
 def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
     if shutil.which("npm") is None or not (FRONTEND / "node_modules").exists():
-        pytest.skip("frontend toolchain (npm + node_modules) not available")
+        _unavailable("frontend toolchain (npm + node_modules) not available")
     data_dir = tmp_path_factory.mktemp("shell-e2e-data")
     api_port, web_port = _free_port(), _free_port()
     api = f"http://127.0.0.1:{api_port}"
@@ -149,7 +165,8 @@ def browser(stack: dict[str, Any]) -> Iterator[tuple[Any, list[str]]]:
         try:
             browser = p.chromium.launch(executable_path=exe) if exe else p.chromium.launch()
         except Exception as e:
-            pytest.skip(f"Playwright Chromium not available: {str(e)[:120]}")
+            _unavailable(f"Playwright Chromium not available: {str(e)[:120]}")
+            raise
         pg = browser.new_page(viewport={"width": 1600, "height": 950})
         font = next((f for f in LOCAL_FONTS if f.exists()), None)
         if font is not None:
@@ -199,11 +216,22 @@ def _assert_single_primary(page: Any, where: str) -> None:
     assert n <= 1, f"{n} enabled primary buttons at {where}"
 
 
+def _glyphs(page: Any) -> dict[str, str]:
+    return {
+        str(e.get_attribute("data-stage")): str(e.get_attribute("data-glyph"))
+        for e in page.locator('[data-testid="stepper"] button').all()
+    }
+
+
 def _wait_glyph(page: Any, stage: str, glyph: str, timeout: int = JOB_TIMEOUT_MS) -> None:
-    page.wait_for_selector(
-        f'[data-testid="stepper"] [data-stage="{stage}"][data-glyph="{glyph}"]',
-        timeout=timeout,
-    )
+    try:
+        page.wait_for_selector(
+            f'[data-testid="stepper"] [data-stage="{stage}"][data-glyph="{glyph}"]',
+            timeout=timeout,
+        )
+    except playwright.TimeoutError as e:
+        # the failure names the stepper as it IS, not only the glyph it waited for
+        raise AssertionError(f"{stage} never became {glyph}; stepper = {_glyphs(page)}") from e
 
 
 def _click_stage(page: Any, stage: str) -> None:
@@ -277,10 +305,14 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     _generate(page, "SENSORS", "Place sensors")
 
     # 6 Analysis is NEXT once the Systems stages are done (review round 2 S2:
-    # the guided flow has no dead end) and opens in the centre workspace (no
-    # primary action); opening it completes it for this viewer
+    # the guided flow has no dead end). Round 3 B1: opened from the 4D VIEW it
+    # must still show the centre workspace — the stage click alone never
+    # completes it, the shown workspace does
     _wait_glyph(page, "ANALYSIS", "NEXT")
     _wait_glyph(page, "EXPORT", "WAITING")
+    page.click('[data-testid="view-switcher"] button:has-text("4D")')
+    page.wait_for_selector('[data-testid="stepper"]')
+    assert page.locator('[data-testid="analysis-center"]').count() == 0
     _click_stage(page, "ANALYSIS")
     page.wait_for_selector('[data-testid="analysis-center"]')
     assert _primaries(page) == 0
@@ -319,4 +351,23 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     _controls(page, "Generate level development").click()
     _wait_glyph(page, "LEVELS", "DONE")
     assert (derived / "levels.json").exists()
+    # round 3 B2: rebuilding the whole chain on the NEW mine state brings
+    # Analysis back as NEXT — the completions established on the previous
+    # mine never revive (Export stays WAITING behind it) — and showing the
+    # workspace again completes it for the new revision
+    _click_stage(page, "EXCAVATION")
+    _controls(page, "Generate development mesh").click()
+    _wait_glyph(page, "EXCAVATION", "DONE")
+    _generate(page, "NETWORK", "Build network")
+    _generate(page, "CAPABILITY", "Build capabilities")
+    _generate(page, "PRODUCTION", "Generate Stopes")
+    _generate(page, "SCHEDULE", "Schedule development")
+    _generate(page, "COMMUNICATION", "Plan communication")
+    _generate(page, "SENSORS", "Place sensors")
+    _wait_glyph(page, "ANALYSIS", "NEXT")
+    _wait_glyph(page, "EXPORT", "WAITING")
+    _click_stage(page, "ANALYSIS")
+    page.wait_for_selector('[data-testid="analysis-center"]')
+    _wait_glyph(page, "ANALYSIS", "DONE")
+    _wait_glyph(page, "EXPORT", "NEXT")
     assert errors == []

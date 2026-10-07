@@ -55,13 +55,17 @@ export interface ViewerState {
   stage: StageId
   setStage: (stage: StageId) => void
   /**
-   * Review round 2 S2 — the stages that own no artifact and are completed by
-   * the viewer: Analysis once opened (`setStage('ANALYSIS')`), Export once a
-   * package was downloaded (`markViewerStageComplete('EXPORT')`). Stepper
+   * Review round 2 S2 / round 3 B1–B2 — the stages that own no artifact and
+   * are completed by the viewer, BOUND to the scene revision they were
+   * completed on: Analysis once its workspace was actually shown
+   * (`AnalysisCenter` mounted over a scene), Export once a package of that
+   * scene was downloaded. A completion established on another revision is
+   * not a completion of the current mine (a reset or regeneration moves the
+   * revision), so `completedStagesFor` yields nothing for it. Stepper
    * presentation only; cleared with the scenario-scoped state.
    */
-  completedViewerStages: ReadonlySet<StageId>
-  markViewerStageComplete: (stage: StageId) => void
+  completedViewerStages: ViewerCompletion
+  markViewerStageComplete: (stage: StageId, sceneRevision: number) => void
   /** 3D | 4D | Walk — the viewport's view mode, chosen apart from the stage */
   viewMode: () => ViewMode
   setViewMode: (view: ViewMode) => void
@@ -118,6 +122,24 @@ const DEFAULT_VISIBLE: LayerId[] = [
   'operationsVehicles',
 ]
 
+/** the viewer-completed stages of ONE scene revision (round 3 B2) */
+export interface ViewerCompletion {
+  sceneRevision: number
+  stages: ReadonlySet<StageId>
+}
+
+const NO_COMPLETION: ViewerCompletion = { sceneRevision: -1, stages: new Set<StageId>() }
+const NO_STAGES: ReadonlySet<StageId> = new Set<StageId>()
+
+/** the completed stages that count for the CURRENT scene revision — a
+ * completion established on any other revision counts for nothing */
+export function completedStagesFor(
+  completion: ViewerCompletion,
+  sceneRevision: number,
+): ReadonlySet<StageId> {
+  return completion.sceneRevision === sceneRevision ? completion.stages : NO_STAGES
+}
+
 export const useViewerStore = create<ViewerState>()((set, get) => ({
   mode: 'DESIGN',
   cameraMode: 'orbit',
@@ -138,19 +160,32 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   setAnalysisTab: (analysisTab) => set({ analysisTab }),
 
   stage: 'SCENARIO',
-  completedViewerStages: new Set<StageId>(),
-  markViewerStageComplete: (stage) =>
-    set((s) =>
-      s.completedViewerStages.has(stage)
-        ? {}
-        : { completedViewerStages: new Set(s.completedViewerStages).add(stage) },
-    ),
-  setStage: (stage) =>
+  completedViewerStages: NO_COMPLETION,
+  markViewerStageComplete: (stage, sceneRevision) =>
+    set((s) => {
+      const current = s.completedViewerStages
+      if (current.sceneRevision === sceneRevision && current.stages.has(stage)) return {}
+      // a completion of an OLDER revision than the one already recorded is
+      // stale (the mine moved on while it was being established): ignored
+      if (sceneRevision < current.sceneRevision) return {}
+      // a completion on a NEW revision starts a new set: nothing established
+      // on the previous mine state carries over (round 3 B2)
+      const stages =
+        current.sceneRevision === sceneRevision
+          ? new Set(current.stages).add(stage)
+          : new Set<StageId>([stage])
+      return { completedViewerStages: { sceneRevision, stages } }
+    }),
+  setStage: (stage) => {
+    // round 3 B1: the Analysis workspace is the centre view rendered only in
+    // the ANALYSIS mode, so opening the stage from a 4D / Walk view leaves
+    // that view explicitly (the Walk exit clears its snapshot state, rule 112)
+    const current = get()
+    if (stage === 'ANALYSIS' && (current.mode === '4D' || current.mode === 'WALKTHROUGH')) {
+      current.setMode('ANALYSIS')
+    }
     set((s) => {
       const next: Partial<ViewerState> = { stage, designTab: designTabFor(stage) }
-      if (stage === 'ANALYSIS' && !s.completedViewerStages.has(stage)) {
-        next.completedViewerStages = new Set(s.completedViewerStages).add(stage)
-      }
       const systems = systemsTabFor(stage)
       if (systems) next.systemsTab = systems
       const analysis = analysisTabFor(stage)
@@ -158,7 +193,8 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
       // a 4D / Walk view is a VIEW choice and survives a stage change
       if (s.mode !== '4D' && s.mode !== 'WALKTHROUGH') next.mode = modeForStage(stage)
       return next
-    }),
+    })
+  },
   viewMode: () => {
     const m = get().mode
     return m === '4D' ? '4D' : m === 'WALKTHROUGH' ? 'WALK' : '3D'
@@ -236,6 +272,6 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
       walkthroughContext: null,
       walkthroughSnapshotDay: null,
       walkthroughSnapshotIdentity: null,
-      completedViewerStages: new Set<StageId>(),
+      completedViewerStages: NO_COMPLETION,
     }),
 }))

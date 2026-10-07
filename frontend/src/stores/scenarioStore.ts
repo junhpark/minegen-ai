@@ -26,6 +26,14 @@ export interface ScenarioState {
    * populate scenario B.
    */
   epoch: number
+  /**
+   * Scene REVISION (PR #53 review round 3 B2): increments on every accepted
+   * write of the scene manifest — a scenario transition, a full re-read, a
+   * partial artifact update, a reset. Viewer-local facts about the mine
+   * (Analysis opened, a package exported) are bound to the revision they
+   * were established on and stop counting the moment the mine moves on.
+   */
+  sceneRevision: number
   jobs: Record<DesignJobKind, string | null>
   /** Switch the active scenario and return the NEW epoch. Clears the scene
    * manifest, every derived product and all in-flight job ids in one set(). */
@@ -55,6 +63,7 @@ export const useScenarioStore = create<ScenarioState>()((set, get) => ({
   scenario: null,
   scene: null,
   epoch: 0,
+  sceneRevision: 0,
   jobs: { ...NO_JOBS },
 
   setScenario: (scenario) => {
@@ -66,20 +75,39 @@ export const useScenarioStore = create<ScenarioState>()((set, get) => ({
       return prev.epoch
     }
     const epoch = prev.epoch + 1
-    set({ scenario, scene: null, epoch, jobs: { ...NO_JOBS } })
+    set({
+      scenario,
+      scene: null,
+      epoch,
+      sceneRevision: prev.sceneRevision + 1,
+      jobs: { ...NO_JOBS },
+    })
     return epoch
   },
 
   replaceScenarioDocument: (scenario) => {
-    const epoch = get().epoch + 1
-    set({ scenario, scene: null, epoch, jobs: { ...NO_JOBS } })
+    const prev = get()
+    const epoch = prev.epoch + 1
+    set({
+      scenario,
+      scene: null,
+      epoch,
+      sceneRevision: prev.sceneRevision + 1,
+      jobs: { ...NO_JOBS },
+    })
     return epoch
   },
 
-  setScene: (scene, epoch) => set((s) => (epoch === s.epoch ? { scene } : {})),
+  setScene: (scene, epoch) =>
+    set((s) => (epoch === s.epoch ? { scene, sceneRevision: s.sceneRevision + 1 } : {})),
 
   applyScene: (epoch, update) =>
-    set((s) => (epoch === s.epoch && s.scene ? { scene: update(s.scene) } : {})),
+    set((s) => {
+      if (epoch !== s.epoch || !s.scene) return {}
+      const next = update(s.scene)
+      // an updater that keeps the scene (same object) moved nothing: no revision
+      return next === s.scene ? {} : { scene: next, sceneRevision: s.sceneRevision + 1 }
+    }),
 
   setJob: (kind, jobId, epoch) =>
     set((s) => (epoch === s.epoch ? { jobs: { ...s.jobs, [kind]: jobId } } : {})),

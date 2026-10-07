@@ -179,18 +179,32 @@ Two workflows, three roles:
 | workflow | trigger | jobs | role |
 |---|---|---|---|
 | `verify-fast.yml` | `pull_request` | `FAST` → `python scripts/verify.py fast`; artifact `verification-fast` | inner-loop feedback — development acceleration, never release evidence |
-| `verify-full.yml` | `pull_request` + `push: main` | `full-backend` → `verify.py full --backend-only` (ruff · format · mypy · pytest UNFILTERED · collection proof; `fetch-depth: 0` for the AC-01G LAYER B base archive); `full-frontend` → `verify.py full --frontend-only` (typecheck · lint · prettier · vitest · build); `release-authority` → downloads both component summaries and runs `verify.py authority` | the two component jobs are component EVIDENCE; **`Release Authority` is the ONE CI release verdict** |
+| `verify-full.yml` | `pull_request` + `push: main` | `full-backend` → `verify.py full --backend-only` (ruff · format · mypy · pytest UNFILTERED · collection proof; `fetch-depth: 0` for the AC-01G LAYER B base archive); `full-frontend` → `verify.py full --frontend-only` (typecheck · lint · prettier · vitest · build); `full-e2e` → `verify.py full --e2e-only` (Python + Node + `npm ci` + Playwright Chromium, then the guided-workflow browser e2e `tests/test_shell_e2e.py` under `MINEGEN_E2E_REQUIRED=1` — gate `pytest-e2e`, PR #53 review round 3 B3); `release-authority` → downloads the three component summaries and runs `verify.py authority` | the three component jobs are component EVIDENCE; **`Release Authority` is the ONE CI release verdict** |
+
+The browser e2e is a REQUIRED release gate (`RELEASE_E2E_GATES`). The
+unfiltered backend pytest collects and counts it, but on the backend runner —
+Python only, no `node_modules`, no Chromium — the test SKIPS, and a skip is
+not evidence (the PR #53 round-3 review found the authoritative FULL backend
+at `1876 passed / 1 skipped` with the e2e as the skip while `Release
+Authority` read green). `verify.py full --e2e-only` runs the test with
+`MINEGEN_E2E_REQUIRED=1`, under which every missing prerequisite (Playwright,
+`npm` / `node_modules`, the browser) is a FAILURE, and the `pytest-e2e` gate
+itself refuses a run that executed nothing or skipped anything
+(`E2E_NOT_EXECUTED` / `E2E_SKIPPED:<n>`). The whole local `verify.py full`
+runs the gate too (after the frontend gates), so a local FULL and the CI
+aggregate judge the same gate list.
 
 Artifacts (every upload sets `include-hidden-files: true` and
 `if-no-files-found: error`, because `.verification/` is a dotted directory and
 the pre-AC-01H uploads silently published nothing): `verification-fast`,
 `verification-full-backend`, `verification-full-frontend`,
-`verification-release-authority` (`release-authority.json` plus both
-component `verification-summary.json` files under `components/`, so an
+`verification-full-e2e`, `verification-release-authority`
+(`release-authority.json` plus every component `verification-summary.json`
+under `components/`, so an
 independent reviewer downloads the evidence rather than trusting a green
 badge).
 
-The authority job `needs` both components and runs `if: always()`: a failed
+The authority job `needs` all three components and runs `if: always()`: a failed
 or missing component yields a RECORDED withheld verdict — `GATE_FAILED`,
 `COMPONENT_SUMMARY_MISSING:<path>`, `COMPONENT_SUMMARY_INVALID:<path>` (a torn,
 empty or non-object summary — a job cancelled mid-write still uploads),
@@ -206,9 +220,10 @@ commit, so the certified SHA is `PULL_REQUEST_MERGE_SIMULATION` with
 and is never relabelled as the PR head. Exact-HEAD authority for a branch
 commit is the local `python scripts/verify.py full` (`SOURCE_HEAD`).
 
-`verify.py full --backend-only` and `--frontend-only` are mutually exclusive
-component modes; each summary records its `component` (`full-backend`,
-`full-frontend`, or `full` for the whole local run) so the aggregate names
+`verify.py full --backend-only`, `--frontend-only` and `--e2e-only` are
+mutually exclusive component modes; each summary records its `component`
+(`full-backend`, `full-frontend`, `full-e2e`, or `full` for the whole local
+run) so the aggregate names
 which component proved each gate (`gateSource`). The original `ci.yml`
 (backend `pytest -q` + the frontend job) ran the same gate set a second time
 per revision. It is RETIRED (AC-01H commit 2) after same-revision equivalence

@@ -1628,6 +1628,13 @@ code, the code and the rule win and the map is corrected.
      VERIFICATION FIXTURE failure, never auto-rewritten. A FULL result is
      merge evidence only for the exact HEAD it ran on. Faster verification
      never changes a production threshold, golden expectation or hard gate.
+     The guided-workflow browser e2e (`tests/test_shell_e2e.py`) is a
+     REQUIRED release gate (`pytest-e2e`, `RELEASE_E2E_GATES`): the CI
+     `full-e2e` component runs it under `MINEGEN_E2E_REQUIRED=1`, where a
+     missing toolchain or browser FAILS instead of skipping and the gate
+     refuses a run that executed nothing or skipped anything — a skipped
+     e2e inside the unfiltered backend pytest is counted, never evidence,
+     and `Release Authority` needs all three components.
 
 182. Shaft = infrastructure primitive, never a layout family (Phase 20C.2B).
      `scenario.shafts.specs` declares explicit vertical shafts (empty =
@@ -1918,10 +1925,15 @@ code, the code and the rule win and the map is corrected.
      for Levels; Analysis follows the last Systems stage and Export follows
      Analysis, so the guided flow has no dead end); when a FAILED stage
      blocks the chain no stage is NEXT and the failed stage is the focus.
-     Analysis and Export own no artifact and are completed by the viewer
-     (Analysis once opened, Export once a package was downloaded —
-     viewer-local, cleared on every scenario transition, counted only while
-     their prerequisite chain is done). The glyph is a presentation of the
+     Analysis and Export own no artifact and are completed by the viewer —
+     Analysis once its centre workspace was actually SHOWN (mounted over a
+     scene; a stage click alone never completes it, and opening it from a
+     4D / Walk view leaves that view explicitly), Export once a package was
+     downloaded — BOUND to the scene revision they were made on
+     (`scenarioStore.sceneRevision`, advanced by every accepted scene
+     write): a completion of another revision counts for nothing, so a
+     reset or regeneration never revives an old ✓; counted only while their
+     prerequisite chain is done. The glyph is a presentation of the
      artifact the stage owns (`StatusBadge` semantics — the backend status,
      no new vocabulary); a stage hosting several cards aggregates their
      reported tones per card instance (RUNNING wins, no overwrite);

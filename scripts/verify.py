@@ -9,6 +9,7 @@ mypy, npm scripts) — no new test framework:
     python scripts/verify.py full        # authoritative: every gate the old CI ran, unfiltered
     python scripts/verify.py full --backend-only    # CI component: static, unfiltered pytest, proof
     python scripts/verify.py full --frontend-only   # CI component: the five frontend gates (AC-01H)
+    python scripts/verify.py full --e2e-only        # CI component: the REQUIRED browser e2e gate
     python scripts/verify.py full --closeout   # + golden / legacy / survey / screen-audit summaries
     python scripts/verify.py benchmark   # runtime observation only (never a correctness gate)
     python scripts/verify.py collect-full      # invariant: collected(FULL) == collected(all)
@@ -96,7 +97,14 @@ def _head() -> dict[str, Any]:
 #: whole set.
 RELEASE_BACKEND_GATES = ("ruff-check", "ruff-format", "mypy", "pytest-full")
 RELEASE_FRONTEND_GATES = ("fe-typecheck", "fe-lint", "fe-prettier", "fe-vitest", "fe-build")
-RELEASE_GATES = RELEASE_BACKEND_GATES + RELEASE_FRONTEND_GATES
+#: PR #53 review round 3 B3: the guided-workflow browser e2e (hardening H1
+#: §4.5) is a REQUIRED release gate. The unfiltered backend pytest collects it
+#: but SKIPS it on a runner without the frontend toolchain, and a skip is not
+#: evidence; this gate runs it with ``MINEGEN_E2E_REQUIRED=1`` (a skip is a
+#: failure) and PASSES only when at least one e2e test ran and none skipped.
+RELEASE_E2E_GATES = ("pytest-e2e",)
+RELEASE_GATES = RELEASE_BACKEND_GATES + RELEASE_FRONTEND_GATES + RELEASE_E2E_GATES
+E2E_TEST_FILE = "tests/test_shell_e2e.py"
 
 #: pytest flags that narrow the executed set — any of them means the run was
 #: not the unfiltered suite
@@ -292,11 +300,13 @@ def evaluate_authority(
     frontend_component = (
         mode == "full" and all(passed(g) for g in RELEASE_FRONTEND_GATES) and clean_source
     )
+    e2e_component = mode == "full" and all(passed(g) for g in RELEASE_E2E_GATES) and clean_source
     return {
         "release": not reasons,
         "components": {
             "backendFullSuite": backend_component,
             "frontendFullSuite": frontend_component,
+            "e2eFullSuite": e2e_component,
         },
         "requiredGates": {g: by_name.get(g, {}).get("status", "NOT_RUN") for g in RELEASE_GATES},
         "pytestFullUnfiltered": unfiltered,
@@ -521,6 +531,42 @@ class Runner:
             f"in {step.get('testFiles', '?')} files"
         )
         self.run("fe-build", [npm, "run", "build"], FRONTEND)
+
+    def e2e_full(self) -> None:
+        """The browser e2e as a release gate (round 3 B3). ``MINEGEN_E2E_REQUIRED=1``
+        makes the test FAIL instead of skipping when Playwright, Node, the
+        frontend ``node_modules`` or Chromium are missing, and the gate itself
+        refuses a run that executed nothing or skipped anything — a green
+        exit code over zero executed tests is never a pass."""
+        xml = VERIFICATION / f"{self.mode}-pytest-e2e.xml"
+        cmd = [
+            _python(),
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            f"--junitxml={xml}",
+            E2E_TEST_FILE,
+        ]
+        step = self.run("pytest-e2e", cmd, BACKEND, env={"MINEGEN_E2E_REQUIRED": "1"})
+        step.update(_junit_counts(xml))
+        step["markerExpression"] = None
+        step["junit"] = str(xml.relative_to(ROOT))
+        step["required"] = True
+        executed = int(step.get("testsPassed", 0)) + int(step.get("testsFailed", 0))
+        skipped = int(step.get("testsSkipped", 0))
+        if step["status"] == "PASS" and (executed == 0 or skipped > 0):
+            step["status"] = "FAIL"
+            step["gateReason"] = "E2E_NOT_EXECUTED" if executed == 0 else f"E2E_SKIPPED:{skipped}"
+            self.failed = True
+            print(
+                f"  FAIL  pytest-e2e: {step['gateReason']} (a skipped browser e2e is not evidence)"
+            )
+        print(
+            f"        e2e: {step.get('testsPassed', '?')} passed, "
+            f"{step.get('testsFailed', '?')} failed, {skipped} skipped"
+        )
 
     # -- summary ----------------------------------------------------------------- #
 
@@ -826,12 +872,26 @@ def cmd_full(args: argparse.Namespace) -> int:
     r = Runner("full")
     frontend_only = bool(getattr(args, "frontend_only", False))
     backend_only = bool(getattr(args, "backend_only", False))
-    if frontend_only and backend_only:  # argparse already refuses this; belt and braces
-        raise SystemExit("--backend-only and --frontend-only are mutually exclusive")
+    e2e_only = bool(getattr(args, "e2e_only", False))
+    if sum((frontend_only, backend_only, e2e_only)) > 1:  # argparse already refuses this
+        raise SystemExit("--backend-only, --frontend-only and --e2e-only are mutually exclusive")
     # the component this run IS, recorded in the summary so the aggregate can
     # name who proved what without trusting a file name (AC-01H)
-    component = "full-frontend" if frontend_only else "full-backend" if backend_only else "full"
+    component = (
+        "full-frontend"
+        if frontend_only
+        else "full-backend"
+        if backend_only
+        else "full-e2e"
+        if e2e_only
+        else "full"
+    )
     extra: dict[str, Any] = {"tier": "FULL", "pytestExpression": None, "component": component}
+    if e2e_only:
+        # the browser e2e gate and NOTHING else (round 3 B3): the summary then
+        # carries e2eFullSuite evidence only; every other gate reads NOT_RUN
+        r.e2e_full()
+        return r.finish(extra)
     if frontend_only:
         # the five frontend gates and NOTHING backend: no static checks, no
         # pytest, no collection proof. The summary then carries
@@ -845,6 +905,10 @@ def cmd_full(args: argparse.Namespace) -> int:
     r.pytest("pytest-full", [])
     if not backend_only:
         r.frontend_full()
+        # the whole local FULL run carries every release gate, the required
+        # browser e2e included (the unfiltered pytest above also executed it,
+        # as a member of the suite; this gate is the one that refuses a skip)
+        r.e2e_full()
     cov = collection_coverage()
     # what the unfiltered run actually EXECUTED (the collected-vs-collected
     # comparison is true by construction; this one is not)
@@ -1177,6 +1241,14 @@ def main(argv: list[str] | None = None) -> int:
         "--frontend-only",
         action="store_true",
         help="CI component: the five frontend gates; no backend static, pytest or coverage proof",
+    )
+    component.add_argument(
+        "--e2e-only",
+        action="store_true",
+        help=(
+            "CI component: the guided-workflow browser e2e as a REQUIRED gate "
+            "(MINEGEN_E2E_REQUIRED=1 — a skip is a failure); nothing else"
+        ),
     )
     sub.add_parser("benchmark")
     sub.add_parser("collect-full")

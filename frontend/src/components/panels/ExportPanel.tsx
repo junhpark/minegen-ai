@@ -34,14 +34,20 @@ export function ExportPanel() {
   const exportPackage = useMutation({
     mutationFn: async () => {
       if (!scenario) throw new Error('no scenario selected')
+      // the revision the package is exported FROM (round 3 B2), read from the
+      // store at the moment the request is sent — never a render closure; a
+      // mine that moves on during the download is not the mine this export
+      // completes
+      const exported = useScenarioStore.getState().sceneRevision
       const file =
         exportTarget === 'MINE_EXCHANGE'
           ? await api.exportMineExchange(scenario.id)
           : await api.exportAdapter(scenario.id, exportTarget)
       saveFile(file.blob, file.filename)
+      return exported
     },
     // S2: a downloaded package completes the Export stage for this viewer
-    onSuccess: () => markViewerStageComplete('EXPORT'),
+    onSuccess: (exported) => markViewerStageComplete('EXPORT', exported),
   })
   const error = exportPackage.error
   const errorText =

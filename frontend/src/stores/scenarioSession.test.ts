@@ -320,4 +320,28 @@ describe('scenario REVISION boundary (a PUT under the same id — review blocker
     expect(activateScenario(scenario('A'))).toBe(epochA)
     expect(state().scene).not.toBeNull()
   })
+
+  it('every accepted scene write and every scenario transition advances the scene revision (round 3 B2)', () => {
+    const r = () => state().sceneRevision
+    const r0 = r()
+    const epochA = activateScenario(scenario('A'))
+    expect(r()).toBe(r0 + 1)
+    state().setScene(scene('A', 'a'), epochA)
+    expect(r()).toBe(r0 + 2)
+    state().applyScene(epochA, (s) => ({ ...s }))
+    expect(r()).toBe(r0 + 3)
+    // an updater that keeps the scene object moved nothing
+    state().applyScene(epochA, (s) => s)
+    expect(r()).toBe(r0 + 3)
+    // a write under a stale epoch is dropped and moves nothing
+    state().setScene(scene('A', 'stale'), epochA - 1)
+    state().applyScene(epochA - 1, (s) => ({ ...s }))
+    expect(r()).toBe(r0 + 3)
+    // a same-id document replacement (scenario PUT) is a new revision too
+    activateScenarioRevision(scenario('A'))
+    expect(r()).toBe(r0 + 4)
+    // re-selecting the same id is a refresh of the document, not of the scene
+    activateScenario(scenario('A'))
+    expect(r()).toBe(r0 + 4)
+  })
 })
