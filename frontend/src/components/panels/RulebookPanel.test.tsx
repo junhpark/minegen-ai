@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { AssessmentCheck, DesignAssessmentPayload } from '@/types/scene'
 import { AnalysisPanelBody, type AnalysisPanelBodyProps } from './AnalysisPanel'
-import { CONFIG, FULL } from './analysis.fixture'
+import { CONFIG, FULL, H3_BODY_PROPS } from './analysis.fixture'
 import { evidenceText, rulebookStatus } from './rulebook'
 import { RULEBOOK_ADVISORY_NOTE, RULEBOOK_INACTIVE_NOTE, RulebookBody } from './RulebookPanel'
 
@@ -273,13 +273,16 @@ describe('Rules tab inside the Analysis panel', () => {
     saving: false,
     saveError: null,
     onSave: () => undefined,
+    ...H3_BODY_PROPS,
     ...over,
   })
 
   it('renders the rulebook and none of the other tabs’ content', () => {
     const html = renderToStaticMarkup(<AnalysisPanelBody {...props({})} />)
     expect(html).toContain('data-testid="rulebook-table"')
-    expect(html).not.toContain('Planning NPV')
+    // the KPI tiles head every tab (PR-2 H3 §8.1); the economics CARD does not
+    expect(html).toContain('data-testid="analysis-kpis"')
+    expect(html).not.toContain('Baseline Planning NPV')
     expect(html).not.toContain('data-testid="layout-comparison-table"')
     expect(html).not.toContain('Planned mined tonnes')
   })

@@ -22,12 +22,16 @@ import {
   type DevelopmentTimeline,
   type LevelAccessesPayload,
   type LevelsPayload,
+  type ShaftsPayload,
   type SmoothedDeclinePayload,
   type TimelinePayload,
 } from '@/types/scene'
 
 export const LEVEL_ACCESSES_ARTIFACT = 'level_accesses.json'
 export const LEVELS_ARTIFACT = 'levels.json'
+/** hardening PR-2 H2-SH: shaft axis segments and station drives are owned by
+ * shafts.json; their mesh pieces in the shaft GLB carry the centerline ids */
+export const SHAFTS_ARTIFACT = 'shafts.json'
 
 /** SEGMENT primitive reveal metadata as stamped by the backend. */
 export interface RevealMeta {
@@ -119,7 +123,10 @@ export function revealedIndexCount(meta: RevealMeta, progress: number): number {
 }
 
 export type RevealTarget =
-  { kind: 'RAMP'; segmentId: string } | { kind: 'DEVELOPMENT'; pieceId: string }
+  | { kind: 'RAMP'; segmentId: string }
+  | { kind: 'DEVELOPMENT'; pieceId: string }
+  /** PR-2 H2-SH: a piece of the SHAFT excavation GLB (barrel segment / drive) */
+  | { kind: 'SHAFT'; pieceId: string }
 
 export interface DevelopmentReveal {
   edgeId: string
@@ -187,6 +194,7 @@ export function resolveExcavationReveal(
   levels: LevelsPayload | null | undefined,
   levelAccesses: LevelAccessesPayload | null | undefined,
   day: number,
+  shafts: ShaftsPayload | null | undefined = null,
 ): ExcavationRevealPlan {
   const reveals: DevelopmentReveal[] = []
   const unmapped: string[] = []
@@ -211,6 +219,11 @@ export function resolveExcavationReveal(
       } else if (ref.artifact === LEVELS_ARTIFACT) {
         const d = levels?.developments[i]
         if (d && d.id) target = { kind: 'DEVELOPMENT', pieceId: d.id }
+      } else if (ref.artifact === SHAFTS_ARTIFACT) {
+        // PR-2 H2-SH: SHAFT / SHAFT_STATION_ACCESS edges → the owning
+        // centerline id, which IS the shaft-GLB piece id (fail closed otherwise)
+        const c = shafts?.centerlines[i]
+        if (c && c.id) target = { kind: 'SHAFT', pieceId: c.id }
       }
     }
     const key = target
@@ -330,6 +343,8 @@ export interface ExcavationMountPlan {
   ramp: boolean
   /** the Phase 20B development GLB is shown progressively */
   development: boolean
+  /** PR-2 H2-SH: the shaft excavation GLB is shown progressively */
+  shaft: boolean
   /** the temporal excavation layer mounts at all */
   mounted: boolean
 }
@@ -341,11 +356,15 @@ export function excavationMountPlan(input: {
   developmentMeshAvailable: boolean
   tunnelMeshVisible: boolean
   developmentMeshVisible: boolean
+  /** PR-2 H2-SH: bound to the `shaftMesh` toggle, independently of the other two */
+  shaftMeshAvailable?: boolean
+  shaftMeshVisible?: boolean
 }): ExcavationMountPlan {
   const base = input.timelineActive && input.hasSmoothed
   const ramp = base && input.rampMeshAvailable && input.tunnelMeshVisible
   const development = base && input.developmentMeshAvailable && input.developmentMeshVisible
-  return { ramp, development, mounted: ramp || development }
+  const shaft = base && (input.shaftMeshAvailable ?? false) && (input.shaftMeshVisible ?? false)
+  return { ramp, development, shaft, mounted: ramp || development || shaft }
 }
 
 /**

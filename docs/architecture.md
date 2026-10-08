@@ -61,7 +61,9 @@ here. Per-phase decision records below keep their original wording.
                        motion primitives, chained Hybrid-A* decline generator,
                        smoothing + shared sample validation (Phase 05), tunnel
                        profile, tunnel mesh and development mesh
-                       (gravity-aligned sweeps), constraints
+                       (gravity-aligned sweeps), shaft mesh (hardening PR-2
+                       H2-SH: vertical barrel + station drives under one
+                       constant frame, shaft_mesh.py), constraints
       layout/          parametric layout v2: family enumeration and geometry,
                        delivered-centerline validation, section / footwall
                        trace, level-access planner, construction
@@ -83,6 +85,11 @@ here. Per-phase decision records below keep their original wording.
                        economics.json beside the scenario, sha256 revision,
                        rates), cashflow (bucket ledger, overlap allocation,
                        mid-bucket NPV); never a derived artifact.
+                       Hardening PR-2 H3 (rules 201 / 221): timeseries
+                       (bucketed READ-ONLY quantity + ledger projection),
+                       irr (typed Planning IRR, mid-bucket bisection),
+                       sensitivity (nine-parameter what-if grid; schedule
+                       what-ifs rerun MineTimelineBuilder in memory).
                        layout_comparison (Phase 22C, rules 204–206): the
                        Comparable Layout Development Cost over the PERSISTED
                        layout-v2 candidate quantities — pure builder, shared
@@ -134,8 +141,14 @@ here. Per-phase decision records below keep their original wording.
                        RESULT_* failures; services/result_service.py binds
                        imports to ExchangeService.observe_source_snapshot /
                        observe_edge_centerlines; docs/simulation-results.md
-      services/        scenario persistence, world / design / infrastructure
-                       orchestration, async job service
+      demos/           hardening PR-2 H4 (rule 222): the three demo recipes
+                       and the baker that drives the application's own
+                       routes into data/demos/ (scripts/bake_demos.py)
+      services/        scenario persistence (with the READ-ONLY demo root),
+                       world / design / infrastructure orchestration, async
+                       job service, the demo catalogue (demo_service.py) and
+                       the automatic demo materialization
+                       (demo_materializer.py, PR #54 review B1)
       api/             FastAPI routers (thin; no algorithms)
       geometry/        RESERVED namespace — empty, zero importers
       simulation/      RESERVED namespace — empty, zero importers; no solver
@@ -168,7 +181,7 @@ presentation mapping, tabs as presentation events) is inherited; the panel
 STRUCTURE is the guided workflow shell of rule 191:
 
     ┌ MineGen-AI · File ▾ · 1 Setup · 2 Design · 3 Network · 4 Mining · 5 Systems · 6 Analysis · 7 Export ┐
-    │ [Scenario ✓][Method ✓] │ [Layout ●][Levels ○][Excavation ○][Shafts –] │ …   ← stepper          │
+    │ [Scenario ✓][Method ✓][Access ✓] │ [Layout ●][Levels ○][Excavation ○][Shafts –] │ … ← stepper │
     ├────────────┬───────────────────────────────────────┬─────────────────────────────────────────┤
     │ CONTROLS   │  3D / 4D / Walk viewport (switcher)   │ STATUS & RESULTS — the current step's   │
     │ one stage  │  Analysis: centre workspace           │ stage statuses · key metrics ·          │
@@ -213,12 +226,12 @@ scene revisions and drop the completions just made. A stage that hosts several c
 
 | Step | Stages | Cards (controls → results) |
 | --- | --- | --- |
-| 1 Setup | Scenario, Method | Scenario (`SetupPanel`: **Create mine** = create + generate world, Randomize / Advanced secondary, saved mines in Details and under File › Open), Mining method (confirmation lists `reset-plan?from=WORLD`) |
-| 2 Design | Layout, Levels, Excavation, Shafts | Mine layout ("Option n" rows, Select / Activate; id and scores in Details), Design assessment (results only), Level development, Ramp tunnel mesh → Development mesh (one primary: the ramp mesh first), Shafts (optional while no spec is declared) |
+| 1 Setup | Scenario, Method, Access | Scenario (`SetupPanel`: **Create mine** = create + generate world, Randomize / Advanced secondary, saved mines in Details and under File › Open), Mining method (confirmation lists `reset-plan?from=WORLD`), Access strategy (PR #54 review B3, `AccessPanel`: ○ Ramp only / ● Ramp + Shaft with the explicit `scenario.shafts` editor; Apply = the same scenario PUT + world regeneration behind the same confirmation, decided BEFORE the layout) |
+| 2 Design | Layout, Levels, Excavation, Shafts | Mine layout ("Option n" rows, Select / Activate; id and scores in Details), Design assessment (results only), Level development, Ramp tunnel mesh → Development mesh (one primary: the ramp mesh first), Shafts (PR #54 review B3: PLANS the shafts declared in Setup › Access, then the Shaft excavation mesh — done only with both; optional while no spec is declared; the declaration is never edited here) |
 | 3 Network | Network, Capability | Mine network, Capabilities |
 | 4 Mining | Production, Schedule | Production (method-generic), Schedule |
 | 5 Systems | Communication, Sensors | Communication, Sensors |
-| 6 Analysis | Analysis | the Analysis workspace (Overview / Economics / Rules / Layout comparison / Simulation Results tabs) rendered full-window in the centre |
+| 6 Analysis | Analysis | the Analysis workspace (Overview · Economics · Sensitivity · Schedule · Rules · Layouts · Simulation Results tabs, KPI tiles above every tab) rendered FULL-WINDOW in the centre — the canvas is unmounted unless "Show 3D context" is on (PR-2 H3 §8.3) |
 | 7 Export | Export | Export (`ExportPanel`: target selector + one download; also File › Export) |
 
 Column plumbing: every feature panel stays MOUNTED in the left column's
@@ -2128,3 +2141,152 @@ original `ci.yml` was retired after same-revision equivalence was proven.
   recovery, ventilation / haulage / fleet / capacity, Monte Carlo,
   auto-selection or optimization, 23B adapters, calibration, resources /
   reserves.
+
+## Hardening PR-2 — Cut & Fill sequencing, shaft mesh, 4D / Analysis, demos (rules 182 / 195 / 196 / 201 revised, 221–222)
+
+The second hardening PR after the 2026-10-06 manual acceptance
+(`docs/hardening-plan.md` §5–§9). Eight commits on `hardening-2-engine-analysis`
+from `main 1bd68c8`: C1–C3 H2-CF, C4 H2-SH, C5–C6 H3, C7 H4, C8 rules / docs /
+acceptance.
+
+- **H2-CF — Cut & Fill block / panel structure and panel-precedence schedule
+  (rules 195 / 196).** `CutFillParameters` gains the two sequencing axes
+  (`stopingDirection`, `blockOrder`) and `panelLengthM` 60 / `ribPillarWidthM`
+  0 / `maxConcurrentPanels` 2 / `sillMatCureDays` 28 as registry planning
+  defaults. Geometry (`mining/methods/cut_fill.py`): strike panels (equal
+  partition, one production access crosscut per panel and level —
+  `PanelAccessPattern`), level interval × panel = stope BLOCK, lifts × cuts
+  inside it, RETAINED rib pillars carved from the partition, cemented sill
+  mats under SHALLOW_TO_DEEP; UNDERHAND is a declared axis refused with the
+  typed UNSUPPORTED_STOPING_DIRECTION failure. Schedule
+  (`CutFillPlan.production_schedule`): explicit precedence only — serial cuts
+  inside a panel, panel k + N after panel k's last CURE, vertical sill-mat
+  gates, cemented vs plain cure — measured on the small scenario in
+  `docs/findings/h2cf-cut-fill-characterization.md` (first STOPING 404.45 →
+  298.18 d against ramp completion 371.46 d; the C&F fixture is an
+  intentional regeneration; the Longhole baseline is byte-identical).
+  MineExchange 1.3.1 (additive patch, `docs/mine-exchange.md`) projects
+  `sequencing`, `blocks[]`, `panels[]`, per-cut block / panel / lift ids,
+  per-backfill `cemented` and rib pillars through the existing PILLAR
+  entity kind; AnyLogic `production_units.csv` gains the `cemented` column.
+- **PR #54 review B2 — legacy Cut & Fill artifacts are migrated, never
+  refused (rule 223).** A PR #53 Cut & Fill mine (central `FixedAccessPattern`
+  crosscut, pre-H2-CF payload) opened under this code used to fail whole
+  (`SCENE_ARTIFACT_INVALID` / `ARTIFACT_MALFORMED`). The Cut & Fill
+  production model now carries `mining.models.CUT_FILL_MODEL_VERSION` (2):
+  required on the CUT_AND_FILL `stopes.json` (`cutFillModelVersion`), stamped
+  on `levels.json` `productionDevelopment.modelVersion` (omitted, not null,
+  for the other methods — the Longhole baseline stays byte-identical). The
+  reader (`services/artifact_reader.py`) classifies an earlier version on the
+  RAW document before the parser (`ReadSpec.pre_checks`) as the new read
+  state LEGACY (typed `CUT_FILL_LEGACY_ARTIFACT`) and every registry
+  descendant of that level development as LEGACY by derivation (the sources
+  are observed in the same snapshot); `WorldService.scene` migrates
+  explicitly — the LEVELS closure through the H1 §4.4 `reset_plan` under the
+  scenario lock (RESET_JOB_RUNNING under a running job, a demo never written)
+  — keeps world / catalogue / selection / accesses / ramp source and reports
+  `migrations[]`; the frontend shows the record (`SceneMigrationNotice`) and
+  the stepper reads Levels as next. Regression: a REAL PR #53 scenario
+  directory captured on the pinned base `1bd68c8`
+  (`scripts/h2cf_capture_legacy_cut_fill_fixture.py` →
+  `tests/fixtures/h2cf/legacy_pr53_cut_fill/`, `stat.json` restoring the
+  rule-60 stat identities; `tests/test_cut_fill_legacy_migration.py`).
+- **H2-SH — shaft excavation mesh + shaft editor (rule 182).**
+  `design/shaft_mesh.py` sweeps the shafts.json axis segments with ONE
+  constant right-handed frame (right +X, up +Y, forward −Z) through the
+  Phase 06 ring machinery (`logical_mesh_from_rings` extracted from
+  `build_logical_mesh`, bit-identical for the gravity-aligned path):
+  circular barrel + collar / sump caps under the CAP–CAP closed-solid QA,
+  one OPEN–OPEN station drive per level through the Phase 20B development
+  path, batched SHAFT / SHAFT_STATION_ACCESS primitives with rule-173 reveal
+  metadata. `derived/shaft_mesh.{json,glb}` is a leaf artifact bound to
+  `shaftsRevision` (409 SHAFT_MESH_STALE), deleted with the shafts chain,
+  invalidating nothing; `POST …/design/shafts/suggest-collar` exposes the
+  planner's default collar read-only. The frontend `ShaftSpecEditor` edits
+  explicit parameters only (Apply = scenario PUT behind the shared
+  `ScenarioChangeDialog` reset-plan confirmation), the Shaft excavation card
+  generates the mesh, the `shaftMesh` layer shows it, and the 4D reveal maps
+  SHAFT / SHAFT_STATION_ACCESS edges through shafts.json centerline ids.
+  The H0 §3.4 RAMP_ACCESS seam is closed in the same commit
+  (`design/junctions.py` sills + clipped child wall / roof quads;
+  `docs/findings/h0-3.4-junction-seam.md` → FIXED).
+- **H3 — time series, 4D playback, full-window Analysis, Planning IRR,
+  sensitivity (rules 201 / 221).** `analysis/timeseries.py` +
+  `GET …/analysis/timeseries?bucketDays=<n>`: one bound snapshot, linear
+  allocation over task windows, "Excavated development rock" vocabulary,
+  `developmentTonnes` only with the OPTIONAL `scenario.geology.hostRockDensity`
+  (no default), the economics columns as the ledger at the requested width
+  (`builder.economics_ledger`). 4D: Restart / Play / Pause / Loop / 1× 5×
+  20× over the day cursor (`timeline/playback.advancePlayback`), the 4D
+  STATUS & RESULTS card (`FourDResults`, Recharts — the explicit charting
+  dependency added at C5) reading that series; the frontend never re-sums
+  tasks. Analysis: ANALYSIS mode unmounts `MineCanvas` ("Show 3D context"
+  = split view), KPI tiles (Planning NPV, Planning IRR, mine life, first
+  production day), tabs Overview · Economics · Sensitivity · Schedule ·
+  Rules · Layouts · Simulation Results, `CashflowCharts` + the bucket
+  table. `analysis/irr.py` (typed Planning IRR), `analysis/sensitivity.py`
+  (`GET …/analysis/sensitivity`, `POST …/analysis/what-if`; economic cases
+  rescale the ledger, schedule cases rerun `MineTimelineBuilder` in memory
+  on the bound ramp / levels / level-access / shaft / network / production
+  artifacts; "WHAT-IF OVERRIDE — NOT SCENARIO VALUE"; nothing persisted).
+- **H4 — demo gallery (rule 222).** `minegen/demos/bake.py` +
+  `scripts/bake_demos.py` bake `demo-tabular-longhole` (full workflow with
+  one production shaft), `demo-tabular-cut-fill` and `demo-warped-vein`
+  (world + layout-v2 + curved levels + excavation meshes) through the
+  application's own routes into `data/demos/` with the DEMO / SYNTHETIC
+  economics assumptions and `index.json`. `ScenarioStore(root, demo_root)`
+  resolves a demo in place and refuses writes (`DemoReadOnlyError`);
+  `api/demo_guard.py` is the one router dependency answering 409
+  DEMO_READ_ONLY to every mutating request on a demo id (read-only POSTs
+  pass); `services/demo_service.py` + `GET /demos` is the READ ≠ TRUST
+  catalogue. Frontend: File › Demos, `scenario/demos.ts` (`openDemo`,
+  `cloneDemo`, `cloneDraft`, the tour cycle), `scenarioStore.demo` as part
+  of the scenario identity, `DemoPanel` (viewer-only controls column, Auto
+  tour toggle, ONE primary "Clone to edit"), `DemoTourController`, the
+  DEMO · SYNTHETIC badge, 4D Loop on at open. Measured bake (this
+  container): Longhole 114 s, Cut & Fill 85 s, WARPED 152 s; 107 MB for
+  the three. Stat-identity caveat (found in the browser acceptance): a demo
+  tree copied without its timestamps breaks the rule-60 binding between
+  `scenario.json` and the world commit record — the catalogue reports it
+  "world publication stale" (unavailable) and the scene read is 409
+  WORLD_PUBLICATION_STALE; copy with `cp -a` / `rsync -a` or re-bake.
+- **PR #54 review B1 — the demos materialize themselves (rule 222).**
+  Because of that binding the demos are baked on the serving host, never
+  shipped: `services/demo_materializer.py::DemoMaterializer` bakes exactly
+  the recipes the catalogue does not list as available (READ ≠ TRUST on the
+  directory, never a guess), publishes the index after every recipe, records
+  a failed recipe with its reason and continues, once per process.
+  `scripts/bin/dev-setup` runs `scripts/bake_demos.py --if-missing`
+  synchronously (so a prepared checkout / Codespace lists all three before
+  the servers start); `create_app` gained a lifespan that starts the
+  materializer in a daemon thread when `Settings.demos_autobake`
+  (`MINEGEN_DEMOS_AUTOBAKE`, default on) allows it — Docker and a plain
+  `uvicorn` rely on it. The baker's own in-process application
+  (`create_app(autobake=False)`), the test suite (`tests/__init__.py` sets
+  the variable before the settings cache) and the browser e2e never
+  autobake. `GET /demos` carries `materialization` (DISABLED · IDLE · BAKING
+  recipe / stage · DONE · FAILED with reasons); the File › Demos menu shows
+  "Baking demos… <recipe> · <stage>" and polls while baking.
+- **PR #54 review B3 — the shaft declaration is a Setup decision
+  (rules 182 / 191).** Applying `scenario.shafts` from Design › Shafts was
+  the rule 40 PUT + world regeneration, so editing it there wiped Layout /
+  Levels. The declaration moved to the new Setup › Access stage
+  (`AccessPanel`: ○ Ramp only / ● Ramp + Shaft with the now CONTROLLED
+  `ShaftSpecEditor`; Apply through the same `ScenarioChangeDialog`
+  reset-plan confirmation, decided before the layout; "Suggest collar" only
+  while a level development exists); Design › Shafts plans the declared
+  shafts and sweeps their mesh, and the stepper reads it DONE only with both
+  (`specs = []` stays OPTIONAL). The browser e2e BASELINE flow declares the
+  shaft at Access, plans + sweeps it at Shafts and re-plans it after the
+  Levels reset.
+- **Browser e2e (hardening plan §5 header).** `tests/test_shell_e2e.py`
+  bakes the Cut & Fill demo into its temporary data directory before the
+  servers start and adds (a) the 4D control / results and the full-window
+  Analysis checks to the BASELINE flow and (b) a second test — File › Demos
+  → read-only demo mode (badge, demo panel, one primary, Loop on) →
+  Analysis (no canvas, KPI tiles, Sensitivity) → Export download — with
+  the demo directory byte- and stat-identical afterwards.
+- **Non-scope.** Hugging Face Space deployment (D0), inclined shafts / cage
+  physics, UNDERHAND Cut & Fill, WARPED production geometry, a metal-price /
+  grade / recovery revenue model, candidate what-ifs, any optimizer or
+  result → design feedback.

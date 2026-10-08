@@ -111,6 +111,12 @@ upstream did not change).
 * `warped_301_sections` — WARPED-301 section(z) geometry + footwall / offset
   traces under the world policy (no search). FAST canary pins the summary.
 
+Regenerated at hardening PR-2 C5 (the cached small-scenario document gains
+the optional `hostRockDensity` key); both `upstreamFingerprint` values are
+unchanged (tabular `81b6930a85ad…`, warped `e092723fd7a1…`) and a clean
+regeneration from the C4 HEAD is identical apart from the minted scenario id
+and the new key.
+
 Freshness (`tests/test_verification_fixtures_fresh.py`, `canary` — and,
 being cheap, also collected by FAST): the same artifacts are regenerated
 CLEANLY and the fingerprint compared; a mismatch fails with `STALE VERIFICATION FIXTURE … regeneration
@@ -180,6 +186,15 @@ Two workflows, three roles:
 |---|---|---|---|
 | `verify-fast.yml` | `pull_request` | `FAST` → `python scripts/verify.py fast`; artifact `verification-fast` | inner-loop feedback — development acceleration, never release evidence |
 | `verify-full.yml` | `pull_request` + `push: main` | `full-backend` → `verify.py full --backend-only` (ruff · format · mypy · pytest UNFILTERED · collection proof; `fetch-depth: 0` for the AC-01G LAYER B base archive); `full-frontend` → `verify.py full --frontend-only` (typecheck · lint · prettier · vitest · build); `full-e2e` → `verify.py full --e2e-only` (Python + Node + `npm ci` + Playwright Chromium, then the guided-workflow browser e2e `tests/test_shell_e2e.py` under `MINEGEN_E2E_REQUIRED=1` — gate `pytest-e2e`, PR #53 review round 3 B3); `release-authority` → downloads the three component summaries and runs `verify.py authority` | the three component jobs are component EVIDENCE; **`Release Authority` is the ONE CI release verdict** |
+
+Hardening PR-2: the e2e module bakes the Cut & Fill demo into its temporary
+data directory through `minegen.demos.bake` before the servers start (≈ 85 s,
+the same baker `scripts/bake_demos.py` runs; the server under test runs with
+`MINEGEN_DEMOS_AUTOBAKE=0` so it never starts baking the other two, PR #54
+review B1) and carries two tests — the
+BASELINE Setup → Export flow (now also the 4D control / results card and the
+full-window Analysis checks) and the File › Demos → read-only demo → Analysis
+→ Export flow (hardening plan §5 header: "BASELINE + CUT_AND_FILL 데모").
 
 The browser e2e is a REQUIRED release gate (`RELEASE_E2E_GATES`). The
 unfiltered backend pytest collects and counts it, but on the backend runner —

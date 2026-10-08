@@ -1,17 +1,23 @@
 // Typed fetch client. Thin: no engineering logic, no coordinate conversion.
 
 import type {
+  DemoCatalog,
   HealthResponse,
   Scenario,
   ScenarioCreate,
   ScenarioRealizeRequest,
   ScenarioSummary,
+  ShaftSpec,
 } from '@/types/api'
 import type {
   EconomicsConfig,
   EconomicsConfigResponse,
   LayoutComparisonPayload,
   MineAnalysisPayload,
+  SensitivityPayload,
+  TimeseriesPayload,
+  WhatIfFactors,
+  WhatIfOutcome,
 } from '@/types/analysis'
 import type { Capability } from '@/types/enums'
 import type {
@@ -46,6 +52,8 @@ import type {
   ResetResult,
   SensorPayload,
   ShaftsPayload,
+  ShaftMeshReport,
+  CollarSuggestion,
   SliceAxis,
   SliceField,
   SlicePayload,
@@ -165,6 +173,9 @@ async function requestNoContent(path: string, init: RequestInit): Promise<void> 
 export const api = {
   health: () => request<HealthResponse>('/health'),
   listScenarios: () => request<ScenarioSummary[]>('/scenarios'),
+  /** hardening PR-2 H4: the baked demo catalogue (a demo is then OPENED
+   * through the ordinary scenario routes, read-only in place) */
+  listDemos: () => request<DemoCatalog>('/demos'),
   getScenario: (id: string) => request<Scenario>(`/scenarios/${id}`),
   /** Phase 17: deterministic preset+seed realization — non-persistent
    * preview; submit the returned ScenarioCreate to createScenario. */
@@ -342,6 +353,16 @@ export const api = {
   generateShafts: (id: string) =>
     request<ShaftsPayload>(`/scenarios/${id}/design/shafts`, { method: 'POST' }),
   getShafts: (id: string) => request<ShaftsPayload>(`/scenarios/${id}/design/shafts`),
+  /** hardening PR-2 H2-SH: the planner's default collar for one declared spec (read-only) */
+  suggestShaftCollar: (id: string, spec: ShaftSpec) =>
+    request<CollarSuggestion>(`/scenarios/${id}/design/shafts/suggest-collar`, {
+      method: 'POST',
+      body: JSON.stringify(spec),
+    }),
+  /** hardening PR-2 H2-SH: synchronous shaft excavation sweep (barrel + caps + drives) */
+  generateShaftMesh: (id: string) =>
+    request<ShaftMeshReport>(`/scenarios/${id}/design/shaft-mesh`, { method: 'POST' }),
+  getShaftMesh: (id: string) => request<ShaftMeshReport>(`/scenarios/${id}/design/shaft-mesh`),
   /** Phase 20C.2B capability graph (rule 185): synchronous semantic layer. */
   generateCapabilityGraph: (id: string) =>
     request<CapabilityGraphPayload>(`/scenarios/${id}/design/capability-graph`, {
@@ -357,6 +378,23 @@ export const api = {
   /** Phase 22A/B: the READ-ONLY mine analysis projection (no job, no
    * persistence) and the user-authored planning-economics assumptions. */
   getAnalysis: (id: string) => request<MineAnalysisPayload>(`/scenarios/${id}/analysis`),
+  /** hardening PR-2 H3 §8.3: the READ-ONLY what-if grid (never persisted) */
+  getSensitivity: (id: string) =>
+    request<SensitivityPayload>(`/scenarios/${id}/analysis/sensitivity`),
+  /** one explicit what-if override — a projection, nothing is written */
+  postWhatIf: (id: string, factors: WhatIfFactors) =>
+    request<WhatIfOutcome>(`/scenarios/${id}/analysis/what-if`, {
+      method: 'POST',
+      body: JSON.stringify(factors),
+    }),
+  /** hardening PR-2 H3 §6: the READ-ONLY bucketed time series (quantities +
+   * economics when configured) from one bound snapshot; no persistence */
+  getTimeseries: (id: string, bucketDays?: number) =>
+    request<TimeseriesPayload>(
+      `/scenarios/${id}/analysis/timeseries${
+        bucketDays === undefined ? '' : `?bucketDays=${String(bucketDays)}`
+      }`,
+    ),
   getEconomicsConfig: (id: string) =>
     request<EconomicsConfigResponse>(`/scenarios/${id}/analysis/economics-config`),
   putEconomicsConfig: (id: string, config: EconomicsConfig) =>

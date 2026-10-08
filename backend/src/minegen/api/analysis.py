@@ -5,11 +5,13 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from minegen.analysis.economics import EconomicsConfig, EconomicsConfigResponse
 from minegen.analysis.layout_comparison import LayoutComparisonPayload
 from minegen.analysis.models import MineAnalysisPayload
+from minegen.analysis.sensitivity import SensitivityPayload, WhatIfFactors, WhatIfOutcome
+from minegen.analysis.timeseries import TimeseriesPayload
 from minegen.api.deps import get_analysis_service
 from minegen.api.errors import ROUTER_DESIGN, guard
 from minegen.services.analysis_service import AnalysisService
@@ -36,6 +38,82 @@ def get_mine_analysis(scenario_id: str, svc: Service) -> MineAnalysisPayload:
     ``READ_SNAPSHOT_CHANGED``)."""
     try:
         return svc.analyze(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _mapped(scenario_id, exc) from exc
+
+
+@router.get("/timeseries")
+def get_timeseries(
+    scenario_id: str,
+    svc: Service,
+    bucket_days: Annotated[
+        float | None,
+        Query(
+            alias="bucketDays",
+            gt=0.0,
+            le=36525.0,
+            description="Bucket width in days; default = configured cashflowBucketDays, else 30.",
+        ),
+    ] = None,
+) -> TimeseriesPayload:
+    """Hardening PR-2 H3 §6: synchronous READ-ONLY bucketed time series of
+    excavated development rock, planned mined tonnes, backfill and (when
+    configured) cost / revenue / net / cumulative cashflow, from ONE bound
+    snapshot. No persistence, no invalidation; a missing source is a
+    NOT_AVAILABLE payload (200), a moving source 409 ``READ_SNAPSHOT_CHANGED``."""
+    try:
+        return svc.timeseries(scenario_id, bucket_days)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _mapped(scenario_id, exc) from exc
+
+
+@router.get("/sensitivity")
+def get_sensitivity(
+    scenario_id: str,
+    svc: Service,
+    perturbation_pct: Annotated[
+        list[float] | None,
+        Query(
+            alias="perturbationPct",
+            description="Percent perturbations (repeatable); default ±10, ±20, ±30.",
+        ),
+    ] = None,
+) -> SensitivityPayload:
+    """Hardening PR-2 H3 §8.3: READ-ONLY what-if grid — seven economic
+    parameters (cashflow recomputed) and two schedule rates (the timeline
+    builder rerun IN MEMORY) at the given perturbations. Every value is a
+    WHAT-IF OVERRIDE, NOT A SCENARIO VALUE; nothing is persisted."""
+    try:
+        pct: tuple[float, ...] | None = None
+        if perturbation_pct:
+            for p in perturbation_pct:
+                if p == 0.0 or not (-99.0 <= p <= 900.0):
+                    raise HTTPException(
+                        status_code=422,
+                        detail={
+                            "code": "VALIDATION_ERROR",
+                            "message": "perturbationPct must be non-zero and within [-99, 900]",
+                        },
+                    )
+            pct = tuple(dict.fromkeys(perturbation_pct))
+        return svc.sensitivity(scenario_id, pct)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _mapped(scenario_id, exc) from exc
+
+
+@router.post("/what-if")
+def post_what_if(scenario_id: str, factors: WhatIfFactors, svc: Service) -> WhatIfOutcome:
+    """Hardening PR-2 H3 §8.3: ONE explicit what-if override (multiplicative
+    factors, 1.0 = the scenario / economics value). Read-only; the result is
+    labelled WHAT-IF OVERRIDE — NOT SCENARIO VALUE and never persisted."""
+    try:
+        return svc.what_if(scenario_id, factors)
     except HTTPException:
         raise
     except Exception as exc:

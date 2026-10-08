@@ -56,6 +56,7 @@ from minegen.services.artifact_errors import (
     CapabilityGraphNotGeneratedError,
     CapabilityGraphStaleError,
     CommunicationNotGeneratedError,
+    CutFillLegacyArtifactError,
     DeclineNotGeneratedError,
     DevelopmentMeshNotGeneratedError,
     LayoutSelectionStaleError,
@@ -68,6 +69,8 @@ from minegen.services.artifact_errors import (
     ReadSnapshotChangedError,
     SceneArtifactInvalidError,
     SensorsNotGeneratedError,
+    ShaftMeshNotGeneratedError,
+    ShaftMeshStaleError,
     ShaftsNotGeneratedError,
     ShaftsStaleError,
     SmoothedNotGeneratedError,
@@ -79,13 +82,14 @@ from minegen.services.artifact_errors import (
     WorldNotGeneratedError,
     WorldPublicationStaleError,
 )
+from minegen.services.demo_service import DemoIndexMalformedError
 from minegen.services.design_service import (
     LayoutCandidateInfeasibleError,
     LayoutCandidateNotFoundError,
     UnknownNetworkNodeError,
     UnsupportedOrebodyError,
 )
-from minegen.services.scenario_service import ScenarioNotFoundError
+from minegen.services.scenario_service import DemoReadOnlyError, ScenarioNotFoundError
 from minegen.services.workflow_stages import (
     ResetJobRunningError,
     ResetPlanChangedError,
@@ -155,6 +159,8 @@ CODE_LADDER: Final[tuple[tuple[type[Exception], str], ...]] = (
     (LevelsNotGeneratedError, "LEVELS_NOT_GENERATED"),
     (ShaftsNotGeneratedError, "SHAFTS_NOT_GENERATED"),
     (ShaftsStaleError, "SHAFTS_STALE"),
+    (ShaftMeshNotGeneratedError, "SHAFT_MESH_NOT_GENERATED"),
+    (ShaftMeshStaleError, "SHAFT_MESH_STALE"),
     (CapabilityGraphNotGeneratedError, "CAPABILITY_GRAPH_NOT_GENERATED"),
     (CapabilityGraphStaleError, "CAPABILITY_GRAPH_STALE"),
     (UnknownNetworkNodeError, "UNKNOWN_NETWORK_NODE"),
@@ -174,6 +180,8 @@ CODE_LADDER: Final[tuple[tuple[type[Exception], str], ...]] = (
     (SensorsNotGeneratedError, "SENSORS_NOT_GENERATED"),
     (CommunicationNotGeneratedError, "COMMUNICATION_NOT_GENERATED"),
     # AC-01F read states (A1 / A9 / A14) — new codes, all 409
+    # PR #54 review B2: a recognized EARLIER Cut & Fill model (never MALFORMED)
+    (CutFillLegacyArtifactError, "CUT_FILL_LEGACY_ARTIFACT"),
     (ArtifactMalformedError, "ARTIFACT_MALFORMED"),
     (ArtifactStaleError, "ARTIFACT_STALE"),
     (SceneArtifactInvalidError, "SCENE_ARTIFACT_INVALID"),
@@ -186,6 +194,9 @@ CODE_LADDER: Final[tuple[tuple[type[Exception], str], ...]] = (
     # PR #53 review B2: a reset never races a running job / a stale preview
     (ResetJobRunningError, "RESET_JOB_RUNNING"),
     (ResetPlanChangedError, "RESET_PLAN_CHANGED"),
+    # hardening PR-2 H4: baked demos are read-only; their index is READ ≠ TRUST
+    (DemoReadOnlyError, "DEMO_READ_ONLY"),
+    (DemoIndexMalformedError, "DEMO_INDEX_MALFORMED"),
 )
 
 #: status + message per wire code, transcribed from the router bodies at HEAD
@@ -251,6 +262,14 @@ ERRORS: Final[dict[str, ErrorSpec]] = {
         "api/design.py:138-143",
     ),
     "SHAFTS_STALE": ErrorSpec(409, None, "api/design.py:144-145, network.py:74-75"),
+    "SHAFT_MESH_NOT_GENERATED": ErrorSpec(
+        409,
+        "scenario '{scenario_id}' has no shaft excavation mesh; POST …/design/shaft-mesh first",
+        "hardening PR-2 H2-SH services/artifact_errors.py::ShaftMeshNotGeneratedError",
+    ),
+    "SHAFT_MESH_STALE": ErrorSpec(
+        409, None, "hardening PR-2 H2-SH services/artifact_errors.py::ShaftMeshStaleError"
+    ),
     "CAPABILITY_GRAPH_NOT_GENERATED": ErrorSpec(
         404,  # recorded 404/409 drift (I-8), unchanged
         "scenario '{scenario_id}' has no capability graph; POST …/design/capability-graph first",
@@ -315,6 +334,9 @@ ERRORS: Final[dict[str, ErrorSpec]] = {
         "POST …/infrastructure/communication first",
         "api/infrastructure.py:61-67",
     ),
+    "CUT_FILL_LEGACY_ARTIFACT": ErrorSpec(
+        409, None, "PR #54 review B2 services/artifact_errors.py::CutFillLegacyArtifactError"
+    ),
     "ARTIFACT_MALFORMED": ErrorSpec(409, None, "AC-01F A1"),
     "ARTIFACT_STALE": ErrorSpec(409, None, "AC-01F A1"),
     "SCENE_ARTIFACT_INVALID": ErrorSpec(409, None, "AC-01F A14"),
@@ -331,6 +353,12 @@ ERRORS: Final[dict[str, ErrorSpec]] = {
     ),
     "RESET_PLAN_CHANGED": ErrorSpec(
         409, None, "PR #53 review B2 services/workflow_stages.py::ResetPlanChangedError"
+    ),
+    "DEMO_READ_ONLY": ErrorSpec(
+        409, None, "hardening PR-2 H4 services/scenario_service.py::DemoReadOnlyError"
+    ),
+    "DEMO_INDEX_MALFORMED": ErrorSpec(
+        409, None, "hardening PR-2 H4 services/demo_service.py::DemoIndexMalformedError"
     ),
 }
 

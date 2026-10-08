@@ -85,6 +85,7 @@ describe('reset → scene slots (hardening H1 §4.4)', () => {
         'levels.json',
         'network.json',
         'sensors.json',
+        'shaft_mesh.json',
         'shafts.json',
         'stopes.json',
         'targets.json',

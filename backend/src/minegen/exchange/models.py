@@ -1,4 +1,5 @@
-"""MineExchange v1 DTOs — the EXTERNAL contract (semantic version 1.1.0).
+"""MineExchange v1 DTOs — the EXTERNAL contract (semantic version, see
+``MINE_EXCHANGE_VERSION``).
 
 Internal artifacts (``layout_v2.json``, ``network.json``,
 ``capability_graph.json``, …) are never exposed as-is: every document in the
@@ -22,9 +23,18 @@ __all__ = [
     "MINE_EXCHANGE_VERSION",
     "NETWORK_DIRECTION_SEMANTICS",
     "CoordinateSystem",
+    "ExchangeBackfill",
     "ExchangeCapability",
     "ExchangeCapabilityEdge",
     "ExchangeCapabilityNode",
+    "ExchangeCut",
+    "ExchangeCutFillBlock",
+    "ExchangeCutFillLift",
+    "ExchangeCutFillMetrics",
+    "ExchangeCutFillPanel",
+    "ExchangeCutFillParameters",
+    "ExchangeCutFillRibPillar",
+    "ExchangeCutFillSequencing",
     "ExchangeEgressAdvisory",
     "ExchangeEntity",
     "ExchangeFile",
@@ -60,7 +70,20 @@ __all__ = [
 #: machines); the TIMELINE omission group follows ARTIFACT_ABSENT /
 #: SOURCE_NOT_SUCCESS like every other artifact. Additive: every 1.2.0 file,
 #: id, geometry byte and meaning is unchanged.
-MINE_EXCHANGE_VERSION = "1.3.0"
+#: 1.3.1 (hardening PR-2, H2-CF): an ADDITIVE PATCH — no new file group, no
+#: new entity kind, no new omission group; existing documents gain fields the
+#: 1.3.0 exporter would otherwise silently drop: the Cut & Fill parameter DTO
+#: carries the sequencing axes (stopingDirection, blockOrder), panelLengthM,
+#: ribPillarWidthM, maxConcurrentPanels and sillMatCureDays;
+#: ``production/cut_fill.json`` carries ``sequencing``, ``blocks[]``,
+#: ``panels[]``, ``ribPillars[]`` (RETAINED rib pillars exported through the
+#: existing PILLAR entity kind, one closed prism each under
+#: ``production/cut_fill/pillars/``), per-cut blockId / panelId / panelIndex /
+#: liftIndexInBlock, per-backfill ``cemented`` and the matching metrics. Every
+#: Longhole / Room & Pillar document keeps its 1.3.0 shape and meaning; the
+#: STL / OBJ / DXF / CSV bytes are unchanged, a GLB differs only in the
+#: version string of its generator / node extras.
+MINE_EXCHANGE_VERSION = "1.3.1"
 #: MineGen canonical frame: X East, Y North, Z Up, metres (CLAUDE.md rule 3)
 COORDINATE_FRAME = "LOCAL_ENU_Z_UP"
 #: glTF scene convention after the explicit root transform (x, z, −y)
@@ -487,11 +510,20 @@ class ExchangeCapability(ApiModel):
 
 
 class ExchangeCutFillParameters(ApiModel):
-    """Typed 1.2.0 projection of ``mining.methodParameters`` (CUT_AND_FILL)."""
+    """Typed projection of ``mining.methodParameters`` (CUT_AND_FILL): the
+    1.2.0 lift / cut targets plus the 1.3.1 H2-CF sequencing axes and
+    block / panel planning parameters (planning defaults, never engineering
+    truth; UNDERHAND is a declared axis MineGen refuses to generate)."""
 
     kind: Literal["CUT_AND_FILL"] = "CUT_AND_FILL"
     lift_height_m: float
     cut_length_m: float
+    stoping_direction: Literal["OVERHAND", "UNDERHAND"]
+    block_order: Literal["SHALLOW_TO_DEEP", "DEEP_TO_SHALLOW"]
+    panel_length_m: float
+    rib_pillar_width_m: float
+    max_concurrent_panels: int
+    sill_mat_cure_days: float
 
 
 class ExchangeRoomPillarParameters(ApiModel):
@@ -667,6 +699,9 @@ class ExchangePlanBounds(ApiModel):
 
 
 class ExchangeCutFillLift(ApiModel):
+    """One lift: ``liftIndex`` is GLOBAL (0 = deepest lift of the body);
+    1.3.1 adds the owning block and the index inside it (0 = bottom lift)."""
+
     lift_index: int
     lower_level_id: str
     upper_level_id: str
@@ -674,6 +709,61 @@ class ExchangeCutFillLift(ApiModel):
     v_max: float
     vertical_height: float
     cut_entity_ids: list[str]
+    block_id: str
+    lift_index_in_block: int
+
+
+class ExchangeCutFillBlock(ApiModel):
+    """1.3.1 — one stope BLOCK (a level interval over the whole strike
+    extent): the unit of the block order; its panels partition the strike,
+    its lifts the down-dip interval. SEMANTIC (no geometry file)."""
+
+    block_id: str
+    lower_level_id: str
+    upper_level_id: str
+    start_order: int
+    v_min: float
+    v_max: float
+    vertical_height: float
+    panel_ids: list[str]
+    lift_indices: list[int]
+    #: mined above an unmined block (SHALLOW_TO_DEEP): its bottom lift is a
+    #: cemented sill mat
+    sill_mat_required: bool
+
+
+class ExchangeCutFillPanel(ApiModel):
+    """1.3.1 — one strike panel of a block: the schedule unit (cuts serial
+    inside it). ``uMin … uMax`` is the MINED span (rib pillars subtracted).
+    SEMANTIC (no geometry file); its cuts own the solids."""
+
+    panel_id: str
+    block_id: str
+    panel_index: int
+    lower_level_id: str
+    upper_level_id: str
+    start_order: int
+    u_min: float
+    u_max: float
+    strike_length: float
+    access_development_id: str
+    access_entity_id: str | None
+    cut_entity_ids: list[str]
+
+
+class ExchangeCutFillSequencing(ApiModel):
+    """1.3.1 — the resolved sequencing the geometry was generated under and
+    the deterministic start orders (a planning precedence baseline, never a
+    resource model)."""
+
+    stoping_direction: Literal["OVERHAND", "UNDERHAND"]
+    block_order: Literal["SHALLOW_TO_DEEP", "DEEP_TO_SHALLOW"]
+    panel_length_m: float
+    rib_pillar_width_m: float
+    max_concurrent_panels: int
+    sill_mat_cure_days: float
+    block_order_ids: list[str]
+    panel_start_order: list[str]
 
 
 class ExchangeCut(ApiModel):
@@ -688,6 +778,11 @@ class ExchangeCut(ApiModel):
     cut_index: int
     lower_level_id: str
     upper_level_id: str
+    #: 1.3.1: the owning block / panel and the lift index inside the block
+    block_id: str
+    panel_id: str
+    panel_index: int
+    lift_index_in_block: int
     #: the production access CROSSCUT development id (levels.json / network)
     access_development_id: str
     #: the exported CROSSCUT entity id of that access when it is in the bundle
@@ -714,6 +809,27 @@ class ExchangeBackfill(ApiModel):
     source_cut_id: str
     source_cut_entity_id: str
     volume_m3: float
+    #: 1.3.1: cemented sill-mat fill (semantic flag; fill mechanics are never
+    #: modelled)
+    cemented: bool
+
+
+class ExchangeCutFillRibPillar(ApiModel):
+    """1.3.1 — a RETAINED rib pillar between two panels of one block
+    (``PILLAR`` entity, one closed prism under ``production/cut_fill/
+    pillars/``): material left in place, never scheduled, never planned
+    tonnes, never a geotechnical pillar design."""
+
+    entity_id: str
+    pillar_id: str
+    block_id: str
+    left_panel_id: str
+    right_panel_id: str
+    local_bounds: ExchangeLocalBounds
+    geometric_volume_m3: float
+    tonnes_equivalent: float
+    mean_grade_proxy: float | None
+    files: list[str]
 
 
 class ExchangeCutFillMetrics(ApiModel):
@@ -727,6 +843,15 @@ class ExchangeCutFillMetrics(ApiModel):
     weighted_mean_grade_proxy: float | None
     actual_mean_lift_height: float
     actual_mean_cut_length: float
+    #: 1.3.1 block / panel / rib pillar / cemented sill-mat aggregates
+    block_count: int
+    panel_count: int
+    rib_pillar_count: int
+    cemented_backfill_count: int
+    cemented_backfill_volume_m3: float
+    total_rib_pillar_volume_m3: float
+    total_rib_pillar_tonnes_equivalent: float
+    actual_mean_panel_length: float
 
 
 class ExchangeProductionCutFill(ApiModel):
@@ -742,9 +867,14 @@ class ExchangeProductionCutFill(ApiModel):
     source_revision: str
     method: str
     parameters: ExchangeCutFillParameters
+    #: 1.3.1 structure (blocks → panels → lifts → cuts) and sequencing
+    sequencing: ExchangeCutFillSequencing
+    blocks: list[ExchangeCutFillBlock]
+    panels: list[ExchangeCutFillPanel]
     lifts: list[ExchangeCutFillLift]
     cuts: list[ExchangeCut]
     backfills: list[ExchangeBackfill]
+    rib_pillars: list[ExchangeCutFillRibPillar]
     metrics: ExchangeCutFillMetrics | None
     notes: list[str] = []
 

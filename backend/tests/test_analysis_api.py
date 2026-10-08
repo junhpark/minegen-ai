@@ -521,3 +521,134 @@ def test_cross_method_one_config_three_methods(
         assert doc["economics"]["disclaimer"] == (
             "Synthetic planning economics. Not a resource/reserve estimate or feasibility study."
         )
+
+
+# --------------------------------------------------------------------------- #
+# hardening PR-2 H3 §6 — GET …/analysis/timeseries
+# --------------------------------------------------------------------------- #
+
+
+def test_h3_timeseries_is_read_only_bound_and_reconciles_with_the_analysis(
+    longhole: TabularStack,
+) -> None:
+    base = f"/api/v1/scenarios/{longhole.sid}"
+    before = _file_state(longhole.store.derived_dir(longhole.sid))
+    r = longhole.client.get(f"{base}/analysis/timeseries")
+    assert r.status_code == 200, r.text
+    doc = r.json()
+    assert doc["status"] == "SUCCESS" and doc["availability"] == "AVAILABLE"
+    analysis = _analysis(longhole)
+    # default resolution: the configured cashflowBucketDays, else the 30-day
+    # display default (the module-scoped stack may already carry a config)
+    cfg = longhole.client.get(f"{base}{CONFIG}").json()
+    if cfg["configured"]:
+        assert doc["bucketDays"] == cfg["config"]["cashflowBucketDays"]
+        assert doc["economics"]["availability"] == "AVAILABLE"
+    else:
+        assert doc["bucketDays"] == 30.0
+        assert doc["economics"]["availability"] == "NOT_CONFIGURED"
+    totals = doc["totals"]
+    dev = analysis["development"]["totals"]
+    assert math.isclose(totals["developmentLengthM"], dev["totalDevelopmentLengthM"], rel_tol=1e-9)
+    assert math.isclose(
+        totals["productionTonnes"], analysis["production"]["totalPlannedMinedTonnes"], rel_tol=1e-9
+    )
+    assert totals["developmentTonnes"] is None
+    assert doc["developmentTonnes"]["status"] == "NOT_CONFIGURED"
+    assert doc["developmentRockVocabulary"] == "Excavated development rock"
+    assert "waste" not in r.text.lower()
+    # the caller's resolution is honoured and validated
+    fine = longhole.client.get(f"{base}/analysis/timeseries", params={"bucketDays": 7})
+    assert fine.status_code == 200 and fine.json()["bucketDays"] == 7.0
+    assert fine.json()["bucketCount"] > doc["bucketCount"]
+    assert math.isclose(
+        fine.json()["totals"]["productionTonnes"], totals["productionTonnes"], rel_tol=1e-9
+    )
+    assert (
+        longhole.client.get(f"{base}/analysis/timeseries", params={"bucketDays": 0}).status_code
+        == 422
+    )
+    # with economics the series carries the cashflow at the configured width
+    _put_config(longhole, fx.config_doc())
+    priced = longhole.client.get(f"{base}/analysis/timeseries").json()
+    assert priced["bucketDays"] == 30.0 and priced["economics"]["availability"] == "AVAILABLE"
+    cash = _analysis(longhole)["economics"]["cashflow"]
+    assert len(cash) == len(priced["buckets"])
+    for b, c in zip(priced["buckets"], cash, strict=True):
+        assert math.isclose(
+            b["cumulativeCashflow"], c["cumulativeCashflow"], rel_tol=1e-9, abs_tol=1e-9
+        )
+    # read-only: nothing under derived/ moved
+    assert _file_state(longhole.store.derived_dir(longhole.sid)) == before
+
+
+# --------------------------------------------------------------------------- #
+# hardening PR-2 H3 §8.2–8.3 — Planning IRR, GET …/analysis/sensitivity,
+# POST …/analysis/what-if (read-only, in-memory reschedule)
+# --------------------------------------------------------------------------- #
+
+
+def test_h3_sensitivity_and_what_if_are_read_only_and_reschedule_in_memory(
+    longhole: TabularStack,
+) -> None:
+    base = f"/api/v1/scenarios/{longhole.sid}"
+    _put_config(longhole, fx.config_doc())
+    before = _file_state(longhole.store.derived_dir(longhole.sid))
+    analysis = _analysis(longhole)
+    eco = analysis["economics"]
+    assert eco["availability"] == "AVAILABLE"
+    assert eco["planningIrr"]["name"] == "Planning IRR"
+    assert eco["planningIrr"]["status"] in ("DEFINED", "NOT_DEFINED")
+    r = longhole.client.get(f"{base}/analysis/sensitivity")
+    assert r.status_code == 200, r.text
+    doc = r.json()
+    assert doc["label"] == "WHAT-IF OVERRIDE — NOT SCENARIO VALUE"
+    assert doc["availability"] == "AVAILABLE"
+    assert math.isclose(
+        doc["base"]["planningNpv"], eco["summary"]["npv"], rel_tol=1e-9, abs_tol=1e-6
+    )
+    assert doc["base"]["planningIrr"] == eco["planningIrr"]
+    assert doc["base"]["mineDurationDays"] == analysis["schedule"]["mineDurationDays"]
+    assert len(doc["cases"]) == 9 * 6
+    schedule_cases = [c for c in doc["cases"] if c["kind"] == "SCHEDULE"]
+    assert schedule_cases and all(c["outcome"]["status"] == "AVAILABLE" for c in schedule_cases)
+    assert all(c["outcome"]["scheduleRebuilt"] is True for c in schedule_cases)
+    faster = next(
+        c
+        for c in schedule_cases
+        if c["parameter"] == "development_rate" and c["perturbationPct"] == 30.0
+    )
+    slower = next(
+        c
+        for c in schedule_cases
+        if c["parameter"] == "development_rate" and c["perturbationPct"] == -30.0
+    )
+    # a faster development rate never lengthens the mine; a slower one never shortens it
+    assert faster["outcome"]["mineDurationDeltaDays"] <= 1e-9
+    assert slower["outcome"]["mineDurationDeltaDays"] >= -1e-9
+    assert slower["outcome"]["mineDurationDays"] > faster["outcome"]["mineDurationDays"]
+    assert slower["outcome"]["firstProductionDay"] >= faster["outcome"]["firstProductionDay"]
+    economic = [c for c in doc["cases"] if c["kind"] == "ECONOMIC"]
+    assert all(c["outcome"]["scheduleRebuilt"] is False for c in economic)
+    assert all(c["outcome"]["mineDurationDeltaDays"] == 0.0 for c in economic)
+    # explicit perturbations are honoured; a zero perturbation is a 422
+    r = longhole.client.get(f"{base}/analysis/sensitivity", params={"perturbationPct": [5, -5]})
+    assert r.status_code == 200 and r.json()["perturbationsPct"] == [5.0, -5.0]
+    assert len(r.json()["cases"]) == 9 * 2
+    r = longhole.client.get(f"{base}/analysis/sensitivity", params={"perturbationPct": [0]})
+    assert r.status_code == 422
+    # one explicit what-if: the same answer as the matching grid case
+    r = longhole.client.post(f"{base}/analysis/what-if", json={"developmentRate": 1.3})
+    assert r.status_code == 200, r.text
+    w = r.json()
+    assert w["label"] == "WHAT-IF OVERRIDE — NOT SCENARIO VALUE" and w["scheduleRebuilt"] is True
+    assert w["mineDurationDays"] == faster["outcome"]["mineDurationDays"]
+    assert w["planningNpv"] == faster["outcome"]["planningNpv"]
+    r = longhole.client.post(f"{base}/analysis/what-if", json={"grossRevenuePerMinedTonne": 0})
+    assert r.status_code == 422
+    # READ-ONLY: timeline.json and every other derived file are byte- and stat-identical
+    assert _file_state(longhole.store.derived_dir(longhole.sid)) == before
+    assert (
+        longhole.client.get(f"{base}/design/timeline").json()["endDay"]
+        == analysis["schedule"]["endDay"]
+    )

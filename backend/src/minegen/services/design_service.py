@@ -37,6 +37,8 @@ from minegen.core.artifacts import (
     LEVELS_ARTIFACT,
     NETWORK_ARTIFACT,
     RAMP_SOURCE_FILE,
+    SHAFT_MESH_ARTIFACT,
+    SHAFT_MESH_GLB,
     SHAFTS_ARTIFACT,
     STOPES_ARTIFACT,
     TARGETS_ARTIFACT,
@@ -46,7 +48,7 @@ from minegen.core.artifacts import (
 )
 from minegen.core.enums import Capability, DistanceContract, MiningMethodType, OrebodyType
 from minegen.core.mesh_record import build_mesh_commit, mesh_commit_name
-from minegen.core.models import ApiModel, Scenario
+from minegen.core.models import ApiModel, Scenario, ShaftSpec
 from minegen.core.publication import publish_bytes, publish_text
 from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import ClearancePolicy, DesignCostEvaluator, clearance_policy_for
@@ -58,6 +60,7 @@ from minegen.design.progress import (
     ProgressStage,
     no_progress,
 )
+from minegen.design.shaft_mesh import ShaftMeshBuilder
 from minegen.design.smoothing import DeclineSmoother
 from minegen.design.targets import AccessTargetSet, generate_access_targets, resolve_portal
 from minegen.design.tunnel_mesh import TunnelMeshBuilder
@@ -96,6 +99,7 @@ from minegen.services.artifact_errors import (
     LevelsNotGeneratedError,
     NetworkNotFoundError,
     ProductionMethodMismatchError,
+    ShaftMeshNotGeneratedError,
     ShaftsNotGeneratedError,
     ShaftsStaleError,
     SmoothedNotGeneratedError,
@@ -130,7 +134,7 @@ from minegen.services.workflow_stages import (
     reset_plan,
 )
 from minegen.services.world_service import WorldService
-from minegen.shafts.models import ShaftsPayload
+from minegen.shafts.models import CollarSuggestion, ShaftsPayload
 from minegen.shafts.planner import ShaftPlanner
 from minegen.world.synthetic_world import SyntheticWorld
 
@@ -1410,6 +1414,102 @@ class DesignService:
         if not isinstance(read.model, ShaftsPayload):  # pragma: no cover - declared
             raise ArtifactMalformedError(SHAFTS_ARTIFACT, "does not satisfy ShaftsPayload")
         return read.model
+
+    def suggest_shaft_collar(self, scenario_id: str, spec: ShaftSpec) -> CollarSuggestion:
+        """Hardening PR-2 H2-SH: the planner's DEFAULT collar for one declared
+        spec against the current ``levels.json`` (409 LEVELS_NOT_GENERATED
+        otherwise). Read-only — nothing is persisted or invalidated; the
+        frontend copies the suggestion into the explicit spec (rule 124)."""
+        levels_payload = self.levels(scenario_id)
+        scenario, world = self.worlds.load(scenario_id)
+        policy = self._active_clearance_policy(scenario_id, world)
+        axis_ev = DesignCostEvaluator(
+            world, scenario.design, DesignContext.shaft(scenario.design), clearance=policy
+        )
+        access_ev = DesignCostEvaluator(world, scenario.design, clearance=policy)
+        planner = ShaftPlanner(scenario, world, axis_ev, access_ev)
+        return planner.suggest_collar(spec, levels_payload.model_dump(mode="json", by_alias=True))
+
+    # -- shaft excavation mesh (hardening PR-2 H2-SH) ------------------------ #
+
+    def shaft_mesh_report_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / SHAFT_MESH_ARTIFACT
+
+    def shaft_mesh_glb_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / SHAFT_MESH_GLB
+
+    def shaft_mesh_commit_path(self, scenario_id: str) -> Path:
+        return self.store.derived_dir(scenario_id) / mesh_commit_name(SHAFT_MESH_ARTIFACT)
+
+    def shaft_mesh_fingerprint(self, scenario_id: str) -> InputFingerprint:
+        return self._fingerprint_of(scenario_id, SHAFT_MESH_ARTIFACT)
+
+    def generate_shaft_mesh(self, scenario_id: str) -> dict[str, Any]:
+        """Sweep every OK shaft of the persisted ``shafts.json`` (barrel +
+        collar / sump caps + station drives, ``design/shaft_mesh.py``) under
+        the SAME evaluators the planner used (``DesignContext.shaft`` for the
+        barrel, the level-development context for the drives, the ACTIVE
+        clearance policy — rule 172). Synchronous; the GLB is published only
+        on SUCCESS under the locked stale-input protocol (rule 60), the
+        report records the ``shaftsRevision`` it swept, and nothing downstream
+        exists to invalidate (the registry declares the mesh a leaf)."""
+        fingerprint = self.shaft_mesh_fingerprint(scenario_id)
+        shafts_payload = self.shafts(scenario_id)  # 404 / 409 if absent / stale
+        shafts_revision = file_revision(self.shafts_path(scenario_id)) or ""
+        scenario, world = self.worlds.load(scenario_id)
+        policy = self._active_clearance_policy(scenario_id, world)
+        axis_ev = DesignCostEvaluator(
+            world, scenario.design, DesignContext.shaft(scenario.design), clearance=policy
+        )
+        access_ev = DesignCostEvaluator(world, scenario.design, clearance=policy)
+        builder = ShaftMeshBuilder(axis_ev, access_ev, scenario.ramp, scenario.tunnel_profile)
+        result = builder.build(
+            shafts_payload.model_dump(mode="json", by_alias=True), shafts_revision
+        )
+        payload = dict(result.report)
+        payload["sources"] = {
+            "shafts": True,
+            "rampSource": read_ramp_source(self._reader, scenario_id),
+        }
+        if result.glb is not None:
+            revision = hashlib.sha256(result.glb).hexdigest()
+            payload["artifactRevision"] = revision
+            payload["glbBytes"] = len(result.glb)
+            payload["meshUrl"] = (
+                f"/api/v1/scenarios/{scenario_id}/design/shaft-mesh/mesh.glb?v={revision[:16]}"
+            )
+        else:
+            payload["artifactRevision"] = None
+            payload["glbBytes"] = 0
+            payload["meshUrl"] = None
+        with self.store.lock(scenario_id):
+            if self.shaft_mesh_fingerprint(scenario_id) != fingerprint:
+                raise StaleInputsError(scenario_id)
+            report_path = self.shaft_mesh_report_path(scenario_id)
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            glb_path = self.shaft_mesh_glb_path(scenario_id)
+            commit_path = self.shaft_mesh_commit_path(scenario_id)
+            # the mesh pair publication order of ``generate_tunnel`` /
+            # ``generate_development_mesh`` (AC-01F.2 D3 + correction B3)
+            if result.glb is not None:
+                glb_revision = publish_bytes(glb_path, result.glb)
+                report_revision = publish_text(report_path, json.dumps(payload))
+                _commit_mesh(commit_path, report_revision, glb_revision)
+            else:
+                report_revision = publish_text(report_path, json.dumps(payload))
+                _commit_mesh(commit_path, report_revision, None)
+                if glb_path.exists():
+                    glb_path.unlink()
+            self._invalidate_downstream(scenario_id, SHAFT_MESH_ARTIFACT)
+        return payload
+
+    def shaft_mesh(self, scenario_id: str) -> dict[str, Any]:
+        return self._require_raw(scenario_id, SHAFT_MESH_ARTIFACT)
+
+    def shaft_mesh_glb(self, scenario_id: str) -> bytes:
+        return self._glb(
+            scenario_id, SHAFT_MESH_ARTIFACT, SHAFT_MESH_GLB, ShaftMeshNotGeneratedError
+        )
 
     # -- capability graph (Phase 20C.2B, rule 185) --------------------------- #
 

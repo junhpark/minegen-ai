@@ -45,6 +45,7 @@ two writes and the cache publish only.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -62,7 +63,9 @@ from minegen.core.artifacts import (
     LEVEL_ACCESSES_ARTIFACT,
     LEVELS_ARTIFACT,
     NETWORK_ARTIFACT,
+    RAMP_SOURCE_FILE,
     SENSORS_ARTIFACT,
+    SHAFT_MESH_ARTIFACT,
     SHAFTS_ARTIFACT,
     STOPES_ARTIFACT,
     TARGETS_ARTIFACT,
@@ -80,19 +83,29 @@ from minegen.export.scene_manifest import (
     slice_payload,
 )
 from minegen.services.artifact_errors import (
+    ArtifactMalformedError,
     ReadSnapshotChangedError,
     SceneArtifactInvalidError,
     StaleInputsError,
     WorldNotGeneratedError,
     read_state_code,
 )
-from minegen.services.artifact_reader import READ_SPECS, ArtifactReader, ArtifactSnapshot
+from minegen.services.artifact_reader import (
+    CUT_FILL_LEGACY_ARTIFACTS,
+    RAMP_SOURCES,
+    READ_SPECS,
+    STATE_LEGACY,
+    ArtifactRead,
+    ArtifactReader,
+    ArtifactSnapshot,
+)
 from minegen.services.effective_ramp import resolve_effective_ramp
 from minegen.services.scenario_service import (
     BOUND_READ_ATTEMPTS,
     ScenarioNotFoundError,
     ScenarioStore,
 )
+from minegen.services.workflow_stages import ResetJobRunningError, reset_plan
 from minegen.world.geology import FaultPlane
 from minegen.world.orebody import build_orebody
 from minegen.world.spatial_fields import IncompatibleFieldArtifactError, SpatialFieldSet
@@ -133,8 +146,9 @@ class WorldArtifactIncompatibleError(WorldNotGeneratedError):
     routers report the more specific code."""
 
 
-#: the 13 scene slots the manifest projects straight from their artifact, in
-#: the ORDER ``WorldService.scene`` has always written them
+#: the 14 scene slots the manifest projects straight from their artifact, in
+#: the ORDER ``WorldService.scene`` has always written them (``shaftMesh``
+#: appended by hardening PR-2 H2-SH)
 SCENE_SLOTS: tuple[tuple[str, str], ...] = (
     ("accessTargets", TARGETS_ARTIFACT),
     ("decline", DECLINE_ARTIFACT),
@@ -143,6 +157,7 @@ SCENE_SLOTS: tuple[tuple[str, str], ...] = (
     ("developmentMesh", DEVELOPMENT_MESH_ARTIFACT),
     ("levels", LEVELS_ARTIFACT),
     ("shafts", SHAFTS_ARTIFACT),
+    ("shaftMesh", SHAFT_MESH_ARTIFACT),
     ("network", NETWORK_ARTIFACT),
     ("capabilityGraph", CAPABILITY_GRAPH_ARTIFACT),
     ("stopes", STOPES_ARTIFACT),
@@ -175,6 +190,12 @@ class _BoundWorld:
             scenario_revision,
             arrays_revision,
         )
+
+
+#: PR #54 review B2 — the id of the scenario's QUEUED / RUNNING job, or
+#: ``None`` (``JobService.running_job``, passed by the world router exactly as
+#: the reset routes pass it; the world service knows no jobs, rule 60)
+RunningJobProbe = Callable[[str], "str | None"]
 
 
 class WorldService:
@@ -497,7 +518,9 @@ class WorldService:
                 continue
             return scenario, world, snapshot
 
-    def scene(self, scenario_id: str) -> dict[str, Any]:
+    def scene(
+        self, scenario_id: str, *, running_job: RunningJobProbe | None = None
+    ) -> dict[str, Any]:
         """The scene manifest: a projection of the VALID derived artifacts of
         ONE lock-held read snapshot (AC-01F).
 
@@ -518,8 +541,20 @@ class WorldService:
         response can never describe a world the scenario document has moved
         away from (R3d) or one a PUT has already deleted (R3b)."""
         scenario, world, snapshot = self._bound_snapshot(scenario_id)
-        scene = build_scene(scenario, world)
         reads = {name: self._reader.read(snapshot, name) for name in READ_SPECS}
+        # PR #54 review B2: a recognized EARLIER Cut & Fill model (the PR #53
+        # artifacts) is migrated EXPLICITLY — the Levels closure is discarded
+        # under the scenario lock and the scene is re-observed — never served,
+        # never refused as corruption and never reinterpreted
+        migrations: list[dict[str, Any]] = []
+        legacy = [name for name, read in reads.items() if read.state == STATE_LEGACY]
+        if legacy:
+            migrations.append(
+                self._migrate_legacy_artifacts(scenario_id, legacy, reads, running_job)
+            )
+            scenario, world, snapshot = self._bound_snapshot(scenario_id)
+            reads = {name: self._reader.read(snapshot, name) for name in READ_SPECS}
+        scene = build_scene(scenario, world)
         failures = [
             {
                 "artifact": name,
@@ -547,7 +582,81 @@ class WorldService:
         scene["layoutV2Selected"] = reads[LAYOUT_V2_SELECTED_ARTIFACT].raw
         # Phase 20B: ramp junctions + level accesses of the selection (rule 157)
         scene["levelAccesses"] = reads[LEVEL_ACCESSES_ARTIFACT].raw
+        # PR #54 review B2: what THIS read migrated (empty on every ordinary read)
+        scene["migrations"] = migrations
         return scene
+
+    def _migrate_legacy_artifacts(
+        self,
+        scenario_id: str,
+        legacy: list[str],
+        reads: dict[str, ArtifactRead],
+        running_job: RunningJobProbe | None,
+    ) -> dict[str, Any]:
+        """Discard the LEVELS stage closure because at least one of its
+        artifacts is a recognized earlier model (``STATE_LEGACY`` — today the
+        PR #53 Cut & Fill ``levels.json`` / ``stopes.json``). The deletion is
+        the registry-closure reset of hardening H1 §4.4 (``reset_plan``: the
+        same function "Reset from here" executes), taken under the per-
+        scenario store lock, with the same two refusals: a baked demo is
+        never written (the typed legacy error is raised instead — a demo is
+        baked by the current code, so this is a contract, not a path) and a
+        QUEUED / RUNNING job of the scenario is never raced (409
+        RESET_JOB_RUNNING, nothing deleted). World, layout catalogue,
+        selection, level accesses and the ramp source are NOT in the closure
+        and survive; the caller re-observes the scene afterwards."""
+        sources = [name for name in legacy if name in CUT_FILL_LEGACY_ARTIFACTS]
+        derived_legacy = [name for name in legacy if name not in CUT_FILL_LEGACY_ARTIFACTS]
+        error = reads[(sources or legacy)[0]].error
+        assert error is not None
+        if self.store.is_demo(scenario_id):
+            raise error
+        derived = self.store.derived_dir(scenario_id)
+        with self.store.lock(scenario_id):
+            if running_job is not None:
+                job_id = running_job(scenario_id)
+                if job_id is not None:
+                    raise ResetJobRunningError(scenario_id, "LEVELS", job_id)
+            # the active ramp source gates a ramp OWNER's downstream edges;
+            # an unusable ramp_source.json (A7) deletes the UNION of both
+            # closures — strictly more, never a guessed source
+            try:
+                source = self._reader.resolve_ramp_source(
+                    self._reader.snapshot(scenario_id, [RAMP_SOURCE_FILE])
+                )
+                will_delete: tuple[str, ...] = reset_plan("LEVELS", source, derived).will_delete
+            except (ArtifactMalformedError, OSError):
+                union: list[str] = []
+                for candidate in RAMP_SOURCES:
+                    for name in reset_plan("LEVELS", candidate, derived).will_delete:
+                        if name not in union:
+                            union.append(name)
+                will_delete = tuple(union)
+            deleted: list[str] = []
+            failed: list[str] = []
+            for name in will_delete:
+                path = derived / name
+                try:
+                    if path.exists():
+                        path.unlink()
+                        deleted.append(name)
+                except OSError:
+                    failed.append(name)
+            if failed:
+                raise OSError(
+                    f"scenario '{scenario_id}': legacy-artifact migration could not delete "
+                    + ", ".join(failed)
+                )
+        return {
+            "code": "CUT_FILL_LEGACY_ARTIFACTS_DISCARDED",
+            # the version-carrying artifacts found legacy …
+            "artifacts": sources,
+            # … and the well-formed artifacts that were legacy by derivation
+            "derivedArtifacts": derived_legacy,
+            "reason": str(error),
+            "resetFrom": "LEVELS",
+            "deleted": deleted,
+        }
 
     def slice(
         self, scenario_id: str, field: SliceField, axis: SliceAxis, index: int

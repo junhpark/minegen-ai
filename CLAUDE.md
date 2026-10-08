@@ -1648,7 +1648,31 @@ code, the code and the rule win and the map is corrected.
      one SHAFT_STATION per REQUIRED level (every listed level is required —
      one infeasible station fails the shaft), sump bottom. No placement
      optimization, no LLM-placed geometry; the frontend never derives shaft
-     geometry. Inclined shafts / winzes and a shaft mesh are deferred
+     geometry (the Setup › Access card — PR #54 review B3, formerly the
+     Shafts card — edits EXPLICIT `scenario.shafts` parameters only —
+     "Suggest collar" copies the planner's own default from
+     `POST …/design/shafts/suggest-collar` on click and is offered only
+     while a level development exists to derive it from; applying is the
+     rule 40 scenario PUT behind the shared reset-plan confirmation, made
+     BEFORE the layout so a declaration never resets a finished design by
+     surprise). Hardening PR-2
+     (H2-SH): the VERTICAL shaft excavation mesh is implemented —
+     `derived/shaft_mesh.json` + `.glb`, a separate leaf artifact
+     (`design/shaft_mesh.py`) swept from the shafts.json axis segments with
+     ONE constant right-handed frame (right +X, up +Y, forward −Z — the
+     gravity frame is undefined for a vertical tangent) through the Phase 06
+     ring machinery: circular barrel (K = 2 × archSegments), collar + sump
+     caps under the CAP–CAP closed-solid QA, the excavation envelope judged
+     under `DesignContext.shaft` with the planner's own collar zone, one
+     OPEN–OPEN station drive per level swept with the secondary profile
+     through the Phase 20B development-mesh path; batched render primitives
+     (SHAFT / SHAFT_STATION_ACCESS tubes whose `ranges` carry the shafts.json
+     centerline ids with the rule-173 reveal metadata, SHAFT_COLLAR_CAP /
+     SHAFT_SUMP_CAP). Lifecycle: inputs = shafts.json + its inputs, deleted
+     with the shafts / levels / ramp chain, invalidates NOTHING, bound to
+     `shaftsRevision` (409 SHAFT_MESH_STALE), typed FAILED (no GLB) for a
+     FAILED plan or any topology / envelope defect. Inclined shafts /
+     winzes, a parallel-transport frame and cage physics stay deferred
      (rule 26 reserves the parallel-transport frame).
 183. Shaft geometry ownership and validation. `derived/shafts.json` is the
      ONLY owner of shaft axes, stations and station drives (one flat
@@ -1917,9 +1941,9 @@ code, the code and the rule win and the map is corrected.
      panel structure; its principles are inherited). ORDER IS THE SCREEN:
      the ribbon lists the seven steps `1 Setup · 2 Design · 3 Network ·
      4 Mining · 5 Systems · 6 Analysis · 7 Export`, the stepper under it
-     lists every stage (`Scenario · Method | Layout · Levels · Excavation ·
-     Shafts | Network · Capability | Production · Schedule | Communication
-     · Sensors | Analysis | Export`) with one glyph each (✓ done · ● next ·
+     lists every stage (`Scenario · Method · Access | Layout · Levels ·
+     Excavation · Shafts | Network · Capability | Production · Schedule |
+     Communication · Sensors | Analysis | Export`) with one glyph each (✓ done · ● next ·
      ○ waiting · ✗ failed · ↻ running · – optional), and at most ONE stage
      is NEXT: the first stage whose prerequisite is done (Excavation waits
      for Levels; Analysis follows the last Systems stage and Export follows
@@ -1954,7 +1978,15 @@ code, the code and the rule win and the map is corrected.
      Randomize and Advanced are secondary; saved mines under File › Open)
      then Method (decided BEFORE the layout; a later change is the rule 40
      scenario PUT behind a confirmation that lists the backend
-     `reset-plan?from=WORLD` verbatim). Layout candidates read "Option n"
+     `reset-plan?from=WORLD` verbatim) then Access (PR #54 review B3: the
+     access strategy — ○ Ramp only / ● Ramp + Shaft with the explicit
+     `scenario.shafts` parameters — decided BEFORE the layout exactly like
+     the method, applied through the same PUT + world regeneration behind
+     the same confirmation; "Ramp only" is a decision, so the stage is
+     done once the world exists). Design › Shafts never edits the
+     declaration: it PLANS the declared shafts and sweeps their mesh, and
+     reads done only when BOTH exist (either failure fails the stage;
+     `specs = []` keeps it OPTIONAL). Layout candidates read "Option n"
      in rank order; the candidate id, family parameters and scores stay in
      Details (rule 142 enumeration unchanged). Export is reachable from the
      ribbon AND File › Export — two paths, one implementation; File › Import
@@ -2074,15 +2106,32 @@ code, the code and the rule win and the map is corrected.
      PRODUCTION_COMPLEXITY_LIMIT failure, never a silent decimation.
 195. Cut & Fill / Room & Pillar geometry contract. Both are TABULAR-only in
      v0.1: any other orebody is the typed METHOD_GEOMETRY_NOT_IMPLEMENTED
-     failure, never a fallback. Cut & Fill: lifts partition every adjacent
-     level interval to ≈ `liftHeightM` VERTICAL (dip-aware, `dv =
-     liftHeight / |v_z|`), cuts partition the strike extent to ≈
-     `cutLengthM`, ordered lowest lift first and along strike in a snake
-     (even lifts −u → +u, odd +u → −u); every cut is an 8-corner prism
-     under the Phase 09 hard QA (closed solid, volume agreement, hard
-     samples, finite) with the rule 130 grade proxy; backfills are 1:1
-     SEMANTIC records referencing `sourceCutId` (no duplicate geometry:
-     the backfill IS the cut void); no partial SUCCESS. Room & Pillar:
+     failure, never a fallback. Cut & Fill (hardening PR-2 H2-CF block /
+     panel structure): the strike extent is partitioned equally into PANELS
+     of ≈ `panelLengthM` (rule 194 partition, default 60 m) with one
+     production access CROSSCUT per panel and level (`PanelAccessPattern`,
+     station index = panel index); a level interval is a stope BLOCK and
+     block × panel is the schedule unit; inside it lifts partition the
+     interval to ≈ `liftHeightM` VERTICAL (dip-aware, `dv = liftHeight /
+     |v_z|`) and cuts partition the panel's MINED span to ≈ `cutLengthM`,
+     OVERHAND lifts bottom → top and cuts along strike in a snake (even
+     lifts-in-block −u → +u, odd +u → −u). `ribPillarWidthM` > 0 carves
+     RETAINED rib pillars out of the panel partition (the Room & Pillar
+     PILLAR semantics: geometry + `tonnesEquivalent`, never scheduled,
+     never planned tonnes; 0 = none). Under `blockOrder = SHALLOW_TO_DEEP`
+     the bottom lift of every block mined above an unmined block is a
+     CEMENTED sill mat (`backfill.cemented = true`); every other fill is
+     plain. Every cut is an 8-corner prism under the Phase 09 hard QA
+     (closed solid, volume agreement, hard samples, finite) with the rule
+     130 grade proxy; backfills are 1:1 SEMANTIC records referencing
+     `sourceCutId` (no duplicate geometry: the backfill IS the cut void);
+     the payload carries `sequencing` (resolved assumptions + the
+     deterministic block / panel start orders), `blocks[]`, `panels[]`,
+     `ribPillars[]`, per-cut `blockId / panelId / liftIndexInBlock`, and
+     `integrity.py` re-verifies block / panel / cemented / start-order
+     relations (READ ≠ TRUST); no partial SUCCESS. Panel length, rib
+     pillar, concurrency and cure are registry canonical PLANNING defaults
+     (never fill-strength, binder or geotechnical values). Room & Pillar:
      alternating room / pillar bands along u and v with pitch `roomWidth +
      pillarWidth`, u = 0 / v = 0 a ROOM band, the panel inset by
      `boundaryPillarM`, a cell is ROOM iff its u-band OR v-band is a room
@@ -2098,12 +2147,36 @@ code, the code and the rule win and the map is corrected.
      from `scenario.schedule` rates, per-unit state transitions bound to
      task boundaries, `tasks_per_unit` aggregate contract); the Longhole
      spec is the Phase 10 stope chain moved VERBATIM (ids, order, bases,
-     dependencies, states — bytes unchanged, rule 193 gate). Cut & Fill:
-     PREP → STOPING → MUCKING → BACKFILL → CURE per cut in persisted order,
-     the first PREP after the cut's `accessDevelopmentId` development task,
-     ONE conservative chain (next cut after the previous CURE, hence the
-     next lift after the previous lift's last cure), states PLANNED →
-     ACTIVE → MINED → VOID → BACKFILLED, `targetKind = CUT`. Room & Pillar:
+     dependencies, states — bytes unchanged, rule 193 gate). Cut & Fill
+     (hardening PR-2 H2-CF — two declared sequencing axes, valid
+     combinations only): `stopingDirection ∈ {OVERHAND, UNDERHAND}` ×
+     `blockOrder ∈ {SHALLOW_TO_DEEP, DEEP_TO_SHALLOW}`; OVERHAND +
+     SHALLOW_TO_DEEP (default, cemented sill mats) and OVERHAND +
+     DEEP_TO_SHALLOW (no sill mat needed) are implemented, UNDERHAND is a
+     schema-valid axis that production generation AND the schedule refuse
+     with the typed UNSUPPORTED_STOPING_DIRECTION failure — never a silent
+     fallback to OVERHAND, and "top-down / bottom-up" vocabulary appears
+     nowhere in code or UI. The schedule is EXPLICIT PRECEDENCE (rule 82,
+     never a resource solver): PREP → STOPING → MUCKING → BACKFILL → CURE
+     per cut, cuts serial INSIDE a panel (previous CURE → next PREP, lifts
+     bottom → top, snake), every PREP after the panel's own production
+     access crosscut on the lower level (hence, through the development DAG,
+     the level drift, the level access and the ramp reaching that
+     junction); panel k + N starts after panel k's last CURE
+     (N = `maxConcurrentPanels`, default 2; global start order = block
+     order, then centre-out with the −u tie-break); vertical gates per
+     panel index — SHALLOW_TO_DEEP: the lower block's TOP lift waits for
+     every cemented sill-mat CURE of the block above; DEEP_TO_SHALLOW: a
+     block's bottom lift waits for the last CURE of the block below; a
+     cemented fill cures for `sillMatCureDays` (default 28), every other
+     fill for `schedule.backfillCureDays`; rib pillars receive no task;
+     states PLANNED → ACTIVE → MINED → VOID → BACKFILLED, `targetKind =
+     CUT`. Measured on the small scenario (`docs/findings/h2cf-cut-fill-
+     characterization.md`): first STOPING day 404.45 → 298.18 against ramp
+     completion 371.46, max open cuts 1 → 2, end day 5204.5 → 3293.7,
+     volume / tonnes unchanged — the C&F fixture is an INTENTIONAL
+     regeneration with that comparison record; the Longhole baseline is
+     byte-identical (BLOCKING). Room & Pillar:
      PREP → STOPING → MUCKING per extraction unit, HEADING → BENCH_1 →
      BENCH_2 inside a cell, cells outward from the central cell by
      Manhattan index distance then row then column, a single front (next
@@ -2227,9 +2300,38 @@ code, the code and the rule win and the map is corrected.
      optimized, certified or statutory wording. Economics is AVAILABLE only
      when the config AND development AND production AND schedule are
      available (NOT_CONFIGURED / SOURCE_NOT_AVAILABLE otherwise); an NPV is
-     never produced without a timeline. No IRR, tax, depreciation, royalty,
-     inflation or sensitivity exists in v0.1, and only the ACTIVE design is
-     analysed (no candidate what-if).
+     never produced without a timeline. Hardening PR-2 (H3 §8): the
+     economics payload carries the TYPED "Planning IRR" (`planningIrr`,
+     `analysis/irr.py`) — the annual rate under EXACTLY the Baseline
+     Planning NPV timing (mid-bucket, `midDay / 365.25`), deterministic
+     bisection on the bounded bracket [−0.99, 10]; DEFINED only when the
+     bucket net cashflows change sign exactly once AND the NPV function has
+     a root in the bracket, otherwise NOT_DEFINED with the reason
+     NO_SIGN_CHANGE | MULTIPLE_SIGN_CHANGES, or NOT_CONFIGURED; never NaN /
+     Infinity (rule 34), never a bankable or feasibility figure. The
+     read-only sensitivity grid (`GET …/analysis/sensitivity`, nine declared
+     parameters — gross revenue per mined tonne, development / mining /
+     processing / backfill cost, initial capital, discount rate (economic:
+     the Planning Cashflow ledger is rescaled) and development / mining
+     rate (schedule: `MineTimelineBuilder` is rerun IN MEMORY on the bound
+     artifacts) — at ±10 / 20 / 30 % by default) and the explicit what-if
+     (`POST …/analysis/what-if`, one multiplicative factor per parameter)
+     are projections: nothing is persisted, timeline.json / economics.json
+     are never modified, no job runs, no optimizer exists, and every
+     outcome (Planning NPV, Planning IRR, mine duration, first production
+     day, deltas) carries the label "WHAT-IF OVERRIDE — NOT SCENARIO VALUE".
+     The revenue authority is still exactly "Gross revenue per mined tonne":
+     no metal price, grade, recovery, payability, royalty, tax,
+     depreciation or inflation model exists, and only the ACTIVE design is
+     analysed (no candidate what-if). The Analysis workspace is
+     full-window (ANALYSIS mode unmounts the canvas; "Show 3D context" is an
+     explicit split view), heads every tab (Overview · Economics ·
+     Sensitivity · Schedule · Rules · Layouts · Simulation Results) with the
+     Planning NPV / Planning IRR / mine life / first production KPI tiles,
+     renders the cashflow and cost charts from backend buckets (Recharts,
+     presentation only — a missing value is never converted to zero), and
+     keeps the PR #53 completion rule (shown workspace, bound to the scene
+     revision).
 202. Geometry is the quantity authority, the timeline the timing authority
      (Phase 22B). Development cost = `length3d × rate(edge type)` spread
      linearly over the edge's development task (`basis.quantity ≈ length3d`,
@@ -2564,3 +2666,121 @@ code, the code and the rule win and the map is corrected.
      the list is sorted by chainage, so a failed level development never
      hides a turnout that the ramp already has. Branch teleport stays later
      scope (rule 187).
+
+221. Analysis time series and 4D playback (hardening PR-2 H3 §6–7). `GET
+     …/analysis/timeseries?bucketDays=<n>` is a READ-ONLY projection of the
+     rule 197 family (`analysis/timeseries.py`): ONE bound snapshot
+     (`AnalysisService._bound_inputs`, re-observed → READ_SNAPSHOT_CHANGED),
+     nothing persisted, no job. Quantities come from geometry and timing from
+     the MineTimeline, allocated LINEARLY over each task window (the
+     Planning Cashflow convention): per bucket and cumulative
+     `developmentLengthM`, `developmentExcavationM3` (vocabulary "Excavated
+     development rock", never "waste"), `developmentTonnes` ONLY when
+     `scenario.geology.hostRockDensity` is declared (OPTIONAL, NO default —
+     absent → NOT_CONFIGURED / null cells, never 2.7 t/m³ or any constant),
+     `productionTonnes` (STOPING window), `backfillM3` / `cementedBackfillM3`
+     (BACKFILL window), retained pillar TOTALS (never per bucket), and the
+     cost / revenue / netCashflow / cumulativeCashflow columns that ARE the
+     economics ledger at the requested resolution (`economics_ledger`, same
+     numbers as the analysis; NOT_CONFIGURED without economics.json).
+     `bucketDays` defaults to the configured `cashflowBucketDays`, else 30
+     (a display default); ≤ 0 is 422. The 4D view's Restart / Play / Pause /
+     Loop (restart at the start day and continue) / 1× 5× 20× drive the
+     day cursor only — no animation clock ever modifies the MineTimeline —
+     and the 4D STATUS & RESULTS card and the Schedule tab render that
+     series as given: the frontend never re-sums timeline tasks, and a
+     `null` cell is a gap / "—", never zero.
+222. Baked demos are READ-ONLY scenarios served in place (hardening PR-2 H4).
+     `scripts/bake_demos.py` (`minegen/demos/bake.py`) bakes the three demo
+     recipes — TABULAR Longhole (full workflow incl. one production shaft),
+     TABULAR Cut & Fill, WARPED_VEIN world + layout-v2 + curved levels +
+     excavation meshes — into `data/demos/{id}/` THROUGH THE APPLICATION'S
+     OWN HTTP ROUTES from their preset + seed realization (rule 119,
+     deterministic re-bake), with the DEMO / SYNTHETIC planning-economics
+     assumptions, and writes `data/demos/index.json` (the commit it was
+     baked from, no timestamp). `data/` stays git-ignored and a baked demo is
+     bound by STAT identity, so the demos are never shipped as files: they
+     MATERIALIZE THEMSELVES on the host that serves them (PR #54 review B1,
+     `services/demo_materializer.py`) — `scripts/bin/dev-setup` runs
+     `bake_demos.py --if-missing` synchronously (a prepared checkout and a
+     Codespace list the three demos before the servers start), and the
+     application lifespan (`create_app`, `Settings.demos_autobake` /
+     `MINEGEN_DEMOS_AUTOBAKE`, default on) bakes the recipes the catalogue
+     does not list as available in ONE background thread per process, once,
+     publishing the index after every recipe, recording a failed recipe
+     with its reason and continuing; `GET /demos` carries the
+     `materialization` state (DISABLED · IDLE · BAKING recipe / stage · DONE
+     · FAILED) and File › Demos shows "Baking…" and polls while it bakes.
+     The test suite (`tests/__init__.py`), the browser e2e and the baker's
+     own in-process application never autobake. The scenario store resolves a demo id IN PLACE when no
+     saved scenario carries it (a saved scenario always wins, so a clone is
+     never shadowed) — no derived copy, every revision binding intact — and
+     refuses every write (replace, delete, derived clearing, migration-on-
+     read) with the typed 409 DEMO_READ_ONLY; ONE router dependency
+     (`api/demo_guard.py`) answers the same code to every mutating request
+     on a demo id before the route body runs, the read-only POSTs (export/*,
+     analysis/what-if, design/cost/evaluate, design/shafts/suggest-collar)
+     pass, no job is ever submitted for a demo and the demo directory stays
+     byte- and stat-identical. `GET /demos` is READ ≠ TRUST on every read
+     (malformed index → 409 DEMO_INDEX_MALFORMED; an entry whose directory
+     is missing, shadowed or disagrees in seed / orebody / method / world is
+     `available = false` with its reason, never dropped, never served);
+     `GET /scenarios` lists saved scenarios only. A baked demo directory is
+     bound by STAT identity (rule 60: the world commit record names
+     `scenario.json`'s size + mtime_ns): it is moved only with its timestamps
+     preserved (`cp -a`, `rsync -a`, tar) or re-baked on the serving host —
+     a copy without timestamps is reported by the catalogue as unavailable
+     ("world publication stale") and every scene read of it is 409
+     WORLD_PUBLICATION_STALE; nothing re-binds it silently. The frontend
+     surfaces a failed demo open (File-menu alert, demo-panel notice) and
+     opens a demo
+     through the ordinary scenario + scene reads (File › Demos) as ONE
+     scenario-identity transition that records the demo fact, enters
+     viewer-only demo mode — no generation controls, no "Reset from here",
+     the DEMO · SYNTHETIC badge, Auto tour over the View panel's own camera
+     presets (off in Walk and in the Analysis workspace), 4D Loop on — while
+     3D / 4D / Walk, Analysis and Export stay available; "Clone to edit" is
+     an ordinary `POST /scenarios` of the demo document without its identity
+     plus world regeneration from the same seed. The hidden controls are a
+     presentation of the backend contract, never its only enforcement. A
+     demo is a baked synthetic sandbox mine — never a measured, estimated or
+     imported orebody — and the Hugging Face deployment (D0) stays a
+     separate, deferred item.
+223. Derived-artifact MODEL VERSIONS and the legacy read state (PR #54
+     review B2). A derived artifact whose SEMANTIC shape changes without a
+     scenario-document change carries its own scoped version, never a
+     bump of the scenario `schemaVersion` (which stays 2): the Cut & Fill
+     production model is `mining.models.CUT_FILL_MODEL_VERSION` (2 =
+     hardening PR-2 H2-CF; absent = the PR #53 shape), REQUIRED on the
+     CUT_AND_FILL `stopes.json` (`cutFillModelVersion`) and stamped on the
+     `levels.json` `productionDevelopment` block (`modelVersion`, OMITTED —
+     not `null` — for every other method, so the Longhole / Room & Pillar
+     artifacts stay byte-identical under rules 192 / 193). The
+     `ArtifactReader` decides a recognized earlier version on the RAW
+     document BEFORE the parser (`ReadSpec.pre_checks`) as the fifth read
+     state `LEGACY` with the typed `CUT_FILL_LEGACY_ARTIFACT` (409) — never
+     ARTIFACT_MALFORMED, never a loosened parser, never a reinterpretation.
+     "Recognized" is a SHAPE, never a method name alone: a CUT_AND_FILL
+     `stopes.json` is LEGACY only when it carries the PR #53 keys
+     (`PR53_CUT_FILL_KEYS`) without the current version; any other
+     document falls through to the parser and stays MALFORMED (nothing is
+     ever deleted for it);
+     every registry descendant of the level development (network,
+     timeline, communication, sensors, …) reads LEGACY BY DERIVATION in the
+     same snapshot (the version-carrying sources are observed beside it),
+     so no read serves a product of a legacy level development. The
+     migration is EXPLICIT and lives in ONE place: `GET …/scene`
+     (`WorldService.scene`) discards the LEVELS registry closure under the
+     scenario lock — the same `reset_plan` "Reset from here" executes, the
+     same RESET_JOB_RUNNING refusal under a QUEUED / RUNNING job, nothing
+     deleted on refusal, a baked demo never written (the typed error is
+     raised instead) — keeps the world, the layout catalogue, the selection,
+     the level accesses and the ramp source, and reports it in the scene's
+     `migrations[]` (`CUT_FILL_LEGACY_ARTIFACTS_DISCARDED`: sources, derived
+     artifacts, deleted files, resetFrom LEVELS); the frontend shows the
+     record and regenerates nothing. The regression fixture
+     `tests/fixtures/h2cf/legacy_pr53_cut_fill/` is a REAL PR #53 scenario
+     directory captured on the pinned base `1bd68c8` through that code's
+     own routes (`scripts/h2cf_capture_legacy_cut_fill_fixture.py`, which
+     refuses any other HEAD; `stat.json` restores the size / mtime_ns
+     identities rule 60 binds to) and is never regenerated from newer code.

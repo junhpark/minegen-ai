@@ -6,15 +6,17 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from minegen.api.deps import get_world_service
+from minegen.api.deps import get_job_service, get_world_service
 from minegen.api.errors import ROUTER_WORLD, guard
 from minegen.core.models import ErrorDetail
+from minegen.services.job_service import JobService
 from minegen.services.world_service import WorldService
 from minegen.world.warped_vein import WarpedVeinGeometryBudgetError
 
 router = APIRouter(prefix="/scenarios/{scenario_id}", tags=["world"])
 
 Service = Annotated[WorldService, Depends(get_world_service)]
+Jobs = Annotated[JobService, Depends(get_job_service)]
 
 
 def _error(status_code: int, code: str, message: str) -> HTTPException:
@@ -92,9 +94,14 @@ def get_slice(
 
 
 @router.get("/scene")
-def get_scene(scenario_id: str, svc: Service) -> dict[str, Any]:
+def get_scene(scenario_id: str, svc: Service, jobs: Jobs) -> dict[str, Any]:
+    """PR #54 review B2: a scene read that finds a recognized earlier Cut &
+    Fill model (``CUT_FILL_LEGACY_ARTIFACT``) migrates it — the Levels
+    closure is discarded under the scenario lock, never while the scenario
+    has a QUEUED / RUNNING job (409 RESET_JOB_RUNNING) — and reports it in
+    ``migrations[]``; every other read of such an artifact is the typed 409."""
     try:
-        return svc.scene(scenario_id)
+        return svc.scene(scenario_id, running_job=jobs.running_job)
     except HTTPException:
         raise
     except Exception as e:

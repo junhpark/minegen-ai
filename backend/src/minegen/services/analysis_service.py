@@ -37,13 +37,25 @@ from minegen.analysis.layout_comparison import (
     build_layout_comparison,
 )
 from minegen.analysis.models import MineAnalysisPayload
+from minegen.analysis.sensitivity import (
+    DEFAULT_PERTURBATIONS_PCT,
+    SensitivityInputs,
+    SensitivityPayload,
+    WhatIfFactors,
+    WhatIfOutcome,
+    build_sensitivity,
+    evaluate_what_if,
+)
+from minegen.analysis.timeseries import DEFAULT_BUCKET_DAYS, TimeseriesPayload, build_timeseries
 from minegen.assessment.builder import CatalogueShapeError
 from minegen.core.artifacts import (
     LAYOUT_V2_ARTIFACT,
     LAYOUT_V2_SELECTED_ARTIFACT,
     LEVEL_ACCESSES_ARTIFACT,
+    LEVELS_ARTIFACT,
     NETWORK_ARTIFACT,
     RAMP_SOURCE_FILE,
+    SHAFTS_ARTIFACT,
     STOPES_ARTIFACT,
     TIMELINE_ARTIFACT,
 )
@@ -58,13 +70,26 @@ from minegen.services.artifact_reader import (
     ArtifactReader,
     ArtifactSnapshot,
 )
+from minegen.services.effective_ramp import RAMP_FILES, resolve_effective_ramp
 from minegen.services.scenario_service import ScenarioStore
 
-__all__ = ["ANALYSIS_ARTIFACTS", "LAYOUT_COMPARISON_ARTIFACTS", "AnalysisService"]
+__all__ = [
+    "ANALYSIS_ARTIFACTS",
+    "LAYOUT_COMPARISON_ARTIFACTS",
+    "SENSITIVITY_ARTIFACTS",
+    "AnalysisService",
+]
 
 #: the derived artifacts the analysis consumes (development authority,
 #: active production artifact, timeline)
 ANALYSIS_ARTIFACTS: tuple[str, ...] = (NETWORK_ARTIFACT, STOPES_ARTIFACT, TIMELINE_ARTIFACT)
+
+#: hardening PR-2 H3 §8.3: the sensitivity what-if additionally reads the
+#: owning-centerline documents the in-memory reschedule needs (the Effective
+#: Ramp resolution files, levels, shafts) — all observed in the ONE snapshot
+SENSITIVITY_ARTIFACTS: tuple[str, ...] = tuple(
+    dict.fromkeys([*ANALYSIS_ARTIFACTS, *RAMP_FILES, LEVELS_ARTIFACT, SHAFTS_ARTIFACT])
+)
 
 #: the sources the Phase 22C layout comparison consumes (directive §9): the
 #: catalogue, the selection with its co-published level accesses (the
@@ -136,6 +161,125 @@ class AnalysisService:
             ),
             economics.file_revision,
         )
+
+    def _bound_inputs(
+        self, scenario_id: str, artifacts: tuple[str, ...] = ANALYSIS_ARTIFACTS
+    ) -> tuple[AnalysisInputs, Any, EconomicsObservation]:
+        """The ONE bound read + artifact snapshot + economics observation every
+        analysis projection starts from (``analyze`` / ``timeseries`` /
+        ``sensitivity``)."""
+        scenario, scenario_revision = self.store.get_bound(scenario_id)
+        snapshot = self._reader.snapshot(
+            scenario_id, artifacts, expect_scenario_revision=scenario_revision
+        )
+        economics = observe_economics(self.store, scenario_id)
+        assert snapshot.scenario_revision == scenario_revision  # bound above
+        world_generated = True
+        try:
+            self._reader.require_world(snapshot)
+        except WorldNotGeneratedError:
+            world_generated = False
+        network = self._optional(snapshot, NETWORK_ARTIFACT) if world_generated else None
+        production = self._optional(snapshot, STOPES_ARTIFACT) if world_generated else None
+        timeline = self._optional(snapshot, TIMELINE_ARTIFACT) if world_generated else None
+        inputs = AnalysisInputs(
+            scenario=scenario,
+            scenario_revision=scenario_revision,
+            world_generated=world_generated,
+            network=network,
+            production=production,
+            timeline=timeline,
+            economics=economics.config,
+            economics_revision=economics.revision,
+        )
+        return inputs, snapshot, economics
+
+    def _verify_unmoved(
+        self,
+        scenario_id: str,
+        snapshot: Any,
+        economics: EconomicsObservation,
+        what: str,
+        artifacts: tuple[str, ...] = ANALYSIS_ARTIFACTS,
+    ) -> None:
+        after = self._reader.snapshot(scenario_id, artifacts)
+        after_economics = observe_economics(self.store, scenario_id)
+        if self._fingerprint(after, after_economics) != self._fingerprint(snapshot, economics):
+            raise ReadSnapshotChangedError(
+                scenario_id, f"analysis sources changed while the {what} was computed"
+            )
+
+    def timeseries(self, scenario_id: str, bucket_days: float | None = None) -> TimeseriesPayload:
+        """Hardening PR-2 H3 §6: the READ-ONLY bucketed time series. Same
+        bound-snapshot protocol as :meth:`analyze`; ``bucketDays`` defaults
+        to the configured ``cashflowBucketDays`` (else the 30-day display
+        default). Nothing is persisted or invalidated."""
+        inputs, snapshot, economics = self._bound_inputs(scenario_id)
+        resolution = (
+            bucket_days
+            if bucket_days is not None
+            else economics.config.cashflow_bucket_days
+            if economics.config is not None
+            else DEFAULT_BUCKET_DAYS
+        )
+        payload = build_timeseries(inputs, resolution)
+        self._verify_unmoved(scenario_id, snapshot, economics, "time series")
+        return payload
+
+    def _sensitivity_inputs(
+        self, scenario_id: str
+    ) -> tuple[SensitivityInputs, Any, EconomicsObservation]:
+        """The analysis inputs plus the owning-centerline documents of the
+        in-memory reschedule, from ONE snapshot. A missing optional document
+        is ``None`` (the what-if answers NOT_AVAILABLE); a present unusable one
+        raises its typed read error."""
+        inputs, snapshot, economics = self._bound_inputs(scenario_id, SENSITIVITY_ARTIFACTS)
+        ramp: dict[str, Any] | None = None
+        levels: dict[str, Any] | None = None
+        accesses: dict[str, Any] | None = None
+        shafts: dict[str, Any] | None = None
+        if inputs.world_generated:
+            resolution = resolve_effective_ramp(snapshot, self._reader)
+            ramp = resolution.payload
+            levels_read = self._optional_read(snapshot, LEVELS_ARTIFACT)
+            levels = None if levels_read is None else levels_read.raw
+            if resolution.active_source == "LAYOUT_V2":
+                accesses_read = self._optional_read(snapshot, LEVEL_ACCESSES_ARTIFACT)
+                accesses = None if accesses_read is None else accesses_read.raw
+            shafts_read = self._optional_read(snapshot, SHAFTS_ARTIFACT)
+            shafts = None if shafts_read is None else shafts_read.raw
+        return (
+            SensitivityInputs(
+                analysis=inputs,
+                ramp_payload=ramp,
+                levels_payload=levels,
+                accesses_payload=accesses,
+                shafts_payload=shafts,
+            ),
+            snapshot,
+            economics,
+        )
+
+    def sensitivity(
+        self, scenario_id: str, perturbations_pct: tuple[float, ...] | None = None
+    ) -> SensitivityPayload:
+        """Hardening PR-2 H3 §8.3: the finite what-if grid (nine declared
+        parameters × the perturbations) over the current authoritative
+        quantities and timing; schedule parameters rerun the timeline builder
+        in memory. Read-only — nothing persisted, nothing invalidated."""
+        inputs, snapshot, economics = self._sensitivity_inputs(scenario_id)
+        payload = build_sensitivity(
+            inputs, perturbations_pct if perturbations_pct else DEFAULT_PERTURBATIONS_PCT
+        )
+        self._verify_unmoved(scenario_id, snapshot, economics, "sensitivity", SENSITIVITY_ARTIFACTS)
+        return payload
+
+    def what_if(self, scenario_id: str, factors: WhatIfFactors) -> WhatIfOutcome:
+        """One explicit what-if override (same contract as ``sensitivity``)."""
+        inputs, snapshot, economics = self._sensitivity_inputs(scenario_id)
+        outcome = evaluate_what_if(inputs, factors)
+        self._verify_unmoved(scenario_id, snapshot, economics, "what-if", SENSITIVITY_ARTIFACTS)
+        return outcome
 
     def analyze(self, scenario_id: str) -> MineAnalysisPayload:
         # the bound document read and the artifact observation are ONE

@@ -230,6 +230,31 @@ class CashflowBucket(ApiModel):
     discounted_net_cashflow: float
 
 
+#: hardening PR-2 H3 §8.2 — the bounded bisection bracket (annual rate)
+IRR_MIN = -0.99
+IRR_MAX = 10.0
+IrrStatus = Literal["DEFINED", "NOT_DEFINED", "NOT_CONFIGURED"]
+IrrReason = Literal["NO_SIGN_CHANGE", "MULTIPLE_SIGN_CHANGES"]
+
+
+class PlanningIrr(ApiModel):
+    """Planning IRR under the Baseline Planning NPV timing convention
+    (mid-bucket): typed, never NaN / Infinity (rule 34). ``DEFINED`` only when
+    the non-zero bucket net cashflows change sign exactly once; otherwise
+    ``NOT_DEFINED`` with the reason; ``NOT_CONFIGURED`` without a cashflow."""
+
+    status: IrrStatus
+    annual_rate: float | None
+    reason: IrrReason | None
+    convention: Literal["MID_BUCKET_MIDPOINT"] = "MID_BUCKET_MIDPOINT"
+    bracket: tuple[float, float] = (IRR_MIN, IRR_MAX)
+    name: Literal["Planning IRR"] = "Planning IRR"
+
+
+def not_configured_irr() -> PlanningIrr:
+    return PlanningIrr(status="NOT_CONFIGURED", annual_rate=None, reason=None)
+
+
 class EconomicsSection(ApiModel):
     availability: Availability
     reason: str | None
@@ -244,6 +269,9 @@ class EconomicsSection(ApiModel):
     npv_convention: Literal["MID_BUCKET_MIDPOINT"] = "MID_BUCKET_MIDPOINT"
     summary: EconomicsSummary | None
     cashflow: list[CashflowBucket]
+    #: hardening PR-2 H3 §8.2 (additive): the Planning IRR of the cashflow
+    #: under the same mid-bucket convention — typed, never NaN / Infinity
+    planning_irr: PlanningIrr = Field(default_factory=not_configured_irr)
     disclaimer: str = ECONOMICS_DISCLAIMER
 
 

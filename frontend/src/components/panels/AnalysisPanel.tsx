@@ -11,8 +11,12 @@ import type {
   LayoutComparisonPayload,
   MineAnalysisPayload,
   ProductionDetail,
+  SensitivityPayload,
+  TimeseriesPayload,
+  WhatIfFactors,
+  WhatIfOutcome,
 } from '@/types/analysis'
-import type { DesignAssessmentPayload, LevelsPayload } from '@/types/scene'
+import type { DesignAssessmentPayload, LevelsPayload, TimelinePayload } from '@/types/scene'
 import {
   AVAILABILITY_LABEL,
   availabilityTone,
@@ -22,18 +26,21 @@ import {
   fmt0,
   fmt1,
   fmt2,
+  irrText,
   METHOD_LABEL,
   metres,
   money,
   tonnes,
 } from './analysisFormat'
 import { assessmentKey } from './assessmentKey'
-import { CashflowTable } from './CashflowTable'
+import { CashflowCharts, CashflowTable } from './CashflowTable'
 import { EconomicsConfigEditor } from './EconomicsConfigEditor'
 import { economicsIdentity } from './economicsDraft'
 import { levelCoverageLines } from './levelCoverage'
 import { LayoutComparisonBody } from './LayoutComparisonPanel'
 import { RulebookBody } from './RulebookPanel'
+import { ScheduleBody } from './SchedulePanel'
+import { SensitivityBody } from './SensitivityPanel'
 import type { AnalysisTab } from './workflowTabs'
 
 const errorText = (err: unknown): string | null =>
@@ -44,16 +51,19 @@ const errorText = (err: unknown): string | null =>
       : null
 
 /**
- * Phase 22A/B/C — the Analysis workspace container. Four READ-ONLY queries
- * over backend projections — the analysis, the economics assumption document,
- * the Phase 20D.3 design assessment (the Rules tab; the SAME query key the
- * Layout panel uses, so both read one cache entry) and the layout comparison —
- * keyed on the scenario epoch and the scene identity so a response of a
- * previous scenario / revision never populates the current one (the existing
- * `scenarioStore` epoch contract), and one mutation: saving the assumptions,
- * which reloads the analysis and the layout comparison and touches no mine
- * artifact — an economics change is not a viewer revision (no epoch bump, no
- * scene clear).
+ * Phase 22A/B/C — the Analysis workspace container. READ-ONLY queries over
+ * backend projections — the analysis, the economics assumption document, the
+ * Phase 20D.3 design assessment (the Rules tab; the SAME query key the Layout
+ * panel uses, so both read one cache entry), the layout comparison and, since
+ * hardening PR-2 H3 §8, the sensitivity grid and the time series (the SAME
+ * `analysis-timeseries` key the 4D results card uses) — keyed on the scenario
+ * epoch and the scene identity so a response of a previous scenario / revision
+ * never populates the current one (the existing `scenarioStore` epoch
+ * contract). Two mutations: saving the assumptions, which reloads the
+ * economics-dependent reads and touches no mine artifact — an economics change
+ * is not a viewer revision (no epoch bump, no scene clear) — and the explicit
+ * what-if, a POST that persists nothing and whose answer is held only in the
+ * mutation state.
  */
 export function AnalysisPanel({ view }: { view: AnalysisTab }) {
   const scene = useScenarioStore((s) => s.scene)
@@ -90,6 +100,29 @@ export function AnalysisPanel({ view }: { view: AnalysisTab }) {
     enabled: scenarioId !== null,
     retry: false,
   })
+  // PR-2 H3 §8.3: the what-if grid — only while the Sensitivity tab is shown
+  // (nine parameters × six perturbations, each a backend projection)
+  const sensitivity = useQuery({
+    queryKey: ['analysis-sensitivity', epoch, scenarioId, ...assessmentKey(scene), revision],
+    queryFn: () => api.getSensitivity(scenarioId ?? ''),
+    enabled: scenarioId !== null && view === 'SENSITIVITY',
+    retry: false,
+  })
+  // PR-2 H3 §6/§8: the bucketed time series, ONE cache entry with FourDResults
+  const timelineRevision = scene?.timeline?.sourceRevision ?? null
+  const timeseries = useQuery({
+    queryKey: ['analysis-timeseries', epoch, scenarioId, timelineRevision],
+    queryFn: () => api.getTimeseries(scenarioId ?? ''),
+    enabled: scenarioId !== null && view === 'SCHEDULE' && scene?.timeline?.status === 'SUCCESS',
+    retry: false,
+  })
+  const whatIf = useMutation({
+    mutationFn: async (factors: WhatIfFactors) => {
+      if (!scenarioId) throw new Error('load a scenario first')
+      return api.postWhatIf(scenarioId, factors)
+    },
+    // a projection: nothing to invalidate, nothing persisted
+  })
   const save = useMutation({
     mutationFn: async (next: EconomicsConfig) => {
       if (!scenarioId) throw new Error('load a scenario first')
@@ -102,6 +135,11 @@ export function AnalysisPanel({ view }: { view: AnalysisTab }) {
       qc.setQueryData(['economics-config', epoch, scenarioId], saved)
       void qc.invalidateQueries({ queryKey: ['mine-analysis'] })
       void qc.invalidateQueries({ queryKey: ['layout-comparison'] })
+      // PR-2 H3: the 4D time series carries the economics columns too, and
+      // the what-if grid is relative to the configured assumptions
+      void qc.invalidateQueries({ queryKey: ['analysis-timeseries'] })
+      void qc.invalidateQueries({ queryKey: ['analysis-sensitivity'] })
+      whatIf.reset()
     },
   })
 
@@ -125,6 +163,17 @@ export function AnalysisPanel({ view }: { view: AnalysisTab }) {
       saving={save.isPending}
       saveError={errorText(save.error)}
       onSave={(next) => save.mutate(next)}
+      sensitivity={sensitivity.data ?? null}
+      sensitivityError={errorText(sensitivity.error)}
+      sensitivityLoading={sensitivity.isPending && scenarioId !== null}
+      timeseries={timeseries.data ?? null}
+      timeseriesError={errorText(timeseries.error)}
+      timeseriesLoading={timeseries.isPending && scenarioId !== null}
+      timeline={scene?.timeline ?? null}
+      whatIf={whatIf.data ?? null}
+      whatIfPending={whatIf.isPending}
+      whatIfError={errorText(whatIf.error)}
+      onWhatIf={(factors) => whatIf.mutate(factors)}
     />
   )
 }
@@ -149,6 +198,21 @@ export interface AnalysisPanelBodyProps {
   saving: boolean
   saveError: string | null
   onSave: (config: EconomicsConfig) => void
+  /** hardening PR-2 H3 §8.3 — the read-only what-if grid (Sensitivity tab) */
+  sensitivity: SensitivityPayload | null
+  sensitivityError: string | null
+  sensitivityLoading: boolean
+  /** hardening PR-2 H3 §8 — the backend time series (Schedule tab) */
+  timeseries: TimeseriesPayload | null
+  timeseriesError: string | null
+  timeseriesLoading: boolean
+  /** the scene's timeline.json, shown as the task table (never re-summed) */
+  timeline: TimelinePayload | null
+  /** the last explicit what-if answer (mutation state only, never persisted) */
+  whatIf: WhatIfOutcome | null
+  whatIfPending: boolean
+  whatIfError: string | null
+  onWhatIf: (factors: WhatIfFactors) => void
 }
 
 export const ECONOMICS_NOT_CONFIGURED_TEXT = 'Planning economics is not configured.'
@@ -163,22 +227,35 @@ export function AnalysisPanelBody(p: AnalysisPanelBodyProps) {
       <p className="px-4 py-3 text-[11px] text-mute">Load a scenario to analyse its mine plan.</p>
     )
   }
+  // the KPI tiles head every analysis tab once the analysis read model exists
+  const kpis = p.analysis ? (
+    <KpiTiles
+      analysis={p.analysis}
+      code={p.analysis.economics.currencyCode ?? p.economicsConfig?.config?.currencyCode ?? null}
+    />
+  ) : null
   if (p.view === 'RULES') {
     return (
-      <RulebookBody
-        assessment={p.assessment}
-        error={p.assessmentError}
-        loading={p.assessmentLoading}
-      />
+      <>
+        {kpis}
+        <RulebookBody
+          assessment={p.assessment}
+          error={p.assessmentError}
+          loading={p.assessmentLoading}
+        />
+      </>
     )
   }
   if (p.view === 'LAYOUT_COMPARISON') {
     return (
-      <LayoutComparisonBody
-        payload={p.layoutComparison}
-        error={p.layoutComparisonError}
-        loading={p.layoutComparisonLoading}
-      />
+      <>
+        {kpis}
+        <LayoutComparisonBody
+          payload={p.layoutComparison}
+          error={p.layoutComparisonError}
+          loading={p.layoutComparisonLoading}
+        />
+      </>
     )
   }
   if (p.analysisError) {
@@ -191,10 +268,111 @@ export function AnalysisPanelBody(p: AnalysisPanelBodyProps) {
   if (!p.analysis) {
     return <p className="px-4 py-3 text-[11px] text-mute">{p.loading ? 'Loading analysis…' : ''}</p>
   }
-  return p.view === 'OVERVIEW' ? (
-    <OverviewCards analysis={p.analysis} levels={p.levels} />
-  ) : (
-    <EconomicsCards {...p} analysis={p.analysis} />
+  const code = p.analysis.economics.currencyCode ?? p.economicsConfig?.config?.currencyCode ?? null
+  return (
+    <>
+      {kpis}
+      {p.view === 'OVERVIEW' ? (
+        <OverviewCards analysis={p.analysis} levels={p.levels} />
+      ) : p.view === 'SENSITIVITY' ? (
+        <SensitivityBody
+          payload={p.sensitivity}
+          error={p.sensitivityError}
+          loading={p.sensitivityLoading}
+          code={code}
+          whatIf={p.whatIf}
+          whatIfPending={p.whatIfPending}
+          whatIfError={p.whatIfError}
+          onWhatIf={p.onWhatIf}
+        />
+      ) : p.view === 'SCHEDULE' ? (
+        <ScheduleBody
+          analysis={p.analysis}
+          timeline={p.timeline}
+          series={p.timeseries}
+          seriesError={p.timeseriesError}
+          seriesLoading={p.timeseriesLoading}
+        />
+      ) : (
+        <EconomicsCards {...p} analysis={p.analysis} />
+      )}
+    </>
+  )
+}
+
+// --------------------------------------------------------------------------- //
+// KPI tiles (hardening PR-2 H3 §8.1)
+// --------------------------------------------------------------------------- //
+
+/**
+ * The four large planning KPIs above every analysis tab: Planning NPV,
+ * Planning IRR, mine life and first production day — backend values rendered
+ * as given. An unconfigured economics shows its typed status, never a number.
+ */
+export function KpiTiles({
+  analysis,
+  code,
+}: {
+  analysis: MineAnalysisPayload
+  code: string | null
+}) {
+  const eco = analysis.economics
+  const sched = analysis.schedule
+  const tiles: { label: string; value: string; note: string }[] = [
+    {
+      label: 'Planning NPV',
+      value: eco.summary ? money(eco.summary.npv, code) : AVAILABILITY_LABEL[eco.availability],
+      note: eco.summary
+        ? `discount ${fmt2(eco.annualDiscountRate)} · ${fmt0(eco.cashflowBucketDays)}-day buckets`
+        : 'planning economics',
+    },
+    {
+      label: 'Planning IRR',
+      value: irrText(eco.planningIrr),
+      note:
+        eco.planningIrr.status === 'DEFINED'
+          ? 'annual, mid-bucket timing'
+          : eco.planningIrr.status === 'NOT_DEFINED'
+            ? 'no single rate'
+            : 'planning economics',
+    },
+    {
+      label: 'Mine life',
+      value: days(sched.mineDurationDays),
+      note:
+        sched.availability === 'AVAILABLE'
+          ? 'baseline schedule'
+          : AVAILABILITY_LABEL[sched.availability],
+    },
+    {
+      label: 'First production day',
+      value: days(sched.firstProductionDay),
+      note:
+        sched.availability === 'AVAILABLE'
+          ? 'earliest STOPING start'
+          : AVAILABILITY_LABEL[sched.availability],
+    },
+  ]
+  return (
+    <div
+      className="grid grid-cols-4 gap-2 border-b border-rock-700 px-4 py-3"
+      data-testid="analysis-kpis"
+    >
+      {tiles.map((t) => (
+        <div key={t.label} className="rounded-sm border border-rock-700 bg-rock-900/70 px-3 py-2">
+          <div className="plate text-[10px] text-mute">{t.label}</div>
+          <div
+            className={`mt-0.5 leading-tight break-words text-chalk ${
+              t.value.length > 14 ? 'text-[13px]' : 'text-[18px]'
+            }`}
+            data-kpi={t.label}
+          >
+            {t.value}
+          </div>
+          <div className="text-[10px] text-mute">{t.note}</div>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -416,7 +594,8 @@ function EconomicsCards(p: AnalysisPanelBodyProps & { analysis: MineAnalysisPayl
         summary={
           s ? (
             <span>
-              Planning NPV {money(s.npv, code)} · net {money(s.undiscountedNetCashflow, code)}
+              Planning NPV {money(s.npv, code)} · Planning IRR {irrText(eco.planningIrr)} · net{' '}
+              {money(s.undiscountedNetCashflow, code)}
             </span>
           ) : null
         }
@@ -438,6 +617,7 @@ function EconomicsCards(p: AnalysisPanelBodyProps & { analysis: MineAnalysisPayl
                   value: money(s.undiscountedNetCashflow, code),
                 },
                 { label: 'Baseline Planning NPV', value: money(s.npv, code) },
+                { label: 'Planning IRR', value: irrText(eco.planningIrr) },
                 { label: 'Mine duration', value: days(p.analysis.schedule.mineDurationDays) },
                 {
                   label: 'Discount rate / bucket',
@@ -451,7 +631,10 @@ function EconomicsCards(p: AnalysisPanelBodyProps & { analysis: MineAnalysisPayl
       {s ? (
         <section className="border-b border-rock-700 px-4 py-3">
           <h3 className="plate mb-1.5 text-[12px] text-chalk">Planning Cashflow</h3>
-          <CashflowTable buckets={eco.cashflow} code={code} />
+          <CashflowCharts buckets={eco.cashflow} summary={s} code={code} />
+          <div className="mt-2">
+            <CashflowTable buckets={eco.cashflow} code={code} />
+          </div>
         </section>
       ) : null}
       <section className="border-b border-rock-700 px-4 py-3">

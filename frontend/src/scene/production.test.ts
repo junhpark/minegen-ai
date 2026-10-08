@@ -46,16 +46,25 @@ const cutFill = {
   failureReason: null,
   sourceRevision: 'r',
   method: 'CUT_AND_FILL',
+  cutFillModelVersion: 2,
   lifts: [],
   cuts: [
     { id: 'CUT:1', geometry, report },
     { id: 'CUT:2', geometry, report: { ...report, valid: false } },
   ],
   backfills: [
-    { id: 'BACKFILL:1', sourceCutId: 'CUT:1', volumeM3: 1 },
-    { id: 'BACKFILL:2', sourceCutId: 'CUT:2', volumeM3: 1 },
+    { id: 'BACKFILL:1', sourceCutId: 'CUT:1', volumeM3: 1, cemented: true },
+    { id: 'BACKFILL:2', sourceCutId: 'CUT:2', volumeM3: 1, cemented: false },
   ],
-  metrics: { cutCount: 2, liftCount: 1, backfillCount: 2 },
+  ribPillars: [{ id: 'PILLAR:1', geometry, report }],
+  metrics: {
+    cutCount: 2,
+    liftCount: 1,
+    backfillCount: 2,
+    panelCount: 1,
+    blockCount: 1,
+    ribPillarCount: 1,
+  },
 } as unknown as CutFillPayload
 
 const roomPillar = {
@@ -77,6 +86,7 @@ describe('productionSolids', () => {
     expect(productionSolids(cutFill).map((s) => [s.id, s.kind, s.valid])).toEqual([
       ['CUT:1', 'CUT', true],
       ['CUT:2', 'CUT', false],
+      ['PILLAR:1', 'PILLAR', true],
     ])
     expect(productionSolids(roomPillar).map((s) => [s.id, s.kind, s.scheduled])).toEqual([
       ['ROOM:R000:C000:HEADING', 'BENCH', true],
@@ -116,7 +126,9 @@ describe('productionKindOf / labels', () => {
 
   it('summarises from the payload metrics only', () => {
     expect(productionSummary(longhole)).toBe('1 stopes · 1 intervals × 1 stations')
-    expect(productionSummary(cutFill)).toBe('2 cuts · 1 lifts · 2 backfills')
+    expect(productionSummary(cutFill)).toBe(
+      '2 cuts · 1 panels · 1 blocks · 2 backfills · 1 rib pillars',
+    )
     expect(productionSummary(roomPillar)).toBe('1 rooms · 1 extraction units · 1 pillars')
     expect(productionSummary({ ...cutFill, metrics: null })).toBeNull()
   })

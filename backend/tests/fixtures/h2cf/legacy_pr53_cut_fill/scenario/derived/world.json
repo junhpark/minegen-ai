@@ -1,0 +1,115 @@
+{
+  "publication": {
+    "scenarioId": "cf148ef2bd63",
+    "scenarioRevision": "b2ffab6a4a73b8a8",
+    "arraysRevision": "9969b53d327fa125"
+  },
+  "stats": {
+    "terrain": {
+      "nx": 41,
+      "ny": 41,
+      "spacing": 10.0,
+      "zMin": 80.63829085305701,
+      "zMax": 120.63829085305701
+    },
+    "orebody": {
+      "type": "TABULAR",
+      "center": [
+        40.0,
+        20.0,
+        -50.0
+      ],
+      "u": [
+        0.5735764363510462,
+        0.8191520442889919,
+        0.0
+      ],
+      "v": [
+        0.2801664995932356,
+        -0.1961746949690112,
+        -0.9396926207859084
+      ],
+      "w": [
+        -0.7697511313200572,
+        0.5389855446957563,
+        -0.3420201433256688
+      ],
+      "halfExtents": [
+        100.0,
+        60.0,
+        6.0
+      ],
+      "volumeM3": 288000.0,
+      "volumeMethod": "analytic",
+      "distanceContract": "EXACT_METRIC_SDF",
+      "bboxMin": [
+        -38.78614039861908,
+        -76.91959939521439,
+        -108.43367810710852
+      ],
+      "bboxMax": [
+        118.78614039861908,
+        116.91959939521439,
+        8.43367810710852
+      ]
+    },
+    "faults": 1,
+    "fields": {
+      "grid": {
+        "origin": [
+          -200.0,
+          -200.0,
+          -150.0
+        ],
+        "spacing": [
+          10.0,
+          10.0,
+          10.0
+        ],
+        "shape": [
+          40,
+          40,
+          29
+        ]
+      },
+      "cellCount": 46400,
+      "terrainSupportedFraction": 0.867823275862069,
+      "rockQuality": {
+        "min": 20.0,
+        "max": 90.0,
+        "mean": 64.73238911002169,
+        "std": 11.313366695291435
+      },
+      "rockQualitySemantics": "synthetic RMR-like index, 0-100; not measured RMR or Q",
+      "boundaryPolicy": "COLUMN_TOP_FILL",
+      "arrays": {
+        "rock_quality": {
+          "dtype": "float32",
+          "bytes": 185600
+        },
+        "grade": {
+          "dtype": "float32",
+          "bytes": 185600
+        },
+        "fault_signed_distance": {
+          "dtype": "float32",
+          "bytes": 185600
+        },
+        "fault_zone": {
+          "dtype": "uint8",
+          "bytes": 46400
+        },
+        "fault_influence": {
+          "dtype": "float32",
+          "bytes": 185600
+        },
+        "terrain_support": {
+          "dtype": "float32",
+          "bytes": 185600
+        }
+      },
+      "totalBytes": 974400,
+      "totalMB": 0.92926025390625
+    }
+  }
+}

@@ -21,6 +21,7 @@ export type WorkflowStep = (typeof WORKFLOW_STEP_IDS)[number]
 export const STAGE_IDS = [
   'SCENARIO',
   'METHOD',
+  'ACCESS',
   'LAYOUT',
   'LEVELS',
   'EXCAVATION',

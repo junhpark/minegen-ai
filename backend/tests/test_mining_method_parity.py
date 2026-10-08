@@ -162,7 +162,8 @@ def test_cut_and_fill_unsupported_boundary_is_superseded_by_phase_21bc(
     levels = current["levels"]
     assert levels["status"] == "SUCCESS"
     assert levels["productionDevelopment"]["status"] == "IMPLEMENTED"
-    assert levels["metrics"]["stationsPerLevel"] == 1 and levels["metrics"]["stationPitch"] == 0.0
+    # H2-CF: one production access per strike panel (4 × 50 m over 200 m)
+    assert levels["metrics"]["stationsPerLevel"] == 4 and levels["metrics"]["stationPitch"] == 0.0
     production = current["stopes"]  # the active production payload (CutFillPayload)
     assert production["status"] == "SUCCESS" and production["method"] == "CUT_AND_FILL"
     assert production["cuts"] and "stopes" not in production
