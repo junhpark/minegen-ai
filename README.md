@@ -239,6 +239,15 @@ checked on the baked demos:
    completion (`docs/findings/h2cf-cut-fill-characterization.md`).
 6. Every write to a demo answers `409 DEMO_READ_ONLY`; the demo directory
    stays byte- and stat-identical (also asserted by the browser e2e).
+7. **Fresh data directory** → File › Demos shows "Baking demos… <recipe> ·
+   <stage>" while the backend materializes them, then the three demos
+   (PR #54 review B1); `GET /api/v1/demos` carries `materialization`.
+8. **A PR #53 Cut & Fill mine** (File › Open) → the Migration notice in the
+   results column, world and layout kept, Levels next; Levels → Cut & Fill →
+   Network → Schedule regenerate (review B2).
+9. **Setup › Access** → Ramp + Shaft before the layout (confirmation lists
+   what the scenario rewrite clears); Design › Shafts plans the shaft and
+   sweeps its mesh, and reads done only with both (review B3).
 
 ## Verification tiers (VA-01)
 

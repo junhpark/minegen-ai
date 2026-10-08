@@ -218,9 +218,27 @@ scope: H2 (Cut & Fill 두 축·패널·sill mat, MineExchange 1.3.1, Shaft mesh 
 | C5 `2a10c27` | timeseries 프로젝션, `hostRockDensity` optional·무기본값, 4D Restart·Loop·속도, 우측 4D results, recharts 도입 | 검증 픽스처 재생성(upstreamFingerprint 불변) |
 | C6 `9f7dbaa` | 전체창 Analysis(캔버스 언마운트 + Show 3D context), KPI 타일, Planning IRR(typed), 민감도 그리드·토네이도, 공정 what-if, Schedule 탭 | IRR은 부호 변화 1회 **그리고** 괄호 안 근 존재일 때만 DEFINED; KPI 타일은 모든 탭 상단 |
 | C7 `79ad128` | 데모 3개 레시피 + `scripts/bake_demos.py`, `GET /demos`, 데모 root 읽기 전용 해석 + `DEMO_READ_ONLY` 가드, File › Demos, 데모 모드(DemoPanel·Auto tour·4D loop·Clone to edit) | D1(TABULAR Longhole)에 production shaft 1개 포함; 데모는 git-ignored `data/demos/`에 배포 시 bake |
-| C8 | 규칙 182·195·196·201 개정 + 221·222 신설, 문서, e2e(BASELINE + C&F 데모 Setup→Analysis→Export), 브라우저 수락, 최종 FULL | e2e는 C&F 데모를 임시 데이터 디렉터리에 in-process bake 후 File › Demos로 연다 |
+| C8 `516eeea` | 규칙 182·195·196·201 개정 + 221·222 신설, 문서, e2e(BASELINE + C&F 데모 Setup→Analysis→Export), 브라우저 수락, 최종 FULL | e2e는 C&F 데모를 임시 데이터 디렉터리에 in-process bake 후 File › Demos로 연다 |
+| C9 `d35357b` | FULL 종료 수정: 레지스트리 e2e에 shaft mesh, 복사된 데모의 stat 불일치 탐지(`WORLD_PUBLICATION_STALE` 카탈로그 보고), Prettier | PR #54 첫 HEAD |
 
 측정(이 컨테이너): bake D1 114 s · D2 85 s · D3 152 s(합 107 MB).
+
+### 5.2 PR #54 리뷰 라운드 1 — BLOCKER B1·B2·B3 (HEAD `d35357b` 기준 리뷰)
+
+| 커밋 | 리뷰 항목 | 내용 | 계획 대비 결정 |
+|---|---|---|---|
+| C10 `c84edc8` | B2 레거시 C&F 마이그레이션 | 규칙 223: `CUT_FILL_MODEL_VERSION = 2`(`stopes.json` `cutFillModelVersion` 필수, `levels.json` `productionDevelopment.modelVersion`은 C&F만 직렬화), 리더의 다섯째 read state `LEGACY`(`pre_checks`, 파생 아티팩트는 같은 스냅샷에서 "LEGACY by derivation"), typed `CUT_FILL_LEGACY_ARTIFACT`(409), `GET …/scene`이 LEVELS closure를 `reset_plan`으로 폐기 후 `migrations[]` 보고(실행 중 job → `RESET_JOB_RUNNING`, 데모는 기록 없이 typed 거부), 프런트 `SceneMigrationNotice` | 파서는 완화하지 않음. 픽스처는 `1bd68c8` worktree에서 그 코드의 라우트로 캡처한 실제 PR #53 디렉터리(`tests/fixtures/h2cf/legacy_pr53_cut_fill/`, `stat.json`으로 rule-60 stat identity 복원, 2.9 MB) |
+| C11 `482d685` | B3 샤프트 선언 위치 | Setup › Access 스테이지 신설(○ Ramp only / ● Ramp + Shaft, 명시적 `scenario.shafts` 편집기, 동일 reset-plan 확인 뒤 PUT + 월드 재생성, 레이아웃 전에 결정), `ShaftSpecEditor`를 카드가 제어, Design › Shafts는 계획 + 메시만, 스테퍼 SHAFTS DONE = 계획 **그리고** 메시, `specs=[]`는 OPTIONAL 유지; e2e BASELINE 흐름에 Access 선언·Shafts 계획+메시·리셋 후 재계획 추가 | 문서(규칙 182·191, architecture, README)는 같은 파일을 공유하는 B1 문서와 함께 C12에 수록 |
+| C12 `c9a5815` | B1 데모 자동 구체화 | `services/demo_materializer.py`(카탈로그가 available로 보고하지 않는 레시피만 bake, 레시피마다 index 발행, 실패 격리, 프로세스당 1회), `create_app` lifespan + `MINEGEN_DEMOS_AUTOBAKE`(기본 on; 테스트 suite·e2e·baker 앱은 off), `bake_demos.py --if-missing` + `scripts/bin/dev-setup`, `GET /demos`의 `materialization`, File › Demos "Baking…" 폴링 | 파일 배포 대신 서빙 호스트에서 in-place bake(rule 60 stat binding 불변). Docker/plain uvicorn은 startup bake에 의존 |
+| C13 | §5.2 기록, README 수락 항목 7–9, 최종 FULL | — |
+
+브라우저 수락(이 컨테이너, Playwright Chromium, 기본 설정의 라이브 uvicorn + Vite, 빈 데이터 디렉터리에 PR #53 레거시 C&F 픽스처만 복원; 스크립트 `accept_r1.py`, 페이지 오류 0):
+
+| 케이스 | 관찰 |
+|---|---|
+| B1 데모 구체화 | 서버 기동 2.1 s 시점 `GET /demos` = NOT_BAKED + materialization BAKING(`demo-tabular-longhole` · WORLD, pending 2); File › Demos 메뉴에 "Baking demos… demo-tabular-longhole · LAYOUT · 2 more"; 610 s(다른 흐름과 CPU 공유) 뒤 AVAILABLE, 3개 모두 available, `index.json` bakedFromCommit `c9a5815`; Longhole 데모 열기 → SHAFTS 포함 SCHEDULE까지 DONE, 1 primary |
+| B2 레거시 C&F | File › Open › `legacy-pr53-cut-fill` → 우측 열에 Migration 공지(discarded: levels.json, stopes.json, timeline.json, network.json), 스테퍼 SCENARIO·METHOD·ACCESS·LAYOUT DONE / LEVELS NEXT; 두 번째 `GET /scene` migrations=[], layoutV2·selection 유지; Levels → Generate Cut & Fill → Build network → Schedule development 모두 DONE, production SUCCESS `cutFillModelVersion` 2, 12 panels · 336 cuts |
+| B3 Access 스테이지 | 새 광산 생성 후 ACCESS DONE(Ramp only)·SHAFTS OPTIONAL, primary 0; Ramp + Shaft 선택 → 편집기(Suggest collar 없음, 레벨 전) + primary 1; Apply → 확인 대화상자(월드만 있어 지울 것 없음) → 월드 재생성 → ACCESS DONE·SHAFTS WAITING; Layout → Levels → Shafts: 편집기 없음, Plan shafts 뒤에도 DONE 아님(계획만), Generate shaft mesh 뒤 DONE(1 shaft · 13 stations · 470 m, 1 barrel · 13 drives · 51 406 m³); Access 재방문 시 Suggest collar 1개, Ramp only로 바꾸면 확인 목록에 layout_v2.json … shaft_mesh.glb 8개 |
 
 ---
 
