@@ -13,6 +13,7 @@ import type {
   EconomicsConfigResponse,
   LayoutComparisonPayload,
   MineAnalysisPayload,
+  TimeseriesPayload,
 } from '@/types/analysis'
 import type { Capability } from '@/types/enums'
 import type {
@@ -370,6 +371,14 @@ export const api = {
   /** Phase 22A/B: the READ-ONLY mine analysis projection (no job, no
    * persistence) and the user-authored planning-economics assumptions. */
   getAnalysis: (id: string) => request<MineAnalysisPayload>(`/scenarios/${id}/analysis`),
+  /** hardening PR-2 H3 §6: the READ-ONLY bucketed time series (quantities +
+   * economics when configured) from one bound snapshot; no persistence */
+  getTimeseries: (id: string, bucketDays?: number) =>
+    request<TimeseriesPayload>(
+      `/scenarios/${id}/analysis/timeseries${
+        bucketDays === undefined ? '' : `?bucketDays=${String(bucketDays)}`
+      }`,
+    ),
   getEconomicsConfig: (id: string) =>
     request<EconomicsConfigResponse>(`/scenarios/${id}/analysis/economics-config`),
   putEconomicsConfig: (id: string, config: EconomicsConfig) =>

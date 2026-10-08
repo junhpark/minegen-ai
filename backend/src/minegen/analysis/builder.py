@@ -44,7 +44,7 @@ from minegen.analysis.models import (
     RoomPillarProductionDetail,
     ScheduleSection,
 )
-from minegen.core.enums import EdgeType, TaskType
+from minegen.core.enums import EdgeType, MiningMethodType, TaskType
 from minegen.core.models import Scenario
 from minegen.mining.models import (
     CutFillPayload,
@@ -56,7 +56,7 @@ from minegen.mining.models import (
 from minegen.network.models import NetworkPayload
 from minegen.scheduling.models import TimelinePayload, TimelineTask
 
-__all__ = ["AnalysisInputs", "SourceRead", "build_analysis"]
+__all__ = ["AnalysisInputs", "SourceRead", "build_analysis", "economics_ledger"]
 
 
 @dataclass(frozen=True)
@@ -350,67 +350,24 @@ def _ratios(development: DevelopmentSection, production: ProductionSection) -> P
 # --------------------------------------------------------------------------- #
 
 
-def _economics(
-    inputs: AnalysisInputs,
-    development: DevelopmentSection,
-    production: ProductionSection,
-    schedule: ScheduleSection,
-    network: NetworkPayload | None,
-    payload: ProductionPayload | None,
+def economics_ledger(
+    config: EconomicsConfig,
+    network: NetworkPayload,
+    payload: ProductionPayload,
     units: list[ProductionUnit],
-    timeline: TimelinePayload | None,
+    timeline: TimelinePayload,
     per_unit: dict[str, dict[TaskType, TimelineTask]],
-) -> EconomicsSection:
-    config = inputs.economics
-    empty = EconomicsSection(
-        availability="NOT_CONFIGURED",
-        reason="Planning economics is not configured.",
-        economics_revision=inputs.economics_revision,
-        currency_code=None,
-        cashflow_bucket_days=None,
-        annual_discount_rate=None,
-        summary=None,
-        cashflow=[],
-    )
-    if config is None:
-        return empty
-    configured = empty.model_copy(
-        update={
-            "currency_code": config.currency_code,
-            "cashflow_bucket_days": config.cashflow_bucket_days,
-            "annual_discount_rate": config.annual_discount_rate,
-        }
-    )
-    missing = [
-        name
-        for name, section in (
-            ("development", development),
-            ("production", production),
-            ("schedule", schedule),
-        )
-        if section.availability != "AVAILABLE"
-    ]
-    if missing:
-        return configured.model_copy(
-            update={
-                "availability": "NOT_AVAILABLE",
-                "reason": f"SOURCE_NOT_AVAILABLE: requires {', '.join(missing)}",
-            }
-        )
-    assert network is not None and payload is not None and timeline is not None
-    method = inputs.scenario.mining.method
-    mining_rate = production_rate(config, method)
-    if mining_rate is None:
-        return configured.model_copy(
-            update={
-                "availability": "NOT_AVAILABLE",
-                "reason": f"SOURCE_NOT_AVAILABLE: no production cost rate for {method.value}",
-            }
-        )
+    bucket_days: float,
+) -> tuple[BucketLedger, CostBreakdown]:
+    """The Planning Cashflow ledger (rule 202) at ``bucket_days`` resolution
+    plus the undiscounted cost breakdown. ONE construction: ``_economics``
+    calls it at the configured ``cashflowBucketDays``; the hardening PR-2 H3
+    time series calls it at the requested display resolution — the same
+    quantities, the same task windows, the same linear allocation."""
+    mining_rate = production_rate(config, payload_method(payload, config))
+    assert mining_rate is not None  # the caller refused before
     dev_task_by_edge = {t.target_id: t for t in timeline.tasks if t.target_kind == "DEVELOPMENT"}
-    ledger = BucketLedger(
-        config.cashflow_bucket_days, bucket_count(timeline.end_day, config.cashflow_bucket_days)
-    )
+    ledger = BucketLedger(bucket_days, bucket_count(timeline.end_day, bucket_days))
 
     # development: length × rate(edge type), linear over the development task
     dev_costs: list[float] = []
@@ -471,6 +428,75 @@ def _economics(
         fixed_operating_cost=fixed,
         initial_capital_cost=config.initial_capital_cost,
         total_revenue=math.fsum(revenues),
+    )
+    return ledger, breakdown
+
+
+def payload_method(payload: ProductionPayload, config: EconomicsConfig) -> MiningMethodType:
+    """The production artifact's own method (rule 194: ``method`` is the
+    discriminator of the active production payload)."""
+    return MiningMethodType(payload.method)
+
+
+def _economics(
+    inputs: AnalysisInputs,
+    development: DevelopmentSection,
+    production: ProductionSection,
+    schedule: ScheduleSection,
+    network: NetworkPayload | None,
+    payload: ProductionPayload | None,
+    units: list[ProductionUnit],
+    timeline: TimelinePayload | None,
+    per_unit: dict[str, dict[TaskType, TimelineTask]],
+) -> EconomicsSection:
+    config = inputs.economics
+    empty = EconomicsSection(
+        availability="NOT_CONFIGURED",
+        reason="Planning economics is not configured.",
+        economics_revision=inputs.economics_revision,
+        currency_code=None,
+        cashflow_bucket_days=None,
+        annual_discount_rate=None,
+        summary=None,
+        cashflow=[],
+    )
+    if config is None:
+        return empty
+    configured = empty.model_copy(
+        update={
+            "currency_code": config.currency_code,
+            "cashflow_bucket_days": config.cashflow_bucket_days,
+            "annual_discount_rate": config.annual_discount_rate,
+        }
+    )
+    missing = [
+        name
+        for name, section in (
+            ("development", development),
+            ("production", production),
+            ("schedule", schedule),
+        )
+        if section.availability != "AVAILABLE"
+    ]
+    if missing:
+        return configured.model_copy(
+            update={
+                "availability": "NOT_AVAILABLE",
+                "reason": f"SOURCE_NOT_AVAILABLE: requires {', '.join(missing)}",
+            }
+        )
+    assert network is not None and payload is not None and timeline is not None
+    method = inputs.scenario.mining.method
+    mining_rate = production_rate(config, method)
+    if mining_rate is None:
+        return configured.model_copy(
+            update={
+                "availability": "NOT_AVAILABLE",
+                "reason": f"SOURCE_NOT_AVAILABLE: no production cost rate for {method.value}",
+            }
+        )
+    ledger, breakdown = economics_ledger(
+        config, network, payload, units, timeline, per_unit, config.cashflow_bucket_days
     )
     buckets: list[CashflowBucket] = build_buckets(ledger, config.annual_discount_rate)
     summary = EconomicsSummary(

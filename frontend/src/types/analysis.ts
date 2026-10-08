@@ -254,3 +254,65 @@ export interface LayoutComparisonPayload {
   rows: LayoutDevelopmentComparisonRow[]
   disclaimer: string
 }
+
+// --------------------------------------------------------------------------- //
+// Hardening PR-2 H3 §6 — GET …/analysis/timeseries?bucketDays=<n>
+// --------------------------------------------------------------------------- //
+
+/** one bucket's quantities, or the running cumulative; `null` money cells
+ * mean "not configured", `null` development tonnes mean "no host-rock density
+ * declared" — never zero */
+export interface TimeseriesQuantities {
+  developmentLengthM: number
+  developmentExcavationM3: number
+  developmentTonnes: number | null
+  productionTonnes: number
+  backfillM3: number
+  cementedBackfillM3: number
+  cost: number | null
+  revenue: number | null
+  netCashflow: number | null
+}
+
+export interface TimeseriesBucket {
+  index: number
+  startDay: number
+  endDay: number
+  bucket: TimeseriesQuantities
+  cumulative: TimeseriesQuantities
+  cumulativeCashflow: number | null
+}
+
+export interface TimeseriesPayload {
+  status: 'SUCCESS'
+  sources: AnalysisSources
+  availability: Availability
+  reason: string | null
+  bucketDays: number
+  bucketCount: number
+  startDay: number | null
+  endDay: number | null
+  developmentTonnes: {
+    status: 'AVAILABLE' | 'NOT_CONFIGURED'
+    hostRockDensity: number | null
+    reason: string | null
+  }
+  retained: {
+    availability: Availability
+    reason: string | null
+    pillarCount: number | null
+    pillarVolumeM3: number | null
+    pillarTonnesEquivalent: number | null
+  }
+  economics: {
+    availability: Availability
+    reason: string | null
+    currencyCode: string | null
+    economicsRevision: string | null
+  }
+  totals: TimeseriesQuantities | null
+  buckets: TimeseriesBucket[]
+  developmentRockVocabulary: 'Excavated development rock'
+  allocation: 'LINEAR_OVER_TASK_WINDOW'
+  disclaimer: string
+}

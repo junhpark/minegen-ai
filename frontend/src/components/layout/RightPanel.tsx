@@ -3,6 +3,7 @@ import { useShellStore } from '@/components/layout/shellStore'
 import { stepOf, stepSpec } from '@/components/layout/workflow'
 import { InspectorPanel } from '@/components/panels/InspectorPanel'
 import { ViewPanel } from '@/components/panels/ViewPanel'
+import { FourDResults } from '@/components/timeline/FourDResults'
 import { useViewerStore } from '@/stores/viewerStore'
 
 /**
@@ -13,6 +14,7 @@ import { useViewerStore } from '@/stores/viewerStore'
  */
 export function RightPanel() {
   const stage = useViewerStore((s) => s.stage)
+  const fourD = useViewerStore((s) => s.mode) === '4D'
   const setResultsHost = useShellStore((s) => s.setResultsHost)
   const host = useCallback((el: HTMLElement | null) => setResultsHost(el), [setResultsHost])
   const step = stepSpec(stepOf(stage))
@@ -25,6 +27,8 @@ export function RightPanel() {
         </span>
       </header>
       <div ref={host} data-testid="results-host" />
+      {/* hardening PR-2 H3 §7: the 4D view's quantitative results (backend time series) */}
+      {fourD ? <FourDResults /> : null}
       <ViewPanel />
       <InspectorPanel />
     </aside>

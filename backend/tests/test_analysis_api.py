@@ -521,3 +521,62 @@ def test_cross_method_one_config_three_methods(
         assert doc["economics"]["disclaimer"] == (
             "Synthetic planning economics. Not a resource/reserve estimate or feasibility study."
         )
+
+
+# --------------------------------------------------------------------------- #
+# hardening PR-2 H3 §6 — GET …/analysis/timeseries
+# --------------------------------------------------------------------------- #
+
+
+def test_h3_timeseries_is_read_only_bound_and_reconciles_with_the_analysis(
+    longhole: TabularStack,
+) -> None:
+    base = f"/api/v1/scenarios/{longhole.sid}"
+    before = _file_state(longhole.store.derived_dir(longhole.sid))
+    r = longhole.client.get(f"{base}/analysis/timeseries")
+    assert r.status_code == 200, r.text
+    doc = r.json()
+    assert doc["status"] == "SUCCESS" and doc["availability"] == "AVAILABLE"
+    analysis = _analysis(longhole)
+    # default resolution: the configured cashflowBucketDays, else the 30-day
+    # display default (the module-scoped stack may already carry a config)
+    cfg = longhole.client.get(f"{base}{CONFIG}").json()
+    if cfg["configured"]:
+        assert doc["bucketDays"] == cfg["config"]["cashflowBucketDays"]
+        assert doc["economics"]["availability"] == "AVAILABLE"
+    else:
+        assert doc["bucketDays"] == 30.0
+        assert doc["economics"]["availability"] == "NOT_CONFIGURED"
+    totals = doc["totals"]
+    dev = analysis["development"]["totals"]
+    assert math.isclose(totals["developmentLengthM"], dev["totalDevelopmentLengthM"], rel_tol=1e-9)
+    assert math.isclose(
+        totals["productionTonnes"], analysis["production"]["totalPlannedMinedTonnes"], rel_tol=1e-9
+    )
+    assert totals["developmentTonnes"] is None
+    assert doc["developmentTonnes"]["status"] == "NOT_CONFIGURED"
+    assert doc["developmentRockVocabulary"] == "Excavated development rock"
+    assert "waste" not in r.text.lower()
+    # the caller's resolution is honoured and validated
+    fine = longhole.client.get(f"{base}/analysis/timeseries", params={"bucketDays": 7})
+    assert fine.status_code == 200 and fine.json()["bucketDays"] == 7.0
+    assert fine.json()["bucketCount"] > doc["bucketCount"]
+    assert math.isclose(
+        fine.json()["totals"]["productionTonnes"], totals["productionTonnes"], rel_tol=1e-9
+    )
+    assert (
+        longhole.client.get(f"{base}/analysis/timeseries", params={"bucketDays": 0}).status_code
+        == 422
+    )
+    # with economics the series carries the cashflow at the configured width
+    _put_config(longhole, fx.config_doc())
+    priced = longhole.client.get(f"{base}/analysis/timeseries").json()
+    assert priced["bucketDays"] == 30.0 and priced["economics"]["availability"] == "AVAILABLE"
+    cash = _analysis(longhole)["economics"]["cashflow"]
+    assert len(cash) == len(priced["buckets"])
+    for b, c in zip(priced["buckets"], cash, strict=True):
+        assert math.isclose(
+            b["cumulativeCashflow"], c["cumulativeCashflow"], rel_tol=1e-9, abs_tol=1e-9
+        )
+    # read-only: nothing under derived/ moved
+    assert _file_state(longhole.store.derived_dir(longhole.sid)) == before

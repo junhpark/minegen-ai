@@ -137,6 +137,26 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      ARTIFACT_MALFORMED, a moving source 409
                                                      READ_SNAPSHOT_CHANGED. Nothing is generated
                                                      or persisted; no job.
+    GET  /api/v1/scenarios/{id}/analysis/timeseries?bucketDays=<n>
+                                                     hardening PR-2 H3 §6: READ-ONLY bucketed time
+                                                     series from ONE bound snapshot — per bucket
+                                                     and cumulative: developmentLengthM,
+                                                     developmentExcavationM3 ("Excavated
+                                                     development rock", never "waste"),
+                                                     developmentTonnes (ONLY with
+                                                     scenario.geology.hostRockDensity; absent →
+                                                     NOT_CONFIGURED / null, never a default
+                                                     density), productionTonnes (STOPING window),
+                                                     backfillM3 / cementedBackfillM3 (BACKFILL
+                                                     window), retained pillar totals, cost /
+                                                     revenue / netCashflow / cumulativeCashflow
+                                                     (the Planning Cashflow ledger at the
+                                                     requested width; NOT_CONFIGURED without
+                                                     economics.json). Linear allocation over the
+                                                     task window. bucketDays default = configured
+                                                     cashflowBucketDays, else 30; 422 when ≤ 0.
+                                                     Nothing persisted; 409 READ_SNAPSHOT_CHANGED
+                                                     on a moving source
     GET  /api/v1/scenarios/{id}/analysis/economics-config
                                                      the user-authored planning-economics
                                                      assumptions (`economics.json` beside

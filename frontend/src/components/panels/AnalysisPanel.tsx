@@ -102,6 +102,8 @@ export function AnalysisPanel({ view }: { view: AnalysisTab }) {
       qc.setQueryData(['economics-config', epoch, scenarioId], saved)
       void qc.invalidateQueries({ queryKey: ['mine-analysis'] })
       void qc.invalidateQueries({ queryKey: ['layout-comparison'] })
+      // PR-2 H3: the 4D time series carries the economics columns too
+      void qc.invalidateQueries({ queryKey: ['analysis-timeseries'] })
     },
   })
 

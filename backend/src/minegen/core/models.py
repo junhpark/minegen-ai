@@ -337,6 +337,11 @@ class GeologyConfig(ApiModel):
 
     rock_quality: RockQualityConfig = Field(default_factory=RockQualityConfig)
     faults: list[FaultConfig] = Field(default_factory=list)
+    #: hardening PR-2 H3 §6.1: OPTIONAL in-situ host-rock density (t/m³) used
+    #: ONLY to express excavated development rock as tonnes in the analysis
+    #: time series. No default exists: absent → development tonnes are
+    #: NOT_CONFIGURED (null), never 2.7 or any other engineering constant.
+    host_rock_density: Annotated[float, Field(gt=0.0, le=10.0)] | None = None
 
 
 class FieldSamplingConfig(ApiModel):

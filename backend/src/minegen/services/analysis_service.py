@@ -37,6 +37,7 @@ from minegen.analysis.layout_comparison import (
     build_layout_comparison,
 )
 from minegen.analysis.models import MineAnalysisPayload
+from minegen.analysis.timeseries import DEFAULT_BUCKET_DAYS, TimeseriesPayload, build_timeseries
 from minegen.assessment.builder import CatalogueShapeError
 from minegen.core.artifacts import (
     LAYOUT_V2_ARTIFACT,
@@ -136,6 +137,62 @@ class AnalysisService:
             ),
             economics.file_revision,
         )
+
+    def _bound_inputs(self, scenario_id: str) -> tuple[AnalysisInputs, Any, EconomicsObservation]:
+        """The ONE bound read + artifact snapshot + economics observation every
+        analysis projection starts from (``analyze`` / ``timeseries``)."""
+        scenario, scenario_revision = self.store.get_bound(scenario_id)
+        snapshot = self._reader.snapshot(
+            scenario_id, ANALYSIS_ARTIFACTS, expect_scenario_revision=scenario_revision
+        )
+        economics = observe_economics(self.store, scenario_id)
+        assert snapshot.scenario_revision == scenario_revision  # bound above
+        world_generated = True
+        try:
+            self._reader.require_world(snapshot)
+        except WorldNotGeneratedError:
+            world_generated = False
+        network = self._optional(snapshot, NETWORK_ARTIFACT) if world_generated else None
+        production = self._optional(snapshot, STOPES_ARTIFACT) if world_generated else None
+        timeline = self._optional(snapshot, TIMELINE_ARTIFACT) if world_generated else None
+        inputs = AnalysisInputs(
+            scenario=scenario,
+            scenario_revision=scenario_revision,
+            world_generated=world_generated,
+            network=network,
+            production=production,
+            timeline=timeline,
+            economics=economics.config,
+            economics_revision=economics.revision,
+        )
+        return inputs, snapshot, economics
+
+    def _verify_unmoved(
+        self, scenario_id: str, snapshot: Any, economics: EconomicsObservation, what: str
+    ) -> None:
+        after = self._reader.snapshot(scenario_id, ANALYSIS_ARTIFACTS)
+        after_economics = observe_economics(self.store, scenario_id)
+        if self._fingerprint(after, after_economics) != self._fingerprint(snapshot, economics):
+            raise ReadSnapshotChangedError(
+                scenario_id, f"analysis sources changed while the {what} was computed"
+            )
+
+    def timeseries(self, scenario_id: str, bucket_days: float | None = None) -> TimeseriesPayload:
+        """Hardening PR-2 H3 §6: the READ-ONLY bucketed time series. Same
+        bound-snapshot protocol as :meth:`analyze`; ``bucketDays`` defaults
+        to the configured ``cashflowBucketDays`` (else the 30-day display
+        default). Nothing is persisted or invalidated."""
+        inputs, snapshot, economics = self._bound_inputs(scenario_id)
+        resolution = (
+            bucket_days
+            if bucket_days is not None
+            else economics.config.cashflow_bucket_days
+            if economics.config is not None
+            else DEFAULT_BUCKET_DAYS
+        )
+        payload = build_timeseries(inputs, resolution)
+        self._verify_unmoved(scenario_id, snapshot, economics, "time series")
+        return payload
 
     def analyze(self, scenario_id: str) -> MineAnalysisPayload:
         # the bound document read and the artifact observation are ONE
