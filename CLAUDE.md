@@ -2759,7 +2759,12 @@ code, the code and the rule win and the map is corrected.
      `ArtifactReader` decides a recognized earlier version on the RAW
      document BEFORE the parser (`ReadSpec.pre_checks`) as the fifth read
      state `LEGACY` with the typed `CUT_FILL_LEGACY_ARTIFACT` (409) — never
-     ARTIFACT_MALFORMED, never a loosened parser, never a reinterpretation;
+     ARTIFACT_MALFORMED, never a loosened parser, never a reinterpretation.
+     "Recognized" is a SHAPE, never a method name alone: a CUT_AND_FILL
+     `stopes.json` is LEGACY only when it carries the PR #53 keys
+     (`PR53_CUT_FILL_KEYS`) without the current version; any other
+     document falls through to the parser and stays MALFORMED (nothing is
+     ever deleted for it);
      every registry descendant of the level development (network,
      timeline, communication, sensors, …) reads LEGACY BY DERIVATION in the
      same snapshot (the version-carrying sources are observed beside it),

@@ -71,7 +71,9 @@ from minegen.services.artifact_errors import CutFillLegacyArtifactError
 from minegen.services.artifact_reader import (
     CUT_FILL_LEGACY_ARTIFACTS,
     LEGACY_DOWNSTREAM_FILES,
+    PR53_CUT_FILL_KEYS,
     STATE_LEGACY,
+    STATE_MALFORMED,
     STATE_VALID,
     ArtifactReader,
     _levels_cut_fill_legacy_check,
@@ -384,14 +386,49 @@ def test_detection_is_scoped_to_cut_and_fill_and_its_version() -> None:
     )
     assert _stopes_cut_fill_legacy_check({"method": "LONGHOLE_OPEN_STOPING"}, snapshot) is None
     assert _stopes_cut_fill_legacy_check({"method": "ROOM_AND_PILLAR"}, snapshot) is None
-    outcome = _stopes_cut_fill_legacy_check({"method": "CUT_AND_FILL"}, snapshot)
+    pr53 = {key: None for key in PR53_CUT_FILL_KEYS} | {"method": "CUT_AND_FILL"}
+    outcome = _stopes_cut_fill_legacy_check(pr53, snapshot)
     assert outcome is not None and outcome[0] == STATE_LEGACY
     # a boolean is not a version
-    outcome = _stopes_cut_fill_legacy_check(
-        {"method": "CUT_AND_FILL", "cutFillModelVersion": True}, snapshot
-    )
+    outcome = _stopes_cut_fill_legacy_check({**pr53, "cutFillModelVersion": True}, snapshot)
     assert outcome is not None and isinstance(outcome[1], CutFillLegacyArtifactError)
     assert outcome[1].found_version is None
+    # a CUT_AND_FILL document WITHOUT the recognized PR #53 shape is not a
+    # known earlier model: the method name alone never triggers a migration
+    # (a Longhole-shaped document claiming CUT_AND_FILL, a truncated file —
+    # they fall through to the parser and stay MALFORMED)
+    assert _stopes_cut_fill_legacy_check({"method": "CUT_AND_FILL"}, snapshot) is None
+    longhole_shaped = {
+        "status": "SUCCESS",
+        "failureReason": None,
+        "sourceRevision": "r",
+        "method": "CUT_AND_FILL",
+        "stopes": [],
+        "metrics": None,
+    }
+    assert _stopes_cut_fill_legacy_check(longhole_shaped, snapshot) is None
+
+
+def test_an_unrecognized_cut_and_fill_document_stays_malformed(legacy: Stack) -> None:
+    """The reader's ladder for a CUT_AND_FILL ``stopes.json`` that is neither
+    the current model nor the PR #53 shape: MALFORMED through the parser —
+    never LEGACY, so no scene read deletes anything for it (the MineExchange
+    authority guard, ``test_exchange_production_methods``, relies on it)."""
+    longhole_shaped = {
+        "status": "SUCCESS",
+        "failureReason": None,
+        "sourceRevision": "r",
+        "method": "CUT_AND_FILL",
+        "stopes": [],
+        "metrics": None,
+    }
+    (legacy.derived / STOPES_ARTIFACT).write_text(json.dumps(longhole_shaped), encoding="utf-8")
+    reader = ArtifactReader(legacy.store)
+    read = reader.read(reader.snapshot(legacy.sid), STOPES_ARTIFACT)
+    assert read.state == STATE_MALFORMED
+    assert read.error is not None and read.error.code == "ARTIFACT_MALFORMED"  # type: ignore[attr-defined]
+    r = legacy.get("/design/production")
+    assert r.status_code == 409 and _code(r) == "ARTIFACT_MALFORMED", r.text
 
 
 def test_longhole_production_development_serializes_without_a_version_key() -> None:

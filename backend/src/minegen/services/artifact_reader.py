@@ -136,6 +136,7 @@ from minegen.shafts.models import ShaftsPayload
 __all__ = [
     "CUT_FILL_LEGACY_ARTIFACTS",
     "LEGACY_DOWNSTREAM_FILES",
+    "PR53_CUT_FILL_KEYS",
     "READ_SPECS",
     "ArtifactRead",
     "ArtifactReader",
@@ -853,17 +854,29 @@ def _cut_fill_version_of(block: Any, key: str) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+#: the top-level keys every PR #53 Cut & Fill production document carries —
+#: the RECOGNIZED earlier shape. A CUT_AND_FILL document without the current
+#: version AND without this shape is not a known earlier model: it falls
+#: through to the parser and stays MALFORMED (a Longhole-shaped document
+#: claiming CUT_AND_FILL, a truncated file), never a migration that deletes
+#: the Levels closure on the strength of a method name alone.
+PR53_CUT_FILL_KEYS: frozenset[str] = frozenset(
+    {"status", "failureReason", "sourceRevision", "method", "lifts", "cuts", "backfills", "metrics"}
+)
+
+
 def _stopes_cut_fill_legacy_check(
     document: dict[str, Any], _snapshot: ArtifactSnapshot
 ) -> tuple[ReadState, Exception] | None:
     """PR #54 review B2: a CUT_AND_FILL production document must carry the
-    current ``cutFillModelVersion``; the PR #53 shape (absent) is LEGACY —
-    decided on the raw document BEFORE ``parse_production_payload`` would
-    refuse it as MALFORMED. Every other method is untouched."""
+    current ``cutFillModelVersion``; the PR #53 shape (the ``PR53_CUT_FILL_KEYS``
+    without the version) is LEGACY — decided on the raw document BEFORE
+    ``parse_production_payload`` would refuse it as MALFORMED. Every other
+    method, and every other shape, is untouched."""
     if document.get("method") != "CUT_AND_FILL":
         return None
     found = _cut_fill_version_of(document, "cutFillModelVersion")
-    if found == CUT_FILL_MODEL_VERSION:
+    if found == CUT_FILL_MODEL_VERSION or not set(document) >= PR53_CUT_FILL_KEYS:
         return None
     return (
         STATE_LEGACY,
