@@ -301,6 +301,27 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     assert len(scenarios) == 1
     assert (scenarios[0] / "arrays.npz").exists()
 
+    # 1 Setup › Access (PR #54 review B3): the access strategy is declared
+    # BEFORE the layout — Ramp only is done already; Ramp + Shaft is applied
+    # through the scenario PUT behind the reset-plan confirmation and makes
+    # Shafts a real (waiting) stage instead of an optional one
+    _wait_glyph(page, "ACCESS", "DONE")
+    _wait_glyph(page, "SHAFTS", "OPTIONAL")
+    _click_stage(page, "ACCESS")
+    assert _primaries(page) == 0  # a clean declaration offers no primary action
+    page.check('[data-testid="access-ramp-shaft"]')
+    page.wait_for_selector('[data-testid="shaft-editor"] [data-testid="shaft-spec"]')
+    suggest = page.locator('[data-testid="shaft-editor"] button:has-text("Suggest collar")')
+    assert suggest.count() == 0  # no level development yet: the planner derives the collar
+    _assert_single_primary(page, "Access with a dirty declaration")
+    _controls(page, "Apply access strategy").click()
+    page.wait_for_selector('[data-testid="access-will-delete"], [role="dialog"]')
+    page.click('[role="dialog"] button:has-text("Apply access strategy")')
+    _wait_glyph(page, "ACCESS", "DONE", 180_000)
+    _wait_glyph(page, "SHAFTS", "WAITING")
+    assert _primaries(page) == 0
+    page.wait_for_selector('[data-testid="access-ramp-shaft"]:checked')
+
     # 2 Design › Layout: Generate → Option 1 → Activate
     _click_stage(page, "LAYOUT")
     _controls(page, "Generate candidates").click()
@@ -324,6 +345,21 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     _assert_single_primary(page, "between the two meshes")
     _controls(page, "Generate development mesh").click()
     _wait_glyph(page, "EXCAVATION", "DONE")
+
+    # Shafts (PR #54 review B3): PLAN the declared shaft, then its mesh — the
+    # stage is done only with both; the declaration itself is not editable here
+    _click_stage(page, "SHAFTS")
+    assert page.locator('[data-testid="controls-host"] [data-testid="shaft-editor"]').count() == 0
+    _controls(page, "Plan shafts").click()
+    page.wait_for_selector(
+        '[data-testid="controls-host"] button:has-text("Generate shaft mesh"):enabled',
+        timeout=JOB_TIMEOUT_MS,
+    )
+    _wait_glyph(page, "SHAFTS", "NEXT")  # the plan alone is not the stage: still next
+    _assert_single_primary(page, "between the shaft plan and its mesh")
+    _controls(page, "Generate shaft mesh").click()
+    _wait_glyph(page, "SHAFTS", "DONE")
+    assert (scenarios[0] / "derived" / "shaft_mesh.glb").exists()
 
     # 3 Network · 4 Mining · 5 Systems
     _generate(page, "NETWORK", "Build network")
@@ -377,6 +413,7 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     page.wait_for_selector('[data-testid="reset-will-delete"]')
     listed = page.locator('[data-testid="reset-will-delete"] li').all_inner_texts()
     assert "levels.json" in listed and "network.json" in listed and "timeline.json" in listed
+    assert "shafts.json" in listed and "shaft_mesh.json" in listed  # planned on the levels
     assert "layout_v2_selected.json" not in listed  # upstream is never part of the closure
     page.click('[role="dialog"] button:has-text("Delete")')
     _wait_glyph(page, "LEVELS", "NEXT")
@@ -401,6 +438,16 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     _click_stage(page, "EXCAVATION")
     _controls(page, "Generate development mesh").click()
     _wait_glyph(page, "EXCAVATION", "DONE")
+    # the declared shaft survives the reset (it is the scenario's), its plan does not
+    _wait_glyph(page, "SHAFTS", "NEXT")
+    _click_stage(page, "SHAFTS")
+    _controls(page, "Plan shafts").click()
+    page.wait_for_selector(
+        '[data-testid="controls-host"] button:has-text("Generate shaft mesh"):enabled',
+        timeout=JOB_TIMEOUT_MS,
+    )
+    _controls(page, "Generate shaft mesh").click()
+    _wait_glyph(page, "SHAFTS", "DONE")
     _generate(page, "NETWORK", "Build network")
     _generate(page, "CAPABILITY", "Build capabilities")
     _generate(page, "PRODUCTION", "Generate Stopes")

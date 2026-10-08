@@ -6,6 +6,7 @@ import { ResetFromHere } from '@/components/layout/ResetFromHere'
 import { useShellStore } from '@/components/layout/shellStore'
 import { SystemsWorkspace } from '@/components/layout/SystemsWorkspace'
 import { STAGE_LABEL, stepOf } from '@/components/layout/workflow'
+import { AccessPanel } from '@/components/panels/AccessPanel'
 import { ExportPanel } from '@/components/panels/ExportPanel'
 import { SetupPanel } from '@/components/panels/ScenarioPanel'
 import { useScenarioStore } from '@/stores/scenarioStore'
@@ -59,6 +60,8 @@ export function LeftPanel() {
       {/* mounted feature panels (their cards portal into the two columns) */}
       <div data-testid="workflow-panels">
         <SetupPanel />
+        {/* PR #54 review B3: Setup › Access — the shaft declaration, before the layout */}
+        <AccessPanel />
         {step === 'SYSTEMS' ? <SystemsWorkspace /> : null}
         {step === 'SYSTEMS' || step === 'ANALYSIS' ? null : <DesignWorkspace />}
         <ExportPanel />

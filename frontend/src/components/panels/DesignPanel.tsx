@@ -12,8 +12,6 @@ import { Metrics } from '@/components/ui/MetricRow'
 import { StageSlot, WorkflowCard } from '@/components/ui/WorkflowCard'
 import { MethodChangeDialog } from '@/components/panels/MethodChangeDialog'
 import { MiningMethodCard } from '@/components/panels/MiningMethodCard'
-import { ScenarioChangeDialog } from '@/components/panels/ScenarioChangeDialog'
-import { ShaftSpecEditor } from '@/components/panels/ShaftSpecEditor'
 import {
   PRODUCTION_ACTION,
   PRODUCTION_UNIT_NOUN,
@@ -33,10 +31,9 @@ import {
 } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
-import type { MiningConfig, ScenarioCreate, ShaftPlanningConfig, ShaftSpec } from '@/types/api'
+import type { MiningConfig, ScenarioCreate } from '@/types/api'
 import type {
   CapabilityGraphPayload,
-  CollarSuggestion,
   DevelopmentMeshReport,
   JobRecord,
   LevelsPayload,
@@ -231,37 +228,10 @@ export function DesignPanel({ view }: { view: DesignTab }) {
       setLayerVisible('shafts', true)
     },
   })
-  // hardening PR-2 H2-SH: the shaft declaration is an explicit scenario
-  // section; applying it is the SAME rule 40 PUT + world regeneration as a
-  // method change, behind the same reset-plan confirmation
-  const [pendingShafts, setPendingShafts] = useState<{
-    config: ShaftPlanningConfig
-    attempt: number
-  } | null>(null)
-  const shaftAttempt = useRef(0)
-  const openShaftChange = (config: ShaftPlanningConfig) => {
-    shaftAttempt.current += 1
-    setPendingShafts({ config, attempt: shaftAttempt.current })
-  }
-  const applyShafts = useMutation({
-    mutationFn: async (config: ShaftPlanningConfig) => {
-      if (!scene || !scenarioDoc) throw new Error('load a scenario first')
-      const id = scenarioDoc.id
-      const body: Record<string, unknown> = { ...scenarioDoc, shafts: config }
-      delete body.id
-      delete body.schemaVersion
-      const updated = await api.replaceScenario(id, body as unknown as ScenarioCreate)
-      const started = activateScenarioRevision(updated)
-      await api.generateWorld(id)
-      const next = await api.getScene(id)
-      setScene(next, started)
-      return updated
-    },
-  })
-  const suggestCollar = async (spec: ShaftSpec): Promise<CollarSuggestion> => {
-    if (!scene) throw new Error('generate levels first')
-    return api.suggestShaftCollar(scene.scenarioId, spec)
-  }
+  // PR #54 review B3: the shaft DECLARATION (`scenario.shafts`) is a Setup
+  // decision — Setup › Access (`AccessPanel`) — so applying it never resets a
+  // finished design from here; this stage only PLANS the declared shafts and
+  // sweeps their mesh.
   // hardening PR-2 H2-SH: the shaft excavation sweep — a leaf of the shafts
   const shaftMesh = scene?.shaftMesh ?? null
   const generateShaftMesh = useMutation({
@@ -315,7 +285,6 @@ export function DesignPanel({ view }: { view: DesignTab }) {
     message(generateDevelopmentMesh.error) ??
     message(generateTunnel.error) ??
     message(generateShafts.error) ??
-    message(applyShafts.error) ??
     message(generateShaftMesh.error)
   const networkError = message(generateNetwork.error) ?? message(generateCapabilityGraph.error)
   const miningError =
@@ -335,23 +304,6 @@ export function DesignPanel({ view }: { view: DesignTab }) {
           onConfirm={(mining) => {
             setPendingMethod(null)
             applyMethod.mutate(mining)
-          }}
-        />
-      ) : null}
-      {scenarioDoc ? (
-        <ScenarioChangeDialog
-          scenarioId={scenarioDoc.id}
-          pending={pendingShafts?.config ?? null}
-          attempt={pendingShafts?.attempt ?? 0}
-          hasWorld={scene !== null}
-          title="Change shaft declaration"
-          intro="The world is regenerated with the same seed; everything from Layout on is reset."
-          confirmLabel="Apply shafts"
-          listTestId="shafts-will-delete"
-          onCancel={() => setPendingShafts(null)}
-          onConfirm={(config) => {
-            setPendingShafts(null)
-            applyShafts.mutate(config)
           }}
         />
       ) : null}
@@ -384,12 +336,6 @@ export function DesignPanel({ view }: { view: DesignTab }) {
         shaftsPending={generateShafts.isPending}
         shaftsEnabled={levelsReady && !generateShafts.isPending && !generateLevels.isPending}
         onGenerateShafts={() => generateShafts.mutate()}
-        shaftConfig={scenarioDoc?.shafts ?? null}
-        levelIds={levels?.levels.map((l) => l.levelId) ?? []}
-        shaftsApplyPending={applyShafts.isPending}
-        shaftsEditEnabled={scene !== null && !applyShafts.isPending}
-        onApplyShafts={openShaftChange}
-        onSuggestCollar={suggestCollar}
         shaftMesh={shaftMesh}
         shaftMeshPending={generateShaftMesh.isPending}
         shaftMeshEnabled={
@@ -479,14 +425,6 @@ export interface DesignPanelBodyProps {
   shaftsPending: boolean
   shaftsEnabled: boolean
   onGenerateShafts: () => void
-  /** PR-2 H2-SH: the persisted `scenario.shafts` section the editor edits */
-  shaftConfig: ShaftPlanningConfig | null
-  /** level ids of the current level developments (station targets) */
-  levelIds: string[]
-  shaftsApplyPending: boolean
-  shaftsEditEnabled: boolean
-  onApplyShafts: (config: ShaftPlanningConfig) => void
-  onSuggestCollar: (spec: ShaftSpec) => Promise<CollarSuggestion>
   /** PR-2 H2-SH: the shaft excavation mesh (barrel · caps · drives) */
   shaftMesh: ShaftMeshReport | null
   shaftMeshPending: boolean
@@ -776,7 +714,7 @@ function DevelopView(p: DesignPanelBodyProps) {
         stage="SHAFTS"
         title="Shafts"
         tone={artifactTone(shafts, p.shaftsPending)}
-        info="Optional vertical infrastructure declared in the scenario, never a ramp layout family. Each declared shaft gets a collar on the terrain, one station per required level welded onto an existing level node, and a sump bottom. The ramp always remains the mine's primary access."
+        info="Optional vertical infrastructure declared in Setup › Access (never a ramp layout family). This stage PLANS the declared shafts against the level development: each gets a collar on the terrain, one station per required level welded onto an existing level node, and a sump bottom; the shaft mesh below sweeps the plan. Changing the declaration itself is a Setup decision (it rewrites the scenario and resets the design). The ramp always remains the mine's primary access."
         summary={
           shafts?.metrics ? (
             <>
@@ -789,32 +727,24 @@ function DevelopView(p: DesignPanelBodyProps) {
         failure={shafts && shafts.status === 'FAILED' ? shafts.failureReason : null}
         notice={
           p.shaftSpecCount === 0 ? (
-            <>No shaft declared in this scenario — the mine stays ramp-only.</>
+            <>
+              No shaft declared — the mine stays ramp-only. To add one, choose Ramp + Shaft in Setup
+              › Access (that rewrites the scenario and resets the design).
+            </>
           ) : null
         }
         action={
-          <div className="flex flex-col gap-1.5">
-            <ShaftSpecEditor
-              persisted={p.shaftConfig}
-              identity={p.scenarioIdentity}
-              levelIds={p.levelIds}
-              pending={p.shaftsApplyPending}
-              enabled={p.shaftsEditEnabled}
-              onApply={p.onApplyShafts}
-              onSuggestCollar={p.onSuggestCollar}
-            />
-            <ActionButton
-              variant={nextActionVariant(shafts !== null, p.shaftsEnabled)}
-              disabled={!p.shaftsEnabled}
-              onClick={p.onGenerateShafts}
-            >
-              {p.shaftsPending
-                ? 'Planning shafts…'
-                : shafts
-                  ? 'Regenerate shafts'
-                  : `Plan shafts (${String(p.shaftSpecCount)} declared)`}
-            </ActionButton>
-          </div>
+          <ActionButton
+            variant={nextActionVariant(shafts !== null, p.shaftsEnabled)}
+            disabled={!p.shaftsEnabled || p.shaftSpecCount === 0}
+            onClick={p.onGenerateShafts}
+          >
+            {p.shaftsPending
+              ? 'Planning shafts…'
+              : shafts
+                ? 'Regenerate shafts'
+                : `Plan shafts (${String(p.shaftSpecCount)} declared)`}
+          </ActionButton>
         }
         details={
           shafts ? (

@@ -20,6 +20,7 @@ const read = (p: string) => readFileSync(p, 'utf8')
 const unique = (src: string, re: RegExp) => [...new Set(src.match(re) ?? [])].sort()
 
 const designPanel = read(join(HERE, 'DesignPanel.tsx'))
+const accessPanel = read(join(HERE, 'AccessPanel.tsx'))
 
 describe('the mine-development endpoints are unchanged', () => {
   it('calls exactly the declared generation endpoints — no more, no fewer', () => {
@@ -39,6 +40,14 @@ describe('the mine-development endpoints are unchanged', () => {
       'api.replaceScenario',
       'api.submitDevelopmentMesh',
       'api.submitTunnel',
+    ])
+    // PR #54 review B3: the shaft DECLARATION (scenario PUT + world
+    // regeneration + scene reload, the collar suggestion) moved to Setup ›
+    // Access — the Design › Shafts card only plans and sweeps
+    expect(unique(accessPanel, /api\.[a-zA-Z0-9]+/g)).toEqual([
+      'api.generateWorld',
+      'api.getScene',
+      'api.replaceScenario',
       'api.suggestShaftCollar',
     ])
   })

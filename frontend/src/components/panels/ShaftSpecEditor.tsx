@@ -3,15 +3,7 @@ import { ActionButton } from '@/components/ui/ActionButton'
 import type { ShaftPlanningConfig, ShaftSpec } from '@/types/api'
 import { CAPABILITIES, type Capability } from '@/types/enums'
 import type { CollarSuggestion } from '@/types/scene'
-import {
-  SHAFT_SPEC_DEFAULTS,
-  nextShaftId,
-  persistedShafts,
-  reconcileShaftDraft,
-  shaftDraftIsDirty,
-  shaftDraftProblems,
-  type ShaftDraftState,
-} from './shaftDraft'
+import { SHAFT_SPEC_DEFAULTS, nextShaftId } from './shaftDraft'
 
 const FIELD =
   'w-full rounded-sm border border-rock-700 bg-rock-900 px-1.5 py-0.5 text-[11px] text-chalk focus:border-lamp focus:outline-none'
@@ -30,51 +22,42 @@ const CAPABILITY_LABEL: Record<Capability, string> = {
 }
 
 interface Props {
-  /** the persisted `scenario.shafts` section (undefined → no shaft) */
-  persisted: ShaftPlanningConfig | null | undefined
-  /** the scenario REVISION this editor edits (`scenarioId:epoch`) */
-  identity: string
-  /** level ids of the current level developments (the station targets) */
+  /** the edited `scenario.shafts` section (owned by the Access card) */
+  draft: ShaftPlanningConfig
+  onChange: (next: ShaftPlanningConfig) => void
+  /** level ids of an existing level development (the station targets); empty
+   * before the layout — stations then default to every developed level */
   levelIds: readonly string[]
   pending: boolean
   enabled: boolean
-  /** submit the edited declaration (a scenario PUT behind a confirmation) */
-  onApply: (config: ShaftPlanningConfig) => void
-  /** ask the backend for its default collar of one spec (read-only) */
-  onSuggestCollar: (spec: ShaftSpec) => Promise<CollarSuggestion>
+  /** ask the backend for its default collar of one spec (read-only); absent
+   * while no level development exists, since the planner derives the default
+   * collar from it */
+  onSuggestCollar?: ((spec: ShaftSpec) => Promise<CollarSuggestion>) | undefined
 }
 
 /**
- * Hardening PR-2 H2-SH — the shaft declaration editor. It edits the EXPLICIT
+ * Hardening PR-2 H2-SH / PR #54 review B3 — the shaft declaration editor,
+ * CONTROLLED by the Setup › Access card. It edits the EXPLICIT
  * `scenario.shafts` parameters (role, diameter, collar, stand-off, sump,
  * station levels, capabilities, the two planning limits) and nothing else:
- * the backend plans the shaft (rule 182), the collar suggestion is the
- * backend's default placement copied on the user's click (rule 124), and
- * applying is the scenario PUT (rule 40 full invalidation) the owner
- * confirms with the backend reset plan. The draft is scoped to one scenario
- * revision and discarded on a scenario switch or a document replacement.
+ * the backend plans the shaft (rule 182) and the collar suggestion is the
+ * backend's default placement copied on the user's click (rule 124). The
+ * owning card validates the draft, offers Apply and submits the scenario PUT
+ * (rule 40 full invalidation) behind the backend reset plan.
  */
 export function ShaftSpecEditor({
-  persisted,
-  identity,
+  draft,
+  onChange,
   levelIds,
   pending,
   enabled,
-  onApply,
   onSuggestCollar,
 }: Props) {
-  const base = persistedShafts(persisted)
-  const [stored, setStored] = useState<ShaftDraftState>({ identity, draft: base })
-  const draft = reconcileShaftDraft(stored, identity, base).draft
   const setDraft = (update: (d: ShaftPlanningConfig) => ShaftPlanningConfig) =>
-    setStored((s) => {
-      const current = reconcileShaftDraft(s, identity, base).draft
-      return { identity, draft: update(current) }
-    })
+    onChange(update(draft))
   const [suggesting, setSuggesting] = useState<string | null>(null)
   const [suggestError, setSuggestError] = useState<string | null>(null)
-  const dirty = shaftDraftIsDirty(draft, base)
-  const problems = shaftDraftProblems(draft)
   const setSpec = (index: number, patch: Partial<ShaftSpec>) =>
     setDraft((d) => ({
       ...d,
@@ -110,7 +93,7 @@ export function ShaftSpecEditor({
   )
   const suggest = async (index: number) => {
     const spec = draft.specs[index]
-    if (!spec) return
+    if (!spec || !onSuggestCollar) return
     setSuggesting(spec.shaftId)
     setSuggestError(null)
     try {
@@ -129,9 +112,6 @@ export function ShaftSpecEditor({
   }
   return (
     <div className="flex flex-col gap-1.5" data-testid="shaft-editor">
-      {draft.specs.length === 0 ? (
-        <p className="text-[10px] text-mute">No shaft declared — the mine stays ramp-only.</p>
-      ) : null}
       {draft.specs.map((spec, index) => (
         <fieldset
           key={index}
@@ -201,17 +181,21 @@ export function ShaftSpecEditor({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <ActionButton
-              variant="secondary"
-              disabled={!enabled || pending || suggesting !== null}
-              onClick={() => void suggest(index)}
-            >
-              {suggesting === spec.shaftId ? 'Asking the planner…' : 'Suggest collar'}
-            </ActionButton>
+            {onSuggestCollar ? (
+              <ActionButton
+                variant="secondary"
+                disabled={!enabled || pending || suggesting !== null}
+                onClick={() => void suggest(index)}
+              >
+                {suggesting === spec.shaftId ? 'Asking the planner…' : 'Suggest collar'}
+              </ActionButton>
+            ) : null}
             <span className="text-[10px] text-mute">
               {spec.collar
                 ? `explicit collar (${spec.collar.x.toFixed(1)}, ${spec.collar.y.toFixed(1)})`
-                : 'default collar (planner-derived)'}
+                : onSuggestCollar
+                  ? 'default collar (planner-derived)'
+                  : 'default collar — the planner derives it from the level development at Plan shafts'}
             </span>
           </div>
           <div>
@@ -296,13 +280,6 @@ export function ShaftSpecEditor({
           Collar suggestion: {suggestError}
         </p>
       ) : null}
-      {problems.length > 0 ? (
-        <ul className="list-disc pl-4 text-[10px] text-danger">
-          {problems.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ul>
-      ) : null}
       <div className="flex gap-2">
         <ActionButton
           variant="secondary"
@@ -316,18 +293,10 @@ export function ShaftSpecEditor({
         >
           Add shaft
         </ActionButton>
-        <ActionButton
-          variant="secondary"
-          disabled={!enabled || pending || !dirty || problems.length > 0}
-          onClick={() => onApply(draft)}
-        >
-          {pending ? 'Applying…' : 'Apply shaft declaration'}
-        </ActionButton>
       </div>
       <p className="text-[10px] text-mute">
-        Applying rewrites the scenario: every derived design artifact is cleared and the world is
-        regenerated from the same seed. The backend plans collar, stations and drives from these
-        parameters; nothing is placed on the client.
+        The backend plans collar, stations and drives from these parameters in Design › Shafts;
+        nothing is placed on the client.
       </p>
     </div>
   )
