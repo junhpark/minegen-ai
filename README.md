@@ -199,6 +199,32 @@ generation controls — every write to a demo answers 409 `DEMO_READ_ONLY`) and
 **Clone to edit** turns the demo document into an ordinary saved scenario.
 Every demo is labelled DEMO / SYNTHETIC.
 
+## Hardening PR-2 browser acceptance
+
+The PR-2 items of the final checklist (`docs/hardening-plan.md` §11) are
+checked on the baked demos:
+
+1. **File › Demos › Open** a demo → the DEMO · SYNTHETIC badge, the demo
+   panel in the controls column (no generation controls, no "Reset from
+   here", ONE primary "Clone to edit"), Auto tour cycling Iso → Top → Fit.
+2. **4D** → Loop is on; Restart / Play / 1× 5× 20× move the day cursor; the
+   right column shows the backend time series (development / production /
+   backfill / cashflow charts, cumulative readouts as of the day).
+3. **Analysis** → the canvas disappears, KPI tiles (Planning NPV, Planning
+   IRR with its typed reason when not defined, mine life, first production),
+   Economics charts, the Sensitivity tornado + what-if form labelled
+   WHAT-IF OVERRIDE — NOT SCENARIO VALUE, the Schedule tab series; "Show 3D
+   context" splits the view.
+4. **Shafts** (Longhole demo) → the shaft barrel, collar / sump caps and
+   station drives render as a mesh; after "Clone to edit" the Shafts card
+   shows the spec editor with "Suggest collar".
+5. **Cut & Fill demo in 4D** → the shallowest block starts first, at most two
+   panels are in production at once, the first lift of every block above an
+   unmined block is a cemented sill mat, and first production precedes ramp
+   completion (`docs/findings/h2cf-cut-fill-characterization.md`).
+6. Every write to a demo answers `409 DEMO_READ_ONLY`; the demo directory
+   stays byte- and stat-identical (also asserted by the browser e2e).
+
 ## Verification tiers (VA-01)
 
 ```

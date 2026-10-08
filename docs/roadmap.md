@@ -81,10 +81,11 @@ Deferred deployment item (not scheduled):
 
 | Item | Purpose | Key change |
 | --- | --- | --- |
-| D0 | Hugging Face public demo | single Docker Space, session isolation, TTL, prebuilt demo scenario; demo mode (viewer-only: OrbitControls autoRotate roundview paused on input, 20× looping 4D playback reusing the timeline clock, one "Demo" HUD toggle, disabled in walkthrough) |
+| D0 | Hugging Face public demo | single Docker Space, session isolation, TTL, the generation API blocked in the build. The prebuilt demo scenarios and the viewer-only demo mode (baked read-only demos, File › Demos, Auto tour over the camera presets, 4D Loop, "Clone to edit") were delivered by hardening PR-2 H4 (rule 222); D0 is the deployment only |
 
 Phases 01–20E, 21A, 21B/C, 22A/B, 22C, 23A, 23B and 23C are described in `docs/architecture.md`;
-the invariants they established are `CLAUDE.md` rules 1–218.
+the invariants they established are `CLAUDE.md` rules 1–222 (hardening
+PR-1 / PR-2: rules 141 / 182 / 191 / 195 / 196 / 201 revised, 219–222 added).
 
 ## Phase 20E — UI/UX consolidation (frontend only)
 

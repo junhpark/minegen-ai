@@ -207,6 +207,21 @@ scope: H2 (Cut & Fill 두 축·패널·sill mat, MineExchange 1.3.1, Shaft mesh 
 규칙: 182·195·196·201 개정, 신규 timeseries/민감도/데모 규칙
 ```
 
+### 5.1 PR-2 구현 기록 (hardening-2-engine-analysis, base main `1bd68c8`)
+
+| 커밋 | 내용 | 계획 대비 결정 |
+|---|---|---|
+| C1 `926d07b` | C&F 스키마·기하: 두 축, 패널·블록, rib pillar, cemented sill mat, `sequencing`/`blocks`/`panels` payload, integrity | §6.3 그대로. UNDERHAND는 생성·스케줄 모두 typed 거부 |
+| C2 `98496cf` | 패널 선행관계 스케줄, `maxConcurrentPanels` 상한, sill-mat 양생 게이트 | 특성화 기록 `docs/findings/h2cf-cut-fill-characterization.md`(첫 STOPING 404.45→298.18 d, 램프 완료 371.46 d) |
+| C3 `8165a86` | MineExchange 1.3.1 additive, AnyLogic `cemented` 열 | 어댑터 버전 불변(1.3.x 수용) |
+| C4 `9ea688d` | `shaft_mesh.{json,glb}` leaf artifact, ShaftSpecEditor, `suggest-collar`, H0 §3.4 seam 수정 | 상수 프레임(right +X, up +Y, forward −Z); inclined·parallel-transport 유보 유지 |
+| C5 `2a10c27` | timeseries 프로젝션, `hostRockDensity` optional·무기본값, 4D Restart·Loop·속도, 우측 4D results, recharts 도입 | 검증 픽스처 재생성(upstreamFingerprint 불변) |
+| C6 `9f7dbaa` | 전체창 Analysis(캔버스 언마운트 + Show 3D context), KPI 타일, Planning IRR(typed), 민감도 그리드·토네이도, 공정 what-if, Schedule 탭 | IRR은 부호 변화 1회 **그리고** 괄호 안 근 존재일 때만 DEFINED; KPI 타일은 모든 탭 상단 |
+| C7 `79ad128` | 데모 3개 레시피 + `scripts/bake_demos.py`, `GET /demos`, 데모 root 읽기 전용 해석 + `DEMO_READ_ONLY` 가드, File › Demos, 데모 모드(DemoPanel·Auto tour·4D loop·Clone to edit) | D1(TABULAR Longhole)에 production shaft 1개 포함; 데모는 git-ignored `data/demos/`에 배포 시 bake |
+| C8 | 규칙 182·195·196·201 개정 + 221·222 신설, 문서, e2e(BASELINE + C&F 데모 Setup→Analysis→Export), 브라우저 수락, 최종 FULL | e2e는 C&F 데모를 임시 데이터 디렉터리에 in-process bake 후 File › Demos로 연다 |
+
+측정(이 컨테이너): bake D1 114 s · D2 85 s · D3 152 s(합 107 MB).
+
 ---
 
 ## 6. H2-CF — Cut & Fill 정상화
