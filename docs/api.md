@@ -129,7 +129,12 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      schedule KPIs, planning ratios and planning
                                                      economics (cost / gross-revenue summary,
                                                      Planning Cashflow buckets, Baseline Planning
-                                                     NPV). Each section carries AVAILABLE /
+                                                     NPV and — hardening PR-2 H3 §8.2 — the typed
+                                                     `planningIrr`: DEFINED {annualRate} |
+                                                     NOT_DEFINED {NO_SIGN_CHANGE |
+                                                     MULTIPLE_SIGN_CHANGES} | NOT_CONFIGURED,
+                                                     mid-bucket timing, bisection on [-0.99, 10],
+                                                     never NaN / Infinity). Each section carries AVAILABLE /
                                                      NOT_AVAILABLE / NOT_CONFIGURED + reason; an
                                                      absent or FAILED source is a partial 200; a
                                                      present inconsistent source is 409
@@ -157,6 +162,37 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      cashflowBucketDays, else 30; 422 when ≤ 0.
                                                      Nothing persisted; 409 READ_SNAPSHOT_CHANGED
                                                      on a moving source
+    GET  /api/v1/scenarios/{id}/analysis/sensitivity?perturbationPct=<p>&perturbationPct=…
+                                                     hardening PR-2 H3 §8.3: READ-ONLY what-if
+                                                     grid over NINE declared parameters — economic
+                                                     (grossRevenuePerMinedTonne, developmentCost,
+                                                     miningCost, processingCost, backfillCost,
+                                                     initialCapital, discountRate) and schedule
+                                                     (developmentRate, miningRate) — at
+                                                     ±10 / 20 / 30 % by default (repeatable
+                                                     perturbationPct, non-zero, within [-99, 900],
+                                                     422 otherwise). Economic cases rescale the
+                                                     Planning Cashflow ledger; schedule cases rerun
+                                                     MineTimelineBuilder IN MEMORY on the same
+                                                     artifacts (`scheduleRebuilt = true`);
+                                                     timeline.json is never read back modified
+                                                     and nothing is written. Every outcome
+                                                     (Planning NPV, Planning IRR, mine duration,
+                                                     first production day + deltas) is labelled
+                                                     "WHAT-IF OVERRIDE — NOT SCENARIO VALUE"; the
+                                                     revenue authority stays gross revenue per
+                                                     mined tonne (no price / grade / recovery /
+                                                     royalty / tax). NOT_CONFIGURED without
+                                                     economics.json (base + empty cases);
+                                                     NOT_AVAILABLE with the reason when a source is
+                                                     missing; 409 READ_SNAPSHOT_CHANGED on a moving
+                                                     source. No optimizer, no selection authority.
+    POST /api/v1/scenarios/{id}/analysis/what-if     body WhatIfFactors — one multiplicative
+                                                     factor per parameter above (default 1.0,
+                                                     0 < f ≤ 10, 422 otherwise); ONE explicit
+                                                     what-if outcome under the same contract as
+                                                     the grid. A projection: nothing persisted,
+                                                     no job, no artifact touched.
     GET  /api/v1/scenarios/{id}/analysis/economics-config
                                                      the user-authored planning-economics
                                                      assumptions (`economics.json` beside

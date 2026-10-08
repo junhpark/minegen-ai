@@ -135,6 +135,18 @@ export interface CashflowBucket {
   discountedNetCashflow: number
 }
 
+/** hardening PR-2 H3 §8.2 — Planning IRR under the mid-bucket convention,
+ * typed: DEFINED | NOT_DEFINED (NO_SIGN_CHANGE | MULTIPLE_SIGN_CHANGES) |
+ * NOT_CONFIGURED; never NaN / Infinity */
+export interface PlanningIrr {
+  status: 'DEFINED' | 'NOT_DEFINED' | 'NOT_CONFIGURED'
+  annualRate: number | null
+  reason: 'NO_SIGN_CHANGE' | 'MULTIPLE_SIGN_CHANGES' | null
+  convention: 'MID_BUCKET_MIDPOINT'
+  bracket: [number, number]
+  name: 'Planning IRR'
+}
+
 export interface EconomicsSection {
   availability: Availability
   reason: string | null
@@ -146,6 +158,7 @@ export interface EconomicsSection {
   npvConvention: 'MID_BUCKET_MIDPOINT'
   summary: EconomicsSummary | null
   cashflow: CashflowBucket[]
+  planningIrr: PlanningIrr
   disclaimer: string
 }
 
@@ -314,5 +327,68 @@ export interface TimeseriesPayload {
   buckets: TimeseriesBucket[]
   developmentRockVocabulary: 'Excavated development rock'
   allocation: 'LINEAR_OVER_TASK_WINDOW'
+  disclaimer: string
+}
+
+// --------------------------------------------------------------------------- //
+// Hardening PR-2 H3 §8.3 — sensitivity / what-if (READ-ONLY, never persisted)
+// --------------------------------------------------------------------------- //
+
+export const WHAT_IF_LABEL = 'WHAT-IF OVERRIDE — NOT SCENARIO VALUE'
+
+/** multiplicative overrides, 1.0 = the scenario / economics value */
+export interface WhatIfFactors {
+  grossRevenuePerMinedTonne?: number
+  developmentCost?: number
+  miningCost?: number
+  processingCost?: number
+  backfillCost?: number
+  initialCapital?: number
+  discountRate?: number
+  developmentRate?: number
+  miningRate?: number
+}
+
+export type SensitivityParameterKey = keyof Required<WhatIfFactors>
+export type SensitivityParameterKind = 'ECONOMIC' | 'SCHEDULE'
+
+export interface WhatIfOutcome {
+  label: typeof WHAT_IF_LABEL
+  status: 'AVAILABLE' | 'NOT_AVAILABLE' | 'FAILED'
+  reason: string | null
+  factors: Required<WhatIfFactors>
+  scheduleRebuilt: boolean
+  planningNpv: number | null
+  planningIrr: PlanningIrr
+  mineDurationDays: number | null
+  firstProductionDay: number | null
+  endDay: number | null
+  undiscountedNetCashflow: number | null
+  npvDelta: number | null
+  mineDurationDeltaDays: number | null
+  firstProductionDeltaDays: number | null
+}
+
+export interface SensitivityCase {
+  parameter: SensitivityParameterKey
+  label: string
+  kind: SensitivityParameterKind
+  perturbationPct: number
+  factor: number
+  outcome: WhatIfOutcome
+}
+
+export interface SensitivityPayload {
+  status: 'SUCCESS'
+  label: typeof WHAT_IF_LABEL
+  notice: string
+  sources: AnalysisSources
+  availability: Availability
+  reason: string | null
+  revenueModel: 'GROSS_REVENUE_PER_MINED_TONNE'
+  perturbationsPct: number[]
+  parameters: { key: SensitivityParameterKey; label: string; kind: SensitivityParameterKind }[]
+  base: WhatIfOutcome
+  cases: SensitivityCase[]
   disclaimer: string
 }

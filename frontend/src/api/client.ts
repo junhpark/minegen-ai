@@ -13,7 +13,10 @@ import type {
   EconomicsConfigResponse,
   LayoutComparisonPayload,
   MineAnalysisPayload,
+  SensitivityPayload,
   TimeseriesPayload,
+  WhatIfFactors,
+  WhatIfOutcome,
 } from '@/types/analysis'
 import type { Capability } from '@/types/enums'
 import type {
@@ -371,6 +374,15 @@ export const api = {
   /** Phase 22A/B: the READ-ONLY mine analysis projection (no job, no
    * persistence) and the user-authored planning-economics assumptions. */
   getAnalysis: (id: string) => request<MineAnalysisPayload>(`/scenarios/${id}/analysis`),
+  /** hardening PR-2 H3 §8.3: the READ-ONLY what-if grid (never persisted) */
+  getSensitivity: (id: string) =>
+    request<SensitivityPayload>(`/scenarios/${id}/analysis/sensitivity`),
+  /** one explicit what-if override — a projection, nothing is written */
+  postWhatIf: (id: string, factors: WhatIfFactors) =>
+    request<WhatIfOutcome>(`/scenarios/${id}/analysis/what-if`, {
+      method: 'POST',
+      body: JSON.stringify(factors),
+    }),
   /** hardening PR-2 H3 §6: the READ-ONLY bucketed time series (quantities +
    * economics when configured) from one bound snapshot; no persistence */
   getTimeseries: (id: string, bucketDays?: number) =>

@@ -34,13 +34,25 @@ export const SYSTEMS_TABS: readonly PanelTab<SystemsTab>[] = [
  * assessment — never a second rule evaluator) and the Layout comparison
  * (comparable development cost over the persisted layout-v2 catalogue).
  */
-export type AnalysisTab = 'OVERVIEW' | 'ECONOMICS' | 'RULES' | 'LAYOUT_COMPARISON' | 'SIMULATION'
+export type AnalysisTab =
+  | 'OVERVIEW'
+  | 'ECONOMICS'
+  | 'SENSITIVITY'
+  | 'SCHEDULE'
+  | 'RULES'
+  | 'LAYOUT_COMPARISON'
+  | 'SIMULATION'
 
+/** hardening PR-2 H3 §8: the full-screen Analysis workspace tabs — Sensitivity
+ * (read-only what-if grid) and Schedule (timeline + time series) join; the
+ * layout comparison is labelled "Layouts" (its id and content are unchanged) */
 export const ANALYSIS_TABS: readonly PanelTab<AnalysisTab>[] = [
   { id: 'OVERVIEW', label: 'Overview' },
   { id: 'ECONOMICS', label: 'Economics' },
+  { id: 'SENSITIVITY', label: 'Sensitivity' },
+  { id: 'SCHEDULE', label: 'Schedule' },
   { id: 'RULES', label: 'Rules' },
-  { id: 'LAYOUT_COMPARISON', label: 'Layout comparison' },
+  { id: 'LAYOUT_COMPARISON', label: 'Layouts' },
   // Phase 23C: external simulation results imported over MineExchange
   // bundles and overlaid on the mine — a separate container, no new AppMode
   { id: 'SIMULATION', label: 'Simulation Results' },

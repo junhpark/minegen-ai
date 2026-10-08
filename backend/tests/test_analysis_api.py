@@ -580,3 +580,75 @@ def test_h3_timeseries_is_read_only_bound_and_reconciles_with_the_analysis(
         )
     # read-only: nothing under derived/ moved
     assert _file_state(longhole.store.derived_dir(longhole.sid)) == before
+
+
+# --------------------------------------------------------------------------- #
+# hardening PR-2 H3 §8.2–8.3 — Planning IRR, GET …/analysis/sensitivity,
+# POST …/analysis/what-if (read-only, in-memory reschedule)
+# --------------------------------------------------------------------------- #
+
+
+def test_h3_sensitivity_and_what_if_are_read_only_and_reschedule_in_memory(
+    longhole: TabularStack,
+) -> None:
+    base = f"/api/v1/scenarios/{longhole.sid}"
+    _put_config(longhole, fx.config_doc())
+    before = _file_state(longhole.store.derived_dir(longhole.sid))
+    analysis = _analysis(longhole)
+    eco = analysis["economics"]
+    assert eco["availability"] == "AVAILABLE"
+    assert eco["planningIrr"]["name"] == "Planning IRR"
+    assert eco["planningIrr"]["status"] in ("DEFINED", "NOT_DEFINED")
+    r = longhole.client.get(f"{base}/analysis/sensitivity")
+    assert r.status_code == 200, r.text
+    doc = r.json()
+    assert doc["label"] == "WHAT-IF OVERRIDE — NOT SCENARIO VALUE"
+    assert doc["availability"] == "AVAILABLE"
+    assert math.isclose(
+        doc["base"]["planningNpv"], eco["summary"]["npv"], rel_tol=1e-9, abs_tol=1e-6
+    )
+    assert doc["base"]["planningIrr"] == eco["planningIrr"]
+    assert doc["base"]["mineDurationDays"] == analysis["schedule"]["mineDurationDays"]
+    assert len(doc["cases"]) == 9 * 6
+    schedule_cases = [c for c in doc["cases"] if c["kind"] == "SCHEDULE"]
+    assert schedule_cases and all(c["outcome"]["status"] == "AVAILABLE" for c in schedule_cases)
+    assert all(c["outcome"]["scheduleRebuilt"] is True for c in schedule_cases)
+    faster = next(
+        c
+        for c in schedule_cases
+        if c["parameter"] == "development_rate" and c["perturbationPct"] == 30.0
+    )
+    slower = next(
+        c
+        for c in schedule_cases
+        if c["parameter"] == "development_rate" and c["perturbationPct"] == -30.0
+    )
+    # a faster development rate never lengthens the mine; a slower one never shortens it
+    assert faster["outcome"]["mineDurationDeltaDays"] <= 1e-9
+    assert slower["outcome"]["mineDurationDeltaDays"] >= -1e-9
+    assert slower["outcome"]["mineDurationDays"] > faster["outcome"]["mineDurationDays"]
+    assert slower["outcome"]["firstProductionDay"] >= faster["outcome"]["firstProductionDay"]
+    economic = [c for c in doc["cases"] if c["kind"] == "ECONOMIC"]
+    assert all(c["outcome"]["scheduleRebuilt"] is False for c in economic)
+    assert all(c["outcome"]["mineDurationDeltaDays"] == 0.0 for c in economic)
+    # explicit perturbations are honoured; a zero perturbation is a 422
+    r = longhole.client.get(f"{base}/analysis/sensitivity", params={"perturbationPct": [5, -5]})
+    assert r.status_code == 200 and r.json()["perturbationsPct"] == [5.0, -5.0]
+    assert len(r.json()["cases"]) == 9 * 2
+    r = longhole.client.get(f"{base}/analysis/sensitivity", params={"perturbationPct": [0]})
+    assert r.status_code == 422
+    # one explicit what-if: the same answer as the matching grid case
+    r = longhole.client.post(f"{base}/analysis/what-if", json={"developmentRate": 1.3})
+    assert r.status_code == 200, r.text
+    w = r.json()
+    assert w["label"] == "WHAT-IF OVERRIDE — NOT SCENARIO VALUE" and w["scheduleRebuilt"] is True
+    assert w["mineDurationDays"] == faster["outcome"]["mineDurationDays"]
+    assert w["planningNpv"] == faster["outcome"]["planningNpv"]
+    r = longhole.client.post(f"{base}/analysis/what-if", json={"grossRevenuePerMinedTonne": 0})
+    assert r.status_code == 422
+    # READ-ONLY: timeline.json and every other derived file are byte- and stat-identical
+    assert _file_state(longhole.store.derived_dir(longhole.sid)) == before
+    assert (
+        longhole.client.get(f"{base}/design/timeline").json()["endDay"]
+        == analysis["schedule"]["endDay"]
+    )

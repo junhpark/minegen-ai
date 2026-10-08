@@ -34,6 +34,10 @@ import { useViewerStore } from '@/stores/viewerStore'
 export default function App() {
   const mode = useViewerStore((s) => s.mode)
   const stage = useViewerStore((s) => s.stage)
+  // hardening PR-2 H3 §8: the Analysis workspace has NO full-size canvas by
+  // default; "Show 3D context" mounts it beside the workspace (split view)
+  const analysisShow3d = useViewerStore((s) => s.analysisShow3d)
+  const analysis = mode === 'ANALYSIS'
   const controlsHost = useShellStore((s) => s.controlsHost)
   const resultsHost = useShellStore((s) => s.resultsHost)
   const walkthrough = mode === 'WALKTHROUGH'
@@ -56,8 +60,8 @@ export default function App() {
         <div className="flex min-h-0 flex-1">
           {walkthrough ? null : <LeftPanel />}
           <main className="relative min-w-0 flex-1">
-            <MineCanvas />
-            {mode === 'ANALYSIS' ? <AnalysisCenter /> : <ViewSwitcher />}
+            {analysis && !analysisShow3d ? null : <MineCanvas />}
+            {analysis ? <AnalysisCenter split={analysisShow3d} /> : <ViewSwitcher />}
           </main>
           {walkthrough ? null : <RightPanel />}
         </div>

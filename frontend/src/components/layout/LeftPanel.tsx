@@ -60,7 +60,7 @@ export function LeftPanel() {
  * stage for that scene revision; a stage click alone never does. A scene
  * that changes while the workspace stays open completes again for the new
  * revision (the user is looking at the new mine's analysis). */
-export function AnalysisCenter() {
+export function AnalysisCenter({ split = false }: { split?: boolean }) {
   const hasScene = useScenarioStore((s) => s.scene !== null)
   const sceneRevision = useScenarioStore((s) => s.sceneRevision)
   const markViewerStageComplete = useViewerStore((s) => s.markViewerStageComplete)
@@ -69,10 +69,13 @@ export function AnalysisCenter() {
   }, [hasScene, sceneRevision, markViewerStageComplete])
   return (
     <div
-      className="absolute inset-0 z-10 overflow-y-auto bg-rock-900"
+      className={`absolute inset-y-0 right-0 z-10 overflow-y-auto bg-rock-900 ${
+        split ? 'w-[58%] border-l border-rock-700' : 'left-0'
+      }`}
       data-testid="analysis-center"
+      data-split={split}
     >
-      <div className="mx-auto max-w-[920px] border-x border-rock-700 bg-rock-800">
+      <div className={`mx-auto border-x border-rock-700 bg-rock-800 ${split ? '' : 'max-w-[1180px]'}`}>
         <AnalysisWorkspace />
       </div>
     </div>

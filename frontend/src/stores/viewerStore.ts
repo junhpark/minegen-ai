@@ -42,9 +42,13 @@ export interface ViewerState {
   designTab: DesignTab
   systemsTab: SystemsTab
   analysisTab: AnalysisTab
+  /** hardening PR-2 H3 §8: the Analysis workspace shows the 3D canvas beside
+   * it only on request ("Show 3D context") — viewer-local, never persisted */
+  analysisShow3d: boolean
   setDesignTab: (tab: DesignTab) => void
   setSystemsTab: (tab: SystemsTab) => void
   setAnalysisTab: (tab: AnalysisTab) => void
+  setAnalysisShow3d: (show: boolean) => void
   /**
    * Hardening H1 §4.1–4.3 — the guided-workflow STAGE the controls column
    * shows. Frontend-local presentation state like the tabs: never persisted,
@@ -159,6 +163,8 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   setSystemsTab: (systemsTab) => set({ systemsTab }),
   analysisTab: 'OVERVIEW',
   setAnalysisTab: (analysisTab) => set({ analysisTab }),
+  analysisShow3d: false,
+  setAnalysisShow3d: (analysisShow3d) => set({ analysisShow3d }),
 
   stage: 'SCENARIO',
   completedViewerStages: NO_COMPLETION,

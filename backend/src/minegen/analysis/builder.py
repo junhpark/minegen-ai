@@ -26,6 +26,7 @@ from minegen.analysis.integrity import (
     verify_production,
     verify_timeline,
 )
+from minegen.analysis.irr import planning_irr
 from minegen.analysis.models import (
     AnalysisSources,
     CashflowBucket,
@@ -517,6 +518,7 @@ def _economics(
             "reason": None,
             "summary": summary,
             "cashflow": buckets,
+            "planning_irr": planning_irr(buckets),
         }
     )
 
