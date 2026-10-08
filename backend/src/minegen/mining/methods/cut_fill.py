@@ -67,6 +67,7 @@ from minegen.mining.methods.solids import (
     weighted_grade,
 )
 from minegen.mining.models import (
+    CUT_FILL_MODEL_VERSION,
     CutFillBackfill,
     CutFillBlock,
     CutFillCut,
@@ -94,6 +95,7 @@ def _failed(source_revision: str, reason: str) -> CutFillPayload:
         failure_reason=reason,
         source_revision=source_revision,
         method="CUT_AND_FILL",
+        cut_fill_model_version=CUT_FILL_MODEL_VERSION,
         sequencing=None,
         blocks=[],
         panels=[],
@@ -493,6 +495,7 @@ def generate_cut_fill(
         failure_reason=first_failure,
         source_revision=source_revision,
         method="CUT_AND_FILL",
+        cut_fill_model_version=CUT_FILL_MODEL_VERSION,
         sequencing=sequencing,
         blocks=blocks,
         panels=panels,
@@ -515,7 +518,14 @@ class CutFillPlan:
     display_name = "Cut & Fill"
 
     def production_development(self, scenario: Scenario) -> ProductionDevelopment:
-        return ProductionDevelopment(method=self.method.value, status="IMPLEMENTED")
+        # PR #54 review B2: the level development carries the Cut & Fill model
+        # version its production access pattern belongs to (the panel pattern
+        # of H2-CF) — a levels.json of another version is LEGACY to the reader
+        return ProductionDevelopment(
+            method=self.method.value,
+            status="IMPLEMENTED",
+            model_version=CUT_FILL_MODEL_VERSION,
+        )
 
     def production_access_pattern(self, scenario: Scenario) -> ProductionAccessPattern | None:
         params = scenario.mining.method_parameters

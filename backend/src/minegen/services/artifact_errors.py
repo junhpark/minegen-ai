@@ -367,6 +367,49 @@ class ArtifactMalformedError(RuntimeError):
         self.detail = detail
 
 
+class CutFillLegacyArtifactError(RuntimeError):
+    """PR #54 review B2 — a persisted Cut & Fill artifact (``stopes.json``
+    under CUT_AND_FILL, or a ``levels.json`` whose ``productionDevelopment``
+    is CUT_AND_FILL) of an EARLIER Cut & Fill model version than
+    ``mining.models.CUT_FILL_MODEL_VERSION``: the PR #53 shape (one central
+    crosscut per level, no blocks / panels / sill mats). It is a recognized
+    older model, not corruption — never ARTIFACT_MALFORMED, never
+    reinterpreted and never served: the scene read migrates it explicitly by
+    discarding the Levels closure (``WorldService.scene``), every other read
+    answers this typed 409 until the levels are regenerated."""
+
+    code: ClassVar[str] = "CUT_FILL_LEGACY_ARTIFACT"
+    http_status: ClassVar[int] = 409
+
+    def __init__(
+        self,
+        artifact: str,
+        found_version: int | None,
+        required_version: int,
+        *,
+        source_artifact: str | None = None,
+    ) -> None:
+        found = "absent" if found_version is None else str(found_version)
+        subject = (
+            f"the persisted artifact '{artifact}' is a legacy Cut & Fill artifact"
+            if source_artifact is None
+            else (
+                f"the persisted artifact '{artifact}' derives from the legacy Cut & Fill "
+                f"artifact '{source_artifact}'"
+            )
+        )
+        super().__init__(
+            f"{subject} (cutFillModelVersion {found}, current {required_version}); it is "
+            "never reinterpreted — the scene read discards the level development and "
+            "everything below it, then regenerate Levels → Production → Schedule"
+        )
+        self.artifact = artifact
+        self.found_version = found_version
+        self.required_version = required_version
+        #: the LEGACY artifact this one derives from (``None`` on the source itself)
+        self.source_artifact = source_artifact
+
+
 class ArtifactStaleError(RuntimeError):
     """A persisted artifact is well-shaped but a provenance check against
     another file of the SAME read snapshot failed, and no rule-named stale

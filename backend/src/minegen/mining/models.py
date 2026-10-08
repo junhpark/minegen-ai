@@ -12,12 +12,32 @@ quantities, never reserve or resource estimates.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import Field
 
 from minegen.core.enums import MiningMethodType
 from minegen.core.models import ApiModel
+
+#: PR #54 review B2 — the Cut & Fill production MODEL VERSION. It pins the
+#: SEMANTIC shape of the persisted Cut & Fill artifacts (``stopes.json`` for
+#: CUT_AND_FILL and the ``productionDevelopment`` block of ``levels.json``):
+#:
+#:   (absent)  PR #53 Cut & Fill — one central FixedAccessPattern crosscut per
+#:             level, lifts × cuts without blocks / panels / rib pillars /
+#:             sill mats
+#:   2         hardening PR-2 H2-CF — the panel / block structure of rule 195
+#:             (``PanelAccessPattern``, ``blocks[]``, ``panels[]``,
+#:             ``ribPillars[]``, cemented sill mats, ``sequencing``)
+#:
+#: A persisted artifact of another version is LEGACY to the reader
+#: (``services/artifact_reader.py``: the typed ``CUT_FILL_LEGACY_ARTIFACT``
+#: state, never ARTIFACT_MALFORMED and never reinterpreted); the scene read
+#: migrates it explicitly by discarding the Levels closure. The global
+#: scenario ``schemaVersion`` stays 2 — the scenario DOCUMENT did not change,
+#: only the derived Cut & Fill artifacts did. A new structural change to the
+#: Cut & Fill payload bumps this constant (and the ``Literal`` on the payload).
+CUT_FILL_MODEL_VERSION: Final[int] = 2
 
 
 class StopeLocalBounds(ApiModel):
@@ -298,6 +318,10 @@ class CutFillPayload(ApiModel):
     failure_reason: str | None
     source_revision: str
     method: Literal["CUT_AND_FILL"]
+    #: ``CUT_FILL_MODEL_VERSION`` — REQUIRED: a document without it (or with
+    #: another value) is a pre-H2-CF artifact, detected by the reader BEFORE
+    #: this model is applied (``CUT_FILL_LEGACY_ARTIFACT``)
+    cut_fill_model_version: Literal[2]
     sequencing: CutFillSequencing | None
     blocks: list[CutFillBlock]
     panels: list[CutFillPanel]

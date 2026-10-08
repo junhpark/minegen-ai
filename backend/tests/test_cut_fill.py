@@ -28,7 +28,11 @@ from minegen.mining.methods.cut_fill import (
 from minegen.mining.methods.integrity import cut_fill_integrity
 from minegen.mining.methods.registry import plan_for
 from minegen.mining.methods.solids import MAX_PRODUCTION_SOLIDS, equal_partition
-from minegen.mining.models import CutFillPayload, parse_production_payload
+from minegen.mining.models import (
+    CUT_FILL_MODEL_VERSION,
+    CutFillPayload,
+    parse_production_payload,
+)
 from minegen.world.orebody import TabularOrebody
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 from tests.conftest import small_scenario
@@ -100,10 +104,13 @@ def test_cf2_production_development_is_the_backbone_plus_one_access_per_panel(
     assert isinstance(ob, TabularOrebody)
     levels = cf_chain["levels"]
     assert levels["status"] == "SUCCESS", levels["failureReason"]
+    # PR #54 review B2: the level development is stamped with the Cut & Fill
+    # model version its panel access pattern belongs to
     assert levels["productionDevelopment"] == {
         "method": "CUT_AND_FILL",
         "status": "IMPLEMENTED",
         "reason": None,
+        "modelVersion": CUT_FILL_MODEL_VERSION,
     }
     centres = PanelAccessPattern(60.0).offsets(ob.half_length)
     n = len(centres)

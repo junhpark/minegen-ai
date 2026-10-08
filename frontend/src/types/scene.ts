@@ -1419,6 +1419,10 @@ export interface CutFillPayload {
   failureReason: string | null
   sourceRevision: string
   method: 'CUT_AND_FILL'
+  /** PR #54 review B2: the Cut & Fill production MODEL VERSION (backend
+   * `CUT_FILL_MODEL_VERSION`); a persisted artifact of another version is a
+   * typed LEGACY read the scene migrates — it never reaches the frontend */
+  cutFillModelVersion: 2
   sequencing: CutFillSequencing | null
   blocks: CutFillBlock[]
   panels: CutFillPanel[]
@@ -1540,6 +1544,9 @@ export interface LevelsPayload {
     method: string
     status: 'IMPLEMENTED' | 'UNSUPPORTED_METHOD'
     reason: string | null
+    /** PR #54 review B2: present only for a method that versions its
+     * production development (Cut & Fill) */
+    modelVersion?: number | null
   } | null
   developments: LevelDevelopment[]
   levels: {
@@ -1920,6 +1927,24 @@ export interface AvailableMethod {
   defaultParameters: MethodParameters | null
 }
 
+/**
+ * PR #54 review B2 — what ONE scene read migrated: a recognized earlier
+ * derived-artifact model (today the PR #53 Cut & Fill artifacts) whose
+ * Levels closure the backend discarded under the scenario lock. Empty on
+ * every ordinary read; the frontend only shows it and regenerates nothing.
+ */
+export interface SceneMigration {
+  code: 'CUT_FILL_LEGACY_ARTIFACTS_DISCARDED'
+  /** the version-carrying artifacts found legacy */
+  artifacts: string[]
+  /** the well-formed artifacts that were legacy by derivation */
+  derivedArtifacts: string[]
+  reason: string
+  resetFrom: 'LEVELS'
+  /** every file the migration deleted, in deletion order */
+  deleted: string[]
+}
+
 export interface WorldScene {
   scenarioId: string
   coordinateSystem: 'ENU_Z_UP'
@@ -1968,4 +1993,6 @@ export interface WorldScene {
   timeline: TimelinePayload | null
   communication: CommunicationPayload | null
   sensors: SensorPayload | null
+  /** PR #54 review B2: the migrations THIS read performed (absent / empty normally) */
+  migrations?: SceneMigration[]
 }

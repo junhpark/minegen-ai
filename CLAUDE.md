@@ -2721,3 +2721,36 @@ code, the code and the rule win and the map is corrected.
      demo is a baked synthetic sandbox mine — never a measured, estimated or
      imported orebody — and the Hugging Face deployment (D0) stays a
      separate, deferred item.
+223. Derived-artifact MODEL VERSIONS and the legacy read state (PR #54
+     review B2). A derived artifact whose SEMANTIC shape changes without a
+     scenario-document change carries its own scoped version, never a
+     bump of the scenario `schemaVersion` (which stays 2): the Cut & Fill
+     production model is `mining.models.CUT_FILL_MODEL_VERSION` (2 =
+     hardening PR-2 H2-CF; absent = the PR #53 shape), REQUIRED on the
+     CUT_AND_FILL `stopes.json` (`cutFillModelVersion`) and stamped on the
+     `levels.json` `productionDevelopment` block (`modelVersion`, OMITTED —
+     not `null` — for every other method, so the Longhole / Room & Pillar
+     artifacts stay byte-identical under rules 192 / 193). The
+     `ArtifactReader` decides a recognized earlier version on the RAW
+     document BEFORE the parser (`ReadSpec.pre_checks`) as the fifth read
+     state `LEGACY` with the typed `CUT_FILL_LEGACY_ARTIFACT` (409) — never
+     ARTIFACT_MALFORMED, never a loosened parser, never a reinterpretation;
+     every registry descendant of the level development (network,
+     timeline, communication, sensors, …) reads LEGACY BY DERIVATION in the
+     same snapshot (the version-carrying sources are observed beside it),
+     so no read serves a product of a legacy level development. The
+     migration is EXPLICIT and lives in ONE place: `GET …/scene`
+     (`WorldService.scene`) discards the LEVELS registry closure under the
+     scenario lock — the same `reset_plan` "Reset from here" executes, the
+     same RESET_JOB_RUNNING refusal under a QUEUED / RUNNING job, nothing
+     deleted on refusal, a baked demo never written (the typed error is
+     raised instead) — keeps the world, the layout catalogue, the selection,
+     the level accesses and the ramp source, and reports it in the scene's
+     `migrations[]` (`CUT_FILL_LEGACY_ARTIFACTS_DISCARDED`: sources, derived
+     artifacts, deleted files, resetFrom LEVELS); the frontend shows the
+     record and regenerates nothing. The regression fixture
+     `tests/fixtures/h2cf/legacy_pr53_cut_fill/` is a REAL PR #53 scenario
+     directory captured on the pinned base `1bd68c8` through that code's
+     own routes (`scripts/h2cf_capture_legacy_cut_fill_fixture.py`, which
+     refuses any other HEAD; `stat.json` restores the size / mtime_ns
+     identities rule 60 binds to) and is never regenerated from newer code.

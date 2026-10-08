@@ -56,6 +56,7 @@ from minegen.services.artifact_errors import (
     CapabilityGraphNotGeneratedError,
     CapabilityGraphStaleError,
     CommunicationNotGeneratedError,
+    CutFillLegacyArtifactError,
     DeclineNotGeneratedError,
     DevelopmentMeshNotGeneratedError,
     LayoutSelectionStaleError,
@@ -179,6 +180,8 @@ CODE_LADDER: Final[tuple[tuple[type[Exception], str], ...]] = (
     (SensorsNotGeneratedError, "SENSORS_NOT_GENERATED"),
     (CommunicationNotGeneratedError, "COMMUNICATION_NOT_GENERATED"),
     # AC-01F read states (A1 / A9 / A14) — new codes, all 409
+    # PR #54 review B2: a recognized EARLIER Cut & Fill model (never MALFORMED)
+    (CutFillLegacyArtifactError, "CUT_FILL_LEGACY_ARTIFACT"),
     (ArtifactMalformedError, "ARTIFACT_MALFORMED"),
     (ArtifactStaleError, "ARTIFACT_STALE"),
     (SceneArtifactInvalidError, "SCENE_ARTIFACT_INVALID"),
@@ -330,6 +333,9 @@ ERRORS: Final[dict[str, ErrorSpec]] = {
         "scenario '{scenario_id}' has no communication plan; "
         "POST …/infrastructure/communication first",
         "api/infrastructure.py:61-67",
+    ),
+    "CUT_FILL_LEGACY_ARTIFACT": ErrorSpec(
+        409, None, "PR #54 review B2 services/artifact_errors.py::CutFillLegacyArtifactError"
     ),
     "ARTIFACT_MALFORMED": ErrorSpec(409, None, "AC-01F A1"),
     "ARTIFACT_STALE": ErrorSpec(409, None, "AC-01F A1"),

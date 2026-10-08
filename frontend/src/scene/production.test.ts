@@ -46,6 +46,7 @@ const cutFill = {
   failureReason: null,
   sourceRevision: 'r',
   method: 'CUT_AND_FILL',
+  cutFillModelVersion: 2,
   lifts: [],
   cuts: [
     { id: 'CUT:1', geometry, report },

@@ -63,7 +63,7 @@ from typing import Any, Literal
 from pydantic import ValidationError
 
 from minegen.capability.models import CapabilityGraphPayload
-from minegen.core.artifact_registry import derived_artifacts, spec
+from minegen.core.artifact_registry import derived_artifacts, invalidated_by, spec
 from minegen.core.artifacts import (
     CAPABILITY_GRAPH_ARTIFACT,
     COMMUNICATION_ARTIFACT,
@@ -98,7 +98,7 @@ from minegen.layout.certification import (
     ClearancePolicyReconstructionError,
 )
 from minegen.levels.models import LevelsPayload
-from minegen.mining.models import parse_production_payload
+from minegen.mining.models import CUT_FILL_MODEL_VERSION, parse_production_payload
 from minegen.network.models import NetworkPayload
 from minegen.scheduling.models import TimelinePayload
 from minegen.services.artifact_errors import (
@@ -107,6 +107,7 @@ from minegen.services.artifact_errors import (
     CapabilityGraphNotGeneratedError,
     CapabilityGraphStaleError,
     CommunicationNotGeneratedError,
+    CutFillLegacyArtifactError,
     DeclineNotGeneratedError,
     DevelopmentMeshNotGeneratedError,
     LayoutSelectionStaleError,
@@ -133,6 +134,8 @@ from minegen.services.scenario_service import ScenarioNotFoundError, ScenarioSto
 from minegen.shafts.models import ShaftsPayload
 
 __all__ = [
+    "CUT_FILL_LEGACY_ARTIFACTS",
+    "LEGACY_DOWNSTREAM_FILES",
     "READ_SPECS",
     "ArtifactRead",
     "ArtifactReader",
@@ -142,12 +145,16 @@ __all__ = [
     "ReadState",
 ]
 
-ReadState = Literal["ABSENT", "VALID", "STALE", "MALFORMED"]
+ReadState = Literal["ABSENT", "VALID", "STALE", "MALFORMED", "LEGACY"]
 
 STATE_ABSENT: ReadState = "ABSENT"
 STATE_VALID: ReadState = "VALID"
 STATE_STALE: ReadState = "STALE"
 STATE_MALFORMED: ReadState = "MALFORMED"
+#: PR #54 review B2: a present, well-formed artifact of a RECOGNIZED earlier
+#: model version (today: the PR #53 Cut & Fill shape). Neither MALFORMED nor
+#: STALE — it is never served, and the scene read migrates it explicitly.
+STATE_LEGACY: ReadState = "LEGACY"
 
 RAMP_SOURCES: tuple[RampSource, ...] = ("LEGACY", "LAYOUT_V2")
 
@@ -248,6 +255,11 @@ class ReadSpec:
     shape: ShapeCheck | None = None
     #: ORDERED artifact-specific checks, run after parse + model/shape
     checks: tuple[Check, ...] = ()
+    #: PR #54 review B2: ORDERED checks run on the parsed JSON object BEFORE
+    #: the model / parser is applied — a recognized EARLIER model version of
+    #: the artifact (the PR #53 Cut & Fill shape fails today's parser) is
+    #: classified LEGACY here, never MALFORMED
+    pre_checks: tuple[Check, ...] = ()
     #: UPSTREAM artifacts whose live revision this one records — a registry
     #: DEPENDENCY link (``invalidated_by`` closes over it), observed in the
     #: same snapshot
@@ -836,6 +848,72 @@ def _development_mesh_source_check(
     return None
 
 
+def _cut_fill_version_of(block: Any, key: str) -> int | None:
+    value = block.get(key) if isinstance(block, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _stopes_cut_fill_legacy_check(
+    document: dict[str, Any], _snapshot: ArtifactSnapshot
+) -> tuple[ReadState, Exception] | None:
+    """PR #54 review B2: a CUT_AND_FILL production document must carry the
+    current ``cutFillModelVersion``; the PR #53 shape (absent) is LEGACY —
+    decided on the raw document BEFORE ``parse_production_payload`` would
+    refuse it as MALFORMED. Every other method is untouched."""
+    if document.get("method") != "CUT_AND_FILL":
+        return None
+    found = _cut_fill_version_of(document, "cutFillModelVersion")
+    if found == CUT_FILL_MODEL_VERSION:
+        return None
+    return (
+        STATE_LEGACY,
+        CutFillLegacyArtifactError(STOPES_ARTIFACT, found, CUT_FILL_MODEL_VERSION),
+    )
+
+
+def _levels_cut_fill_legacy_check(
+    document: dict[str, Any], _snapshot: ArtifactSnapshot
+) -> tuple[ReadState, Exception] | None:
+    """PR #54 review B2: a level development built for CUT_AND_FILL carries
+    the model version of the production access pattern it was built with
+    (``productionDevelopment.modelVersion``); a PR #53 levels.json (central
+    FixedAccessPattern crosscut, no version) is LEGACY. Longhole / Room &
+    Pillar blocks carry no version and are never affected."""
+    block = document.get("productionDevelopment")
+    if not isinstance(block, dict) or block.get("method") != "CUT_AND_FILL":
+        return None
+    found = _cut_fill_version_of(block, "modelVersion")
+    if found == CUT_FILL_MODEL_VERSION:
+        return None
+    return (
+        STATE_LEGACY,
+        CutFillLegacyArtifactError(LEVELS_ARTIFACT, found, CUT_FILL_MODEL_VERSION),
+    )
+
+
+#: the artifacts that CARRY the Cut & Fill model version — the LEGACY sources
+#: the PR #54 review B2 migration recognizes (the LEVELS stage closure is what
+#: it discards, ``services/workflow_stages.py``)
+CUT_FILL_LEGACY_ARTIFACTS: tuple[str, ...] = (LEVELS_ARTIFACT, STOPES_ARTIFACT)
+
+
+def _legacy_downstream_files() -> frozenset[str]:
+    """Every file the registry derives from ``levels.json`` (both ramp sources
+    — the level development is downstream of every ramp owner, so the two
+    closures coincide), minus the version-carrying sources themselves: a
+    VALID-looking network / timeline / communication … built on a legacy
+    Cut & Fill level development is served by no read."""
+    names: set[str] = set()
+    for source in RAMP_SOURCES:
+        for artifact in invalidated_by((LEVELS_ARTIFACT,), source):
+            names.update(f.name for f in artifact.files)
+    return frozenset(names) - set(CUT_FILL_LEGACY_ARTIFACTS)
+
+
+#: the files a LEGACY source makes LEGACY by derivation (PR #54 review B2)
+LEGACY_DOWNSTREAM_FILES: frozenset[str] = _legacy_downstream_files()
+
+
 def _spec(name: str, **kwargs: Any) -> ReadSpec:
     return ReadSpec(name=name, **kwargs)
 
@@ -935,7 +1013,10 @@ READ_SPECS: Mapping[str, ReadSpec] = {
     ),
     # -- typed payloads ------------------------------------------------------ #
     LEVELS_ARTIFACT: _spec(
-        LEVELS_ARTIFACT, absent_error=LevelsNotGeneratedError, model=LevelsPayload
+        LEVELS_ARTIFACT,
+        absent_error=LevelsNotGeneratedError,
+        model=LevelsPayload,
+        pre_checks=(_levels_cut_fill_legacy_check,),
     ),
     SHAFTS_ARTIFACT: _spec(
         SHAFTS_ARTIFACT,
@@ -970,7 +1051,10 @@ READ_SPECS: Mapping[str, ReadSpec] = {
     # Phase 21B/C: the ACTIVE PRODUCTION artifact — the compatibility path
     # ``stopes.json`` carries the method-specific typed payload union
     STOPES_ARTIFACT: _spec(
-        STOPES_ARTIFACT, absent_error=StopesNotGeneratedError, parser=parse_production_payload
+        STOPES_ARTIFACT,
+        absent_error=StopesNotGeneratedError,
+        parser=parse_production_payload,
+        pre_checks=(_stopes_cut_fill_legacy_check,),
     ),
     TIMELINE_ARTIFACT: _spec(
         TIMELINE_ARTIFACT, absent_error=TimelineNotGeneratedError, model=TimelinePayload
@@ -1114,6 +1198,13 @@ class ArtifactReader:
             sidecar = READ_SPECS[artifact.name].commit_record
             if sidecar is not None and sidecar not in files:
                 files.append(sidecar)
+        # PR #54 review B2: a file derived from the level development is read
+        # beside the version-carrying sources, so its LEGACY-by-derivation
+        # state is decided inside the SAME snapshot (never a second probe)
+        if any(name in LEGACY_DOWNSTREAM_FILES for name in files):
+            for sentinel in CUT_FILL_LEGACY_ARTIFACTS:
+                if sentinel not in files:
+                    files.append(sentinel)
         return tuple(files)
 
     # -- read (pure over the snapshot) -------------------------------------- #
@@ -1128,6 +1219,20 @@ class ArtifactReader:
             raise KeyError(f"'{name}' was not observed by this snapshot")
         if not obs.present:
             return ArtifactRead(name=name, state=STATE_ABSENT)
+        if name in LEGACY_DOWNSTREAM_FILES:
+            upstream = self._legacy_upstream(snapshot)
+            if upstream is not None:
+                return ArtifactRead(
+                    name=name,
+                    state=STATE_LEGACY,
+                    revision=obs.revision,
+                    error=CutFillLegacyArtifactError(
+                        name,
+                        upstream.found_version,
+                        upstream.required_version,
+                        source_artifact=upstream.artifact,
+                    ),
+                )
         if obs.data is None:
             return self._malformed(name, obs, "its bytes could not be read")
         try:
@@ -1138,6 +1243,11 @@ class ArtifactReader:
             return self._malformed(
                 name, obs, f"not a JSON object (it is a {type(document).__name__})"
             )
+        for pre_check in read_spec.pre_checks:
+            outcome = pre_check(document, snapshot)
+            if outcome is not None:
+                state, error = outcome
+                return ArtifactRead(name=name, state=state, revision=obs.revision, error=error)
         if read_spec.model is not None:
             try:
                 model: ApiModel | None = read_spec.model.model_validate(document)
@@ -1166,6 +1276,19 @@ class ArtifactReader:
         return ArtifactRead(
             name=name, state=STATE_VALID, raw=document, model=model, revision=obs.revision
         )
+
+    def _legacy_upstream(self, snapshot: ArtifactSnapshot) -> CutFillLegacyArtifactError | None:
+        """The typed error of the first version-carrying source of ``snapshot``
+        that reads LEGACY (PR #54 review B2), or ``None``. The sources are not
+        downstream files themselves, so this never recurses."""
+        for sentinel in CUT_FILL_LEGACY_ARTIFACTS:
+            obs = snapshot.observation(sentinel)
+            if obs is None or not obs.present:
+                continue
+            read = self.read(snapshot, sentinel)
+            if read.state == STATE_LEGACY and isinstance(read.error, CutFillLegacyArtifactError):
+                return read.error
+        return None
 
     @staticmethod
     def _malformed(name: str, obs: FileObservation, detail: str) -> ArtifactRead:

@@ -460,7 +460,14 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      {"type":"error","code":"JOB_NOT_FOUND"}
     GET  …/scene                                     includes "accessTargets", "decline",
                                                      "smoothedDecline", "tunnelMesh" and
-                                                     "developmentMesh" (or null)
+                                                     "developmentMesh" (or null), and
+                                                     "migrations": [] — PR #54 review B2
+                                                     (rule 223): the legacy derived artifacts
+                                                     THIS read migrated, each
+                                                     {code: CUT_FILL_LEGACY_ARTIFACTS_DISCARDED,
+                                                     artifacts[], derivedArtifacts[], reason,
+                                                     resetFrom: LEVELS, deleted[]}; empty on
+                                                     every ordinary read
     GET  /api/v1/scenarios/{id}/design/reset-plan?from=<stage>
                                                      hardening H1 §4.4 "Reset from here": the
                                                      read-only preview — the stage's own artifacts
@@ -677,6 +684,7 @@ holds across its write AND its cascade — and then classifies each artifact:
 | VALID | exists, parses to a JSON object, satisfies its payload model / first-level shape, and passes every provenance check of the same observation | 200, unchanged bytes | the payload |
 | STALE | well-shaped, but a persisted provenance field disagrees with the live revision of the upstream file it names, or a co-published pair disagrees | 409 | the whole scene is refused |
 | MALFORMED | present but not a usable document: unreadable bytes, not a JSON object, a failed model / shape precondition, or an incomplete two-file unit (see the GLB note below) | 409 | the whole scene is refused |
+| LEGACY | **PR #54 review B2 (rule 223).** a present, well-formed artifact of a RECOGNIZED earlier model version — today the PR #53 Cut & Fill `stopes.json` (no `cutFillModelVersion`) and `levels.json` (`productionDevelopment` without `modelVersion`) — decided on the raw document BEFORE the parser, plus every registry descendant of such a level development (LEGACY by derivation, observed in the same snapshot) | 409 `CUT_FILL_LEGACY_ARTIFACT` | MIGRATED: the LEVELS closure is discarded under the scenario lock and reported in `migrations[]`; the scene is then served |
 
 **The missing-vs-stale contract.** ABSENT is expected and quiet. STALE and
 MALFORMED are always loud, on every surface (route, builder POST, async job,
@@ -691,6 +699,7 @@ New error codes (all HTTP 409):
 | code | detail | raised when |
 |---|---|---|
 | `ARTIFACT_MALFORMED` | `code`, `message` (names the FILE, never a path) | a present artifact is not a usable document |
+| `CUT_FILL_LEGACY_ARTIFACT` | `code`, `message` (names the FILE and, for a derived artifact, the legacy SOURCE it derives from) | **PR #54 review B2 (rule 223).** a present artifact is a recognized EARLIER Cut & Fill model (the PR #53 shape) or derives from one; it is never served and never reinterpreted — `GET …/scene` migrates it (discarding the Levels closure, 409 `RESET_JOB_RUNNING` while the scenario has a QUEUED / RUNNING job, the typed code itself on a read-only demo), every other read answers this code until Levels are regenerated |
 | `ARTIFACT_STALE` | `code`, `message` | a provenance check failed and no rule-named stale code exists. Producers: `development_mesh.sources.rampSource` vs the active source, and (AC-01F.2 correction) a mesh pair whose INTERNAL publication sidecar does not name the report and GLB on disk — on `GET …/design/tunnel`, `GET …/design/development-mesh`, both `mesh.glb` routes and in the scene |
 | `WORLD_PUBLICATION_STALE` | `code`, `message` | **AC-01F.2 correction (B1).** `arrays.npz` exists, but `derived/world.json` — the world COMMIT RECORD — does not commit THIS `scenario.json` and THIS `arrays.npz`. It is a *_STALE code in the exact sense of `SHAFTS_STALE` / `CAPABILITY_GRAPH_STALE`: a published product whose own recorded inputs no longer match the live ones. Reachable states: a writer died between the document publication and the derived invalidation (a fresh process previously served that as **200** — NEW document beside an OLD world), a generation died after publishing `arrays.npz` and before its record, an input was replaced afterwards (a content-preserving `touch` counts — rule 60 is a stat identity), or a CROSS-PROCESS reader caught a live writer between the two publications. That last case is the reason the message does NOT claim a retry never succeeds; it is deliberately NOT folded into the bounded `READ_SNAPSHOT_CHANGED` retry, which exists for inputs that moved under ONE reader. The remedy named to the client is `POST …/world/generate`. `WORLD_NOT_GENERATED` (no `arrays.npz`) and `WORLD_ARTIFACT_INCOMPATIBLE` (a Phase-17 NPZ) both keep precedence over it |
 | `SCENE_ARTIFACT_INVALID` | `code`, `message`, `artifacts: [{artifact, state, code, message}]` | `GET …/scene` found at least one present-but-invalid artifact; EVERY failure of that snapshot is listed, each with its own specific code (`SHAFTS_STALE`, `LAYOUT_V2_CLEARANCE_MISMATCH`, `ARTIFACT_MALFORMED`, …). No filesystem path, traceback or exception repr is exposed |

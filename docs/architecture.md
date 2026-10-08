@@ -2167,6 +2167,28 @@ acceptance.
   `sequencing`, `blocks[]`, `panels[]`, per-cut block / panel / lift ids,
   per-backfill `cemented` and rib pillars through the existing PILLAR
   entity kind; AnyLogic `production_units.csv` gains the `cemented` column.
+- **PR #54 review B2 — legacy Cut & Fill artifacts are migrated, never
+  refused (rule 223).** A PR #53 Cut & Fill mine (central `FixedAccessPattern`
+  crosscut, pre-H2-CF payload) opened under this code used to fail whole
+  (`SCENE_ARTIFACT_INVALID` / `ARTIFACT_MALFORMED`). The Cut & Fill
+  production model now carries `mining.models.CUT_FILL_MODEL_VERSION` (2):
+  required on the CUT_AND_FILL `stopes.json` (`cutFillModelVersion`), stamped
+  on `levels.json` `productionDevelopment.modelVersion` (omitted, not null,
+  for the other methods — the Longhole baseline stays byte-identical). The
+  reader (`services/artifact_reader.py`) classifies an earlier version on the
+  RAW document before the parser (`ReadSpec.pre_checks`) as the new read
+  state LEGACY (typed `CUT_FILL_LEGACY_ARTIFACT`) and every registry
+  descendant of that level development as LEGACY by derivation (the sources
+  are observed in the same snapshot); `WorldService.scene` migrates
+  explicitly — the LEVELS closure through the H1 §4.4 `reset_plan` under the
+  scenario lock (RESET_JOB_RUNNING under a running job, a demo never written)
+  — keeps world / catalogue / selection / accesses / ramp source and reports
+  `migrations[]`; the frontend shows the record (`SceneMigrationNotice`) and
+  the stepper reads Levels as next. Regression: a REAL PR #53 scenario
+  directory captured on the pinned base `1bd68c8`
+  (`scripts/h2cf_capture_legacy_cut_fill_fixture.py` →
+  `tests/fixtures/h2cf/legacy_pr53_cut_fill/`, `stat.json` restoring the
+  rule-60 stat identities; `tests/test_cut_fill_legacy_migration.py`).
 - **H2-SH — shaft excavation mesh + shaft editor (rule 182).**
   `design/shaft_mesh.py` sweeps the shafts.json axis segments with ONE
   constant right-handed frame (right +X, up +Y, forward −Z) through the
