@@ -195,11 +195,17 @@ def test_e2e_anylogic_cut_fill_backfill_is_never_tonnes(cut_fill: TabularStack) 
         assert u["productionKind"] == "BACKFILL" and u["backfill"] == "true"
         assert u["plannedTonnes"] == "" and u["parentEntityId"] == bf["sourceCutEntityId"]
         assert float(u["geometricVolumeM3"]) == bf["volumeM3"]
+        # 1.3.1: the cemented sill-mat flag travels with the backfill row
+        assert u["cemented"] == ("true" if bf["cemented"] else "false")
     for c in cuts.values():
         u = units[c["entityId"]]
         assert u["productionKind"] == "CUT" and float(u["plannedTonnes"]) == c["tonnes"]
+        assert u["cemented"] == ""  # only a backfill row carries the flag
     d = pkg.manifest["details"]
     assert d["productionKind"] == "CUT_FILL" and d["backfillRecordCount"] == len(cf["backfills"])
+    assert d["cementedBackfillCount"] == sum(1 for bf in cf["backfills"] if bf["cemented"]) > 0
+    # rib pillars (none at the default width) would be PILLAR rows, retained
+    assert d["retainedPillarCount"] == len(cf["ribPillars"]) == 0
     # BACKFILL / CURE tasks target the CUT, never the backfill record
     for t in pkg.table("data/tasks.csv"):
         if t["taskType"] in ("BACKFILL", "CURE"):
@@ -216,6 +222,7 @@ def test_e2e_anylogic_room_pillar_pillars_are_retained(room_pillar: TabularStack
         u = units[p["entityId"]]
         assert u["productionKind"] == "PILLAR" and u["retained"] == "true"
         assert u["plannedTonnes"] == "" and float(u["geometricVolumeM3"]) == p["geometricVolumeM3"]
+        assert u["cemented"] == ""
     rooms = {r["entityId"] for r in rp["rooms"]}
     for x in rp["extractionUnits"]:
         u = units[x["entityId"]]

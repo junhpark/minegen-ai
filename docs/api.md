@@ -41,8 +41,9 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      stopeLength, minimumPillar} resolved by the
                                                      backend mining-method registry, rule 192)
     POST /api/v1/scenarios/{id}/export/mine-exchange MineExchange bundle (docs/mine-exchange.md);
-                                                     X-MineExchange-Version 1.3.0 since Phase 23B
-                                                     (1.3: operations/timeline.json + tasks.csv, the
+                                                     X-MineExchange-Version 1.3.1 (1.3.0 since Phase 23B,
+                                                     1.3.1 since hardening PR-2 H2-CF: additive Cut & Fill
+                                                     block / panel fields; 1.3: operations/timeline.json + tasks.csv, the
                                                      MineTimeline projection with external target
                                                      references, TIMELINE omission ARTIFACT_ABSENT /
                                                      SOURCE_NOT_SUCCESS; 1.1: semantics/mining_method.json, production
@@ -60,7 +61,7 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      (0.2.0 VENTSIM / ANYLOGIC since Phase 23C —
                                                      round-trip result kit under roundtrip/;
                                                      0.1.0 UNITY / UNREAL) / X-MineExchange-Version
-                                                     (1.3.0), filename minegen_<id>_<target>.zip;
+                                                     (1.3.1), filename minegen_<id>_<target>.zip;
                                                      read-only, nothing generated or persisted,
                                                      deterministic.
     POST   /api/v1/scenarios/{id}/results/import/ventsim    Phase 23C (rules 213–218,

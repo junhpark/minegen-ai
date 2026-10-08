@@ -121,7 +121,7 @@ def test_x1_world_only_export_carries_method_semantics_and_no_production(
     assert not any(p.startswith("production/") for p in b.entries)
     assert not any(e["kind"] == "STOPE" for e in b.manifest["entities"])
     mm = b.json("semantics/mining_method.json")
-    assert mm["mineExchangeVersion"] == MINE_EXCHANGE_VERSION == "1.3.0"
+    assert mm["mineExchangeVersion"] == MINE_EXCHANGE_VERSION == "1.3.1"
     assert mm["semanticType"] == "MINING_METHOD"
     assert mm["requestedMethod"] == "LONGHOLE_OPEN_STOPING"
     assert mm["displayName"] == "Longhole Open Stoping"

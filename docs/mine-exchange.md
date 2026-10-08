@@ -22,7 +22,7 @@ capability stay separate files with separate meanings.
 
 ## Version
 
-`manifest.json → mineExchangeVersion = "1.3.0"` (semantic versioning). 1.1
+`manifest.json → mineExchangeVersion = "1.3.1"` (semantic versioning). 1.1
 (Phase 21A) is an ADDITIVE minor version over 1.0: the mining-method
 semantics document, the production stopes and the `STOPE` entity kind
 (see "Mining method and production stopes"); every 1.0 file, id and meaning
@@ -36,11 +36,23 @@ additive: the MineTimeline projection (`operations/timeline.json`,
 `MINE_TIMELINE_TASKS`) and the `TIMELINE` omission group now following the
 `ARTIFACT_ABSENT` / `SOURCE_NOT_SUCCESS` semantics (see "Timeline
 semantics"); every 1.2 file is byte-identical and no geometry binary
-changed. The
+changed. 1.3.1 (hardening PR-2, H2-CF) is an additive PATCH: no new file
+group, entity kind or omission group — existing documents gain the fields
+the 1.3.0 exporter would otherwise have silently dropped (the full Cut & Fill
+parameter set in `semantics/mining_method.json`; `sequencing`, `blocks[]`,
+`panels[]`, `ribPillars[]`, per-cut `blockId / panelId / panelIndex /
+liftIndexInBlock`, per-backfill `cemented` and the matching metrics in
+`production/cut_fill.json`; retained rib pillars exported through the
+existing `PILLAR` entity kind under `production/cut_fill/pillars/`). Every
+Longhole / Room & Pillar document keeps its 1.3.0 shape; the STL / OBJ /
+DXF / CSV bytes are unchanged and a GLB differs only in the version string
+of its generator / node extras. The
 manifest version is the **external** contract authority; internal artifact
 versions (scenario `schemaVersion`, per-artifact `sourceRevision`) are only
-quoted as provenance. Additive fields are minor versions; a change in the
-meaning of an existing field is a major version.
+quoted as provenance. Additive files, entity kinds or omission groups are
+minor versions; additive FIELDS inside existing documents (no new file,
+kind or group) are patch versions; a change in the meaning of an existing
+field is a major version.
 
 ## API
 
@@ -119,8 +131,10 @@ not. It is never assumed.
                                         parameters, production-development / production status (ALWAYS present)
       production/stopes.json            1.1 — planned stopes DTO (authority: stopes.json), planning quantities
       production/stopes/<stope>.{stl,obj,glb}  1.1 — one AUTHORITATIVE closed prism per stope (never unioned)
-      production/cut_fill.json          1.2 — Cut & Fill lifts / cuts / backfills DTO (ACTIVE method CUT_AND_FILL)
+      production/cut_fill.json          1.2 — Cut & Fill lifts / cuts / backfills DTO (ACTIVE method CUT_AND_FILL);
+                                        1.3.1 — + sequencing, blocks, panels, ribPillars, cemented backfills
       production/cut_fill/cuts/<cut>.{stl,obj,glb}  1.2 — one authoritative closed prism per cut
+      production/cut_fill/pillars/<pillar>.{stl,obj,glb}  1.3.1 — one closed prism per RETAINED rib pillar
       production/room_pillar.json       1.2 — Room & Pillar rooms / extraction units / pillars DTO
       production/room_pillar/benches/<unit>.{stl,obj,glb}  1.2 — one closed prism per extraction unit
       production/room_pillar/pillars/<pillar>.{stl,obj,glb} 1.2 — one closed prism per retained pillar
@@ -445,19 +459,35 @@ are not listed. `semantics/mining_method.json` gains
 the 1.1 shape is unchanged) and `production.productionKind` / `unitCount`
 (`stopeCount` keeps its 1.1 meaning: STOPE entities, 0 otherwise).
 
-`production/cut_fill.json` (`PRODUCTION_CUT_FILL`): the typed parameters,
-`lifts[]` (index, level pair, down-dip span, `cutEntityIds`), `cuts[]` (one
-per persisted cut, mining order — lifts bottom → top, cuts along strike in a
-snake — with lift / cut indices, level pair, `accessDevelopmentId` and the
-exported CROSSCUT `accessEntityId` when the levels are in the bundle,
-`backfillEntityId`, local bounds, planning quantities, files) and
-`backfills[]` (`sourceCutId`, `sourceCutEntityId`, `volumeM3`). Every `CUT`
+`production/cut_fill.json` (`PRODUCTION_CUT_FILL`): the typed parameters
+(1.3.1: lift / cut targets AND `stopingDirection`, `blockOrder`,
+`panelLengthM`, `ribPillarWidthM`, `maxConcurrentPanels`, `sillMatCureDays`),
+`sequencing` (1.3.1: the resolved assumptions plus `blockOrderIds` and
+`panelStartOrder` — block order, then centre-out; a precedence baseline,
+never a capacity), `blocks[]` (1.3.1, semantic: level interval, start order,
+`panelIds`, `liftIndices`, `sillMatRequired`), `panels[]` (1.3.1, semantic:
+block, panel index, start order, MINED span `uMin … uMax`, the panel's
+production access `accessDevelopmentId` / `accessEntityId`, `cutEntityIds`
+in the panel's mining order), `lifts[]` (global index, level pair, down-dip
+span, `cutEntityIds`; 1.3.1 `blockId`, `liftIndexInBlock`), `cuts[]` (one per
+persisted cut — bundle order = panel start order, then the panel's lifts
+bottom → top, cuts in a snake — with lift / cut indices, 1.3.1 `blockId /
+panelId / panelIndex / liftIndexInBlock`, level pair, `accessDevelopmentId`
+and the exported CROSSCUT `accessEntityId` when the levels are in the
+bundle, `backfillEntityId`, local bounds, planning quantities, files),
+`backfills[]` (`sourceCutId`, `sourceCutEntityId`, `volumeM3`; 1.3.1
+`cemented` — a cemented sill-mat fill, semantic flag only) and `ribPillars[]`
+(1.3.1: `PILLAR` entities between two panels of one block, one closed prism
+each under `production/cut_fill/pillars/`, `tonnesEquivalent` — RETAINED
+material, never scheduled, never planned tonnes). Every `CUT`
 entity owns one closed prism under `production/cut_fill/cuts/` (`CUT_SOLID`,
 `AUTHORITATIVE_CLOSED_MESH`, exported vertices verbatim, independent
 closed-solid QA + volume agreement, the backfill volume checked against its
 cut). A `BACKFILL` entity is SEMANTIC: it fills its cut's void 1:1, its parent
-is the cut and it owns no geometry file. `metrics` is the typed
-`ExchangeCutFillMetrics`.
+is the cut and it owns no geometry file. Blocks and panels are semantic
+parents without entities of their own. `metrics` is the typed
+`ExchangeCutFillMetrics` (1.3.1 adds the block / panel / rib-pillar /
+cemented aggregates).
 
 `production/room_pillar.json` (`PRODUCTION_ROOM_PILLAR`): `rooms[]` (semantic
 parents — row / column, plan bounds, access, `extractionUnitEntityIds`; files =
@@ -582,5 +612,11 @@ timeline / production scheduling projection since 1.3.
   added the `operations/` documents (no new entity kind); the
   remaining reserved future entity kinds (PRODUCTION_DRIFT, DRAWPOINT) are
   documented here, not pre-declared in the enum.
+- 1.x.y (patch): additive FIELDS inside existing documents only — no new
+  file group, entity kind or omission group; a consumer of 1.x.0 reads a
+  1.x.y document by ignoring the fields it does not know. 1.3.1 added the
+  H2-CF Cut & Fill structure (and reused `PILLAR` for rib pillars under
+  `production/cut_fill/pillars/`). A patch never changes an existing field's
+  meaning and never removes one.
 - 2.0: any change to the coordinate contract, entity identity rule or the
   meaning of an existing manifest field.

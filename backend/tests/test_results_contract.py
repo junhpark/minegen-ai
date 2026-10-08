@@ -103,7 +103,7 @@ def _package(**over: Any) -> dict[str, bytes]:
 
 def test_mr1_versions_are_pinned() -> None:
     assert MINE_RESULT_VERSION == "1.0.0"
-    assert MINE_EXCHANGE_VERSION == "1.3.0"  # MineExchange is NOT bumped by results
+    assert MINE_EXCHANGE_VERSION == "1.3.1"  # MineExchange is NOT bumped by results
 
 
 # -- MR-2 package reader security / budgets ---------------------------------- #
