@@ -125,7 +125,9 @@ describe('productionKindOf / labels', () => {
 
   it('summarises from the payload metrics only', () => {
     expect(productionSummary(longhole)).toBe('1 stopes · 1 intervals × 1 stations')
-    expect(productionSummary(cutFill)).toBe('2 cuts · 1 panels · 1 blocks · 2 backfills · 1 rib pillars')
+    expect(productionSummary(cutFill)).toBe(
+      '2 cuts · 1 panels · 1 blocks · 2 backfills · 1 rib pillars',
+    )
     expect(productionSummary(roomPillar)).toBe('1 rooms · 1 extraction units · 1 pillars')
     expect(productionSummary({ ...cutFill, metrics: null })).toBeNull()
   })

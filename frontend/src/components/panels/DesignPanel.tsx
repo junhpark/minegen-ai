@@ -848,8 +848,8 @@ function DevelopView(p: DesignPanelBodyProps) {
         summary={
           p.shaftMesh?.status === 'SUCCESS' ? (
             <>
-              {p.shaftMesh.shaftCount ?? 0} barrel{(p.shaftMesh.shaftCount ?? 0) === 1 ? '' : 's'}{' '}
-              · {p.shaftMesh.stationAccessCount ?? 0} station drives ·{' '}
+              {p.shaftMesh.shaftCount ?? 0} barrel{(p.shaftMesh.shaftCount ?? 0) === 1 ? '' : 's'} ·{' '}
+              {p.shaftMesh.stationAccessCount ?? 0} station drives ·{' '}
               {(p.shaftMesh.nominalExcavationVolume ?? 0).toFixed(0)} m³ nominal
             </>
           ) : null

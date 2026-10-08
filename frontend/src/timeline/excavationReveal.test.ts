@@ -166,11 +166,7 @@ describe('timeline → mesh identity resolution', () => {
     expect(closed.unmappedEdgeIds).toHaveLength(3)
     // a shaft piece is covered through the piece-meta map like a development piece
     expect(
-      coveredEdgeIds(
-        plan.reveals,
-        new Map(),
-        new Map([['SHAFT:SHAFT-01:SEG00', META]]),
-      ),
+      coveredEdgeIds(plan.reveals, new Map(), new Map([['SHAFT:SHAFT-01:SEG00', META]])),
     ).toEqual(['SHAFT:SHAFT-01:SEG00'])
   })
 })

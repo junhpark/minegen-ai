@@ -339,20 +339,34 @@ export function KpiTiles({
     {
       label: 'Mine life',
       value: days(sched.mineDurationDays),
-      note: sched.availability === 'AVAILABLE' ? 'baseline schedule' : AVAILABILITY_LABEL[sched.availability],
+      note:
+        sched.availability === 'AVAILABLE'
+          ? 'baseline schedule'
+          : AVAILABILITY_LABEL[sched.availability],
     },
     {
       label: 'First production day',
       value: days(sched.firstProductionDay),
-      note: sched.availability === 'AVAILABLE' ? 'earliest STOPING start' : AVAILABILITY_LABEL[sched.availability],
+      note:
+        sched.availability === 'AVAILABLE'
+          ? 'earliest STOPING start'
+          : AVAILABILITY_LABEL[sched.availability],
     },
   ]
   return (
-    <div className="grid grid-cols-4 gap-2 border-b border-rock-700 px-4 py-3" data-testid="analysis-kpis">
+    <div
+      className="grid grid-cols-4 gap-2 border-b border-rock-700 px-4 py-3"
+      data-testid="analysis-kpis"
+    >
       {tiles.map((t) => (
         <div key={t.label} className="rounded-sm border border-rock-700 bg-rock-900/70 px-3 py-2">
           <div className="plate text-[10px] text-mute">{t.label}</div>
-          <div className="mt-0.5 text-[18px] leading-tight text-chalk" data-kpi={t.label}>
+          <div
+            className={`mt-0.5 leading-tight break-words text-chalk ${
+              t.value.length > 14 ? 'text-[13px]' : 'text-[18px]'
+            }`}
+            data-kpi={t.label}
+          >
             {t.value}
           </div>
           <div className="text-[10px] text-mute">{t.note}</div>

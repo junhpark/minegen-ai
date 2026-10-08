@@ -22,7 +22,9 @@ export const SHAFT_SPEC_DEFAULTS: Omit<ShaftSpec, 'shaftId'> = {
 }
 
 /** `scenario.shafts` as persisted, or the schema default (no shaft) */
-export function persistedShafts(config: ShaftPlanningConfig | null | undefined): ShaftPlanningConfig {
+export function persistedShafts(
+  config: ShaftPlanningConfig | null | undefined,
+): ShaftPlanningConfig {
   return config
     ? {
         specs: config.specs.map((s) => ({ ...s, levelIds: [...s.levelIds] })),
@@ -42,7 +44,10 @@ export function nextShaftId(specs: readonly ShaftSpec[]): string {
   return `SHAFT-${String(specs.length + 1)}`
 }
 
-export function shaftDraftIsDirty(draft: ShaftPlanningConfig, persisted: ShaftPlanningConfig): boolean {
+export function shaftDraftIsDirty(
+  draft: ShaftPlanningConfig,
+  persisted: ShaftPlanningConfig,
+): boolean {
   return JSON.stringify(draft) !== JSON.stringify(persisted)
 }
 
@@ -74,7 +79,8 @@ export function shaftDraftProblems(draft: ShaftPlanningConfig): string[] {
     }
     if (ids.has(s.shaftId)) problems.push(`"${s.shaftId}" is declared twice`)
     ids.add(s.shaftId)
-    if (!(s.diameter > 0 && s.diameter <= 15)) problems.push(`${s.shaftId}: diameter must be 0–15 m`)
+    if (!(s.diameter > 0 && s.diameter <= 15))
+      problems.push(`${s.shaftId}: diameter must be 0–15 m`)
     if (!(s.bottomSumpDepth > 0)) problems.push(`${s.shaftId}: sump depth must be positive`)
     if (!(s.collarStandoff > 0)) problems.push(`${s.shaftId}: collar stand-off must be positive`)
   }

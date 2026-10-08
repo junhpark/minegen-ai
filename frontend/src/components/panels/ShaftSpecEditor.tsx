@@ -168,26 +168,35 @@ export function ShaftSpecEditor({
                 ))}
               </select>
             </label>
-            {num(`${String(index)}-d`, 'Diameter (m)', spec.diameter, (v) =>
-              setSpec(index, { diameter: v ?? spec.diameter }), { step: 0.5 })}
+            {num(
+              `${String(index)}-d`,
+              'Diameter (m)',
+              spec.diameter,
+              (v) => setSpec(index, { diameter: v ?? spec.diameter }),
+              { step: 0.5 },
+            )}
             {num(`${String(index)}-s`, 'Collar stand-off (m)', spec.collarStandoff, (v) =>
-              setSpec(index, { collarStandoff: v ?? spec.collarStandoff }))}
+              setSpec(index, { collarStandoff: v ?? spec.collarStandoff }),
+            )}
             {num(`${String(index)}-b`, 'Sump below lowest station (m)', spec.bottomSumpDepth, (v) =>
-              setSpec(index, { bottomSumpDepth: v ?? spec.bottomSumpDepth }))}
+              setSpec(index, { bottomSumpDepth: v ?? spec.bottomSumpDepth }),
+            )}
           </div>
           <div className="grid grid-cols-2 gap-1.5">
             {num(
               `${String(index)}-cx`,
               'Collar X (m, blank = default)',
               spec.collar?.x ?? null,
-              (v) => setSpec(index, { collar: v === null ? null : { x: v, y: spec.collar?.y ?? 0 } }),
+              (v) =>
+                setSpec(index, { collar: v === null ? null : { x: v, y: spec.collar?.y ?? 0 } }),
               { step: 1, optional: true },
             )}
             {num(
               `${String(index)}-cy`,
               'Collar Y (m, blank = default)',
               spec.collar?.y ?? null,
-              (v) => setSpec(index, { collar: v === null ? null : { x: spec.collar?.x ?? 0, y: v } }),
+              (v) =>
+                setSpec(index, { collar: v === null ? null : { x: spec.collar?.x ?? 0, y: v } }),
               { step: 1, optional: true },
             )}
           </div>
@@ -269,7 +278,11 @@ export function ShaftSpecEditor({
       ))}
       <div className="grid grid-cols-2 gap-1.5">
         {num('max-access', 'Max station drive (m)', draft.maximumStationAccessLength, (v) =>
-          setDraft((d) => ({ ...d, maximumStationAccessLength: v ?? d.maximumStationAccessLength })))}
+          setDraft((d) => ({
+            ...d,
+            maximumStationAccessLength: v ?? d.maximumStationAccessLength,
+          })),
+        )}
         {num(
           'separation',
           'Min shaft separation (m, blank = 2 × width)',

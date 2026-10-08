@@ -51,7 +51,9 @@ export function SensitivityBody({
   }
   if (!payload) {
     return (
-      <p className="px-4 py-3 text-[11px] text-mute">{loading ? 'Computing the what-if grid…' : ''}</p>
+      <p className="px-4 py-3 text-[11px] text-mute">
+        {loading ? 'Computing the what-if grid…' : ''}
+      </p>
     )
   }
   return (
@@ -187,7 +189,12 @@ function Tornado({ payload, code }: { payload: SensitivityPayload; code: string 
           formatter={(v: unknown) => (typeof v === 'number' ? signedMoney(v, code) : '—')}
         />
         <ReferenceLine x={0} stroke="#8f99a3" />
-        <Bar dataKey="minus" name={`−${fmt0(extreme)} %`} fill="#d9655a" isAnimationActive={false} />
+        <Bar
+          dataKey="minus"
+          name={`−${fmt0(extreme)} %`}
+          fill="#d9655a"
+          isAnimationActive={false}
+        />
         <Bar dataKey="plus" name={`+${fmt0(extreme)} %`} fill="#7fc97f" isAnimationActive={false} />
       </BarChart>
     </section>

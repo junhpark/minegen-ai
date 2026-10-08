@@ -2700,7 +2700,15 @@ code, the code and the rule win and the map is corrected.
      (malformed index → 409 DEMO_INDEX_MALFORMED; an entry whose directory
      is missing, shadowed or disagrees in seed / orebody / method / world is
      `available = false` with its reason, never dropped, never served);
-     `GET /scenarios` lists saved scenarios only. The frontend opens a demo
+     `GET /scenarios` lists saved scenarios only. A baked demo directory is
+     bound by STAT identity (rule 60: the world commit record names
+     `scenario.json`'s size + mtime_ns): it is moved only with its timestamps
+     preserved (`cp -a`, `rsync -a`, tar) or re-baked on the serving host —
+     a copy without timestamps is reported by the catalogue as unavailable
+     ("world publication stale") and every scene read of it is 409
+     WORLD_PUBLICATION_STALE; nothing re-binds it silently. The frontend
+     surfaces a failed demo open (File-menu alert, demo-panel notice) and
+     opens a demo
      through the ordinary scenario + scene reads (File › Demos) as ONE
      scenario-identity transition that records the demo fact, enters
      viewer-only demo mode — no generation controls, no "Reset from here",

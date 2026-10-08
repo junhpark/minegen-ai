@@ -1802,7 +1802,12 @@ export interface ShaftMeshReport {
       nominalExcavationVolume: number
       meshVolume: number
       volumeDifferencePct: number
-      topology: { manifold: boolean; watertight: boolean; outwardOrientation: boolean; valid: boolean }
+      topology: {
+        manifold: boolean
+        watertight: boolean
+        outwardOrientation: boolean
+        valid: boolean
+      }
       envelope: {
         hardViolations: number
         aboveTerrainBelowCollarZone: number

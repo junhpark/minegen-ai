@@ -55,12 +55,15 @@ function payload(money: boolean): TimeseriesPayload {
     })),
     developmentRockVocabulary: 'Excavated development rock',
     allocation: 'LINEAR_OVER_TASK_WINDOW',
-    disclaimer: 'Synthetic planning economics. Not a resource/reserve estimate or feasibility study.',
+    disclaimer:
+      'Synthetic planning economics. Not a resource/reserve estimate or feasibility study.',
   }
 }
 
 const render = (p: TimeseriesPayload | null, day: number, error: string | null = null) =>
-  renderToStaticMarkup(<FourDResultsBody payload={p} currentDay={day} loading={false} error={error} />)
+  renderToStaticMarkup(
+    <FourDResultsBody payload={p} currentDay={day} loading={false} error={error} />,
+  )
 
 describe('4D results card (PR-2 H3 §7)', () => {
   it('shows the current day and the backend cumulative quantities as of the last complete bucket', () => {
@@ -85,8 +88,14 @@ describe('4D results card (PR-2 H3 §7)', () => {
     expect(html).toContain('need planning economics')
   })
   it('renders a typed error and a NOT_AVAILABLE reason verbatim', () => {
-    expect(render(null, 0, 'READ_SNAPSHOT_CHANGED: moved')).toContain('READ_SNAPSHOT_CHANGED: moved')
-    const partial = { ...payload(true), availability: 'NOT_AVAILABLE' as const, reason: 'requires schedule' }
+    expect(render(null, 0, 'READ_SNAPSHOT_CHANGED: moved')).toContain(
+      'READ_SNAPSHOT_CHANGED: moved',
+    )
+    const partial = {
+      ...payload(true),
+      availability: 'NOT_AVAILABLE' as const,
+      reason: 'requires schedule',
+    }
     expect(render(partial, 0)).toContain('requires schedule')
   })
 })

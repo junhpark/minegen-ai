@@ -286,6 +286,34 @@ def test_catalogue_reports_missing_or_disagreeing_demos_and_refuses_a_malformed_
 # --------------------------------------------------------------------------- #
 
 
+def test_a_copy_without_timestamps_is_reported_stale_never_served_silently(
+    baked: Stack, tmp_path: Path
+) -> None:
+    """The world commit record binds arrays.npz to scenario.json's stat identity
+    (size + mtime_ns): copying a baked demo without its timestamps makes every
+    scene read 409 WORLD_PUBLICATION_STALE. The catalogue reports that up
+    front (available = false with the remedy) instead of listing a demo that
+    cannot open."""
+    import shutil
+
+    copied = tmp_path / "demos"
+    shutil.copytree(baked.demos_dir, copied)  # copytree keeps mtimes (copy2) …
+    stack = Stack(tmp_path)
+    try:
+        entry = stack.client.get("/api/v1/demos").json()["demos"][0]
+        assert entry["available"] is True, entry
+        # … a plain byte copy / git checkout does not: touch the document
+        (copied / QUICK.id / "scenario.json").touch()
+        entry = stack.client.get("/api/v1/demos").json()["demos"][0]
+        assert entry["available"] is False
+        assert "world publication stale" in entry["reason"]
+        assert "cp -a" in entry["reason"]
+        r = stack.client.get(f"/api/v1/scenarios/{QUICK.id}/scene")
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "WORLD_PUBLICATION_STALE"
+    finally:
+        stack.close()
+
+
 def test_a_demo_is_read_in_place_through_the_ordinary_scenario_routes(baked: Stack) -> None:
     c = baked.client
     sid = QUICK.id

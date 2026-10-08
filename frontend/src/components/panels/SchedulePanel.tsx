@@ -29,7 +29,9 @@ export function ScheduleBody({
 }) {
   const sched = analysis.schedule
   if (sched.availability !== 'AVAILABLE') {
-    return <p className="px-4 py-3 text-[11px] text-mute">{sched.reason ?? 'Schedule not available.'}</p>
+    return (
+      <p className="px-4 py-3 text-[11px] text-mute">{sched.reason ?? 'Schedule not available.'}</p>
+    )
   }
   const rows = series ? chartRows(series) : []
   const tick = { fontSize: 10, fill: '#8f99a3' }
@@ -57,7 +59,9 @@ export function ScheduleBody({
         </p>
       </section>
       <section className="border-b border-rock-700 px-4 py-3" data-testid="schedule-series">
-        <h3 className="plate mb-1.5 text-[12px] text-chalk">Quantities over time (backend series)</h3>
+        <h3 className="plate mb-1.5 text-[12px] text-chalk">
+          Quantities over time (backend series)
+        </h3>
         {seriesError ? (
           <p role="alert" className="text-[11px] text-danger">
             {seriesError}
@@ -107,7 +111,12 @@ export function ScheduleBody({
                   <XAxis dataKey="day" tick={tick} tickLine={false} />
                   <YAxis tick={tick} tickLine={false} width={64} />
                   <Tooltip {...tooltip} />
-                  <Line dataKey="backfillM3" stroke="#b48ad6" dot={false} isAnimationActive={false} />
+                  <Line
+                    dataKey="backfillM3"
+                    stroke="#b48ad6"
+                    dot={false}
+                    isAnimationActive={false}
+                  />
                 </LineChart>
               </figure>
             ) : null}
@@ -128,7 +137,10 @@ export function ScheduleBody({
             : ''}
         </h3>
         {timeline ? (
-          <div className="readout max-h-80 overflow-y-auto text-[10px]" data-testid="schedule-tasks">
+          <div
+            className="readout max-h-80 overflow-y-auto text-[10px]"
+            data-testid="schedule-tasks"
+          >
             <table className="w-full border-collapse">
               <thead>
                 <tr className="text-mute">

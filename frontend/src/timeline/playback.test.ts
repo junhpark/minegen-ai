@@ -27,8 +27,16 @@ describe('4D playback arithmetic (PR-2 H3 §7)', () => {
     expect(advancePlayback(99, 0.05, 20, 10, 100, true).currentDay).toBeCloseTo(10, 9)
   })
   it('ignores a non-positive or non-finite frame delta and a degenerate range', () => {
-    expect(advancePlayback(5, 0, 1, 0, 100, true)).toEqual({ currentDay: 5, playing: true, wrapped: false })
+    expect(advancePlayback(5, 0, 1, 0, 100, true)).toEqual({
+      currentDay: 5,
+      playing: true,
+      wrapped: false,
+    })
     expect(advancePlayback(5, Number.NaN, 1, 0, 100, true).currentDay).toBe(5)
-    expect(advancePlayback(5, 1, 1, 0, 0, true)).toEqual({ currentDay: 0, playing: false, wrapped: false })
+    expect(advancePlayback(5, 1, 1, 0, 0, true)).toEqual({
+      currentDay: 0,
+      playing: false,
+      wrapped: false,
+    })
   })
 })

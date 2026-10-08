@@ -18,6 +18,7 @@ import type { DemoCatalogEntry } from '@/types/api'
  */
 export function DemoPanel() {
   const demo = useScenarioStore((s) => s.demo)
+  const sceneLoaded = useScenarioStore((s) => s.scene !== null)
   const tour = useViewerStore((s) => s.demoTour)
   const setTour = useViewerStore((s) => s.setDemoTour)
   const setStage = useViewerStore((s) => s.setStage)
@@ -30,10 +31,13 @@ export function DemoPanel() {
   return (
     <DemoPanelBody
       demo={demo}
+      sceneLoaded={sceneLoaded}
       tour={tour}
       onTour={setTour}
       cloning={clone.isPending}
-      cloneError={err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null}
+      cloneError={
+        err instanceof ApiError ? `${err.code}: ${err.message}` : err ? err.message : null
+      }
       onClone={() => clone.mutate(demo)}
     />
   )
@@ -42,6 +46,7 @@ export function DemoPanel() {
 /** pure presentation of demo mode (tested as static markup) */
 export function DemoPanelBody({
   demo,
+  sceneLoaded = true,
   tour,
   onTour,
   cloning,
@@ -49,6 +54,8 @@ export function DemoPanelBody({
   onClone,
 }: {
   demo: DemoCatalogEntry
+  /** false while the demo's scene manifest has not arrived (or failed) */
+  sceneLoaded?: boolean
   tour: boolean
   onTour: (on: boolean) => void
   cloning: boolean
@@ -81,10 +88,16 @@ export function DemoPanelBody({
         <dt>Baked stages</dt>
         <dd className="text-chalk-dim">{demo.stages.join(' → ')}</dd>
       </dl>
+      {!sceneLoaded ? (
+        <p className="mt-2 text-[11px] text-danger" data-testid="demo-scene-missing">
+          The demo&apos;s scene is not loaded — see the File menu message. A baked demo whose world
+          no longer matches its document (a copy without timestamps) must be re-baked.
+        </p>
+      ) : null}
       <p className="mt-2 text-[11px] leading-relaxed text-mute" data-testid="demo-viewer-only">
-        Viewer-only demo: generation and reset are disabled here — a synthetic sandbox mine,
-        never a measured, estimated or imported orebody. Explore it in 3D, 4D and Walk, open
-        Analysis or export it; clone it to edit.
+        Viewer-only demo: generation and reset are disabled here — a synthetic sandbox mine, never a
+        measured, estimated or imported orebody. Explore it in 3D, 4D and Walk, open Analysis or
+        export it; clone it to edit.
       </p>
       <label className="mt-2 flex items-center gap-1.5 text-[11px] text-chalk-dim">
         <input

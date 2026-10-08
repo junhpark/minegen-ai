@@ -23,6 +23,8 @@ from typing import Literal
 from pydantic import Field, ValidationError
 
 from minegen.core.models import ApiModel
+from minegen.services.artifact_errors import WorldNotGeneratedError, WorldPublicationStaleError
+from minegen.services.artifact_reader import ArtifactReader
 from minegen.services.scenario_service import ScenarioStore
 
 DEMO_INDEX_FILE = "index.json"
@@ -105,6 +107,7 @@ class DemoService:
     def __init__(self, store: ScenarioStore, demos_dir: Path) -> None:
         self.store = store
         self.demos_dir = demos_dir
+        self._reader = ArtifactReader(store)
 
     def catalog(self) -> DemoCatalog:
         index = read_demo_index(self.demos_dir)
@@ -155,6 +158,22 @@ class DemoService:
             problems.append(f"miningMethod {scenario.mining.method.value} != index")
         if not self.store.arrays_path(entry.id).is_file():
             problems.append("arrays.npz missing (world not baked)")
+        else:
+            # the world commit record binds arrays.npz to the scenario.json STAT
+            # identity (size + mtime_ns, rule 60): a demo directory copied
+            # without its timestamps is served as WORLD_PUBLICATION_STALE by
+            # every scene read, so the catalogue says so up front — through
+            # the SAME world guard every read path uses (require_world)
+            try:
+                self._reader.require_world(self._reader.snapshot(entry.id, ()))
+            except WorldPublicationStaleError:
+                problems.append(
+                    "world publication stale: scenario.json's stat identity no longer matches "
+                    "the baked world commit (the demo directory was copied without its "
+                    "timestamps?) — re-bake, or copy with timestamps preserved (cp -a / rsync -a)"
+                )
+            except WorldNotGeneratedError:
+                problems.append("world not committed (derived/world.json)")
         if problems:
             return DemoCatalogEntry(**base, available=False, reason="; ".join(problems))
         return DemoCatalogEntry(**base, available=True, reason=None)

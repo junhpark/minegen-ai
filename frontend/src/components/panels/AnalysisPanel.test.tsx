@@ -243,7 +243,11 @@ describe('Schedule (hardening PR-2 H3 §8)', () => {
   it('series unavailable: the backend reason; a typed refusal verbatim; no timeline → the note', () => {
     const html = render({
       view: 'SCHEDULE',
-      timeseries: { ...TIMESERIES, availability: 'NOT_AVAILABLE', reason: 'timeline.json not generated' },
+      timeseries: {
+        ...TIMESERIES,
+        availability: 'NOT_AVAILABLE',
+        reason: 'timeline.json not generated',
+      },
     })
     expect(html).toContain('timeline.json not generated')
     expect(html).toContain('The timeline artifact is not in the scene.')

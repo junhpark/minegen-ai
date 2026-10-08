@@ -121,6 +121,13 @@ function FileMenu() {
     mutationFn: openDemo,
     onSuccess: () => setStage('SCENARIO'),
   })
+  const demoError = loadDemo.error
+  const demoErrorText =
+    demoError instanceof ApiError
+      ? `${demoError.code}: ${demoError.message}`
+      : demoError
+        ? demoError.message
+        : null
 
   useEffect(() => {
     if (!open) return undefined
@@ -166,6 +173,16 @@ function FileMenu() {
       >
         File ▾
       </button>
+      {demoErrorText ? (
+        <span
+          role="alert"
+          className="ml-2 max-w-[520px] truncate align-middle text-[11px] text-danger"
+          title={demoErrorText}
+          data-testid="demo-open-error"
+        >
+          demo did not open — {demoErrorText}
+        </span>
+      ) : null}
       {open ? (
         <div
           role="menu"

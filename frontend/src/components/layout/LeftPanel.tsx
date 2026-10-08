@@ -44,7 +44,11 @@ export function LeftPanel() {
         <h2 className="plate text-[12px] text-chalk-dim">{demo ? 'Demo' : 'Controls'}</h2>
         <span className="readout text-[10px] text-mute">{STAGE_LABEL[stage]}</span>
       </header>
-      {demoControls ? <DemoPanel /> : <div ref={host} data-testid="controls-host" className="flex-1" />}
+      {demoControls ? (
+        <DemoPanel />
+      ) : (
+        <div ref={host} data-testid="controls-host" className="flex-1" />
+      )}
       {stage === 'ANALYSIS' && !demo ? (
         <p className="px-4 py-3 text-[11px] leading-relaxed text-mute">
           Analysis is a read-only projection of the generated mine — there is nothing to generate
@@ -84,7 +88,9 @@ export function AnalysisCenter({ split = false }: { split?: boolean }) {
       data-testid="analysis-center"
       data-split={split}
     >
-      <div className={`mx-auto border-x border-rock-700 bg-rock-800 ${split ? '' : 'max-w-[1180px]'}`}>
+      <div
+        className={`mx-auto border-x border-rock-700 bg-rock-800 ${split ? '' : 'max-w-[1180px]'}`}
+      >
         <AnalysisWorkspace />
       </div>
     </div>

@@ -2221,7 +2221,11 @@ acceptance.
   tour toggle, ONE primary "Clone to edit"), `DemoTourController`, the
   DEMO · SYNTHETIC badge, 4D Loop on at open. Measured bake (this
   container): Longhole 114 s, Cut & Fill 85 s, WARPED 152 s; 107 MB for
-  the three.
+  the three. Stat-identity caveat (found in the browser acceptance): a demo
+  tree copied without its timestamps breaks the rule-60 binding between
+  `scenario.json` and the world commit record — the catalogue reports it
+  "world publication stale" (unavailable) and the scene read is 409
+  WORLD_PUBLICATION_STALE; copy with `cp -a` / `rsync -a` or re-bake.
 - **Browser e2e (hardening plan §5 header).** `tests/test_shell_e2e.py`
   bakes the Cut & Fill demo into its temporary data directory before the
   servers start and adds (a) the 4D control / results and the full-window

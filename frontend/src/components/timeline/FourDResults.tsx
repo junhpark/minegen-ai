@@ -16,7 +16,12 @@ import { cubic, fmt0, fmt1, money, tonnes } from '@/components/panels/analysisFo
 import { Metrics } from '@/components/ui/MetricRow'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useTimelineStore } from '@/stores/timelineStore'
-import { chartRows, cumulativeAtDay, seriesHasValues, type ChartRow } from '@/timeline/timeseriesView'
+import {
+  chartRows,
+  cumulativeAtDay,
+  seriesHasValues,
+  type ChartRow,
+} from '@/timeline/timeseriesView'
 import type { TimeseriesPayload } from '@/types/analysis'
 
 /**
@@ -45,7 +50,11 @@ export function FourDResults() {
   })
   const err = series.error
   const errorText =
-    err instanceof ApiError ? `${err.code}: ${err.message}` : err instanceof Error ? err.message : null
+    err instanceof ApiError
+      ? `${err.code}: ${err.message}`
+      : err instanceof Error
+        ? err.message
+        : null
   return (
     <section
       className="flex flex-col gap-2 border-b border-rock-700 px-4 py-3"

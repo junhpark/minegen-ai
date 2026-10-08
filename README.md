@@ -193,6 +193,11 @@ deployment step) together with `data/demos/index.json`:
     cd backend && PYTHONPATH=src:. .venv/bin/python ../scripts/bake_demos.py
     cd backend && PYTHONPATH=src:. .venv/bin/python ../scripts/bake_demos.py --only demo-warped-vein
 
+A baked demo is bound by file stat identity (size + mtime_ns), so move the
+`data/demos/` tree only with timestamps preserved (`cp -a`, `rsync -a`, tar)
+or re-bake it on the serving host; a copy without timestamps is listed as
+unavailable ("world publication stale") and never served.
+
 `GET /api/v1/demos` lists them; **File › Demos** opens one read-only in place
 (viewer-only demo mode: Auto tour over the camera presets, 4D Loop on, no
 generation controls — every write to a demo answers 409 `DEMO_READ_ONLY`) and

@@ -76,7 +76,9 @@ export function CashflowCharts({
         </ComposedChart>
       </figure>
       <figure>
-        <figcaption className="text-[11px] text-mute">Cost and revenue per bucket, {code}</figcaption>
+        <figcaption className="text-[11px] text-mute">
+          Cost and revenue per bucket, {code}
+        </figcaption>
         <ComposedChart width={width} height={160} data={rows} margin={{ top: 8, right: 16 }}>
           <CartesianGrid stroke="#3a3f46" strokeDasharray="2 4" />
           <XAxis dataKey="day" tick={tick} tickLine={false} />
@@ -88,7 +90,9 @@ export function CashflowCharts({
       </figure>
       {breakdown.length > 0 ? (
         <figure>
-          <figcaption className="text-[11px] text-mute">Cost breakdown (whole mine), {code}</figcaption>
+          <figcaption className="text-[11px] text-mute">
+            Cost breakdown (whole mine), {code}
+          </figcaption>
           <BarChart width={width} height={160} data={breakdown} margin={{ top: 8, right: 16 }}>
             <CartesianGrid stroke="#3a3f46" strokeDasharray="2 4" />
             <XAxis dataKey="name" tick={tick} tickLine={false} />

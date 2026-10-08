@@ -51,6 +51,13 @@ describe('DemoPanel (hardening PR-2 H4 — demo mode)', () => {
     }
   })
 
+  it('names a scene that did not load instead of staying silent', () => {
+    expect(render()).not.toContain('data-testid="demo-scene-missing"')
+    const html = render({ sceneLoaded: false })
+    expect(html).toContain('data-testid="demo-scene-missing"')
+    expect(html).toContain('must be re-baked')
+  })
+
   it('renders the clone error and the pending state', () => {
     expect(render({ cloneError: 'DEMO_READ_ONLY: x' })).toContain('DEMO_READ_ONLY: x')
     const pending = render({ cloning: true })
