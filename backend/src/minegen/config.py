@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     def scenarios_dir(self) -> Path:
         return self.data_dir / "scenarios"
 
+    @property
+    def demos_dir(self) -> Path:
+        """Hardening PR-2 H4: the baked, READ-ONLY demo mines
+        (``data/demos/{id}/`` + ``data/demos/index.json``, written only by
+        ``scripts/bake_demos.py``). The scenario store resolves a demo id here
+        when no saved scenario carries it, and refuses every write to it."""
+        return self.data_dir / "demos"
+
 
 @lru_cache
 def get_settings() -> Settings:

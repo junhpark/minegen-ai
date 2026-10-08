@@ -1,6 +1,7 @@
 // Typed fetch client. Thin: no engineering logic, no coordinate conversion.
 
 import type {
+  DemoCatalog,
   HealthResponse,
   Scenario,
   ScenarioCreate,
@@ -172,6 +173,9 @@ async function requestNoContent(path: string, init: RequestInit): Promise<void> 
 export const api = {
   health: () => request<HealthResponse>('/health'),
   listScenarios: () => request<ScenarioSummary[]>('/scenarios'),
+  /** hardening PR-2 H4: the baked demo catalogue (a demo is then OPENED
+   * through the ordinary scenario routes, read-only in place) */
+  listDemos: () => request<DemoCatalog>('/demos'),
   getScenario: (id: string) => request<Scenario>(`/scenarios/${id}`),
   /** Phase 17: deterministic preset+seed realization — non-persistent
    * preview; submit the returned ScenarioCreate to createScenario. */

@@ -105,9 +105,21 @@ READ_AUTHORITY = "artifact_reader.py"
 #: reproduction → RESULT_PACKAGE_INVALID) and its writes go through
 #: ``core/publication.py``. Named one function at a time, so a derived-
 #: artifact read added to the results package still fails this proof.
+#:
+#: Hardening PR-2 H4: ``services/demo_service.py::read_demo_index`` reads
+#: ``data/demos/index.json`` — the baked-demo CATALOGUE at the demos ROOT,
+#: written only by ``scripts/bake_demos.py``: NOT a derived artifact of any
+#: scenario (no registry entry, no fingerprint role, no cascade, never under a
+#: ``derived/``). The read is READ ≠ TRUST (schema validation →
+#: DEMO_INDEX_MALFORMED; every entry checked against its directory). The demo
+#: SCENARIO directories themselves are read through the scenario store and
+#: the artifact reader like every other scenario. Named one function at a
+#: time, so a derived-artifact read added to that module still fails this
+#: proof.
 ALLOWED_FILE_READS: dict[str, tuple[str, ...]] = {
     "core/publication.py": ("_open_temp", "_fsync_directory"),
     "services/scenario_service.py": ("get",),
+    "services/demo_service.py": ("read_demo_index",),
     "analysis/economics.py": ("observe_economics",),
     "results/store.py": ("read_manifest", "read_normalized", "read_source"),
     "regression/golden.py": ("write_report", "load_report"),

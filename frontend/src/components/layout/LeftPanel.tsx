@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { AnalysisWorkspace } from '@/components/layout/AnalysisWorkspace'
+import { DemoPanel } from '@/components/layout/DemoPanel'
 import { DesignWorkspace } from '@/components/layout/DesignWorkspace'
 import { ResetFromHere } from '@/components/layout/ResetFromHere'
 import { useShellStore } from '@/components/layout/shellStore'
@@ -21,9 +22,17 @@ import { useViewerStore } from '@/stores/viewerStore'
  * current STEP (not the view mode), so the 4D view of a Systems stage keeps
  * its cards. The Analysis workspace is the exception — it is a full-window
  * workspace rendered in the centre by `App`, never a column.
+ *
+ * Hardening PR-2 H4 — demo mode: while a baked demo is open the column shows
+ * the `DemoPanel` (viewer-only: no generation controls, no "Reset from
+ * here") instead of the controls host, except on the Export stage, whose
+ * action stays available for a demo. The feature panels stay MOUNTED: their
+ * results halves keep rendering into the right column.
  */
 export function LeftPanel() {
   const stage = useViewerStore((s) => s.stage)
+  const demo = useScenarioStore((s) => s.demo !== null)
+  const demoControls = demo && stage !== 'EXPORT'
   // the workspace of the current STEP stays mounted in every view (3D / 4D):
   // the 4D view of a Systems stage still shows the Systems cards
   const step = stepOf(stage)
@@ -32,17 +41,17 @@ export function LeftPanel() {
   return (
     <aside className="flex w-[320px] shrink-0 flex-col overflow-y-auto border-r border-rock-700 bg-rock-800">
       <header className="flex items-center justify-between border-b border-rock-700 px-4 py-2">
-        <h2 className="plate text-[12px] text-chalk-dim">Controls</h2>
+        <h2 className="plate text-[12px] text-chalk-dim">{demo ? 'Demo' : 'Controls'}</h2>
         <span className="readout text-[10px] text-mute">{STAGE_LABEL[stage]}</span>
       </header>
-      <div ref={host} data-testid="controls-host" className="flex-1" />
-      {stage === 'ANALYSIS' ? (
+      {demoControls ? <DemoPanel /> : <div ref={host} data-testid="controls-host" className="flex-1" />}
+      {stage === 'ANALYSIS' && !demo ? (
         <p className="px-4 py-3 text-[11px] leading-relaxed text-mute">
           Analysis is a read-only projection of the generated mine — there is nothing to generate
           here. The workspace opens in the centre.
         </p>
       ) : null}
-      <ResetFromHere />
+      {demo ? null : <ResetFromHere />}
       {/* mounted feature panels (their cards portal into the two columns) */}
       <div data-testid="workflow-panels">
         <SetupPanel />

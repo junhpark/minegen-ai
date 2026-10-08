@@ -45,6 +45,10 @@ export interface ViewerState {
   /** hardening PR-2 H3 §8: the Analysis workspace shows the 3D canvas beside
    * it only on request ("Show 3D context") — viewer-local, never persisted */
   analysisShow3d: boolean
+  /** hardening PR-2 H4: demo-mode Auto tour (camera presets cycle while a
+   * demo is open in an orbit view) — a viewing preference, never persisted */
+  demoTour: boolean
+  setDemoTour: (on: boolean) => void
   setDesignTab: (tab: DesignTab) => void
   setSystemsTab: (tab: SystemsTab) => void
   setAnalysisTab: (tab: AnalysisTab) => void
@@ -165,6 +169,8 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   setAnalysisTab: (analysisTab) => set({ analysisTab }),
   analysisShow3d: false,
   setAnalysisShow3d: (analysisShow3d) => set({ analysisShow3d }),
+  demoTour: false,
+  setDemoTour: (demoTour) => set({ demoTour }),
 
   stage: 'SCENARIO',
   completedViewerStages: NO_COMPLETION,

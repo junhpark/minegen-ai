@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, FastAPI, Request, status
+from fastapi import APIRouter, Depends, FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -16,6 +16,7 @@ from minegen import __version__
 from minegen.api import (
     adapters,
     analysis,
+    demos,
     design,
     exchange,
     health,
@@ -26,6 +27,7 @@ from minegen.api import (
     scenarios,
     world,
 )
+from minegen.api.demo_guard import refuse_demo_writes
 from minegen.config import get_settings
 from minegen.services.scenario_migration import UnsupportedSchemaVersionError
 
@@ -102,16 +104,20 @@ def create_app() -> FastAPI:
 
     api = APIRouter(prefix=API_PREFIX)
     api.include_router(health.router)
-    api.include_router(scenarios.router)
-    api.include_router(world.router)
-    api.include_router(design.router)
-    api.include_router(network.router)
-    api.include_router(infrastructure.router)
+    api.include_router(demos.router)
+    # hardening PR-2 H4: every scenario-scoped router refuses writes to a
+    # baked demo through ONE dependency (api/demo_guard.py)
+    demo_guard = [Depends(refuse_demo_writes)]
+    api.include_router(scenarios.router, dependencies=demo_guard)
+    api.include_router(world.router, dependencies=demo_guard)
+    api.include_router(design.router, dependencies=demo_guard)
+    api.include_router(network.router, dependencies=demo_guard)
+    api.include_router(infrastructure.router, dependencies=demo_guard)
     api.include_router(jobs.router)
-    api.include_router(exchange.router)
-    api.include_router(adapters.router)
-    api.include_router(analysis.router)
-    api.include_router(results.router)
+    api.include_router(exchange.router, dependencies=demo_guard)
+    api.include_router(adapters.router, dependencies=demo_guard)
+    api.include_router(analysis.router, dependencies=demo_guard)
+    api.include_router(results.router, dependencies=demo_guard)
     app.include_router(api)
     app.include_router(jobs.ws_router)
     return app

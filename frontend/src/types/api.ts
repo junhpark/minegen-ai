@@ -372,3 +372,34 @@ export interface ApiErrorDetail {
   code: string
   message: string
 }
+
+// --------------------------------------------------------------------------- //
+// Hardening PR-2 H4 — baked demos (GET /demos; read-only in place)
+// --------------------------------------------------------------------------- //
+
+/** one baked demo as the backend catalogue reports it (READ ≠ TRUST applied
+ * server-side: `available` is false with a reason when the directory and the
+ * index disagree) */
+export interface DemoCatalogEntry {
+  id: string
+  title: string
+  description: string
+  orebodyType: string
+  miningMethod: string
+  preset: string
+  seed: number
+  faultCount: number | null
+  /** the workflow stages the bake completed, in order */
+  stages: string[]
+  labels: string[]
+  available: boolean
+  reason: string | null
+}
+
+export interface DemoCatalog {
+  status: 'AVAILABLE' | 'NOT_BAKED'
+  reason: string | null
+  bakedFromCommit: string | null
+  demos: DemoCatalogEntry[]
+  notice: string
+}

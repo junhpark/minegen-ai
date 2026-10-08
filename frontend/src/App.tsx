@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { BottomBar } from '@/components/layout/BottomBar'
+import { DemoTourController } from '@/components/layout/DemoTourController'
 import { AnalysisCenter, LeftPanel } from '@/components/layout/LeftPanel'
 import { RightPanel } from '@/components/layout/RightPanel'
 import { useShellStore } from '@/components/layout/shellStore'
@@ -57,6 +58,7 @@ export default function App() {
         <TopBar />
         {walkthrough ? null : <StepperBar />}
         <SimulationOverlayController />
+        <DemoTourController />
         <div className="flex min-h-0 flex-1">
           {walkthrough ? null : <LeftPanel />}
           <main className="relative min-w-0 flex-1">

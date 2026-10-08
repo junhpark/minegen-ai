@@ -8,6 +8,30 @@ meters (`docs/coordinate-system.md`). Schemas live in
 ## Implemented
 
     GET  /api/v1/health                              liveness + version + coordinate system
+    GET  /api/v1/demos                               hardening PR-2 H4: the baked demo catalogue
+                                                     (data/demos/index.json, written only by
+                                                     scripts/bake_demos.py). status AVAILABLE |
+                                                     NOT_BAKED; every entry READ ≠ TRUST-checked
+                                                     against its directory (available=false +
+                                                     reason when missing, shadowed by a saved
+                                                     scenario, or disagreeing in seed / orebody /
+                                                     method / world); a malformed index is 409
+                                                     DEMO_INDEX_MALFORMED. A demo is OPENED through
+                                                     the ordinary /scenarios/{id}/… reads (the
+                                                     store resolves data/demos/{id}/ IN PLACE —
+                                                     no derived copy, every revision binding
+                                                     intact); every mutating request on a demo
+                                                     id (scenario PUT, world / design / network /
+                                                     infrastructure generation, reset, economics
+                                                     PUT, result import / delete) is 409
+                                                     DEMO_READ_ONLY before the route body runs,
+                                                     with the read-only POSTs (export/*,
+                                                     analysis/what-if, design/cost/evaluate,
+                                                     design/shafts/suggest-collar) passing. Demos
+                                                     are not listed by GET /scenarios; "Clone to
+                                                     edit" is an ordinary POST /scenarios of the
+                                                     demo document (new id) + world regeneration
+                                                     from the same seed (rule 119).
     POST /api/v1/scenarios/realize                   Phase 17: deterministic scenario
                                                      realization; NON-persistent (see below)
     POST /api/v1/scenarios                           create scenario from ScenarioCreate

@@ -81,13 +81,14 @@ from minegen.services.artifact_errors import (
     WorldNotGeneratedError,
     WorldPublicationStaleError,
 )
+from minegen.services.demo_service import DemoIndexMalformedError
 from minegen.services.design_service import (
     LayoutCandidateInfeasibleError,
     LayoutCandidateNotFoundError,
     UnknownNetworkNodeError,
     UnsupportedOrebodyError,
 )
-from minegen.services.scenario_service import ScenarioNotFoundError
+from minegen.services.scenario_service import DemoReadOnlyError, ScenarioNotFoundError
 from minegen.services.workflow_stages import (
     ResetJobRunningError,
     ResetPlanChangedError,
@@ -190,6 +191,9 @@ CODE_LADDER: Final[tuple[tuple[type[Exception], str], ...]] = (
     # PR #53 review B2: a reset never races a running job / a stale preview
     (ResetJobRunningError, "RESET_JOB_RUNNING"),
     (ResetPlanChangedError, "RESET_PLAN_CHANGED"),
+    # hardening PR-2 H4: baked demos are read-only; their index is READ ≠ TRUST
+    (DemoReadOnlyError, "DEMO_READ_ONLY"),
+    (DemoIndexMalformedError, "DEMO_INDEX_MALFORMED"),
 )
 
 #: status + message per wire code, transcribed from the router bodies at HEAD
@@ -343,6 +347,12 @@ ERRORS: Final[dict[str, ErrorSpec]] = {
     ),
     "RESET_PLAN_CHANGED": ErrorSpec(
         409, None, "PR #53 review B2 services/workflow_stages.py::ResetPlanChangedError"
+    ),
+    "DEMO_READ_ONLY": ErrorSpec(
+        409, None, "hardening PR-2 H4 services/scenario_service.py::DemoReadOnlyError"
+    ),
+    "DEMO_INDEX_MALFORMED": ErrorSpec(
+        409, None, "hardening PR-2 H4 services/demo_service.py::DemoIndexMalformedError"
     ),
 }
 

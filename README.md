@@ -183,6 +183,22 @@ Every phase must pass all of these before it is considered complete:
    network → 4D unchanged; the warped-vein mesh (≈ 10–25 k vertices) orbits
    smoothly in the browser.
 
+## Demo mines (hardening PR-2 H4)
+
+Three synthetic demo mines — TABULAR Longhole, TABULAR Cut & Fill and a
+WARPED_VEIN world + layout-v2 + curved levels — are baked end to end through
+the application's own routes into `data/demos/<id>/` (git-ignored; baking is a
+deployment step) together with `data/demos/index.json`:
+
+    cd backend && PYTHONPATH=src:. .venv/bin/python ../scripts/bake_demos.py
+    cd backend && PYTHONPATH=src:. .venv/bin/python ../scripts/bake_demos.py --only demo-warped-vein
+
+`GET /api/v1/demos` lists them; **File › Demos** opens one read-only in place
+(viewer-only demo mode: Auto tour over the camera presets, 4D Loop on, no
+generation controls — every write to a demo answers 409 `DEMO_READ_ONLY`) and
+**Clone to edit** turns the demo document into an ordinary saved scenario.
+Every demo is labelled DEMO / SYNTHETIC.
+
 ## Verification tiers (VA-01)
 
 ```

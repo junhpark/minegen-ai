@@ -7,6 +7,7 @@ from functools import lru_cache
 from minegen.config import get_settings
 from minegen.services.adapter_service import AdapterService
 from minegen.services.analysis_service import AnalysisService
+from minegen.services.demo_service import DemoService
 from minegen.services.design_service import DesignService
 from minegen.services.exchange_service import ExchangeService
 from minegen.services.infrastructure_service import InfrastructureService
@@ -18,7 +19,14 @@ from minegen.services.world_service import WorldService
 
 @lru_cache
 def get_scenario_store() -> ScenarioStore:
-    return ScenarioStore(get_settings().scenarios_dir)
+    settings = get_settings()
+    # hardening PR-2 H4: baked demos are resolved in place, read-only
+    return ScenarioStore(settings.scenarios_dir, demo_root=settings.demos_dir)
+
+
+@lru_cache
+def get_demo_service() -> DemoService:
+    return DemoService(get_scenario_store(), get_settings().demos_dir)
 
 
 @lru_cache

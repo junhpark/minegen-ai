@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { api } from '@/api/client'
+import { api, ApiError } from '@/api/client'
 import { useStageGlyphs } from '@/components/layout/useStageGlyphs'
 import { entryStageOf, stepOf, WORKFLOW_STEPS } from '@/components/layout/workflow'
+import { openDemo } from '@/scenario/demos'
 import { openScenario } from '@/scenario/openScenario'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
@@ -22,6 +23,7 @@ import { useViewerStore } from '@/stores/viewerStore'
 export function TopBar() {
   const stage = useViewerStore((s) => s.stage)
   const setStage = useViewerStore((s) => s.setStage)
+  const demo = useScenarioStore((s) => s.demo)
   const glyphs = useStageGlyphs()
   const health = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 15000 })
   const currentStep = stepOf(stage)
@@ -32,6 +34,15 @@ export function TopBar() {
         MineGen<span className="text-lamp">-AI</span>
       </div>
       <FileMenu />
+      {demo ? (
+        <span
+          className="plate ml-2 rounded-sm border border-lamp/60 px-1.5 py-0.5 text-[10px] text-lamp"
+          data-testid="demo-badge"
+          title={`${demo.title} — read-only demo; clone it to edit`}
+        >
+          {demo.labels.join(' · ')}
+        </span>
+      ) : null}
 
       <nav className="ml-4 flex gap-0.5" aria-label="workflow steps">
         {WORKFLOW_STEPS.map((step) => {
@@ -81,6 +92,7 @@ export function TopBar() {
 function FileMenu() {
   const [open, setOpen] = useState(false)
   const [openList, setOpenList] = useState(false)
+  const [demoList, setDemoList] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
   const setStage = useViewerStore((s) => s.setStage)
   const setAnalysisTab = useViewerStore((s) => s.setAnalysisTab)
@@ -98,6 +110,17 @@ function FileMenu() {
       setStage('SCENARIO')
     },
   })
+  // hardening PR-2 H4: the baked demo catalogue; a demo opens read-only in place
+  const demos = useQuery({
+    queryKey: ['demos'],
+    queryFn: api.listDemos,
+    enabled: open && demoList,
+    retry: false,
+  })
+  const loadDemo = useMutation({
+    mutationFn: openDemo,
+    onSuccess: () => setStage('SCENARIO'),
+  })
 
   useEffect(() => {
     if (!open) return undefined
@@ -105,6 +128,7 @@ function FileMenu() {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false)
         setOpenList(false)
+        setDemoList(false)
       }
     }
     document.addEventListener('mousedown', onDown)
@@ -114,6 +138,7 @@ function FileMenu() {
   const close = () => {
     setOpen(false)
     setOpenList(false)
+    setDemoList(false)
   }
   const item = (label: string, onClick: () => void, disabled = false, hint?: string) => (
     <button
@@ -183,7 +208,53 @@ function FileMenu() {
               ) : null}
             </ul>
           ) : null}
-          {item('Demos', () => undefined, true, 'coming')}
+          {item('Demos', () => setDemoList((v) => !v), false, demoList ? '▾' : '▸')}
+          {demoList ? (
+            <ul
+              className="max-h-56 overflow-y-auto border-y border-rock-700 bg-rock-900/60"
+              data-testid="demo-list"
+            >
+              {demos.isSuccess && demos.data.status === 'NOT_BAKED' ? (
+                <li className="px-4 py-1 text-[11px] text-mute">No demos baked on this backend</li>
+              ) : null}
+              {demos.isSuccess
+                ? demos.data.demos.map((d) => (
+                    <li key={d.id}>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={!d.available || loadDemo.isPending}
+                        title={d.available ? d.description : (d.reason ?? 'unavailable')}
+                        onClick={() => {
+                          loadDemo.mutate(d)
+                          close()
+                        }}
+                        className={[
+                          'flex w-full flex-col items-start px-4 py-1 text-left text-[11px] hover:bg-rock-700 disabled:cursor-not-allowed disabled:text-mute',
+                          current?.id === d.id ? 'text-chalk' : 'text-chalk-dim',
+                        ].join(' ')}
+                      >
+                        <span className="truncate">{d.title}</span>
+                        <span className="readout text-[10px] text-mute">
+                          {d.labels.join(' · ')} · {d.orebodyType} · {d.miningMethod}
+                          {d.available ? '' : ' · unavailable'}
+                        </span>
+                      </button>
+                    </li>
+                  ))
+                : null}
+              {demos.isPending ? (
+                <li className="px-4 py-1 text-[11px] text-mute">Loading…</li>
+              ) : null}
+              {demos.isError ? (
+                <li className="px-4 py-1 text-[11px] text-danger">
+                  {demos.error instanceof ApiError
+                    ? `${demos.error.code}: ${demos.error.message}`
+                    : 'demo catalogue unavailable'}
+                </li>
+              ) : null}
+            </ul>
+          ) : null}
           <div className="my-1 border-t border-rock-700" />
           {item(
             'Export…',
