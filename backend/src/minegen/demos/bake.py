@@ -41,7 +41,6 @@ from minegen.api.deps import (
 from minegen.core.enums import MiningMethodType, ScenarioPreset
 from minegen.core.models import ScenarioCreate, ShaftSpec
 from minegen.core.publication import publish_text
-from minegen.main import create_app
 from minegen.services.adapter_service import AdapterService
 from minegen.services.analysis_service import AnalysisService
 from minegen.services.demo_service import (
@@ -220,7 +219,12 @@ class DemoBaker:
         self.worlds = WorldService(self.store)
         self.design = DesignService(self.store, self.worlds)
         self.jobs = JobService(max_workers=1)
-        app = create_app()
+        # imported here: ``minegen.main`` imports the API dependency module,
+        # which constructs the materializer, which bakes through this class
+        from minegen.main import create_app
+
+        # the baker's own application never materializes demos itself
+        app = create_app(autobake=False)
         exchange = ExchangeService(self.store, self.worlds)
         app.dependency_overrides[get_scenario_store] = lambda: self.store
         app.dependency_overrides[get_world_service] = lambda: self.worlds

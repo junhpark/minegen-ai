@@ -189,7 +189,9 @@ Two workflows, three roles:
 
 Hardening PR-2: the e2e module bakes the Cut & Fill demo into its temporary
 data directory through `minegen.demos.bake` before the servers start (≈ 85 s,
-the same baker `scripts/bake_demos.py` runs) and carries two tests — the
+the same baker `scripts/bake_demos.py` runs; the server under test runs with
+`MINEGEN_DEMOS_AUTOBAKE=0` so it never starts baking the other two, PR #54
+review B1) and carries two tests — the
 BASELINE Setup → Export flow (now also the 4D control / results card and the
 full-window Analysis checks) and the File › Demos → read-only demo → Analysis
 → Export flow (hardening plan §5 header: "BASELINE + CUT_AND_FILL 데모").

@@ -5,6 +5,8 @@ Run locally:  uvicorn minegen.main:app --reload --app-dir src
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, Request, status
@@ -28,7 +30,9 @@ from minegen.api import (
     world,
 )
 from minegen.api.demo_guard import refuse_demo_writes
+from minegen.api.deps import get_demo_materializer
 from minegen.config import get_settings
+from minegen.services.demo_materializer import DemoMaterializer
 from minegen.services.scenario_migration import UnsupportedSchemaVersionError
 
 API_PREFIX = "/api/v1"
@@ -72,8 +76,25 @@ async def unsupported_schema_handler(_: Request, exc: Exception) -> JSONResponse
     )
 
 
-def create_app() -> FastAPI:
+def create_app(
+    *, autobake: bool | None = None, materializer: DemoMaterializer | None = None
+) -> FastAPI:
+    """The application. ``autobake`` (default: ``Settings.demos_autobake``)
+    decides whether the lifespan starts the demo materializer of PR #54
+    review B1 — the demo baker's own in-process application and the test
+    suite pass ``False``; ``materializer`` injects one (tests)."""
     settings = get_settings()
+    enabled = settings.demos_autobake if autobake is None else autobake
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # PR #54 review B1: bake the demo mines the catalogue does not list,
+        # in a daemon thread, once per process; never in the tests, the e2e
+        # or the baker itself (they pass / configure autobake off)
+        if enabled:
+            (materializer or get_demo_materializer()).start()
+        yield
+
     app = FastAPI(
         title=settings.app_name,
         version=__version__,
@@ -81,6 +102,7 @@ def create_app() -> FastAPI:
             "Generative underground mine design research platform. "
             "All coordinates are ENU Z-up meters."
         ),
+        lifespan=lifespan,
     )
     app.add_middleware(
         CORSMiddleware,

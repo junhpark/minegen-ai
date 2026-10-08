@@ -1648,10 +1648,14 @@ code, the code and the rule win and the map is corrected.
      one SHAFT_STATION per REQUIRED level (every listed level is required —
      one infeasible station fails the shaft), sump bottom. No placement
      optimization, no LLM-placed geometry; the frontend never derives shaft
-     geometry (the Shafts card edits EXPLICIT `scenario.shafts` parameters
-     only — "Suggest collar" copies the planner's own default from
-     `POST …/design/shafts/suggest-collar` on click; applying is the rule 40
-     scenario PUT behind the shared reset-plan confirmation). Hardening PR-2
+     geometry (the Setup › Access card — PR #54 review B3, formerly the
+     Shafts card — edits EXPLICIT `scenario.shafts` parameters only —
+     "Suggest collar" copies the planner's own default from
+     `POST …/design/shafts/suggest-collar` on click and is offered only
+     while a level development exists to derive it from; applying is the
+     rule 40 scenario PUT behind the shared reset-plan confirmation, made
+     BEFORE the layout so a declaration never resets a finished design by
+     surprise). Hardening PR-2
      (H2-SH): the VERTICAL shaft excavation mesh is implemented —
      `derived/shaft_mesh.json` + `.glb`, a separate leaf artifact
      (`design/shaft_mesh.py`) swept from the shafts.json axis segments with
@@ -1937,9 +1941,9 @@ code, the code and the rule win and the map is corrected.
      panel structure; its principles are inherited). ORDER IS THE SCREEN:
      the ribbon lists the seven steps `1 Setup · 2 Design · 3 Network ·
      4 Mining · 5 Systems · 6 Analysis · 7 Export`, the stepper under it
-     lists every stage (`Scenario · Method | Layout · Levels · Excavation ·
-     Shafts | Network · Capability | Production · Schedule | Communication
-     · Sensors | Analysis | Export`) with one glyph each (✓ done · ● next ·
+     lists every stage (`Scenario · Method · Access | Layout · Levels ·
+     Excavation · Shafts | Network · Capability | Production · Schedule |
+     Communication · Sensors | Analysis | Export`) with one glyph each (✓ done · ● next ·
      ○ waiting · ✗ failed · ↻ running · – optional), and at most ONE stage
      is NEXT: the first stage whose prerequisite is done (Excavation waits
      for Levels; Analysis follows the last Systems stage and Export follows
@@ -1974,7 +1978,15 @@ code, the code and the rule win and the map is corrected.
      Randomize and Advanced are secondary; saved mines under File › Open)
      then Method (decided BEFORE the layout; a later change is the rule 40
      scenario PUT behind a confirmation that lists the backend
-     `reset-plan?from=WORLD` verbatim). Layout candidates read "Option n"
+     `reset-plan?from=WORLD` verbatim) then Access (PR #54 review B3: the
+     access strategy — ○ Ramp only / ● Ramp + Shaft with the explicit
+     `scenario.shafts` parameters — decided BEFORE the layout exactly like
+     the method, applied through the same PUT + world regeneration behind
+     the same confirmation; "Ramp only" is a decision, so the stage is
+     done once the world exists). Design › Shafts never edits the
+     declaration: it PLANS the declared shafts and sweeps their mesh, and
+     reads done only when BOTH exist (either failure fails the stage;
+     `specs = []` keeps it OPTIONAL). Layout candidates read "Option n"
      in rank order; the candidate id, family parameters and scores stay in
      Details (rule 142 enumeration unchanged). Export is reachable from the
      ribbon AND File › Export — two paths, one implementation; File › Import
@@ -2686,8 +2698,21 @@ code, the code and the rule win and the map is corrected.
      OWN HTTP ROUTES from their preset + seed realization (rule 119,
      deterministic re-bake), with the DEMO / SYNTHETIC planning-economics
      assumptions, and writes `data/demos/index.json` (the commit it was
-     baked from, no timestamp). `data/` stays git-ignored: baking is a
-     deployment step. The scenario store resolves a demo id IN PLACE when no
+     baked from, no timestamp). `data/` stays git-ignored and a baked demo is
+     bound by STAT identity, so the demos are never shipped as files: they
+     MATERIALIZE THEMSELVES on the host that serves them (PR #54 review B1,
+     `services/demo_materializer.py`) — `scripts/bin/dev-setup` runs
+     `bake_demos.py --if-missing` synchronously (a prepared checkout and a
+     Codespace list the three demos before the servers start), and the
+     application lifespan (`create_app`, `Settings.demos_autobake` /
+     `MINEGEN_DEMOS_AUTOBAKE`, default on) bakes the recipes the catalogue
+     does not list as available in ONE background thread per process, once,
+     publishing the index after every recipe, recording a failed recipe
+     with its reason and continuing; `GET /demos` carries the
+     `materialization` state (DISABLED · IDLE · BAKING recipe / stage · DONE
+     · FAILED) and File › Demos shows "Baking…" and polls while it bakes.
+     The test suite (`tests/__init__.py`), the browser e2e and the baker's
+     own in-process application never autobake. The scenario store resolves a demo id IN PLACE when no
      saved scenario carries it (a saved scenario always wins, so a clone is
      never shadowed) — no derived copy, every revision binding intact — and
      refuses every write (replace, delete, derived clearing, migration-on-

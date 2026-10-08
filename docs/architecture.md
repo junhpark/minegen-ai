@@ -146,7 +146,9 @@ here. Per-phase decision records below keep their original wording.
                        routes into data/demos/ (scripts/bake_demos.py)
       services/        scenario persistence (with the READ-ONLY demo root),
                        world / design / infrastructure orchestration, async
-                       job service, the demo catalogue (demo_service.py)
+                       job service, the demo catalogue (demo_service.py) and
+                       the automatic demo materialization
+                       (demo_materializer.py, PR #54 review B1)
       api/             FastAPI routers (thin; no algorithms)
       geometry/        RESERVED namespace — empty, zero importers
       simulation/      RESERVED namespace — empty, zero importers; no solver
@@ -179,7 +181,7 @@ presentation mapping, tabs as presentation events) is inherited; the panel
 STRUCTURE is the guided workflow shell of rule 191:
 
     ┌ MineGen-AI · File ▾ · 1 Setup · 2 Design · 3 Network · 4 Mining · 5 Systems · 6 Analysis · 7 Export ┐
-    │ [Scenario ✓][Method ✓] │ [Layout ●][Levels ○][Excavation ○][Shafts –] │ …   ← stepper          │
+    │ [Scenario ✓][Method ✓][Access ✓] │ [Layout ●][Levels ○][Excavation ○][Shafts –] │ … ← stepper │
     ├────────────┬───────────────────────────────────────┬─────────────────────────────────────────┤
     │ CONTROLS   │  3D / 4D / Walk viewport (switcher)   │ STATUS & RESULTS — the current step's   │
     │ one stage  │  Analysis: centre workspace           │ stage statuses · key metrics ·          │
@@ -224,8 +226,8 @@ scene revisions and drop the completions just made. A stage that hosts several c
 
 | Step | Stages | Cards (controls → results) |
 | --- | --- | --- |
-| 1 Setup | Scenario, Method | Scenario (`SetupPanel`: **Create mine** = create + generate world, Randomize / Advanced secondary, saved mines in Details and under File › Open), Mining method (confirmation lists `reset-plan?from=WORLD`) |
-| 2 Design | Layout, Levels, Excavation, Shafts | Mine layout ("Option n" rows, Select / Activate; id and scores in Details), Design assessment (results only), Level development, Ramp tunnel mesh → Development mesh (one primary: the ramp mesh first), Shafts (the `ShaftSpecEditor` edits explicit `scenario.shafts` parameters, "Suggest collar" copies the backend default, Apply = scenario PUT behind the reset-plan confirmation; optional while no spec is declared) → Shaft excavation mesh (PR-2 H2-SH) |
+| 1 Setup | Scenario, Method, Access | Scenario (`SetupPanel`: **Create mine** = create + generate world, Randomize / Advanced secondary, saved mines in Details and under File › Open), Mining method (confirmation lists `reset-plan?from=WORLD`), Access strategy (PR #54 review B3, `AccessPanel`: ○ Ramp only / ● Ramp + Shaft with the explicit `scenario.shafts` editor; Apply = the same scenario PUT + world regeneration behind the same confirmation, decided BEFORE the layout) |
+| 2 Design | Layout, Levels, Excavation, Shafts | Mine layout ("Option n" rows, Select / Activate; id and scores in Details), Design assessment (results only), Level development, Ramp tunnel mesh → Development mesh (one primary: the ramp mesh first), Shafts (PR #54 review B3: PLANS the shafts declared in Setup › Access, then the Shaft excavation mesh — done only with both; optional while no spec is declared; the declaration is never edited here) |
 | 3 Network | Network, Capability | Mine network, Capabilities |
 | 4 Mining | Production, Schedule | Production (method-generic), Schedule |
 | 5 Systems | Communication, Sensors | Communication, Sensors |
@@ -2248,6 +2250,35 @@ acceptance.
   `scenario.json` and the world commit record — the catalogue reports it
   "world publication stale" (unavailable) and the scene read is 409
   WORLD_PUBLICATION_STALE; copy with `cp -a` / `rsync -a` or re-bake.
+- **PR #54 review B1 — the demos materialize themselves (rule 222).**
+  Because of that binding the demos are baked on the serving host, never
+  shipped: `services/demo_materializer.py::DemoMaterializer` bakes exactly
+  the recipes the catalogue does not list as available (READ ≠ TRUST on the
+  directory, never a guess), publishes the index after every recipe, records
+  a failed recipe with its reason and continues, once per process.
+  `scripts/bin/dev-setup` runs `scripts/bake_demos.py --if-missing`
+  synchronously (so a prepared checkout / Codespace lists all three before
+  the servers start); `create_app` gained a lifespan that starts the
+  materializer in a daemon thread when `Settings.demos_autobake`
+  (`MINEGEN_DEMOS_AUTOBAKE`, default on) allows it — Docker and a plain
+  `uvicorn` rely on it. The baker's own in-process application
+  (`create_app(autobake=False)`), the test suite (`tests/__init__.py` sets
+  the variable before the settings cache) and the browser e2e never
+  autobake. `GET /demos` carries `materialization` (DISABLED · IDLE · BAKING
+  recipe / stage · DONE · FAILED with reasons); the File › Demos menu shows
+  "Baking demos… <recipe> · <stage>" and polls while baking.
+- **PR #54 review B3 — the shaft declaration is a Setup decision
+  (rules 182 / 191).** Applying `scenario.shafts` from Design › Shafts was
+  the rule 40 PUT + world regeneration, so editing it there wiped Layout /
+  Levels. The declaration moved to the new Setup › Access stage
+  (`AccessPanel`: ○ Ramp only / ● Ramp + Shaft with the now CONTROLLED
+  `ShaftSpecEditor`; Apply through the same `ScenarioChangeDialog`
+  reset-plan confirmation, decided before the layout; "Suggest collar" only
+  while a level development exists); Design › Shafts plans the declared
+  shafts and sweeps their mesh, and the stepper reads it DONE only with both
+  (`specs = []` stays OPTIONAL). The browser e2e BASELINE flow declares the
+  shaft at Access, plans + sweeps it at Shafts and re-plans it after the
+  Levels reset.
 - **Browser e2e (hardening plan §5 header).** `tests/test_shell_e2e.py`
   bakes the Cut & Fill demo into its temporary data directory before the
   servers start and adds (a) the 4D control / results and the full-window

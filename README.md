@@ -187,16 +187,24 @@ Every phase must pass all of these before it is considered complete:
 
 Three synthetic demo mines — TABULAR Longhole, TABULAR Cut & Fill and a
 WARPED_VEIN world + layout-v2 + curved levels — are baked end to end through
-the application's own routes into `data/demos/<id>/` (git-ignored; baking is a
-deployment step) together with `data/demos/index.json`:
+the application's own routes into `data/demos/<id>/` (git-ignored) together
+with `data/demos/index.json`. They materialize themselves: `scripts/bin/
+dev-setup` bakes the ones that are not baked yet (≈ 6 min on the first run,
+nothing afterwards), and a backend started without that step bakes the
+missing ones in the background at startup (`MINEGEN_DEMOS_AUTOBAKE`, default
+on — File › Demos shows "Baking…" with the recipe and stage until each one
+appears). A fresh clone therefore lists all three without running a script.
+The baker is also available directly:
 
+    cd backend && PYTHONPATH=src:. .venv/bin/python ../scripts/bake_demos.py --if-missing
     cd backend && PYTHONPATH=src:. .venv/bin/python ../scripts/bake_demos.py
     cd backend && PYTHONPATH=src:. .venv/bin/python ../scripts/bake_demos.py --only demo-warped-vein
 
-A baked demo is bound by file stat identity (size + mtime_ns), so move the
-`data/demos/` tree only with timestamps preserved (`cp -a`, `rsync -a`, tar)
-or re-bake it on the serving host; a copy without timestamps is listed as
-unavailable ("world publication stale") and never served.
+A baked demo is bound by file stat identity (size + mtime_ns), which is why it
+is baked on the serving host rather than shipped: move the `data/demos/` tree
+only with timestamps preserved (`cp -a`, `rsync -a`, tar); a copy without
+timestamps is listed as unavailable ("world publication stale"), never served,
+and is re-baked by the next startup.
 
 `GET /api/v1/demos` lists them; **File › Demos** opens one read-only in place
 (viewer-only demo mode: Auto tour over the camera presets, 4D Loop on, no
@@ -221,8 +229,10 @@ checked on the baked demos:
    WHAT-IF OVERRIDE — NOT SCENARIO VALUE, the Schedule tab series; "Show 3D
    context" splits the view.
 4. **Shafts** (Longhole demo) → the shaft barrel, collar / sump caps and
-   station drives render as a mesh; after "Clone to edit" the Shafts card
-   shows the spec editor with "Suggest collar".
+   station drives render as a mesh; after "Clone to edit" the declaration is
+   edited in **Setup › Access** (Ramp only / Ramp + Shaft, "Suggest collar"
+   while a level development exists) and **Design › Shafts** only plans the
+   declared shafts and sweeps their mesh (the stage is done with both).
 5. **Cut & Fill demo in 4D** → the shallowest block starts first, at most two
    panels are in production at once, the first lift of every block above an
    unmined block is a cemented sill mat, and first production precedes ramp

@@ -9,9 +9,17 @@ meters (`docs/coordinate-system.md`). Schemas live in
 
     GET  /api/v1/health                              liveness + version + coordinate system
     GET  /api/v1/demos                               hardening PR-2 H4: the baked demo catalogue
-                                                     (data/demos/index.json, written only by
-                                                     scripts/bake_demos.py). status AVAILABLE |
-                                                     NOT_BAKED; every entry READ ≠ TRUST-checked
+                                                     (data/demos/index.json, written only by the
+                                                     demo baker — scripts/bake_demos.py and the
+                                                     automatic materialization at startup /
+                                                     dev-setup, PR #54 review B1). status
+                                                     AVAILABLE | NOT_BAKED, plus "materialization"
+                                                     {status DISABLED | IDLE | BAKING | DONE |
+                                                     FAILED, recipeId, stage, pendingRecipes[],
+                                                     completedRecipes[], failedRecipes{id: reason}}
+                                                     — this process's background bake of the
+                                                     demos the catalogue does not list; every
+                                                     entry READ ≠ TRUST-checked
                                                      against its directory (available=false +
                                                      reason when missing, shadowed by a saved
                                                      scenario, or disagreeing in seed / orebody /

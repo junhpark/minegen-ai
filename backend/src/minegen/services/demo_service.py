@@ -1,7 +1,9 @@
 """Baked demo catalogue (hardening PR-2 H4).
 
-``data/demos/index.json`` is written ONLY by ``scripts/bake_demos.py`` (through
-``minegen.demos.bake``) and lists the demo mines baked into
+``data/demos/index.json`` is written ONLY by the demo baker — ``scripts/
+bake_demos.py`` and the automatic materialization of PR #54 review B1
+(``services/demo_materializer.py``), both through ``minegen.demos.bake`` —
+and lists the demo mines baked into
 ``data/demos/{id}/`` — complete scenario directories (document, world arrays,
 derived artifacts, planning-economics assumptions) that the scenario store
 resolves in place and never writes (``ScenarioStore.demo_root``).
@@ -17,6 +19,7 @@ mine, never a measured, estimated or imported one.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
@@ -68,12 +71,34 @@ class DemoCatalogEntry(DemoEntry):
     reason: str | None = None
 
 
+MaterializationStatus = Literal["DISABLED", "IDLE", "BAKING", "DONE", "FAILED"]
+
+
+class MaterializationState(ApiModel):
+    """PR #54 review B1 — what the automatic demo materialization of THIS
+    backend process is doing (``services/demo_materializer.py``): DISABLED
+    (MINEGEN_DEMOS_AUTOBAKE=0), IDLE (not started), BAKING (``recipe_id`` /
+    ``stage`` name the recipe and its workflow stage under way), DONE, FAILED
+    (at least one recipe failed; ``failed_recipes`` carries the reasons —
+    the others were still baked)."""
+
+    status: MaterializationStatus
+    recipe_id: str | None = None
+    stage: str | None = None
+    pending_recipes: list[str] = Field(default_factory=list)
+    completed_recipes: list[str] = Field(default_factory=list)
+    failed_recipes: dict[str, str] = Field(default_factory=dict)
+
+
 class DemoCatalog(ApiModel):
     status: Literal["AVAILABLE", "NOT_BAKED"]
     reason: str | None
     baked_from_commit: str | None
     demos: list[DemoCatalogEntry]
     notice: str
+    #: PR #54 review B1: the automatic materialization state of this process
+    #: (``None`` when the catalogue is served without a materializer)
+    materialization: MaterializationState | None = None
 
 
 DEMO_NOTICE = (
@@ -103,24 +128,43 @@ def read_demo_index(demos_dir: Path) -> DemoIndex | None:
     return index
 
 
+#: PR #54 review B1: the live materialization state, asked on every catalogue
+#: read (``DemoMaterializer.state``); ``None`` = no materializer in this process
+StateProvider = Callable[[], MaterializationState]
+
+
 class DemoService:
-    def __init__(self, store: ScenarioStore, demos_dir: Path) -> None:
+    def __init__(
+        self,
+        store: ScenarioStore,
+        demos_dir: Path,
+        *,
+        state_provider: StateProvider | None = None,
+    ) -> None:
         self.store = store
         self.demos_dir = demos_dir
         self._reader = ArtifactReader(store)
+        self._state_provider = state_provider
 
     def catalog(self) -> DemoCatalog:
+        materialization = self._state_provider() if self._state_provider is not None else None
         index = read_demo_index(self.demos_dir)
         if index is None:
+            baking = materialization is not None and materialization.status == "BAKING"
             return DemoCatalog(
                 status="NOT_BAKED",
                 reason=(
-                    f"no baked demos: {self.demos_dir.name}/{DEMO_INDEX_FILE} does not exist "
-                    "(run scripts/bake_demos.py)"
+                    f"no baked demos yet: {self.demos_dir.name}/{DEMO_INDEX_FILE} does not "
+                    "exist — the backend is baking them now (see materialization)"
+                    if baking
+                    else f"no baked demos: {self.demos_dir.name}/{DEMO_INDEX_FILE} does not "
+                    "exist (they are baked automatically at startup with "
+                    "MINEGEN_DEMOS_AUTOBAKE on, or run scripts/bake_demos.py)"
                 ),
                 baked_from_commit=None,
                 demos=[],
                 notice=DEMO_NOTICE,
+                materialization=materialization,
             )
         entries = [self._check(entry) for entry in index.demos]
         return DemoCatalog(
@@ -129,6 +173,7 @@ class DemoService:
             baked_from_commit=index.baked_from_commit,
             demos=entries,
             notice=DEMO_NOTICE,
+            materialization=materialization,
         )
 
     def _check(self, entry: DemoEntry) -> DemoCatalogEntry:

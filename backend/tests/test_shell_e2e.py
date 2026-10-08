@@ -136,6 +136,9 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
         **os.environ,
         "MINEGEN_DATA_DIR": str(data_dir),
         "MINEGEN_CORS_ORIGINS": json.dumps([web]),
+        # PR #54 review B1: the e2e bakes its one demo itself (above); the
+        # server under test must not start baking the other two
+        "MINEGEN_DEMOS_AUTOBAKE": "0",
     }
     backend = subprocess.Popen(
         [

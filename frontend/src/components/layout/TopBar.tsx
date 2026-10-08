@@ -116,7 +116,12 @@ function FileMenu() {
     queryFn: api.listDemos,
     enabled: open && demoList,
     retry: false,
+    // PR #54 review B1: while the backend is baking the demos in the
+    // background, re-read the catalogue so each one appears as it completes
+    refetchInterval: (query) =>
+      query.state.data?.materialization?.status === 'BAKING' ? 3000 : false,
   })
+  const baking = demos.data?.materialization ?? null
   const loadDemo = useMutation({
     mutationFn: openDemo,
     onSuccess: () => setStage('SCENARIO'),
@@ -231,8 +236,42 @@ function FileMenu() {
               className="max-h-56 overflow-y-auto border-y border-rock-700 bg-rock-900/60"
               data-testid="demo-list"
             >
-              {demos.isSuccess && demos.data.status === 'NOT_BAKED' ? (
-                <li className="px-4 py-1 text-[11px] text-mute">No demos baked on this backend</li>
+              {baking?.status === 'BAKING' ? (
+                <li
+                  className="px-4 py-1 text-[11px] text-chalk-dim"
+                  data-testid="demo-baking"
+                  role="status"
+                >
+                  Baking demos…{' '}
+                  <span className="readout text-[10px] text-mute">
+                    {baking.recipeId ?? ''}
+                    {baking.stage ? ` · ${baking.stage}` : ''}
+                    {baking.pendingRecipes.length > 0
+                      ? ` · ${String(baking.pendingRecipes.length)} more`
+                      : ''}
+                  </span>
+                </li>
+              ) : null}
+              {baking && Object.keys(baking.failedRecipes).length > 0
+                ? Object.entries(baking.failedRecipes).map(([id, reason]) => (
+                    <li
+                      key={id}
+                      className="px-4 py-1 text-[11px] text-danger"
+                      data-testid="demo-bake-failed"
+                      title={reason}
+                    >
+                      {id} did not bake — {reason}
+                    </li>
+                  ))
+                : null}
+              {demos.isSuccess &&
+              demos.data.status === 'NOT_BAKED' &&
+              baking?.status !== 'BAKING' ? (
+                <li className="px-4 py-1 text-[11px] text-mute">
+                  {baking?.status === 'DISABLED'
+                    ? 'No demos baked on this backend (automatic baking is off)'
+                    : 'No demos baked on this backend'}
+                </li>
               ) : null}
               {demos.isSuccess
                 ? demos.data.demos.map((d) => (

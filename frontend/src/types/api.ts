@@ -396,10 +396,23 @@ export interface DemoCatalogEntry {
   reason: string | null
 }
 
+/** PR #54 review B1: this backend process's automatic bake of the demos the
+ * catalogue does not list (`services/demo_materializer.py`) */
+export interface DemoMaterialization {
+  status: 'DISABLED' | 'IDLE' | 'BAKING' | 'DONE' | 'FAILED'
+  recipeId: string | null
+  stage: string | null
+  pendingRecipes: string[]
+  completedRecipes: string[]
+  failedRecipes: Record<string, string>
+}
+
 export interface DemoCatalog {
   status: 'AVAILABLE' | 'NOT_BAKED'
   reason: string | null
   bakedFromCommit: string | null
   demos: DemoCatalogEntry[]
   notice: string
+  /** absent when the catalogue is served without a materializer */
+  materialization?: DemoMaterialization | null
 }

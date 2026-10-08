@@ -7,6 +7,7 @@ from functools import lru_cache
 from minegen.config import get_settings
 from minegen.services.adapter_service import AdapterService
 from minegen.services.analysis_service import AnalysisService
+from minegen.services.demo_materializer import DemoMaterializer
 from minegen.services.demo_service import DemoService
 from minegen.services.design_service import DesignService
 from minegen.services.exchange_service import ExchangeService
@@ -25,8 +26,23 @@ def get_scenario_store() -> ScenarioStore:
 
 
 @lru_cache
+def get_demo_materializer() -> DemoMaterializer:
+    """PR #54 review B1: ONE materializer per process — started by the
+    application lifespan when ``Settings.demos_autobake`` allows it, asked
+    for its state by every catalogue read."""
+    settings = get_settings()
+    return DemoMaterializer(
+        settings.demos_dir, settings.scenarios_dir, enabled=settings.demos_autobake
+    )
+
+
+@lru_cache
 def get_demo_service() -> DemoService:
-    return DemoService(get_scenario_store(), get_settings().demos_dir)
+    return DemoService(
+        get_scenario_store(),
+        get_settings().demos_dir,
+        state_provider=get_demo_materializer().state,
+    )
 
 
 @lru_cache
