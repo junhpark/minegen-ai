@@ -63,6 +63,7 @@ from minegen.core.artifacts import (
     LEVELS_ARTIFACT,
     NETWORK_ARTIFACT,
     SENSORS_ARTIFACT,
+    SHAFT_MESH_ARTIFACT,
     SHAFTS_ARTIFACT,
     STOPES_ARTIFACT,
     TARGETS_ARTIFACT,
@@ -133,8 +134,9 @@ class WorldArtifactIncompatibleError(WorldNotGeneratedError):
     routers report the more specific code."""
 
 
-#: the 13 scene slots the manifest projects straight from their artifact, in
-#: the ORDER ``WorldService.scene`` has always written them
+#: the 14 scene slots the manifest projects straight from their artifact, in
+#: the ORDER ``WorldService.scene`` has always written them (``shaftMesh``
+#: appended by hardening PR-2 H2-SH)
 SCENE_SLOTS: tuple[tuple[str, str], ...] = (
     ("accessTargets", TARGETS_ARTIFACT),
     ("decline", DECLINE_ARTIFACT),
@@ -143,6 +145,7 @@ SCENE_SLOTS: tuple[tuple[str, str], ...] = (
     ("developmentMesh", DEVELOPMENT_MESH_ARTIFACT),
     ("levels", LEVELS_ARTIFACT),
     ("shafts", SHAFTS_ARTIFACT),
+    ("shaftMesh", SHAFT_MESH_ARTIFACT),
     ("network", NETWORK_ARTIFACT),
     ("capabilityGraph", CAPABILITY_GRAPH_ARTIFACT),
     ("stopes", STOPES_ARTIFACT),

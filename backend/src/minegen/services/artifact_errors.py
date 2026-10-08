@@ -153,6 +153,13 @@ class DevelopmentMeshNotGeneratedError(LookupError):
     http_status: ClassVar[int] = 409
 
 
+class ShaftMeshNotGeneratedError(LookupError):
+    """shaft_mesh.json does not exist for the scenario (hardening PR-2 H2-SH)."""
+
+    code: ClassVar[str] = "SHAFT_MESH_NOT_GENERATED"
+    http_status: ClassVar[int] = 409
+
+
 class LevelsNotGeneratedError(LookupError):
     """levels.json does not exist for the scenario."""
 
@@ -288,6 +295,21 @@ class ShaftsStaleError(RuntimeError):
         super().__init__(
             f"the shaft artifact of scenario '{scenario_id}' belongs to a previous "
             "level-development revision; POST …/design/shafts again"
+        )
+
+
+class ShaftMeshStaleError(RuntimeError):
+    """shaft_mesh.json was swept from a different ``shafts.json`` revision
+    than the one on disk (hardening PR-2 H2-SH): the mesh is a derivative of
+    the shaft geometry and never served beside moved shafts."""
+
+    code: ClassVar[str] = "SHAFT_MESH_STALE"
+    http_status: ClassVar[int] = 409
+
+    def __init__(self, scenario_id: str) -> None:
+        super().__init__(
+            f"the shaft excavation mesh of scenario '{scenario_id}' belongs to a previous "
+            "shaft revision; POST …/design/shaft-mesh again"
         )
 
 

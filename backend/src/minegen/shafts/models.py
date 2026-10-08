@@ -170,6 +170,26 @@ class ShaftsMetrics(ApiModel):
     planning_seconds: float
 
 
+class CollarSuggestion(ApiModel):
+    """``POST …/design/shafts/suggest-collar`` (hardening PR-2 H2-SH): the
+    backend's DEFAULT collar placement for ONE declared spec against the
+    current ``levels.json`` — the rule 182 derivation (``collarStandoff``
+    beyond the footwall-most level-development extent along the away-from-ore
+    direction through the target-level entry centroid), with the terrain
+    elevation. A suggestion only: nothing is persisted, the frontend copies
+    the plan position into the editable spec and the user submits it
+    explicitly (rule 124 — the backend derives, the user decides)."""
+
+    shaft_id: str
+    status: Literal["OK", "FAILED"]
+    collar: tuple[float, float, float] | None
+    collar_source: Literal["DEFAULT_DERIVED"] = "DEFAULT_DERIVED"
+    level_ids: list[str]
+    collar_standoff: float
+    failure_code: ShaftFailureCode | None = None
+    failure_reason: str | None = None
+
+
 class ShaftsPayload(ApiModel):
     status: Literal["SUCCESS", "FAILED"]
     failure_reason: str | None

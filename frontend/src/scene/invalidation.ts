@@ -8,6 +8,7 @@ import type {
   NetworkPayload,
   RampSourceSummary,
   SensorPayload,
+  ShaftMeshReport,
   ShaftsPayload,
   SmoothedDeclinePayload,
   ProductionPayload,
@@ -42,6 +43,7 @@ export function afterUpstreamRegen(scene: WorldScene): WorldScene {
     levels: null,
     developmentMesh: null,
     shafts: null,
+    shaftMesh: null,
     network: null,
     capabilityGraph: null,
     stopes: null,
@@ -60,6 +62,7 @@ export function afterLevelsRegen(scene: WorldScene, payload: LevelsPayload): Wor
     levels: payload,
     developmentMesh: null,
     shafts: null, // rule 184: stations weld onto level nodes
+    shaftMesh: null, // PR-2 H2-SH: shafts → shaft mesh
     network: null,
     capabilityGraph: null,
     stopes: null,
@@ -76,12 +79,19 @@ export function afterShaftsRegen(scene: WorldScene, payload: ShaftsPayload): Wor
   return {
     ...scene,
     shafts: payload,
+    shaftMesh: null, // PR-2 H2-SH: the excavation sweep is a derivative of the shafts
     network: null,
     capabilityGraph: null,
     timeline: null,
     communication: null,
     sensors: null,
   }
+}
+
+/** Shaft excavation mesh rebuilt (hardening PR-2 H2-SH): a leaf — touches
+ * nothing else. */
+export function afterShaftMeshRegen(scene: WorldScene, payload: ShaftMeshReport): WorldScene {
+  return { ...scene, shaftMesh: payload }
 }
 
 /** Capability graph rebuilt (rule 185): touches nothing else. */

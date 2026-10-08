@@ -226,6 +226,38 @@ meters (`docs/coordinate-system.md`). Schemas live in
                                                      ringIntervalCount / ringChainageFractions,
                                                      rule 173); deleted with levels.json / the
                                                      ramp chain
+    POST …/design/shaft-mesh                         hardening PR-2 H2-SH: shaft excavation sweep
+                                                     of the persisted shafts.json — circular
+                                                     barrel (constant vertical frame, K = 2 ×
+                                                     archSegments) + collar / sump caps + one
+                                                     station drive per level (secondary horseshoe,
+                                                     OPEN–OPEN), judged under DesignContext.shaft
+                                                     / the level-development context and the
+                                                     ACTIVE clearance policy. Synchronous → 200
+                                                     report {shaftsRevision, shaftCount,
+                                                     stationAccessCount, byKind, shafts[].barrel
+                                                     (CAP-CAP closed-solid QA, envelope with the
+                                                     collar zone) / stationAccesses[], primitives,
+                                                     meshUrl}. 404 SHAFTS_NOT_GENERATED / 409
+                                                     SHAFTS_STALE without a valid shaft artifact;
+                                                     a FAILED shaft plan, no OK shaft or any
+                                                     envelope / topology defect is a FAILED report
+                                                     with no GLB. A leaf: invalidates nothing;
+                                                     deleted with shafts.json.
+    GET  …/design/shaft-mesh                         409 SHAFT_MESH_NOT_GENERATED if missing,
+                                                     409 SHAFT_MESH_STALE when shafts.json moved
+    GET  …/design/shaft-mesh/mesh.glb                binary glTF: SHAFT + SHAFT_STATION_ACCESS tube
+                                                     primitives (`ranges` → shafts.json centerline
+                                                     ids with the rule-173 reveal metadata) and
+                                                     the SHAFT_COLLAR_CAP / SHAFT_SUMP_CAP
+                                                     primitives
+    POST …/design/shafts/suggest-collar              hardening PR-2 H2-SH: body = one ShaftSpec;
+                                                     answers the planner's DEFAULT collar
+                                                     (rule 182 derivation, terrain elevation) for
+                                                     that spec against the current levels.json —
+                                                     read-only, nothing persisted; typed FAILED
+                                                     with the ShaftFailureCode when undefined.
+                                                     409 LEVELS_NOT_GENERATED without levels.
     POST …/design/layout-v2                          Phase 20A parametric family search
                                                      (kind LAYOUT_V2) → 202 {jobId, …}; ?sync=true
                                                      runs inline. Every orebody type (EXACT or

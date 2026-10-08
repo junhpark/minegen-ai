@@ -15,6 +15,7 @@ import type {
   DevelopmentTimeline,
   LevelAccessesPayload,
   LevelsPayload,
+  ShaftsPayload,
   SmoothedDeclinePayload,
   TimelinePayload,
 } from '@/types/scene'
@@ -132,6 +133,46 @@ describe('timeline → mesh identity resolution', () => {
     expect(at(32.5)).toBe(0.25)
     expect(at(40)).toBe(1)
   })
+
+  it('PR-2 H2-SH: SHAFT / SHAFT_STATION_ACCESS refs resolve through shafts.json to the centerline id', () => {
+    const shafts = {
+      status: 'SUCCESS',
+      centerlines: [
+        { id: 'SHAFT:SHAFT-01:SEG00', kind: 'SHAFT_SEGMENT' },
+        { id: 'SHAFT_STATION_ACCESS:SHAFT-01:L01', kind: 'STATION_ACCESS' },
+      ],
+    } as unknown as ShaftsPayload
+    const tl = {
+      status: 'SUCCESS',
+      developments: [
+        dev('SHAFT:SHAFT-01:SEG00', 'SHAFT', 'shafts.json', 0, 0, 10),
+        dev('SHAFT_STATION_ACCESS:SHAFT-01:L01', 'SHAFT_STATION_ACCESS', 'shafts.json', 1, 10, 20),
+        dev('SHAFT:bad', 'SHAFT', 'shafts.json', 7, 0, 1), // out of range → unmapped
+      ],
+    } as unknown as TimelinePayload
+    const plan = resolveExcavationReveal(tl, smoothed, levels, accesses, 15, shafts)
+    expect(plan.unmappedEdgeIds).toEqual(['SHAFT:bad'])
+    expect(plan.reveals.map((r) => [r.edgeId, r.target, r.progress])).toEqual([
+      ['SHAFT:SHAFT-01:SEG00', { kind: 'SHAFT', pieceId: 'SHAFT:SHAFT-01:SEG00' }, 1],
+      [
+        'SHAFT_STATION_ACCESS:SHAFT-01:L01',
+        { kind: 'SHAFT', pieceId: 'SHAFT_STATION_ACCESS:SHAFT-01:L01' },
+        0.5,
+      ],
+    ])
+    // without the owning artifact every shaft ref fails closed (never guessed)
+    const closed = resolveExcavationReveal(tl, smoothed, levels, accesses, 15)
+    expect(closed.reveals).toEqual([])
+    expect(closed.unmappedEdgeIds).toHaveLength(3)
+    // a shaft piece is covered through the piece-meta map like a development piece
+    expect(
+      coveredEdgeIds(
+        plan.reveals,
+        new Map(),
+        new Map([['SHAFT:SHAFT-01:SEG00', META]]),
+      ),
+    ).toEqual(['SHAFT:SHAFT-01:SEG00'])
+  })
 })
 
 describe('batched draw groups', () => {
@@ -192,16 +233,44 @@ describe('20B.3-1.2 independent 4D mount toggles', () => {
   it('pins the four toggle combinations', () => {
     expect(
       excavationMountPlan({ ...base, tunnelMeshVisible: true, developmentMeshVisible: true }),
-    ).toEqual({ ramp: true, development: true, mounted: true })
+    ).toEqual({ ramp: true, development: true, shaft: false, mounted: true })
     expect(
       excavationMountPlan({ ...base, tunnelMeshVisible: true, developmentMeshVisible: false }),
-    ).toEqual({ ramp: true, development: false, mounted: true })
+    ).toEqual({ ramp: true, development: false, shaft: false, mounted: true })
     expect(
       excavationMountPlan({ ...base, tunnelMeshVisible: false, developmentMeshVisible: true }),
-    ).toEqual({ ramp: false, development: true, mounted: true })
+    ).toEqual({ ramp: false, development: true, shaft: false, mounted: true })
     expect(
       excavationMountPlan({ ...base, tunnelMeshVisible: false, developmentMeshVisible: false }),
-    ).toEqual({ ramp: false, development: false, mounted: false })
+    ).toEqual({ ramp: false, development: false, shaft: false, mounted: false })
+  })
+  it('PR-2 H2-SH: the shaft reveal is bound to its own toggle and mounts alone', () => {
+    const shaftOnly = excavationMountPlan({
+      ...base,
+      tunnelMeshVisible: false,
+      developmentMeshVisible: false,
+      shaftMeshAvailable: true,
+      shaftMeshVisible: true,
+    })
+    expect(shaftOnly).toEqual({ ramp: false, development: false, shaft: true, mounted: true })
+    expect(
+      excavationMountPlan({
+        ...base,
+        tunnelMeshVisible: true,
+        developmentMeshVisible: true,
+        shaftMeshAvailable: true,
+        shaftMeshVisible: false,
+      }).shaft,
+    ).toBe(false)
+    expect(
+      excavationMountPlan({
+        ...base,
+        tunnelMeshVisible: true,
+        developmentMeshVisible: true,
+        shaftMeshAvailable: false,
+        shaftMeshVisible: true,
+      }).shaft,
+    ).toBe(false)
   })
   it('never mounts outside an active 4D timeline or without a mesh artifact', () => {
     expect(
@@ -228,7 +297,7 @@ describe('20B.3-1.2 independent 4D mount toggles', () => {
         tunnelMeshVisible: true,
         developmentMeshVisible: true,
       }),
-    ).toEqual({ ramp: false, development: true, mounted: true })
+    ).toEqual({ ramp: false, development: true, shaft: false, mounted: true })
   })
 })
 

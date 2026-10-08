@@ -39,6 +39,7 @@ const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
       { id: 'developmentMesh', label: 'Development mesh (access · drift · crosscut)', phase: 20 },
       { id: 'ramp', label: 'Ramp', phase: 6 },
       { id: 'shafts', label: 'Shafts (axis · stations · station drives)', phase: 20 },
+      { id: 'shaftMesh', label: 'Shaft excavation mesh (barrel · caps · drives)', phase: 20 },
     ],
   },
   {

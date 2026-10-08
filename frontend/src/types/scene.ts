@@ -1769,6 +1769,76 @@ export interface DevelopmentMeshReport {
   meshUrl: string | null
 }
 
+/** derived/shaft_mesh.json (hardening PR-2 H2-SH): the shaft excavation
+ * sweep — circular barrel + collar / sump caps + station drives — derived
+ * from shafts.json. A leaf artifact: it invalidates nothing and is deleted
+ * with the shafts. Rendered through the development-mesh GLB reader (same
+ * `ranges` grammar); the frontend performs no shaft engineering. */
+export interface ShaftMeshReport {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  shaftsRevision?: string
+  shaftCount?: number
+  stationAccessCount?: number
+  skippedShafts?: string[]
+  ringCount?: number
+  renderVertexCount?: number
+  primitiveCount?: number
+  length3d?: number
+  nominalExcavationVolume?: number
+  byKind?: Record<
+    'SHAFT' | 'SHAFT_STATION_ACCESS',
+    { count: number; length3d: number; nominalExcavationVolume: number; endpointPolicies: string[] }
+  >
+  profile?: { barrelSegments: number; driveArchSegments: number; collarZoneDiameters: number }
+  shafts?: {
+    shaftId: string
+    diameter: number
+    barrel: {
+      pieceIds: string[]
+      ringCount: number
+      triangleCount: number
+      length3d: number
+      nominalExcavationVolume: number
+      meshVolume: number
+      volumeDifferencePct: number
+      topology: { manifold: boolean; watertight: boolean; outwardOrientation: boolean; valid: boolean }
+      envelope: {
+        hardViolations: number
+        aboveTerrainBelowCollarZone: number
+        collarZoneAboveTerrain: number
+      }
+    } | null
+    stationAccesses: {
+      pieceId: string
+      levelId: string
+      length3d: number
+      triangleCount: number
+      topology: { valid: boolean; boundaryEdges: number; expectedBoundaryEdges: number }
+    }[]
+  }[]
+  booleanUnion?: string
+  limitations?: string[]
+  generationSeconds?: number
+  sources?: { shafts: boolean; rampSource: string }
+  glbBytes?: number
+  artifactRevision: string | null
+  meshUrl: string | null
+}
+
+/** `POST …/design/shafts/suggest-collar`: the planner's default collar for
+ * one declared spec — a suggestion the user copies into the explicit spec. */
+export interface CollarSuggestion {
+  shaftId: string
+  status: 'OK' | 'FAILED'
+  collar: [number, number, number] | null
+  collarSource: 'DEFAULT_DERIVED'
+  levelIds: string[]
+  collarStandoff: number
+  failureCode?: string | null
+  failureReason?: string | null
+}
+
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
 
 export interface JobProgress {
@@ -1883,6 +1953,8 @@ export interface WorldScene {
   levels: LevelsPayload | null
   /** Phase 20C.2B optional shaft infrastructure (levels → shafts → network) */
   shafts?: ShaftsPayload | null
+  /** hardening PR-2 H2-SH: the shaft excavation mesh (shafts → shaft mesh, a leaf) */
+  shaftMesh?: ShaftMeshReport | null
   network: NetworkPayload | null
   /** Phase 20C.2B capability semantics over the network (network → capability) */
   capabilityGraph?: CapabilityGraphPayload | null

@@ -167,7 +167,8 @@ DERIVED_NAME_IDENTIFIERS = frozenset(
 #: ``generate_development_mesh``, inside the publish lock). These probe a
 #: derived path to DELETE it, never to decide that a read may proceed.
 ALLOWED_PRESENCE_PROBES: dict[str, tuple[str, ...]] = {
-    "design_service.py": ("generate_tunnel", "generate_development_mesh"),
+    # the three WRITE-side GLB cleanups (PR-2 H2-SH added the shaft mesh pair)
+    "design_service.py": ("generate_tunnel", "generate_development_mesh", "generate_shaft_mesh"),
 }
 
 
@@ -325,9 +326,10 @@ def test_the_scan_is_not_empty() -> None:
     } <= by_package, sorted(by_package)
     assert READ_AUTHORITY in {m.name for m in modules}
     # and the detector's vocabulary is the registry's, not a hand list —
-    # 18 registry files + ``derived/world.json``, the UNREGISTERED world commit
-    # record the AC-01F.2 correction made load-bearing (Stage D D3-7)
-    assert len(DERIVED_FILE_NAMES) == 20
+    # 20 registry files (18 at AC-01F + the PR-2 H2-SH shaft mesh pair) +
+    # ``derived/world.json``, the UNREGISTERED world commit record the
+    # AC-01F.2 correction made load-bearing (Stage D D3-7)
+    assert len(DERIVED_FILE_NAMES) == 22
     assert WORLD_RECORD_FILE in DERIVED_FILE_NAMES
     assert {"LAYOUT_V2_ARTIFACT", "TUNNEL_MESH_GLB", "RAMP_SOURCE_FILE"} <= DERIVED_NAME_IDENTIFIERS
 
@@ -400,7 +402,7 @@ def _presence_offenders(module_name: str, source: str) -> list[str]:
 
 def test_no_module_outside_the_read_authority_probes_an_artifact_for_presence() -> None:
     """``is_file`` / ``exists`` on a derived-artifact path is a read decision
-    and belongs to the authority; the only exceptions are the two WRITE-side
+    and belongs to the authority; the only exceptions are the three WRITE-side
     GLB cleanups, named explicitly in ``ALLOWED_PRESENCE_PROBES``."""
     offenders: list[str] = []
     for module in _modules():
@@ -512,8 +514,9 @@ def test_read_specs_are_exactly_the_registered_derived_artifacts() -> None:
 
 
 def test_the_scene_assembles_every_registered_derived_artifact() -> None:
-    """No registered artifact is silently left out of the scene: the 13 direct
-    slots plus the four the Effective Ramp resolution and the layout view own
+    """No registered artifact is silently left out of the scene: the 14 direct
+    slots (13 at AC-01F + the PR-2 H2-SH shaft mesh) plus the four the
+    Effective Ramp resolution and the layout view own
     (``layout_v2.json`` → ``layoutV2``, ``layout_v2_selected.json`` →
     ``layoutV2Selected`` and the ramp payload, ``level_accesses.json`` →
     ``levelAccesses``, ``ramp_source.json`` → ``rampSource``)."""
@@ -530,4 +533,4 @@ def test_the_scene_assembles_every_registered_derived_artifact() -> None:
         RAMP_SOURCE_FILE,
     }
     assert assembled == set(READ_SPECS)
-    assert len(SCENE_SLOTS) == 13
+    assert len(SCENE_SLOTS) == 14

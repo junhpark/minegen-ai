@@ -6,6 +6,7 @@ import type {
   ScenarioCreate,
   ScenarioRealizeRequest,
   ScenarioSummary,
+  ShaftSpec,
 } from '@/types/api'
 import type {
   EconomicsConfig,
@@ -46,6 +47,8 @@ import type {
   ResetResult,
   SensorPayload,
   ShaftsPayload,
+  ShaftMeshReport,
+  CollarSuggestion,
   SliceAxis,
   SliceField,
   SlicePayload,
@@ -342,6 +345,16 @@ export const api = {
   generateShafts: (id: string) =>
     request<ShaftsPayload>(`/scenarios/${id}/design/shafts`, { method: 'POST' }),
   getShafts: (id: string) => request<ShaftsPayload>(`/scenarios/${id}/design/shafts`),
+  /** hardening PR-2 H2-SH: the planner's default collar for one declared spec (read-only) */
+  suggestShaftCollar: (id: string, spec: ShaftSpec) =>
+    request<CollarSuggestion>(`/scenarios/${id}/design/shafts/suggest-collar`, {
+      method: 'POST',
+      body: JSON.stringify(spec),
+    }),
+  /** hardening PR-2 H2-SH: synchronous shaft excavation sweep (barrel + caps + drives) */
+  generateShaftMesh: (id: string) =>
+    request<ShaftMeshReport>(`/scenarios/${id}/design/shaft-mesh`, { method: 'POST' }),
+  getShaftMesh: (id: string) => request<ShaftMeshReport>(`/scenarios/${id}/design/shaft-mesh`),
   /** Phase 20C.2B capability graph (rule 185): synchronous semantic layer. */
   generateCapabilityGraph: (id: string) =>
     request<CapabilityGraphPayload>(`/scenarios/${id}/design/capability-graph`, {

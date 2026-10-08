@@ -78,6 +78,8 @@ from minegen.core.artifacts import (
     NETWORK_ARTIFACT,
     RAMP_SOURCE_FILE,
     SENSORS_ARTIFACT,
+    SHAFT_MESH_ARTIFACT,
+    SHAFT_MESH_GLB,
     SHAFTS_ARTIFACT,
     STOPES_ARTIFACT,
     TARGETS_ARTIFACT,
@@ -115,6 +117,8 @@ from minegen.services.artifact_errors import (
     NetworkNotFoundError,
     ReadSnapshotChangedError,
     SensorsNotGeneratedError,
+    ShaftMeshNotGeneratedError,
+    ShaftMeshStaleError,
     ShaftsNotGeneratedError,
     ShaftsStaleError,
     SmoothedNotGeneratedError,
@@ -328,6 +332,18 @@ def _shape_development_mesh_report(data: dict[str, Any]) -> str | None:
     sources = data.get("sources")
     if not isinstance(sources, dict) or not isinstance(sources.get("rampSource"), str):
         return "'sources.rampSource' is missing"
+    return None
+
+
+def _shape_shaft_mesh_report(data: dict[str, Any]) -> str | None:
+    """Hardening PR-2 H2-SH: the mesh-report shape plus the persisted
+    ``shaftsRevision`` the freshness check compares (a report that cannot
+    say which shafts it swept is malformed, never trusted)."""
+    defect = _shape_mesh_report(data)
+    if defect is not None:
+        return defect
+    if not isinstance(data.get("shaftsRevision"), str):
+        return "'shaftsRevision' is missing"
     return None
 
 
@@ -931,6 +947,25 @@ READ_SPECS: Mapping[str, ReadSpec] = {
             ),
         ),
         provenance_inputs=(LEVELS_ARTIFACT,),
+    ),
+    # hardening PR-2 H2-SH: the shaft excavation sweep — a two-file mesh unit
+    # (GLB hash + publication sidecar, exactly as the two meshes above) bound
+    # to the shafts.json revision it swept (SHAFT_MESH_STALE otherwise)
+    SHAFT_MESH_ARTIFACT: _spec(
+        SHAFT_MESH_ARTIFACT,
+        absent_error=ShaftMeshNotGeneratedError,
+        shape=_shape_shaft_mesh_report,
+        checks=(
+            _glb_check(SHAFT_MESH_ARTIFACT, SHAFT_MESH_GLB),
+            _mesh_commit_check(
+                SHAFT_MESH_ARTIFACT, SHAFT_MESH_GLB, mesh_commit_name(SHAFT_MESH_ARTIFACT)
+            ),
+            _upstream_revision_check(
+                SHAFT_MESH_ARTIFACT, "shaftsRevision", SHAFTS_ARTIFACT, ShaftMeshStaleError
+            ),
+        ),
+        commit_record=mesh_commit_name(SHAFT_MESH_ARTIFACT),
+        provenance_inputs=(SHAFTS_ARTIFACT,),
     ),
     # Phase 21B/C: the ACTIVE PRODUCTION artifact — the compatibility path
     # ``stopes.json`` carries the method-specific typed payload union

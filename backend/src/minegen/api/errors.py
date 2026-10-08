@@ -68,6 +68,8 @@ from minegen.services.artifact_errors import (
     ReadSnapshotChangedError,
     SceneArtifactInvalidError,
     SensorsNotGeneratedError,
+    ShaftMeshNotGeneratedError,
+    ShaftMeshStaleError,
     ShaftsNotGeneratedError,
     ShaftsStaleError,
     SmoothedNotGeneratedError,
@@ -155,6 +157,8 @@ CODE_LADDER: Final[tuple[tuple[type[Exception], str], ...]] = (
     (LevelsNotGeneratedError, "LEVELS_NOT_GENERATED"),
     (ShaftsNotGeneratedError, "SHAFTS_NOT_GENERATED"),
     (ShaftsStaleError, "SHAFTS_STALE"),
+    (ShaftMeshNotGeneratedError, "SHAFT_MESH_NOT_GENERATED"),
+    (ShaftMeshStaleError, "SHAFT_MESH_STALE"),
     (CapabilityGraphNotGeneratedError, "CAPABILITY_GRAPH_NOT_GENERATED"),
     (CapabilityGraphStaleError, "CAPABILITY_GRAPH_STALE"),
     (UnknownNetworkNodeError, "UNKNOWN_NETWORK_NODE"),
@@ -251,6 +255,14 @@ ERRORS: Final[dict[str, ErrorSpec]] = {
         "api/design.py:138-143",
     ),
     "SHAFTS_STALE": ErrorSpec(409, None, "api/design.py:144-145, network.py:74-75"),
+    "SHAFT_MESH_NOT_GENERATED": ErrorSpec(
+        409,
+        "scenario '{scenario_id}' has no shaft excavation mesh; POST …/design/shaft-mesh first",
+        "hardening PR-2 H2-SH services/artifact_errors.py::ShaftMeshNotGeneratedError",
+    ),
+    "SHAFT_MESH_STALE": ErrorSpec(
+        409, None, "hardening PR-2 H2-SH services/artifact_errors.py::ShaftMeshStaleError"
+    ),
     "CAPABILITY_GRAPH_NOT_GENERATED": ErrorSpec(
         404,  # recorded 404/409 drift (I-8), unchanged
         "scenario '{scenario_id}' has no capability graph; POST …/design/capability-graph first",

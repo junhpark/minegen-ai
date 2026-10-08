@@ -108,6 +108,8 @@ export const LAYER_IDS = [
   'developmentMesh',
   // Phase 20C.2B: shaft axes, stations and station drives (backend geometry)
   'shafts',
+  // hardening PR-2 H2-SH: shaft excavation mesh (barrel · caps · station drives)
+  'shaftMesh',
   // Phase 23C: external simulation result overlays (separate geometry over
   // the source-snapshot edge centerlines; never a recolour of the mesh)
   'ventilationResult',

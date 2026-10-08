@@ -12,6 +12,8 @@ import { Metrics } from '@/components/ui/MetricRow'
 import { StageSlot, WorkflowCard } from '@/components/ui/WorkflowCard'
 import { MethodChangeDialog } from '@/components/panels/MethodChangeDialog'
 import { MiningMethodCard } from '@/components/panels/MiningMethodCard'
+import { ScenarioChangeDialog } from '@/components/panels/ScenarioChangeDialog'
+import { ShaftSpecEditor } from '@/components/panels/ShaftSpecEditor'
 import {
   PRODUCTION_ACTION,
   PRODUCTION_UNIT_NOUN,
@@ -24,15 +26,17 @@ import {
   afterDevelopmentMeshRegen,
   afterLevelsRegen,
   afterNetworkRegen,
+  afterShaftMeshRegen,
   afterShaftsRegen,
   afterStopesRegen,
   afterTimelineRegen,
 } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
-import type { MiningConfig, ScenarioCreate } from '@/types/api'
+import type { MiningConfig, ScenarioCreate, ShaftPlanningConfig, ShaftSpec } from '@/types/api'
 import type {
   CapabilityGraphPayload,
+  CollarSuggestion,
   DevelopmentMeshReport,
   JobRecord,
   LevelsPayload,
@@ -40,6 +44,7 @@ import type {
   NetworkPayload,
   ProductionKind,
   ProductionPayload,
+  ShaftMeshReport,
   ShaftsPayload,
   TimelinePayload,
   TunnelMeshReport,
@@ -226,6 +231,49 @@ export function DesignPanel({ view }: { view: DesignTab }) {
       setLayerVisible('shafts', true)
     },
   })
+  // hardening PR-2 H2-SH: the shaft declaration is an explicit scenario
+  // section; applying it is the SAME rule 40 PUT + world regeneration as a
+  // method change, behind the same reset-plan confirmation
+  const [pendingShafts, setPendingShafts] = useState<{
+    config: ShaftPlanningConfig
+    attempt: number
+  } | null>(null)
+  const shaftAttempt = useRef(0)
+  const openShaftChange = (config: ShaftPlanningConfig) => {
+    shaftAttempt.current += 1
+    setPendingShafts({ config, attempt: shaftAttempt.current })
+  }
+  const applyShafts = useMutation({
+    mutationFn: async (config: ShaftPlanningConfig) => {
+      if (!scene || !scenarioDoc) throw new Error('load a scenario first')
+      const id = scenarioDoc.id
+      const body: Record<string, unknown> = { ...scenarioDoc, shafts: config }
+      delete body.id
+      delete body.schemaVersion
+      const updated = await api.replaceScenario(id, body as unknown as ScenarioCreate)
+      const started = activateScenarioRevision(updated)
+      await api.generateWorld(id)
+      const next = await api.getScene(id)
+      setScene(next, started)
+      return updated
+    },
+  })
+  const suggestCollar = async (spec: ShaftSpec): Promise<CollarSuggestion> => {
+    if (!scene) throw new Error('generate levels first')
+    return api.suggestShaftCollar(scene.scenarioId, spec)
+  }
+  // hardening PR-2 H2-SH: the shaft excavation sweep — a leaf of the shafts
+  const shaftMesh = scene?.shaftMesh ?? null
+  const generateShaftMesh = useMutation({
+    mutationFn: async () => {
+      if (!scene) throw new Error('plan shafts first')
+      return api.generateShaftMesh(scene.scenarioId)
+    },
+    onSuccess: (payload: ShaftMeshReport) => {
+      applyScene(epoch, (current) => afterShaftMeshRegen(current, payload))
+      setLayerVisible('shaftMesh', true)
+    },
+  })
 
   // Phase 20C.2B capability graph (rule 185): semantics over the network
   const capabilityGraph = scene?.capabilityGraph ?? null
@@ -266,7 +314,9 @@ export function DesignPanel({ view }: { view: DesignTab }) {
     message(generateLevels.error) ??
     message(generateDevelopmentMesh.error) ??
     message(generateTunnel.error) ??
-    message(generateShafts.error)
+    message(generateShafts.error) ??
+    message(applyShafts.error) ??
+    message(generateShaftMesh.error)
   const networkError = message(generateNetwork.error) ?? message(generateCapabilityGraph.error)
   const miningError =
     message(generateProduction.error) ??
@@ -285,6 +335,23 @@ export function DesignPanel({ view }: { view: DesignTab }) {
           onConfirm={(mining) => {
             setPendingMethod(null)
             applyMethod.mutate(mining)
+          }}
+        />
+      ) : null}
+      {scenarioDoc ? (
+        <ScenarioChangeDialog
+          scenarioId={scenarioDoc.id}
+          pending={pendingShafts?.config ?? null}
+          attempt={pendingShafts?.attempt ?? 0}
+          hasWorld={scene !== null}
+          title="Change shaft declaration"
+          intro="The world is regenerated with the same seed; everything from Layout on is reset."
+          confirmLabel="Apply shafts"
+          listTestId="shafts-will-delete"
+          onCancel={() => setPendingShafts(null)}
+          onConfirm={(config) => {
+            setPendingShafts(null)
+            applyShafts.mutate(config)
           }}
         />
       ) : null}
@@ -317,6 +384,22 @@ export function DesignPanel({ view }: { view: DesignTab }) {
         shaftsPending={generateShafts.isPending}
         shaftsEnabled={levelsReady && !generateShafts.isPending && !generateLevels.isPending}
         onGenerateShafts={() => generateShafts.mutate()}
+        shaftConfig={scenarioDoc?.shafts ?? null}
+        levelIds={levels?.levels.map((l) => l.levelId) ?? []}
+        shaftsApplyPending={applyShafts.isPending}
+        shaftsEditEnabled={scene !== null && !applyShafts.isPending}
+        onApplyShafts={openShaftChange}
+        onSuggestCollar={suggestCollar}
+        shaftMesh={shaftMesh}
+        shaftMeshPending={generateShaftMesh.isPending}
+        shaftMeshEnabled={
+          shafts !== null &&
+          shafts.status === 'SUCCESS' &&
+          (shafts.metrics?.shaftCount ?? 0) > 0 &&
+          !generateShaftMesh.isPending &&
+          !generateShafts.isPending
+        }
+        onGenerateShaftMesh={() => generateShaftMesh.mutate()}
         network={network}
         networkPending={generateNetwork.isPending}
         networkEnabled={
@@ -396,6 +479,19 @@ export interface DesignPanelBodyProps {
   shaftsPending: boolean
   shaftsEnabled: boolean
   onGenerateShafts: () => void
+  /** PR-2 H2-SH: the persisted `scenario.shafts` section the editor edits */
+  shaftConfig: ShaftPlanningConfig | null
+  /** level ids of the current level developments (station targets) */
+  levelIds: string[]
+  shaftsApplyPending: boolean
+  shaftsEditEnabled: boolean
+  onApplyShafts: (config: ShaftPlanningConfig) => void
+  onSuggestCollar: (spec: ShaftSpec) => Promise<CollarSuggestion>
+  /** PR-2 H2-SH: the shaft excavation mesh (barrel · caps · drives) */
+  shaftMesh: ShaftMeshReport | null
+  shaftMeshPending: boolean
+  shaftMeshEnabled: boolean
+  onGenerateShaftMesh: () => void
 
   network: NetworkPayload | null
   networkPending: boolean
@@ -697,17 +793,28 @@ function DevelopView(p: DesignPanelBodyProps) {
           ) : null
         }
         action={
-          <ActionButton
-            variant={nextActionVariant(shafts !== null, p.shaftsEnabled)}
-            disabled={!p.shaftsEnabled}
-            onClick={p.onGenerateShafts}
-          >
-            {p.shaftsPending
-              ? 'Planning shafts…'
-              : shafts
-                ? 'Regenerate shafts'
-                : `Plan shafts (${String(p.shaftSpecCount)} declared)`}
-          </ActionButton>
+          <div className="flex flex-col gap-1.5">
+            <ShaftSpecEditor
+              persisted={p.shaftConfig}
+              identity={p.scenarioIdentity}
+              levelIds={p.levelIds}
+              pending={p.shaftsApplyPending}
+              enabled={p.shaftsEditEnabled}
+              onApply={p.onApplyShafts}
+              onSuggestCollar={p.onSuggestCollar}
+            />
+            <ActionButton
+              variant={nextActionVariant(shafts !== null, p.shaftsEnabled)}
+              disabled={!p.shaftsEnabled}
+              onClick={p.onGenerateShafts}
+            >
+              {p.shaftsPending
+                ? 'Planning shafts…'
+                : shafts
+                  ? 'Regenerate shafts'
+                  : `Plan shafts (${String(p.shaftSpecCount)} declared)`}
+            </ActionButton>
+          </div>
         }
         details={
           shafts ? (
@@ -726,6 +833,68 @@ function DevelopView(p: DesignPanelBodyProps) {
                       bottom z {sh.bottom[2].toFixed(0)} m
                     </div>
                   ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null
+        }
+      />
+
+      <WorkflowCard
+        stage="SHAFTS"
+        title="Shaft excavation"
+        tone={artifactTone(p.shaftMesh, p.shaftMeshPending)}
+        info="The excavation sweep of the planned shafts: a circular barrel on the vertical axis with a collar cap and a sump cap, plus one station drive per level, all on the shafts' own centerlines. It is a derivative of the shaft plan — re-planning the shafts deletes it — and it invalidates nothing else. No cage or hoist is modelled and the shaft is not a walkthrough space."
+        summary={
+          p.shaftMesh?.status === 'SUCCESS' ? (
+            <>
+              {p.shaftMesh.shaftCount ?? 0} barrel{(p.shaftMesh.shaftCount ?? 0) === 1 ? '' : 's'}{' '}
+              · {p.shaftMesh.stationAccessCount ?? 0} station drives ·{' '}
+              {(p.shaftMesh.nominalExcavationVolume ?? 0).toFixed(0)} m³ nominal
+            </>
+          ) : null
+        }
+        failure={p.shaftMesh?.status === 'FAILED' ? p.shaftMesh.failureReason : null}
+        notice={
+          shafts === null ? (
+            <>Plan the shafts first — the sweep follows the planned geometry.</>
+          ) : shafts.status !== 'SUCCESS' ? (
+            <>The shaft plan is FAILED; only validated shafts are swept.</>
+          ) : null
+        }
+        action={
+          <ActionButton
+            variant={nextActionVariant(p.shaftMesh !== null, p.shaftMeshEnabled)}
+            disabled={!p.shaftMeshEnabled}
+            onClick={p.onGenerateShaftMesh}
+          >
+            {p.shaftMeshPending
+              ? 'Sweeping shafts…'
+              : p.shaftMesh
+                ? 'Regenerate shaft mesh'
+                : 'Generate shaft mesh'}
+          </ActionButton>
+        }
+        details={
+          p.shaftMesh?.status === 'SUCCESS' ? (
+            <ul className="flex flex-col gap-y-1">
+              {(p.shaftMesh.shafts ?? []).map((sh) => (
+                <li key={sh.shaftId} className="text-mute">
+                  <div className="text-chalk-dim">
+                    {sh.shaftId} · ⌀{sh.diameter.toFixed(1)} m ·{' '}
+                    {sh.barrel
+                      ? `${String(sh.barrel.ringCount)} rings · ${sh.barrel.triangleCount.toLocaleString()} tris · ${sh.barrel.topology.watertight && sh.barrel.topology.manifold ? 'watertight' : 'open'}`
+                      : 'no barrel'}
+                  </div>
+                  <div className="break-words">
+                    {sh.stationAccesses.length} drives ·{' '}
+                    {sh.barrel ? `mesh volume Δ ${sh.barrel.volumeDifferencePct.toFixed(3)} %` : ''}
+                  </div>
+                </li>
+              ))}
+              {(p.shaftMesh.limitations ?? []).map((l) => (
+                <li key={l} className="break-words text-[10px]">
+                  {l}
                 </li>
               ))}
             </ul>

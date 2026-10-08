@@ -31,6 +31,7 @@ describe('the mine-development endpoints are unchanged', () => {
       'api.generateLevels',
       'api.generateNetwork',
       'api.generateProduction',
+      'api.generateShaftMesh',
       'api.generateShafts',
       'api.generateTimeline',
       'api.generateWorld',
@@ -38,6 +39,7 @@ describe('the mine-development endpoints are unchanged', () => {
       'api.replaceScenario',
       'api.submitDevelopmentMesh',
       'api.submitTunnel',
+      'api.suggestShaftCollar',
     ])
   })
 
@@ -47,6 +49,7 @@ describe('the mine-development endpoints are unchanged', () => {
       'afterDevelopmentMeshRegen',
       'afterLevelsRegen',
       'afterNetworkRegen',
+      'afterShaftMeshRegen',
       'afterShaftsRegen',
       'afterStopesRegen',
       'afterTimelineRegen',
@@ -59,6 +62,7 @@ describe('the mine-development endpoints are unchanged', () => {
       "setLayerVisible('developmentMesh', true)",
       "setLayerVisible('levels', true)",
       "setLayerVisible('network', true)",
+      "setLayerVisible('shaftMesh', true)",
       "setLayerVisible('shafts', true)",
       "setLayerVisible('stopes', true)",
       "setLayerVisible('tunnelMesh', true)",
@@ -72,6 +76,7 @@ describe('the mine-development endpoints are unchanged', () => {
       ['onGenerateProduction', 'api.generateProduction'],
       ['onGenerateTimeline', 'api.generateTimeline'],
       ['onGenerateShafts', 'api.generateShafts'],
+      ['onGenerateShaftMesh', 'api.generateShaftMesh'],
       ['onGenerateCapabilityGraph', 'api.generateCapabilityGraph'],
       ['onGenerateDevelopmentMesh', 'api.submitDevelopmentMesh'],
       ['onGenerateTunnel', 'api.submitTunnel'],
