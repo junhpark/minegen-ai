@@ -2179,12 +2179,19 @@ acceptance.
   for the other methods — the Longhole baseline stays byte-identical). The
   reader (`services/artifact_reader.py`) classifies an earlier version on the
   RAW document before the parser (`ReadSpec.pre_checks`) as the new read
-  state LEGACY (typed `CUT_FILL_LEGACY_ARTIFACT`) and every registry
+  state LEGACY (typed `CUT_FILL_LEGACY_ARTIFACT`) — review round 2: ONLY
+  when the document validates against the FROZEN PR #53 models
+  (`minegen/legacy/pr53_cut_fill.py`, `minegen/legacy/pr53_levels.py`,
+  copied verbatim from `1bd68c8` and content-hash pinned); the PR #53 keys
+  over corrupt values, a Longhole-shaped payload claiming CUT_AND_FILL or a
+  version this code never wrote stay MALFORMED — and every registry
   descendant of that level development as LEGACY by derivation (the sources
   are observed in the same snapshot); `WorldService.scene` migrates
-  explicitly — the LEVELS closure through the H1 §4.4 `reset_plan` under the
-  scenario lock (RESET_JOB_RUNNING under a running job, a demo never written)
-  — keeps world / catalogue / selection / accesses / ramp source and reports
+  explicitly and only when the legacy artifacts are the snapshot's only
+  failures — the LEVELS closure through the H1 §4.4 `reset_plan` under the
+  scenario lock (RESET_JOB_RUNNING under a running job, a demo never
+  written, nothing deleted beside a STALE / MALFORMED artifact) — keeps
+  world / catalogue / selection / accesses / ramp source and reports
   `migrations[]`; the frontend shows the record (`SceneMigrationNotice`) and
   the stepper reads Levels as next. Regression: a REAL PR #53 scenario
   directory captured on the pinned base `1bd68c8`

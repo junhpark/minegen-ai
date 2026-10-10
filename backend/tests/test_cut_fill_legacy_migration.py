@@ -36,6 +36,7 @@ identity (size + ``mtime_ns``), which git does not keep, so the fixture's
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -64,6 +65,8 @@ from minegen.core.artifacts import (
     STOPES_ARTIFACT,
     TIMELINE_ARTIFACT,
 )
+from minegen.legacy.pr53_cut_fill import validate_pr53_cut_fill
+from minegen.legacy.pr53_levels import validate_pr53_levels
 from minegen.levels.models import ProductionDevelopment
 from minegen.main import create_app
 from minegen.mining.models import CUT_FILL_MODEL_VERSION
@@ -71,12 +74,12 @@ from minegen.services.artifact_errors import CutFillLegacyArtifactError
 from minegen.services.artifact_reader import (
     CUT_FILL_LEGACY_ARTIFACTS,
     LEGACY_DOWNSTREAM_FILES,
-    PR53_CUT_FILL_KEYS,
     STATE_LEGACY,
     STATE_MALFORMED,
     STATE_VALID,
     ArtifactReader,
     _levels_cut_fill_legacy_check,
+    _levels_cut_fill_version_check,
     _stopes_cut_fill_legacy_check,
 )
 from minegen.services.design_service import DesignService
@@ -347,17 +350,85 @@ def test_a_baked_demo_is_never_migrated(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
+#: the frozen PR #53 models are never edited (rule 223): a change is an
+#: explicit, reviewed decision that updates these digests in the same commit
+FROZEN_MODEL_DIGESTS = {
+    "pr53_cut_fill.py": "3f2286eed3a6e9451108f64a7e220ed71f647b68d228d680173a44e636090028",
+    "pr53_levels.py": "b510d9226df9444228f8410f5efd153563a5acd6076103310920c43f8479f678",
+}
+LEGACY_DIR = Path(__file__).resolve().parents[1] / "src" / "minegen" / "legacy"
+
+#: the review's corruption example: every PR #53 key present, every value wrong
+CORRUPT_PR53_KEYS = {
+    "status": "SUCCESS",
+    "failureReason": None,
+    "sourceRevision": "x",
+    "method": "CUT_AND_FILL",
+    "lifts": "broken",
+    "cuts": 123,
+    "backfills": {},
+    "metrics": "garbage",
+}
+LONGHOLE_SHAPED = {
+    "status": "SUCCESS",
+    "failureReason": None,
+    "sourceRevision": "r",
+    "method": "CUT_AND_FILL",
+    "stopes": [],
+    "metrics": None,
+}
+
+
+def _fixture_document(name: str) -> dict[str, Any]:
+    return json.loads((FIXTURE / "scenario" / "derived" / name).read_text(encoding="utf-8"))
+
+
+def _tree_state(derived: Path) -> dict[str, tuple[int, int]]:
+    return {p.name: (p.stat().st_size, p.stat().st_mtime_ns) for p in derived.iterdir()}
+
+
+def test_frozen_pr53_models_are_pinned_and_accept_only_the_real_shape() -> None:
+    """The frozen modules are the ONLY definition of a recognized earlier
+    Cut & Fill artifact: content-hash pinned, accepting the real PR #53
+    fixture and refusing a document that merely carries the PR #53 keys."""
+    for name, digest in FROZEN_MODEL_DIGESTS.items():
+        assert hashlib.sha256((LEGACY_DIR / name).read_bytes()).hexdigest() == digest, name
+    stopes = _fixture_document(STOPES_ARTIFACT)
+    levels = _fixture_document(LEVELS_ARTIFACT)
+    assert validate_pr53_cut_fill(stopes) is not None
+    assert validate_pr53_levels(levels) is not None
+    assert validate_pr53_cut_fill(CORRUPT_PR53_KEYS) is None
+    assert validate_pr53_cut_fill(LONGHOLE_SHAPED) is None
+    assert validate_pr53_cut_fill({"method": "CUT_AND_FILL"}) is None
+    # a stray key (the current version marker included) is not the PR #53 shape
+    assert validate_pr53_cut_fill({**stopes, "cutFillModelVersion": 2}) is None
+    assert validate_pr53_cut_fill({**stopes, "blocks": []}) is None
+    # one corrupt nested value is enough: the whole document is refused
+    assert validate_pr53_cut_fill({**stopes, "cuts": [{"id": "CUT:1"}]}) is None
+    assert validate_pr53_levels({**levels, "developments": "broken"}) is None
+    assert validate_pr53_levels({**levels, "metrics": "garbage"}) is None
+    assert (
+        validate_pr53_levels(
+            {
+                **levels,
+                "productionDevelopment": {**levels["productionDevelopment"], "modelVersion": 1},
+            }
+        )
+        is None
+    )
+
+
 def test_detection_is_scoped_to_cut_and_fill_and_its_version() -> None:
     snapshot: Any = None
+    levels = _fixture_document(LEVELS_ARTIFACT)
+    stopes = _fixture_document(STOPES_ARTIFACT)
+    # -- levels: the current version, every other method and an empty document pass --
     current_levels = {
-        "productionDevelopment": {
-            "method": "CUT_AND_FILL",
-            "status": "IMPLEMENTED",
-            "reason": None,
-            "modelVersion": CUT_FILL_MODEL_VERSION,
-        }
+        **levels,
+        "productionDevelopment": {**levels["productionDevelopment"], "modelVersion": 2},
     }
     assert _levels_cut_fill_legacy_check(current_levels, snapshot) is None
+    assert _levels_cut_fill_version_check(current_levels, snapshot) is None
     for block in (
         {"method": "LONGHOLE_OPEN_STOPING", "status": "IMPLEMENTED", "reason": None},
         {"method": "ROOM_AND_PILLAR", "status": "IMPLEMENTED", "reason": None},
@@ -365,48 +436,42 @@ def test_detection_is_scoped_to_cut_and_fill_and_its_version() -> None:
         None,
     ):
         assert _levels_cut_fill_legacy_check({"productionDevelopment": block}, snapshot) is None
+        assert _levels_cut_fill_version_check({"productionDevelopment": block}, snapshot) is None
     assert _levels_cut_fill_legacy_check({}, snapshot) is None
-    legacy_levels = {
-        "productionDevelopment": {"method": "CUT_AND_FILL", "status": "IMPLEMENTED", "reason": None}
-    }
-    outcome = _levels_cut_fill_legacy_check(legacy_levels, snapshot)
+    # the real PR #53 document is LEGACY …
+    outcome = _levels_cut_fill_legacy_check(levels, snapshot)
     assert outcome is not None and outcome[0] == STATE_LEGACY
     assert isinstance(outcome[1], CutFillLegacyArtifactError)
-    # another EXPLICIT version is legacy too — never reinterpreted
-    older = {"productionDevelopment": {**legacy_levels["productionDevelopment"], "modelVersion": 1}}
-    outcome = _levels_cut_fill_legacy_check(older, snapshot)
-    assert outcome is not None and isinstance(outcome[1], CutFillLegacyArtifactError)
-    assert outcome[1].found_version == 1
+    assert outcome[1].found_version is None
+    # … a legacy-looking block alone is not (the whole document must validate)
+    block_only = {"productionDevelopment": levels["productionDevelopment"]}
+    assert _levels_cut_fill_legacy_check(block_only, snapshot) is None
+    assert _levels_cut_fill_legacy_check({**levels, "developments": "broken"}, snapshot) is None
+    # an EXPLICIT version this code never wrote is never legacy: it reaches
+    # the post-parse check and is MALFORMED
+    older = {
+        **levels,
+        "productionDevelopment": {**levels["productionDevelopment"], "modelVersion": 1},
+    }
+    assert _levels_cut_fill_legacy_check(older, snapshot) is None
+    outcome = _levels_cut_fill_version_check(older, snapshot)
+    assert outcome is not None and outcome[0] == STATE_MALFORMED
+    assert outcome[1].code == "ARTIFACT_MALFORMED"  # type: ignore[attr-defined]
 
-    assert (
-        _stopes_cut_fill_legacy_check(
-            {"method": "CUT_AND_FILL", "cutFillModelVersion": CUT_FILL_MODEL_VERSION}, snapshot
-        )
-        is None
-    )
+    # -- stopes: the real PR #53 document is LEGACY, nothing else is --
+    outcome = _stopes_cut_fill_legacy_check(stopes, snapshot)
+    assert outcome is not None and outcome[0] == STATE_LEGACY
+    assert isinstance(outcome[1], CutFillLegacyArtifactError)
+    assert outcome[1].found_version is None
+    assert _stopes_cut_fill_legacy_check({**stopes, "cutFillModelVersion": 2}, snapshot) is None
+    assert _stopes_cut_fill_legacy_check({**stopes, "cutFillModelVersion": 1}, snapshot) is None
+    assert _stopes_cut_fill_legacy_check({**stopes, "cutFillModelVersion": True}, snapshot) is None
     assert _stopes_cut_fill_legacy_check({"method": "LONGHOLE_OPEN_STOPING"}, snapshot) is None
     assert _stopes_cut_fill_legacy_check({"method": "ROOM_AND_PILLAR"}, snapshot) is None
-    pr53 = {key: None for key in PR53_CUT_FILL_KEYS} | {"method": "CUT_AND_FILL"}
-    outcome = _stopes_cut_fill_legacy_check(pr53, snapshot)
-    assert outcome is not None and outcome[0] == STATE_LEGACY
-    # a boolean is not a version
-    outcome = _stopes_cut_fill_legacy_check({**pr53, "cutFillModelVersion": True}, snapshot)
-    assert outcome is not None and isinstance(outcome[1], CutFillLegacyArtifactError)
-    assert outcome[1].found_version is None
-    # a CUT_AND_FILL document WITHOUT the recognized PR #53 shape is not a
-    # known earlier model: the method name alone never triggers a migration
-    # (a Longhole-shaped document claiming CUT_AND_FILL, a truncated file —
-    # they fall through to the parser and stay MALFORMED)
     assert _stopes_cut_fill_legacy_check({"method": "CUT_AND_FILL"}, snapshot) is None
-    longhole_shaped = {
-        "status": "SUCCESS",
-        "failureReason": None,
-        "sourceRevision": "r",
-        "method": "CUT_AND_FILL",
-        "stopes": [],
-        "metrics": None,
-    }
-    assert _stopes_cut_fill_legacy_check(longhole_shaped, snapshot) is None
+    assert _stopes_cut_fill_legacy_check(LONGHOLE_SHAPED, snapshot) is None
+    assert _stopes_cut_fill_legacy_check(CORRUPT_PR53_KEYS, snapshot) is None
+    assert _stopes_cut_fill_legacy_check({**stopes, "cuts": 123}, snapshot) is None
 
 
 def test_an_unrecognized_cut_and_fill_document_stays_malformed(legacy: Stack) -> None:
@@ -414,21 +479,92 @@ def test_an_unrecognized_cut_and_fill_document_stays_malformed(legacy: Stack) ->
     the current model nor the PR #53 shape: MALFORMED through the parser —
     never LEGACY, so no scene read deletes anything for it (the MineExchange
     authority guard, ``test_exchange_production_methods``, relies on it)."""
-    longhole_shaped = {
-        "status": "SUCCESS",
-        "failureReason": None,
-        "sourceRevision": "r",
-        "method": "CUT_AND_FILL",
-        "stopes": [],
-        "metrics": None,
-    }
-    (legacy.derived / STOPES_ARTIFACT).write_text(json.dumps(longhole_shaped), encoding="utf-8")
+    (legacy.derived / STOPES_ARTIFACT).write_text(json.dumps(LONGHOLE_SHAPED), encoding="utf-8")
     reader = ArtifactReader(legacy.store)
     read = reader.read(reader.snapshot(legacy.sid), STOPES_ARTIFACT)
     assert read.state == STATE_MALFORMED
     assert read.error is not None and read.error.code == "ARTIFACT_MALFORMED"  # type: ignore[attr-defined]
     r = legacy.get("/design/production")
     assert r.status_code == 409 and _code(r) == "ARTIFACT_MALFORMED", r.text
+
+
+def test_corrupt_cuts_and_lifts_under_the_pr53_keys_stay_malformed_and_nothing_is_deleted(
+    legacy: Stack,
+) -> None:
+    """Review round 2: every PR #53 key present, the values corrupt. The
+    document is MALFORMED (the frozen validator refuses it), the scene is
+    refused with every failure listed, and the Levels closure — the valid
+    legacy ``levels.json`` beside it included — is NOT deleted: corruption
+    never earns a migration, and a migration never runs beside corruption."""
+    (legacy.derived / STOPES_ARTIFACT).write_text(json.dumps(CORRUPT_PR53_KEYS), encoding="utf-8")
+    before = _tree_state(legacy.derived)
+    reader = ArtifactReader(legacy.store)
+    snapshot = reader.snapshot(legacy.sid)
+    read = reader.read(snapshot, STOPES_ARTIFACT)
+    assert read.state == STATE_MALFORMED
+    assert read.error is not None and read.error.code == "ARTIFACT_MALFORMED"  # type: ignore[attr-defined]
+    assert (
+        reader.read(snapshot, LEVELS_ARTIFACT).state == STATE_LEGACY
+    )  # still a valid PR #53 shape
+    r = legacy.get("/scene")
+    assert r.status_code == 409 and _code(r) == "SCENE_ARTIFACT_INVALID", r.text
+    listed = {a["artifact"]: (a["state"], a["code"]) for a in r.json()["detail"]["artifacts"]}
+    assert listed[STOPES_ARTIFACT] == ("MALFORMED", "ARTIFACT_MALFORMED")
+    assert listed[LEVELS_ARTIFACT] == ("LEGACY", LEGACY_CODE)
+    assert _tree_state(legacy.derived) == before
+    r = legacy.get("/design/production")
+    assert r.status_code == 409 and _code(r) == "ARTIFACT_MALFORMED", r.text
+
+
+def test_corrupt_legacy_looking_levels_stay_malformed_and_nothing_is_deleted(
+    legacy: Stack,
+) -> None:
+    """Review round 2: a ``levels.json`` whose ``productionDevelopment`` reads
+    like PR #53 Cut & Fill but whose body is corrupt is MALFORMED, never
+    LEGACY; the scene is refused and nothing is deleted — the valid legacy
+    ``stopes.json`` beside it does not trigger the migration either."""
+    levels = _fixture_document(LEVELS_ARTIFACT)
+    corrupt = {**levels, "developments": "broken", "metrics": "garbage"}
+    (legacy.derived / LEVELS_ARTIFACT).write_text(json.dumps(corrupt), encoding="utf-8")
+    before = _tree_state(legacy.derived)
+    reader = ArtifactReader(legacy.store)
+    snapshot = reader.snapshot(legacy.sid)
+    read = reader.read(snapshot, LEVELS_ARTIFACT)
+    assert read.state == STATE_MALFORMED
+    assert read.error is not None and read.error.code == "ARTIFACT_MALFORMED"  # type: ignore[attr-defined]
+    assert reader.read(snapshot, STOPES_ARTIFACT).state == STATE_LEGACY
+    r = legacy.get("/scene")
+    assert r.status_code == 409 and _code(r) == "SCENE_ARTIFACT_INVALID", r.text
+    listed = {a["artifact"]: (a["state"], a["code"]) for a in r.json()["detail"]["artifacts"]}
+    assert listed[LEVELS_ARTIFACT] == ("MALFORMED", "ARTIFACT_MALFORMED")
+    assert listed[STOPES_ARTIFACT] == ("LEGACY", LEGACY_CODE)
+    assert _tree_state(legacy.derived) == before
+    r = legacy.get("/design/levels")
+    assert r.status_code == 409 and _code(r) == "ARTIFACT_MALFORMED", r.text
+
+
+def test_an_explicit_unknown_cut_fill_version_is_malformed_not_legacy(legacy: Stack) -> None:
+    """A ``modelVersion`` / ``cutFillModelVersion`` this code never wrote is
+    refused as MALFORMED after the parse — never served, never migrated."""
+    levels = _fixture_document(LEVELS_ARTIFACT)
+    older = {
+        **levels,
+        "productionDevelopment": {**levels["productionDevelopment"], "modelVersion": 1},
+    }
+    (legacy.derived / LEVELS_ARTIFACT).write_text(json.dumps(older), encoding="utf-8")
+    stopes = _fixture_document(STOPES_ARTIFACT)
+    (legacy.derived / STOPES_ARTIFACT).write_text(
+        json.dumps({**stopes, "cutFillModelVersion": 1}), encoding="utf-8"
+    )
+    before = _tree_state(legacy.derived)
+    reader = ArtifactReader(legacy.store)
+    snapshot = reader.snapshot(legacy.sid)
+    for name in CUT_FILL_LEGACY_ARTIFACTS:
+        read = reader.read(snapshot, name)
+        assert read.state == STATE_MALFORMED, name
+    r = legacy.get("/scene")
+    assert r.status_code == 409 and _code(r) == "SCENE_ARTIFACT_INVALID", r.text
+    assert _tree_state(legacy.derived) == before
 
 
 def test_longhole_production_development_serializes_without_a_version_key() -> None:

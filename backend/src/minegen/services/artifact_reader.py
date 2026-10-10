@@ -97,6 +97,8 @@ from minegen.layout.certification import (
     CandidateCertification,
     ClearancePolicyReconstructionError,
 )
+from minegen.legacy.pr53_cut_fill import validate_pr53_cut_fill
+from minegen.legacy.pr53_levels import validate_pr53_levels
 from minegen.levels.models import LevelsPayload
 from minegen.mining.models import CUT_FILL_MODEL_VERSION, parse_production_payload
 from minegen.network.models import NetworkPayload
@@ -136,7 +138,6 @@ from minegen.shafts.models import ShaftsPayload
 __all__ = [
     "CUT_FILL_LEGACY_ARTIFACTS",
     "LEGACY_DOWNSTREAM_FILES",
-    "PR53_CUT_FILL_KEYS",
     "READ_SPECS",
     "ArtifactRead",
     "ArtifactReader",
@@ -854,44 +855,61 @@ def _cut_fill_version_of(block: Any, key: str) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
-#: the top-level keys every PR #53 Cut & Fill production document carries —
-#: the RECOGNIZED earlier shape. A CUT_AND_FILL document without the current
-#: version AND without this shape is not a known earlier model: it falls
-#: through to the parser and stays MALFORMED (a Longhole-shaped document
-#: claiming CUT_AND_FILL, a truncated file), never a migration that deletes
-#: the Levels closure on the strength of a method name alone.
-PR53_CUT_FILL_KEYS: frozenset[str] = frozenset(
-    {"status", "failureReason", "sourceRevision", "method", "lifts", "cuts", "backfills", "metrics"}
-)
-
-
 def _stopes_cut_fill_legacy_check(
     document: dict[str, Any], _snapshot: ArtifactSnapshot
 ) -> tuple[ReadState, Exception] | None:
-    """PR #54 review B2: a CUT_AND_FILL production document must carry the
-    current ``cutFillModelVersion``; the PR #53 shape (the ``PR53_CUT_FILL_KEYS``
-    without the version) is LEGACY — decided on the raw document BEFORE
-    ``parse_production_payload`` would refuse it as MALFORMED. Every other
-    method, and every other shape, is untouched."""
+    """PR #54 review B2 (round 2): a CUT_AND_FILL production document without
+    the current ``cutFillModelVersion`` is LEGACY only when it VALIDATES as
+    the frozen PR #53 ``CutFillPayload`` (``minegen/legacy/pr53_cut_fill.py``
+    — every field typed, no stray key). Decided on the raw document BEFORE
+    ``parse_production_payload`` would refuse it as MALFORMED. A document of
+    any other shape — a Longhole-shaped payload claiming CUT_AND_FILL, the
+    PR #53 keys over corrupt values, an explicit version this code never
+    wrote — falls through to the parser and stays MALFORMED, so a method
+    name or key presence never earns a migration. Every other method is
+    untouched."""
     if document.get("method") != "CUT_AND_FILL":
         return None
-    found = _cut_fill_version_of(document, "cutFillModelVersion")
-    if found == CUT_FILL_MODEL_VERSION or not set(document) >= PR53_CUT_FILL_KEYS:
+    if "cutFillModelVersion" in document:
+        return None  # the current version → the parser; any other → MALFORMED there
+    if validate_pr53_cut_fill(document) is None:
         return None
     return (
         STATE_LEGACY,
-        CutFillLegacyArtifactError(STOPES_ARTIFACT, found, CUT_FILL_MODEL_VERSION),
+        CutFillLegacyArtifactError(STOPES_ARTIFACT, None, CUT_FILL_MODEL_VERSION),
     )
 
 
 def _levels_cut_fill_legacy_check(
     document: dict[str, Any], _snapshot: ArtifactSnapshot
 ) -> tuple[ReadState, Exception] | None:
-    """PR #54 review B2: a level development built for CUT_AND_FILL carries
-    the model version of the production access pattern it was built with
-    (``productionDevelopment.modelVersion``); a PR #53 levels.json (central
-    FixedAccessPattern crosscut, no version) is LEGACY. Longhole / Room &
-    Pillar blocks carry no version and are never affected."""
+    """PR #54 review B2 (round 2): a level development whose
+    ``productionDevelopment`` is CUT_AND_FILL without ``modelVersion`` is
+    LEGACY only when the WHOLE document validates as the frozen PR #53
+    ``LevelsPayload`` (``minegen/legacy/pr53_levels.py``). A legacy-looking
+    block over a corrupt document falls through to the current model and
+    stays MALFORMED. Longhole / Room & Pillar blocks carry no version and
+    are never affected."""
+    block = document.get("productionDevelopment")
+    if not isinstance(block, dict) or block.get("method") != "CUT_AND_FILL":
+        return None
+    if "modelVersion" in block:
+        return None  # judged after the parse by _levels_cut_fill_version_check
+    if validate_pr53_levels(document) is None:
+        return None
+    return (
+        STATE_LEGACY,
+        CutFillLegacyArtifactError(LEVELS_ARTIFACT, None, CUT_FILL_MODEL_VERSION),
+    )
+
+
+def _levels_cut_fill_version_check(
+    document: dict[str, Any], _snapshot: ArtifactSnapshot
+) -> tuple[ReadState, Exception] | None:
+    """After the parse: a CUT_AND_FILL level development carrying a
+    ``modelVersion`` this code never wrote is MALFORMED (never served, never
+    LEGACY — the only recognized earlier shape is the version-less PR #53
+    one). The current version passes."""
     block = document.get("productionDevelopment")
     if not isinstance(block, dict) or block.get("method") != "CUT_AND_FILL":
         return None
@@ -899,8 +917,12 @@ def _levels_cut_fill_legacy_check(
     if found == CUT_FILL_MODEL_VERSION:
         return None
     return (
-        STATE_LEGACY,
-        CutFillLegacyArtifactError(LEVELS_ARTIFACT, found, CUT_FILL_MODEL_VERSION),
+        STATE_MALFORMED,
+        ArtifactMalformedError(
+            LEVELS_ARTIFACT,
+            f"productionDevelopment.modelVersion {block.get('modelVersion')!r} is not the "
+            f"current Cut & Fill model version {CUT_FILL_MODEL_VERSION}",
+        ),
     )
 
 
@@ -1030,6 +1052,7 @@ READ_SPECS: Mapping[str, ReadSpec] = {
         absent_error=LevelsNotGeneratedError,
         model=LevelsPayload,
         pre_checks=(_levels_cut_fill_legacy_check,),
+        checks=(_levels_cut_fill_version_check,),
     ),
     SHAFTS_ARTIFACT: _spec(
         SHAFTS_ARTIFACT,

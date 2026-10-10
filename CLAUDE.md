@@ -2760,11 +2760,21 @@ code, the code and the rule win and the map is corrected.
      document BEFORE the parser (`ReadSpec.pre_checks`) as the fifth read
      state `LEGACY` with the typed `CUT_FILL_LEGACY_ARTIFACT` (409) — never
      ARTIFACT_MALFORMED, never a loosened parser, never a reinterpretation.
-     "Recognized" is a SHAPE, never a method name alone: a CUT_AND_FILL
-     `stopes.json` is LEGACY only when it carries the PR #53 keys
-     (`PR53_CUT_FILL_KEYS`) without the current version; any other
-     document falls through to the parser and stays MALFORMED (nothing is
-     ever deleted for it);
+     "Recognized" means VALIDATED against the FROZEN PR #53 models
+     (`minegen/legacy/pr53_cut_fill.py`, `minegen/legacy/pr53_levels.py` —
+     copied verbatim from `1bd68c8`, content-hash pinned by the test suite,
+     never edited), never a method name or key presence: a CUT_AND_FILL
+     `stopes.json` without `cutFillModelVersion` is LEGACY only when it
+     validates as the frozen `CutFillPayload`, a `levels.json` whose
+     `productionDevelopment` is CUT_AND_FILL without `modelVersion` only
+     when the WHOLE document validates as the frozen `LevelsPayload`; a
+     document carrying a version this code never wrote, the PR #53 keys
+     over corrupt values, or a Longhole-shaped payload claiming
+     CUT_AND_FILL falls through to the current parser and stays MALFORMED
+     (nothing is ever deleted for it). The scene migration runs ONLY when
+     the legacy artifacts are the snapshot's only failures — a STALE or
+     MALFORMED artifact anywhere refuses the whole scene with every
+     failure listed and deletes nothing;
      every registry descendant of the level development (network,
      timeline, communication, sensors, …) reads LEGACY BY DERIVATION in the
      same snapshot (the version-carrying sources are observed beside it),

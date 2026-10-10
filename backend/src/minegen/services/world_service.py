@@ -548,7 +548,16 @@ class WorldService:
         # never refused as corruption and never reinterpreted
         migrations: list[dict[str, Any]] = []
         legacy = [name for name, read in reads.items() if read.state == STATE_LEGACY]
-        if legacy:
+        # round 2: the migration runs ONLY when the legacy artifacts are the
+        # snapshot's only failures. A STALE or MALFORMED artifact anywhere —
+        # including a legacy-looking document that did not validate as the
+        # frozen PR #53 shape — refuses the whole scene (every failure
+        # listed below) and deletes nothing: corruption never earns a
+        # migration, and a migration never deletes beside corruption.
+        other_failures = any(
+            read.error is not None and read.state != STATE_LEGACY for read in reads.values()
+        )
+        if legacy and not other_failures:
             migrations.append(
                 self._migrate_legacy_artifacts(scenario_id, legacy, reads, running_job)
             )
