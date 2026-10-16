@@ -1939,13 +1939,14 @@ code, the code and the rule win and the map is corrected.
 
 191. Guided workflow shell (hardening H1 §4, replaces the Phase 20E left-
      panel structure; its principles are inherited). ORDER IS THE SCREEN:
-     the ribbon lists the seven steps `1 Setup · 2 Design · 3 Network ·
-     4 Mining · 5 Systems · 6 Analysis · 7 Export`, the stepper under it
-     lists every stage (`Scenario · Method · Access | Layout · Levels ·
-     Excavation · Shafts | Network · Capability | Production · Schedule |
-     Communication · Sensors | Analysis | Export`) with one glyph each (✓ done · ● next ·
-     ○ waiting · ✗ failed · ↻ running · – optional), and at most ONE stage
-     is NEXT: the first stage whose prerequisite is done (Excavation waits
+     the ribbon tabs list the seven steps `1 Setup · 2 Design · 3 Network ·
+     4 Mining · 5 Systems · 6 Analysis · 7 Export` and every stage
+     (`Scenario · Method · Access | Layout · Levels · Excavation · Shafts |
+     Network · Capability | Production · Schedule | Communication · Sensors
+     | Analysis | Export`) carries one glyph (✓ done · ● next · ○ waiting ·
+     ✗ failed · ↻ running · – optional) — shown in the ribbon band of its
+     step and in the flow dock (hardening PR-3, rule 224; the PR-1 stepper
+     row is retired) — and at most ONE stage is NEXT: the first stage whose prerequisite is done (Excavation waits
      for Levels; Analysis follows the last Systems stage and Export follows
      Analysis, so the guided flow has no dead end); when a FAILED stage
      blocks the chain no stage is NEXT and the failed stage is the focus.
@@ -2794,3 +2795,47 @@ code, the code and the rule win and the map is corrected.
      own routes (`scripts/h2cf_capture_legacy_cut_fill_fixture.py`, which
      refuses any other HEAD; `stat.json` restores the size / mtime_ns
      identities rule 60 binds to) and is never regenerated from newer code.
+
+224. Workspace ribbon, "Reset mine" and the flow dock (hardening PR-3 —
+     replaces the PR-1 ribbon + stepper rows of rule 191; every other
+     rule-191 invariant is inherited unchanged). The top bar carries the
+     ribbon TABS — the seven steps plus a VIEW tab — and under it ONE tool
+     BAND shows the active tab's grouped tools
+     (`components/layout/ribbonModel.ts`, a pure function of viewer state,
+     tested as data). A step tab's band carries that step's STAGES as
+     navigation tools with the rule-191 stage glyph (`data-stage` /
+     `data-glyph` / `aria-current` — the same backend-status presentation,
+     no new vocabulary) plus the step's commands (Setup: New mine · Open… ·
+     Demos, which open the File menu on that section; Analysis: the
+     workspace tabs and the 3D-context toggle; Export: Import results…).
+     The VIEW tab's band (3D · 4D · Walk under the unchanged readiness gate,
+     camera presets, Controls / Results / Flow toggles) is a viewport tab,
+     not a step: selecting it changes no stage (`viewerStore.ribbonTab`,
+     cleared by every stage change). The band's QUICK ACCESS is the same on
+     every tab — the two ways back: "Reset from <stage>" (rule 219, the
+     backend plan of the current stage) and "Reset mine", the way back to
+     the generated world: the from=WORLD plan is read per opening and
+     listed verbatim, confirming regenerates the world from the persisted
+     document (`POST …/world/generate`, rules 40 / 46 / 119 — same seed,
+     same world, every derived artifact cleared, the scenario document
+     untouched) and the shell opens Layout, the first decision to make
+     again; no new backend route and no frontend dependency graph. Both
+     confirmations live in ONE dialog host (`ResetDialogs`, mounted once in
+     `App`, opened by a shell-store request from the band, the flow dock or
+     the controls column's "Reset from here"). The FLOW DOCK draws every
+     stage as a node of the development flow under the viewport
+     (`components/layout/flowGraph.ts`: nodes = the stages, edges = the
+     rule-191 prerequisite chain the NEXT decision already uses, column =
+     longest path from Scenario, row = prerequisite row then stage order —
+     deterministic, tested as data; one backend-reported metric line per
+     node — names and counts echoed from the scene manifest, nothing
+     computed on the client); clicking a node goes to that stage and
+     nothing else. The band and the dock run no generation, mutation,
+     request or layer change and carry no `data-variant`, so a stage's ONE
+     primary action stays in the controls column and the single enabled
+     primary invariant holds; hiding a column (View › Controls / Results)
+     is display-only — every feature panel stays mounted. Walk hides the
+     band, the dock and the columns (immersive); a demo has no quick access
+     (viewer-only, rule 222). The browser e2e reads the stage contract from
+     `[data-testid="flow-graph"]` and exercises the ribbon tabs, a flow-dock
+     node and "Reset mine".

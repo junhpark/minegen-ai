@@ -418,6 +418,8 @@ rule 78/192 방식: 스키마는 두 축으로 열어 두고, 구현은 OVERHAND
 | 201 | 2 | Planning IRR(typed 비존재)·민감도·공정 what-if 허용, 금속가격 모델 여전히 없음 |
 | 신규 | 2 | timeseries 프로젝션(rule 197 계열), `hostRockDensity` optional·무기본값 |
 | 신규 | 2 | 데모 = 읽기 전용 baked 시나리오, 생성 API 비노출 |
+| 191 | 3 | 리본·스테퍼 행 → 리본 탭 + 도구 밴드 + 플로우 독(규칙 224)으로 대체, 나머지 불변 조건 승계 |
+| 신규 224 | 3 | 워크스페이스 리본(탭 → 그룹 도구 밴드, View 탭), 퀵 액세스 "Reset from <stage>"·"Reset mine"(from=WORLD 플랜 → 월드 재생성), 플로우 독(스테이지 노드 그래프, 클릭 = 스테이지 이동) |
 
 ---
 
@@ -440,3 +442,42 @@ docs/hardening-plan.md를 읽어라. §5 헤더대로 브랜치 hardening-2-engi
 롱홀 baseline은 BLOCKING, C&F 픽스처는 의도적 재생성 + 비교 문서. §5의 폴백 분할점은
 full 종료가 막힐 때만 쓴다. 규칙 개정은 §12의 PR-2 행만. 끝나면 rule 126 보고 형식으로 push 승인을 요청하라.
 ```
+
+---
+
+## 14. PR-3 — 워크스페이스 UI (리본 · 초기화 · 플로우 독)
+
+Park 요청(PR #54 머지 뒤, 2026-10-16): "상단 탭을 누르면 다양한 기능이 나오도록(MS·CAD처럼),
+언제든 돌아갈 수 있는 초기화 버튼, 광산 개발 단계를 노드 아래에 표기해 언제든 되돌아가
+재설계·변경". 브랜치 `hardening-3-workspace-ui`(머지된 main 기준), 프런트엔드 전용, 새 의존성 없음.
+
+### 14.1 결정과 가정
+
+| 요청 | 구현 | 가정(Park가 바꿀 수 있음) |
+|---|---|---|
+| 탭 → 기능 리본 | 상단 바의 리본 탭(1 Setup … 7 Export + **View**)과 그 아래 ONE 도구 밴드. 스텝 탭의 밴드 = 그 스텝의 스테이지 도구(글리프 배지, 클릭 = 이동) + 명령(Setup: New mine·Open…·Demos / Analysis: 워크스페이스 탭·3D context / Export: Import results…). View 탭 = 3D·4D·Walk(준비 게이트 동일)·카메라 프리셋·Controls/Results/Flow 토글, 스테이지 불변 | 스테이지의 ONE primary 액션은 Controls 열에 남는다(리본은 `data-variant` 없음 — e2e의 단일 primary 불변 조건 유지). PR-1 스테퍼 행은 퇴역(밴드 + 플로우 독이 글리프를 보임) |
+| 초기화 버튼 | 밴드 우측 퀵 액세스(모든 탭 동일): **Reset from \<stage\>**(규칙 219, 현재 스테이지의 백엔드 플랜) · **Reset mine**(from=WORLD 플랜을 열 때마다 읽어 verbatim 나열 → 확인 시 `POST …/world/generate`: 같은 시드 같은 월드, 파생물 전부 삭제, 시나리오 문서 불변 → Layout 스테이지로 이동). 두 확인은 `ResetDialogs` 하나가 서비스 | 새 백엔드 라우트 없음, 프런트 의존 그래프 없음. "초기화" = 생성된 월드로 되돌림(Setup 결정은 유지). 데모에서는 퀵 액세스 없음(뷰어 전용), 잡 실행 중 비활성 |
+| 개발 단계 노드 그래프 | 뷰포트 아래 **플로우 독**: 15 스테이지 = 노드(글리프 + 백엔드 지표 한 줄), 간선 = 규칙 191 선행관계(NEXT 판정에 이미 쓰는 체인), 열 = Scenario로부터 최장 경로, 행 = 선행 행 → 스테이지 순(결정적, 데이터로 테스트). 노드 클릭 = 그 스테이지로 이동(Controls에서 재생성 / Reset from here) | 레이아웃은 9열 × 최대 4행(≈ 1,318 × 190 px, 가로 스크롤), View › Flow로 숨김/표시, Walk에서는 숨김. 지표는 scene manifest의 이름·개수 echo뿐(클라이언트 계산 없음) |
+
+### 14.2 파일
+
+- 신규: `frontend/src/components/layout/ribbonModel.ts`(+ `.test.ts`), `Ribbon.tsx`(+ `.test.tsx`),
+  `flowGraph.ts`(+ `.test.ts`), `FlowDock.tsx`(+ `.test.tsx`), `ResetDialogs.tsx`,
+  `shellStore.requests.test.ts`, `stores/viewerStore.ribbon.test.ts`, `components/ui/icons.tsx`(인라인 SVG).
+- 변경: `App.tsx`(밴드·독·다이얼로그 호스트), `TopBar.tsx`(리본 탭, File 메뉴 섹션 요청),
+  `LeftPanel.tsx`/`RightPanel.tsx`(`visible` — display-only), `ResetFromHere.tsx`(요청만),
+  `shellStore.ts`(resetDialog·fileMenuRequest), `viewerStore.ts`(ribbonTab·flowDock·panes),
+  `workflow.ts`(`PREREQUISITE` export), `workflowPreservation.test.ts`; 삭제: `StepperBar.tsx`.
+- e2e `backend/tests/test_shell_e2e.py`: 스테이지 계약 셀렉터 `[data-testid="stepper"]` →
+  `[data-testid="flow-graph"]`(8곳), 리본 탭·View 탭·플로우 독 노드 클릭·**Reset mine**
+  (플랜 나열 → 월드 재생성 → LAYOUT NEXT, `derived/` 비움, `arrays.npz` 유지) 추가; 데모 = 퀵 액세스 없음.
+- 규칙: 191 수정(스테퍼 행 퇴역), 224 신규. `docs/architecture.md` 셸 절 갱신.
+- 발견(e2e가 잡음): 첫 구현의 "Reset from <stage>" 대화상자는 mount effect에서 `useMutation`으로 플랜을
+  읽었는데, Vite dev의 React StrictMode 이중 마운트에서 MutationObserver가 mutation에서 분리되어
+  `isPending`이 영원히 true(목록은 그려지지만 확인 버튼이 "Reading plan…"에 고정). 두 대화상자 모두
+  열람 nonce를 키로 하는 `useQuery`(staleTime 0 · gcTime 0 · retry false)로 읽도록 고쳐 e2e가 통과.
+
+### 14.3 수락
+
+frontend 5종(typecheck · lint · prettier · vitest · build), FAST, FINAL FULL(e2e 포함), 브라우저 수락
+스크린샷(리본 탭별 밴드, Reset mine 대화상자, 플로우 독) — 결과는 PR 본문에 기록.

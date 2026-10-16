@@ -29,8 +29,12 @@ import { useViewerStore } from '@/stores/viewerStore'
  * here") instead of the controls host, except on the Export stage, whose
  * action stays available for a demo. The feature panels stay MOUNTED: their
  * results halves keep rendering into the right column.
+ *
+ * Hardening PR-3 — the column can be hidden from the ribbon's View tab
+ * (`visible`): it is display-only hiding, never an unmount, so every mounted
+ * feature panel keeps its job poll, query and effect lifetime.
  */
-export function LeftPanel() {
+export function LeftPanel({ visible = true }: { visible?: boolean }) {
   const stage = useViewerStore((s) => s.stage)
   const demo = useScenarioStore((s) => s.demo !== null)
   const demoControls = demo && stage !== 'EXPORT'
@@ -40,7 +44,11 @@ export function LeftPanel() {
   const setControlsHost = useShellStore((s) => s.setControlsHost)
   const host = useCallback((el: HTMLElement | null) => setControlsHost(el), [setControlsHost])
   return (
-    <aside className="flex w-[320px] shrink-0 flex-col overflow-y-auto border-r border-rock-700 bg-rock-800">
+    <aside
+      className={`${visible ? 'flex' : 'hidden'} w-[320px] shrink-0 flex-col overflow-y-auto border-r border-rock-700 bg-rock-800`}
+      data-testid="controls-column"
+      data-visible={visible}
+    >
       <header className="flex items-center justify-between border-b border-rock-700 px-4 py-2">
         <h2 className="plate text-[12px] text-chalk-dim">{demo ? 'Demo' : 'Controls'}</h2>
         <span className="readout text-[10px] text-mute">{STAGE_LABEL[stage]}</span>
