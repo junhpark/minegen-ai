@@ -150,6 +150,14 @@ class ProductionDevelopment(ApiModel):
     method: str
     status: Literal["IMPLEMENTED", "UNSUPPORTED_METHOD"]
     reason: str | None = None
+    #: PR #54 review B2 — the method's production MODEL VERSION when the
+    #: method versions its production development (Cut & Fill:
+    #: ``mining.models.CUT_FILL_MODEL_VERSION``, whose access pattern this
+    #: level development was built with). OMITTED from the serialized
+    #: document when ``None`` so the Longhole / Room & Pillar ``levels.json``
+    #: stays byte-identical (rules 192 / 193 baselines); the reader treats a
+    #: CUT_AND_FILL block without the current version as LEGACY.
+    model_version: int | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class LevelsPayload(ApiModel):

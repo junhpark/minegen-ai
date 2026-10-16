@@ -12,6 +12,10 @@ import { useRockTexture } from '@/walkthrough/useRockTexture'
  * assigns the SHARED tunnel materials by primitive role — no geometry, no
  * per-development objects, no engineering (rules 17/32). The centerline
  * overlays (levels / crosscuts / levelAccesses layers) stay independent.
+ *
+ * Hardening PR-2 H2-SH: the shaft excavation GLB (`shaft_mesh.glb`) shares
+ * the batched grammar (DEVELOPMENT tubes + `<ROLE>_CAP` caps), so the SAME
+ * layer renders it from its own URL.
  */
 export function DevelopmentMeshLayer({ url }: { url: string }) {
   const gltf = useGLTF(url)

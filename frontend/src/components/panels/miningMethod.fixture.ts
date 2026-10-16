@@ -3,6 +3,19 @@
  * defaults are the backend's; this file only mirrors their shape). */
 import type { MiningMethodSummary } from '@/types/scene'
 
+/** the backend registry's canonical Cut & Fill defaults, mirrored for tests */
+export const CUT_FILL_DEFAULTS = {
+  kind: 'CUT_AND_FILL',
+  liftHeightM: 4,
+  cutLengthM: 15,
+  stopingDirection: 'OVERHAND',
+  blockOrder: 'SHALLOW_TO_DEEP',
+  panelLengthM: 60,
+  ribPillarWidthM: 0,
+  maxConcurrentPanels: 2,
+  sillMatCureDays: 28,
+} as const
+
 export const METHOD_TABLE: MiningMethodSummary['availableMethods'] = [
   {
     method: 'LONGHOLE_OPEN_STOPING',
@@ -16,7 +29,7 @@ export const METHOD_TABLE: MiningMethodSummary['availableMethods'] = [
     displayName: 'Cut & Fill',
     implementationStatus: 'IMPLEMENTED',
     productionKind: 'CUT_FILL',
-    defaultParameters: { kind: 'CUT_AND_FILL', liftHeightM: 4, cutLengthM: 15 },
+    defaultParameters: CUT_FILL_DEFAULTS,
   },
   {
     method: 'ROOM_AND_PILLAR',

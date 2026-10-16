@@ -1,6 +1,14 @@
 /** Phase 22A/B test fixture: the hand-built mine of the backend tests
  * (`backend/tests/analysis_support.py`) as the API emits it. */
-import type { EconomicsConfig, MineAnalysisPayload } from '@/types/analysis'
+import type {
+  EconomicsConfig,
+  MineAnalysisPayload,
+  SensitivityCase,
+  SensitivityPayload,
+  TimeseriesPayload,
+  WhatIfOutcome,
+} from '@/types/analysis'
+import { WHAT_IF_LABEL } from '@/types/analysis'
 
 export const CONFIG: EconomicsConfig = {
   version: 1,
@@ -146,6 +154,14 @@ export const FULL: MineAnalysisPayload = {
       bucket(2, -2300, -7430, { productionMiningCost: 6000, processingCost: 1000, revenue: 5000 }),
       bucket(3, 11700, 4270, { processingCost: 3000, revenue: 15000 }),
     ],
+    planningIrr: {
+      status: 'DEFINED',
+      annualRate: 0.1234,
+      reason: null,
+      convention: 'MID_BUCKET_MIDPOINT',
+      bracket: [-0.99, 10],
+      name: 'Planning IRR',
+    },
     disclaimer: DISCLAIMER,
   },
 }
@@ -206,6 +222,228 @@ export const EMPTY: MineAnalysisPayload = {
     npvConvention: 'MID_BUCKET_MIDPOINT',
     summary: null,
     cashflow: [],
+    planningIrr: {
+      status: 'NOT_CONFIGURED',
+      annualRate: null,
+      reason: null,
+      convention: 'MID_BUCKET_MIDPOINT',
+      bracket: [-0.99, 10],
+      name: 'Planning IRR',
+    },
     disclaimer: DISCLAIMER,
   },
 }
+
+// --------------------------------------------------------------------------- //
+// Hardening PR-2 H3 §8 — sensitivity / what-if and time-series fixtures
+// --------------------------------------------------------------------------- //
+
+const SOURCES = {
+  scenarioRevision: 's',
+  networkRevision: 'n',
+  productionRevision: 'p',
+  timelineRevision: 't',
+  economicsRevision: 'e',
+}
+
+const UNIT_FACTORS = {
+  grossRevenuePerMinedTonne: 1,
+  developmentCost: 1,
+  miningCost: 1,
+  processingCost: 1,
+  backfillCost: 1,
+  initialCapital: 1,
+  discountRate: 1,
+  developmentRate: 1,
+  miningRate: 1,
+}
+
+export const BASE_OUTCOME: WhatIfOutcome = {
+  label: WHAT_IF_LABEL,
+  status: 'AVAILABLE',
+  reason: null,
+  factors: UNIT_FACTORS,
+  scheduleRebuilt: false,
+  planningNpv: 4038.51,
+  planningIrr: FULL.economics.planningIrr,
+  mineDurationDays: 120,
+  firstProductionDay: 50,
+  endDay: 120,
+  undiscountedNetCashflow: 4270,
+  npvDelta: 0,
+  mineDurationDeltaDays: 0,
+  firstProductionDeltaDays: 0,
+}
+
+const PARAMETERS: SensitivityPayload['parameters'] = [
+  { key: 'grossRevenuePerMinedTonne', label: 'Gross revenue per mined tonne', kind: 'ECONOMIC' },
+  { key: 'developmentCost', label: 'Development cost rates', kind: 'ECONOMIC' },
+  { key: 'miningCost', label: 'Production mining cost rate', kind: 'ECONOMIC' },
+  { key: 'processingCost', label: 'Processing cost rate', kind: 'ECONOMIC' },
+  { key: 'backfillCost', label: 'Backfill cost rate', kind: 'ECONOMIC' },
+  { key: 'initialCapital', label: 'Initial capital cost', kind: 'ECONOMIC' },
+  { key: 'discountRate', label: 'Annual discount rate', kind: 'ECONOMIC' },
+  { key: 'developmentRate', label: 'Development advance rates', kind: 'SCHEDULE' },
+  { key: 'miningRate', label: 'Production mining rate', kind: 'SCHEDULE' },
+]
+
+const sensitivityCase = (
+  parameter: SensitivityCase['parameter'],
+  pct: number,
+  npvDelta: number,
+  over: Partial<WhatIfOutcome> = {},
+): SensitivityCase => {
+  const p = PARAMETERS.find((q) => q.key === parameter)
+  if (!p) throw new Error(parameter)
+  return {
+    parameter,
+    label: p.label,
+    kind: p.kind,
+    perturbationPct: pct,
+    factor: 1 + pct / 100,
+    outcome: {
+      ...BASE_OUTCOME,
+      factors: { ...UNIT_FACTORS, [parameter]: 1 + pct / 100 },
+      scheduleRebuilt: p.kind === 'SCHEDULE',
+      planningNpv: 4038.51 + npvDelta,
+      npvDelta,
+      ...over,
+    },
+  }
+}
+
+export const SENSITIVITY: SensitivityPayload = {
+  status: 'SUCCESS',
+  label: WHAT_IF_LABEL,
+  notice: 'Every figure on this page is a what-if projection, never a scenario value.',
+  sources: SOURCES,
+  availability: 'AVAILABLE',
+  reason: null,
+  revenueModel: 'GROSS_REVENUE_PER_MINED_TONNE',
+  perturbationsPct: [-30, 30],
+  parameters: PARAMETERS,
+  base: BASE_OUTCOME,
+  cases: [
+    sensitivityCase('grossRevenuePerMinedTonne', -30, -5700),
+    sensitivityCase('grossRevenuePerMinedTonne', 30, 5700),
+    sensitivityCase('miningRate', -30, -310.25, {
+      mineDurationDays: 150,
+      mineDurationDeltaDays: 30,
+    }),
+    sensitivityCase('miningRate', 30, 180.5, {
+      mineDurationDays: 100,
+      mineDurationDeltaDays: -20,
+    }),
+  ],
+  disclaimer: DISCLAIMER,
+}
+
+export const SENSITIVITY_NOT_CONFIGURED: SensitivityPayload = {
+  ...SENSITIVITY,
+  availability: 'NOT_CONFIGURED',
+  reason: 'Planning economics is not configured.',
+  base: {
+    ...BASE_OUTCOME,
+    status: 'NOT_AVAILABLE',
+    reason: 'Planning economics is not configured.',
+    planningNpv: null,
+    planningIrr: EMPTY.economics.planningIrr,
+    undiscountedNetCashflow: null,
+    npvDelta: null,
+  },
+  cases: [],
+}
+
+const quantities = (dev: number, prod: number, cost: number | null, revenue: number | null) => ({
+  developmentLengthM: dev,
+  developmentExcavationM3: dev * 20,
+  developmentTonnes: null,
+  productionTonnes: prod,
+  backfillM3: 0,
+  cementedBackfillM3: 0,
+  cost,
+  revenue,
+  netCashflow: cost === null || revenue === null ? null : revenue - cost,
+})
+
+export const TIMESERIES: TimeseriesPayload = {
+  status: 'SUCCESS',
+  sources: SOURCES,
+  availability: 'AVAILABLE',
+  reason: null,
+  bucketDays: 30,
+  bucketCount: 4,
+  startDay: 0,
+  endDay: 120,
+  developmentTonnes: {
+    status: 'NOT_CONFIGURED',
+    hostRockDensity: null,
+    reason: 'scenario.geology.hostRockDensity is not declared',
+  },
+  retained: {
+    availability: 'NOT_AVAILABLE',
+    reason: 'no retained pillars for this method',
+    pillarCount: null,
+    pillarVolumeM3: null,
+    pillarTonnesEquivalent: null,
+  },
+  economics: {
+    availability: 'AVAILABLE',
+    reason: null,
+    currencyCode: 'USD',
+    economicsRevision: 'e',
+  },
+  totals: quantities(230, 4000, 15730, 20000),
+  buckets: [
+    {
+      index: 0,
+      startDay: 0,
+      endDay: 30,
+      bucket: quantities(174, 0, 2540, 0),
+      cumulative: quantities(174, 0, 2540, 0),
+      cumulativeCashflow: -2540,
+    },
+    {
+      index: 1,
+      startDay: 30,
+      endDay: 60,
+      bucket: quantities(56, 1000, 2590, 0),
+      cumulative: quantities(230, 1000, 5130, 0),
+      cumulativeCashflow: -5130,
+    },
+    {
+      index: 2,
+      startDay: 60,
+      endDay: 90,
+      bucket: quantities(0, 2000, 7300, 5000),
+      cumulative: quantities(230, 3000, 12430, 5000),
+      cumulativeCashflow: -7430,
+    },
+    {
+      index: 3,
+      startDay: 90,
+      endDay: 120,
+      bucket: quantities(0, 1000, 3300, 15000),
+      cumulative: quantities(230, 4000, 15730, 20000),
+      cumulativeCashflow: 4270,
+    },
+  ],
+  developmentRockVocabulary: 'Excavated development rock',
+  allocation: 'LINEAR_OVER_TASK_WINDOW',
+  disclaimer: DISCLAIMER,
+}
+
+/** the hardening PR-2 H3 §8 body props shared by the Analysis-panel tests */
+export const H3_BODY_PROPS = {
+  sensitivity: null,
+  sensitivityError: null,
+  sensitivityLoading: false,
+  timeseries: null,
+  timeseriesError: null,
+  timeseriesLoading: false,
+  timeline: null,
+  whatIf: null,
+  whatIfPending: false,
+  whatIfError: null,
+  onWhatIf: () => undefined,
+} as const

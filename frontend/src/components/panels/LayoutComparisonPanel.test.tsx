@@ -7,7 +7,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { AnalysisPanelBody, type AnalysisPanelBodyProps } from './AnalysisPanel'
-import { CONFIG, FULL } from './analysis.fixture'
+import { CONFIG, FULL, H3_BODY_PROPS } from './analysis.fixture'
 import {
   CONFIGURED,
   INACTIVE,
@@ -166,13 +166,16 @@ describe('Layout comparison inside the Analysis panel', () => {
     saving: false,
     saveError: null,
     onSave: () => undefined,
+    ...H3_BODY_PROPS,
     ...over,
   })
 
   it('the tab renders the comparison and none of the other tabs’ content', () => {
     const html = renderToStaticMarkup(<AnalysisPanelBody {...props({})} />)
     expect(html).toContain('data-testid="layout-comparison-table"')
-    expect(html).not.toContain('Planning NPV')
+    // the KPI tiles head every tab (PR-2 H3 §8.1); the economics CARD does not
+    expect(html).toContain('data-testid="analysis-kpis"')
+    expect(html).not.toContain('Baseline Planning NPV')
     expect(html).not.toContain('data-testid="rulebook-table"')
     expect(html).not.toContain('Planned mined tonnes')
   })

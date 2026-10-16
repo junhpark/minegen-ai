@@ -59,7 +59,7 @@ def _check_timeline_bundle(stack: TabularStack, b: Bundle, method: str) -> dict[
     assert TIMELINE_ARTIFACT in b.manifest["sourceSnapshot"]["artifactRevisions"]
     doc = b.json("operations/timeline.json")
     src = stack.artifact(TIMELINE_ARTIFACT)
-    assert doc["semanticType"] == "MINE_TIMELINE" and doc["mineExchangeVersion"] == "1.3.0"
+    assert doc["semanticType"] == "MINE_TIMELINE" and doc["mineExchangeVersion"] == "1.3.1"
     assert doc["sourceArtifact"] == TIMELINE_ARTIFACT
     assert doc["startDay"] == src["startDay"] and doc["endDay"] == src["endDay"]
     net = b.json("topology/network.json")

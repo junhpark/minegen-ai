@@ -43,6 +43,7 @@ from minegen.design.profile import boundary_points, build_profile
 from minegen.network.node_ids import shaft_station_id
 from minegen.shafts.models import (
     Centerline,
+    CollarSuggestion,
     ConnectionTarget,
     DevelopmentClearanceReport,
     Shaft,
@@ -303,6 +304,43 @@ class ShaftPlanner:
             shafts=shafts,
             centerlines=centerlines,
             metrics=metrics,
+        )
+
+    def suggest_collar(self, spec: ShaftSpec, levels_payload: dict[str, Any]) -> CollarSuggestion:
+        """Hardening PR-2 H2-SH: the DEFAULT collar the planner would derive
+        for ``spec`` (its explicit collar ignored) — the same ``_collar_plan``
+        / ``_collar`` steps ``build`` runs, so the suggestion IS the planning
+        default, never a second placement rule. Typed failure, nothing
+        persisted."""
+        default_spec = spec.model_copy(update={"collar": None})
+        try:
+            if levels_payload.get("status") != "SUCCESS":
+                raise _ShaftFailureError(
+                    ShaftFailureCode.SHAFT_NO_SERVICEABLE_LEVELS,
+                    f"prerequisite levels artifact status {levels_payload.get('status')!r} is "
+                    "not consumable (rule 183)",
+                )
+            breakpoints = level_breakpoints(levels_payload)
+            self._dev_samples = _development_samples(levels_payload)
+            level_ids = self._target_levels(default_spec, breakpoints)
+            xy, _source = self._collar_plan(default_spec, level_ids, breakpoints)
+            collar = self._collar(xy)
+        except _ShaftFailureError as exc:
+            return CollarSuggestion(
+                shaft_id=spec.shaft_id,
+                status="FAILED",
+                collar=None,
+                level_ids=list(spec.level_ids),
+                collar_standoff=spec.collar_standoff,
+                failure_code=exc.code,
+                failure_reason=exc.reason,
+            )
+        return CollarSuggestion(
+            shaft_id=spec.shaft_id,
+            status="OK",
+            collar=(float(collar[0]), float(collar[1]), float(collar[2])),
+            level_ids=level_ids,
+            collar_standoff=spec.collar_standoff,
         )
 
     # -- per shaft -------------------------------------------------------------- #

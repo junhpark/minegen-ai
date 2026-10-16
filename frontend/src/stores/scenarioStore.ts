@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Scenario } from '@/types/api'
+import type { DemoCatalogEntry, Scenario } from '@/types/api'
 import type { WorldScene } from '@/types/scene'
 
 /** Asynchronous design jobs owned by the ACTIVE scenario (Phase 17.1 §1).
@@ -17,6 +17,14 @@ const NO_JOBS: Record<DesignJobKind, string | null> = {
 
 export interface ScenarioState {
   scenario: Scenario | null
+  /**
+   * Hardening PR-2 H4 — the baked demo the active scenario IS, or null for a
+   * saved scenario. Part of the scenario identity (set in the same transition,
+   * cleared by the next): the shell renders demo mode (viewer-only controls,
+   * Auto tour, Clone to edit) from this fact and the backend refuses every
+   * write to the demo anyway (409 DEMO_READ_ONLY).
+   */
+  demo: DemoCatalogEntry | null
   scene: WorldScene | null
   /**
    * Scenario-identity token (Phase 17.1 §1). It increments on every change
@@ -37,7 +45,7 @@ export interface ScenarioState {
   jobs: Record<DesignJobKind, string | null>
   /** Switch the active scenario and return the NEW epoch. Clears the scene
    * manifest, every derived product and all in-flight job ids in one set(). */
-  setScenario: (scenario: Scenario | null) => number
+  setScenario: (scenario: Scenario | null, demo?: DemoCatalogEntry | null) => number
   /**
    * Replace the active scenario DOCUMENT under the same id (a scenario PUT —
    * Phase 21B/C review blocker 2). The backend invalidates every derived
@@ -61,22 +69,24 @@ export interface ScenarioState {
 
 export const useScenarioStore = create<ScenarioState>()((set, get) => ({
   scenario: null,
+  demo: null,
   scene: null,
   epoch: 0,
   sceneRevision: 0,
   jobs: { ...NO_JOBS },
 
-  setScenario: (scenario) => {
+  setScenario: (scenario, demo = null) => {
     const prev = get()
     // re-selecting the SAME scenario is not an identity change: refresh the
     // document and keep the derived state that belongs to it
     if (scenario !== null && prev.scenario?.id === scenario.id) {
-      set({ scenario })
+      set({ scenario, demo: scenario === null ? null : demo })
       return prev.epoch
     }
     const epoch = prev.epoch + 1
     set({
       scenario,
+      demo: scenario === null ? null : demo,
       scene: null,
       epoch,
       sceneRevision: prev.sceneRevision + 1,
@@ -90,6 +100,7 @@ export const useScenarioStore = create<ScenarioState>()((set, get) => ({
     const epoch = prev.epoch + 1
     set({
       scenario,
+      demo: null,
       scene: null,
       epoch,
       sceneRevision: prev.sceneRevision + 1,

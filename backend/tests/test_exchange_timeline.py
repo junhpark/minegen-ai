@@ -94,7 +94,7 @@ def without_timeline(mine: SyntheticMine) -> dict[str, bytes]:
 def test_timeline_document_and_task_table_contract(with_timeline: dict[str, bytes]) -> None:
     e = with_timeline
     m = _manifest(e)
-    assert m["mineExchangeVersion"] == MINE_EXCHANGE_VERSION == "1.3.0"
+    assert m["mineExchangeVersion"] == MINE_EXCHANGE_VERSION == "1.3.1"
     files = {f["path"]: f for f in m["files"]}
     assert files["operations/timeline.json"]["semanticType"] == "MINE_TIMELINE"
     assert files["operations/timeline.json"]["representation"] == "DOCUMENT"
@@ -104,7 +104,7 @@ def test_timeline_document_and_task_table_contract(with_timeline: dict[str, byte
     assert "TIMELINE" not in _omissions(e)
     assert _omissions(e)["FIELD_LATTICE"] == "NOT_IN_V1"
     doc = ExchangeTimeline.model_validate(json.loads(e["operations/timeline.json"]))
-    assert doc.semantic_type == "MINE_TIMELINE" and doc.mine_exchange_version == "1.3.0"
+    assert doc.semantic_type == "MINE_TIMELINE" and doc.mine_exchange_version == "1.3.1"
     assert "never a production forecast" in doc.timeline_semantics
     assert "day <= day" in doc.timeline_semantics
     src = development_timeline(consistent_network())
@@ -379,7 +379,7 @@ def test_mx13_11_12_timeline_is_purely_additive(
     assert a_files == b_files
     assert a["entities"] == b["entities"]
     assert [o for o in b["omissions"] if o["group"] != "TIMELINE"] == a["omissions"]
-    assert a["mineExchangeVersion"] == b["mineExchangeVersion"] == "1.3.0"
+    assert a["mineExchangeVersion"] == b["mineExchangeVersion"] == "1.3.1"
 
 
 def test_mx13_13_export_is_deterministic(mine: SyntheticMine) -> None:

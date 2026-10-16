@@ -337,6 +337,11 @@ class GeologyConfig(ApiModel):
 
     rock_quality: RockQualityConfig = Field(default_factory=RockQualityConfig)
     faults: list[FaultConfig] = Field(default_factory=list)
+    #: hardening PR-2 H3 §6.1: OPTIONAL in-situ host-rock density (t/m³) used
+    #: ONLY to express excavated development rock as tonnes in the analysis
+    #: time series. No default exists: absent → development tonnes are
+    #: NOT_CONFIGURED (null), never 2.7 or any other engineering constant.
+    host_rock_density: Annotated[float, Field(gt=0.0, le=10.0)] | None = None
 
 
 class FieldSamplingConfig(ApiModel):
@@ -505,18 +510,65 @@ class TunnelProfile(ApiModel):
         return data
 
 
+#: Cut & Fill slice direction INSIDE a stope block (H2-CF). OVERHAND mines
+#: lifts bottom → top under the previous lift's fill; UNDERHAND (top → bottom
+#: under cemented fill) is a declared axis that production generation refuses
+#: with the typed UNSUPPORTED_STOPING_DIRECTION failure — never a fallback.
+StopingDirection = Literal["OVERHAND", "UNDERHAND"]
+#: the order in which the stope BLOCKS (level interval × strike panel) are
+#: started. Never "top-down" / "bottom-up" (those words name the slice
+#: direction in the literature and would be confused with UNDERHAND).
+BlockOrder = Literal["SHALLOW_TO_DEEP", "DEEP_TO_SHALLOW"]
+
+
 class CutFillParameters(ApiModel):
     """Phase 21B CUT_AND_FILL production parameters — SYNTHETIC planning
     assumptions, never fill-strength, binder or geotechnical design values.
-    Lifts and cuts are DETERMINISTIC EQUAL PARTITIONS of the available span
-    (``n = ceil(span / target)``, ``actual = span / n``), so no tiny residual
-    lift / cut is ever produced at an edge."""
+    Lifts, cuts and panels are DETERMINISTIC EQUAL PARTITIONS of the
+    available span (``n = ceil(span / target)``, ``actual = span / n``), so
+    no tiny residual lift / cut / panel is ever produced at an edge.
+
+    H2-CF (hardening PR-2) adds the two sequencing axes and the block /
+    panel structure: a level interval × a strike panel is one stope BLOCK;
+    ``maxConcurrentPanels`` is an explicit precedence rule (panel k + N starts
+    after panel k is cured), never a resource solver; ``ribPillarWidthM > 0``
+    leaves RETAINED rib pillars between panels; ``sillMatCureDays`` is the
+    cure of a CEMENTED sill-mat fill (the bottom lift of a block mined above
+    an unmined block under SHALLOW_TO_DEEP). Every value is a planning
+    default exposed by the registry, never engineering truth."""
 
     kind: Literal["CUT_AND_FILL"] = "CUT_AND_FILL"
     #: target VERTICAL lift height (metres); the local down-dip span uses the dip
     lift_height_m: PositiveFloat = Field(default=4.0, alias="liftHeightM")
     #: target along-strike cut length (metres)
     cut_length_m: PositiveFloat = Field(default=15.0, alias="cutLengthM")
+    stoping_direction: StopingDirection = "OVERHAND"
+    block_order: BlockOrder = "SHALLOW_TO_DEEP"
+    #: target along-strike panel length (metres): the strike extent of every
+    #: level interval is partitioned equally into panels; one production
+    #: access crosscut is developed per panel
+    panel_length_m: PositiveFloat = Field(default=60.0, alias="panelLengthM")
+    #: rib pillar left between adjacent panels (metres, 0 = none); retained
+    #: material, never scheduled, never planned tonnes
+    rib_pillar_width_m: NonNegativeFloat = Field(default=0.0, alias="ribPillarWidthM")
+    #: upper bound of panels in production at once — a deterministic
+    #: precedence rule (rule 82), not a resource constraint
+    max_concurrent_panels: Annotated[int, Field(ge=1)] = 2
+    #: cure of a cemented sill-mat fill (days); non-cemented fill cures with
+    #: ``schedule.backfillCureDays``
+    sill_mat_cure_days: PositiveFloat = Field(default=28.0, alias="sillMatCureDays")
+
+    @model_validator(mode="after")
+    def _rib_pillar_inside_panel(self) -> CutFillParameters:
+        # a rib pillar is carved out of the panel partition: it must leave a
+        # positive mined span even before the orebody length is known
+        if self.rib_pillar_width_m >= self.panel_length_m:
+            raise ValueError(
+                f"ribPillarWidthM ({self.rib_pillar_width_m:g} m) must be smaller than "
+                f"panelLengthM ({self.panel_length_m:g} m): a rib pillar is carved out of "
+                "the panel partition and must leave a mined span"
+            )
+        return self
 
 
 class RoomPillarParameters(ApiModel):

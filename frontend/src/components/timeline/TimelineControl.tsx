@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useTimelineStore } from '@/stores/timelineStore'
-
-const SPEEDS = [1, 5, 20] as const
+import { advancePlayback, PLAYBACK_SPEEDS } from '@/timeline/playback'
 
 /**
  * Phase 10 timeline control (§20): playback advances `currentDay` at
  * `speed` schedule days per real second via requestAnimationFrame; at
- * endDay it clamps and auto-pauses. The timelineStore stays the UI state
- * source; the range comes from the backend timeline artifact.
+ * endDay it clamps and auto-pauses — or, with Loop on (hardening PR-2 H3
+ * §7), restarts at the start day and continues. Restart jumps to the start
+ * day. The timelineStore stays the UI state source; the range comes from the
+ * backend timeline artifact and the clock never modifies it.
  */
 export function TimelineControl() {
   const timeline = useScenarioStore((s) => s.scene?.timeline ?? null)
@@ -17,6 +18,9 @@ export function TimelineControl() {
   const setRange = useTimelineStore((s) => s.setRange)
   const play = useTimelineStore((s) => s.play)
   const pause = useTimelineStore((s) => s.pause)
+  const restart = useTimelineStore((s) => s.restart)
+  const loop = useTimelineStore((s) => s.loop)
+  const setLoop = useTimelineStore((s) => s.setLoop)
   const setSpeed = useTimelineStore((s) => s.setSpeed)
 
   // hydrate/reset the range from the backend timeline (§20/§25)
@@ -40,14 +44,20 @@ export function TimelineControl() {
     const tick = (t: number) => {
       const store = useTimelineStore.getState()
       if (last.current !== null) {
-        const next = store.currentDay + ((t - last.current) / 1000) * store.speed
-        if (next >= store.endDay) {
-          store.setCurrentDay(store.endDay) // clamp…
-          store.pause() // …and auto-pause at endDay
+        const step = advancePlayback(
+          store.currentDay,
+          (t - last.current) / 1000,
+          store.speed,
+          store.startDay,
+          store.endDay,
+          store.loop,
+        )
+        store.setCurrentDay(step.currentDay)
+        if (!step.playing) {
+          store.pause() // clamped at endDay without loop
           last.current = null
           return
         }
-        store.setCurrentDay(next)
       }
       last.current = t
       frame.current = requestAnimationFrame(tick)
@@ -72,19 +82,33 @@ export function TimelineControl() {
       <button
         type="button"
         className="plate rounded-sm border border-edge px-2 py-0.5 hover:border-lamp"
-        onClick={() => setCurrentDay(startDay)}
-        title="Jump to start"
+        onClick={restart}
+        title="Restart at the first day"
+        data-testid="timeline-restart"
       >
-        |&lt;
+        Restart
       </button>
       <button
         type="button"
         className="plate rounded-sm border border-edge px-2 py-0.5 hover:border-lamp"
         onClick={() => (playing ? pause() : play())}
+        data-testid="timeline-play"
       >
         {playing ? 'Pause' : 'Play'}
       </button>
-      {SPEEDS.map((sp) => (
+      <button
+        type="button"
+        className={`plate rounded-sm border px-2 py-0.5 ${
+          loop ? 'border-lamp text-lamp' : 'border-edge text-mute hover:border-lamp'
+        }`}
+        onClick={() => setLoop(!loop)}
+        title="Restart at the start day when the schedule end is reached"
+        aria-pressed={loop}
+        data-testid="timeline-loop"
+      >
+        Loop
+      </button>
+      {PLAYBACK_SPEEDS.map((sp) => (
         <button
           key={sp}
           type="button"
@@ -92,8 +116,9 @@ export function TimelineControl() {
             speed === sp ? 'border-lamp text-lamp' : 'border-edge text-mute hover:border-lamp'
           }`}
           onClick={() => setSpeed(sp)}
+          data-testid={`timeline-speed-${String(sp)}`}
         >
-          {sp}x
+          {sp}×
         </button>
       ))}
       <input

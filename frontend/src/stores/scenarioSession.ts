@@ -1,4 +1,4 @@
-import type { Scenario } from '@/types/api'
+import type { DemoCatalogEntry, Scenario } from '@/types/api'
 import { useResultsStore } from './resultsStore'
 import { useScenarioStore } from './scenarioStore'
 import { useSliceStore } from './sliceStore'
@@ -23,8 +23,11 @@ import { useViewerStore } from './viewerStore'
  * This module — never a store — owns the cross-store transition, so the
  * stores stay free of import cycles.
  */
-export function activateScenario(scenario: Scenario | null): number {
-  const epoch = useScenarioStore.getState().setScenario(scenario)
+export function activateScenario(
+  scenario: Scenario | null,
+  demo: DemoCatalogEntry | null = null,
+): number {
+  const epoch = useScenarioStore.getState().setScenario(scenario, demo)
   useSliceStore.getState().reset()
   useTimelineStore.getState().reset()
   useViewerStore.getState().resetScenarioScopedState()

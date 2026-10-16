@@ -6,13 +6,23 @@
  */
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { CONFIG, EMPTY, FULL } from './analysis.fixture'
+import {
+  CONFIG,
+  EMPTY,
+  FULL,
+  H3_BODY_PROPS,
+  SENSITIVITY,
+  SENSITIVITY_NOT_CONFIGURED,
+  TIMESERIES,
+} from './analysis.fixture'
+import { irrText } from './analysisFormat'
 import {
   AnalysisPanelBody,
   type AnalysisPanelBodyProps,
   ECONOMICS_NOT_CONFIGURED_TEXT,
 } from './AnalysisPanel'
-import type { LevelsPayload } from '@/types/scene'
+import type { LevelsPayload, TimelinePayload } from '@/types/scene'
+import { WHAT_IF_LABEL } from '@/types/analysis'
 import { ANALYSIS_TABS } from './workflowTabs'
 
 function props(over: Partial<AnalysisPanelBodyProps> = {}): AnalysisPanelBodyProps {
@@ -35,6 +45,7 @@ function props(over: Partial<AnalysisPanelBodyProps> = {}): AnalysisPanelBodyPro
     saving: false,
     saveError: null,
     onSave: () => undefined,
+    ...H3_BODY_PROPS,
     ...over,
   }
 }
@@ -53,10 +64,12 @@ const FORBIDDEN = [
 ]
 
 describe('Analysis tabs', () => {
-  it('are Overview | Economics | Rules | Layout comparison | Simulation Results — "Rules", never "Compliance"', () => {
+  it('are Overview | Economics | Sensitivity | Schedule | Rules | Layouts | Simulation Results — "Rules", never "Compliance"', () => {
     expect(ANALYSIS_TABS.map((t) => t.id)).toEqual([
       'OVERVIEW',
       'ECONOMICS',
+      'SENSITIVITY',
+      'SCHEDULE',
       'RULES',
       'LAYOUT_COMPARISON',
       'SIMULATION',
@@ -64,11 +77,185 @@ describe('Analysis tabs', () => {
     expect(ANALYSIS_TABS.map((t) => t.label)).toEqual([
       'Overview',
       'Economics',
+      'Sensitivity',
+      'Schedule',
       'Rules',
-      'Layout comparison',
+      'Layouts',
       'Simulation Results',
     ])
     expect(ANALYSIS_TABS.some((t) => /compliance/i.test(t.label))).toBe(false)
+  })
+})
+
+describe('KPI tiles (hardening PR-2 H3 §8.1)', () => {
+  it('head every analysis tab with Planning NPV, Planning IRR, mine life and first production — backend values', () => {
+    for (const view of ['OVERVIEW', 'ECONOMICS', 'SENSITIVITY', 'SCHEDULE'] as const) {
+      const html = render({ view, sensitivity: SENSITIVITY, timeseries: TIMESERIES })
+      expect(html).toContain('data-testid="analysis-kpis"')
+      expect(html).toContain('data-kpi="Planning NPV"')
+      expect(html).toContain('USD 4,039')
+      expect(html).toContain('data-kpi="Planning IRR"')
+      expect(html).toContain('12.3 %')
+      expect(html).toContain('data-kpi="Mine life"')
+      expect(html).toContain('120 d')
+      expect(html).toContain('data-kpi="First production day"')
+      expect(html).toContain('50 d')
+    }
+    // Rules / Layouts keep their bodies and gain the tiles
+    expect(render({ view: 'RULES' })).toContain('data-testid="analysis-kpis"')
+    expect(render({ view: 'LAYOUT_COMPARISON' })).toContain('data-testid="analysis-kpis"')
+    // the Simulation Results tab is its own container
+    expect(render({ view: 'SIMULATION' })).toBe('')
+  })
+
+  it('show the typed economics status instead of a number when not configured', () => {
+    const html = render({
+      analysis: EMPTY,
+      economicsConfig: { configured: false, revision: null, config: null },
+    })
+    expect(html).toContain('data-testid="analysis-kpis"')
+    expect(html).toContain('Not configured')
+    expect(html).toContain('NOT_CONFIGURED')
+    expect(html).not.toContain('NaN')
+    expect(html).not.toContain('Infinity')
+  })
+
+  it('irrText is typed — a percentage when DEFINED, the reason otherwise, never NaN', () => {
+    expect(irrText(FULL.economics.planningIrr)).toBe('12.3 %')
+    expect(irrText(EMPTY.economics.planningIrr)).toBe('NOT_CONFIGURED')
+    expect(
+      irrText({ ...EMPTY.economics.planningIrr, status: 'NOT_DEFINED', reason: 'NO_SIGN_CHANGE' }),
+    ).toBe('NOT_DEFINED · NO_SIGN_CHANGE')
+    expect(
+      irrText({
+        ...EMPTY.economics.planningIrr,
+        status: 'NOT_DEFINED',
+        reason: 'MULTIPLE_SIGN_CHANGES',
+      }),
+    ).toBe('NOT_DEFINED · MULTIPLE_SIGN_CHANGES')
+    expect(irrText(null)).toBe('—')
+  })
+})
+
+describe('Sensitivity (hardening PR-2 H3 §8.3)', () => {
+  it('renders the what-if label, the tornado, the case table and the form from the backend grid', () => {
+    const html = render({ view: 'SENSITIVITY', sensitivity: SENSITIVITY })
+    expect(html).toContain('data-testid="what-if-label"')
+    expect(html).toContain(WHAT_IF_LABEL)
+    expect(html).toContain('WHAT-IF OVERRIDE')
+    expect(html).toContain('NOT SCENARIO VALUE')
+    expect(html).toContain('data-testid="sensitivity-tornado"')
+    expect(html).toContain('data-testid="sensitivity-table"')
+    expect(html).toContain('data-testid="what-if-form"')
+    expect(html).toContain('Gross revenue per mined tonne')
+    expect(html).toContain('+USD 5,700')
+    expect(html).toContain('−USD 5,700') // the backend delta with its sign, layout-comparison convention
+    expect(html).toContain('150 d') // a schedule what-if changes the duration
+    expect(html).toContain('Evaluate what-if (not saved)')
+    expect(html).toContain('Synthetic planning economics.')
+    // the revenue authority stays "gross revenue per mined tonne" — no price model input
+    for (const word of ['Metal price', 'Recovery', 'Royalty', 'Tax', 'Payability', 'Smelter']) {
+      expect(html).not.toContain(word)
+    }
+    expect(html).not.toContain('data-testid="what-if-result"')
+  })
+
+  it('shows the explicit what-if answer under its label, and a typed failure as text', () => {
+    const ok = render({
+      view: 'SENSITIVITY',
+      sensitivity: SENSITIVITY,
+      whatIf: { ...SENSITIVITY.base, planningNpv: 5000, npvDelta: 961.49 },
+    })
+    expect(ok).toContain('data-testid="what-if-result"')
+    expect(ok).toContain('USD 5,000')
+    const failed = render({
+      view: 'SENSITIVITY',
+      sensitivity: SENSITIVITY,
+      whatIf: {
+        ...SENSITIVITY.base,
+        status: 'FAILED',
+        reason: 'TIMELINE_CYCLE: …',
+        planningNpv: null,
+      },
+    })
+    expect(failed).toContain('FAILED: TIMELINE_CYCLE: …')
+  })
+
+  it('not configured: the reason, no tornado, the form still present; a typed refusal is shown verbatim', () => {
+    const html = render({
+      view: 'SENSITIVITY',
+      analysis: EMPTY,
+      sensitivity: SENSITIVITY_NOT_CONFIGURED,
+      economicsConfig: { configured: false, revision: null, config: null },
+    })
+    expect(html).toContain('Planning economics is not configured.')
+    expect(html).not.toContain('data-testid="sensitivity-tornado"')
+    expect(html).toContain('data-testid="what-if-form"')
+    const refused = render({
+      view: 'SENSITIVITY',
+      sensitivity: null,
+      sensitivityError: 'READ_SNAPSHOT_CHANGED: the mine moved',
+    })
+    expect(refused).toContain('READ_SNAPSHOT_CHANGED: the mine moved')
+    expect(refused).not.toContain('data-testid="what-if-form"')
+  })
+})
+
+describe('Schedule (hardening PR-2 H3 §8)', () => {
+  const timeline: TimelinePayload = {
+    status: 'SUCCESS',
+    failureReason: null,
+    sourceRevision: 't',
+    startDay: 0,
+    endDay: 120,
+    tasks: [
+      {
+        id: 'DEV:RAMP:0',
+        taskType: 'DEVELOPMENT',
+        targetKind: 'DEVELOPMENT',
+        targetId: 'RAMP:0',
+        startDay: 0,
+        endDay: 30,
+        durationDays: 30,
+        dependencies: [],
+        basis: null,
+      },
+    ],
+    developments: [],
+    stopes: [],
+    production: null,
+    metrics: null,
+  } as unknown as TimelinePayload
+  it('renders the baseline KPIs, the backend series charts and the persisted task table', () => {
+    const html = render({ view: 'SCHEDULE', timeseries: TIMESERIES, timeline })
+    expect(html).toContain('Baseline schedule')
+    expect(html).toContain('data-testid="schedule-series"')
+    expect(html).toContain('Excavated development rock')
+    expect(html).not.toContain('waste')
+    expect(html).toContain('Planned mined tonnes per bucket')
+    expect(html).toContain('Development tonnes: NOT_CONFIGURED')
+    expect(html).toContain('data-testid="schedule-tasks"')
+    expect(html).toContain('RAMP:0')
+    expect(html).toContain('(1 of 1)')
+    expect(html).toContain('never a production forecast')
+  })
+
+  it('series unavailable: the backend reason; a typed refusal verbatim; no timeline → the note', () => {
+    const html = render({
+      view: 'SCHEDULE',
+      timeseries: {
+        ...TIMESERIES,
+        availability: 'NOT_AVAILABLE',
+        reason: 'timeline.json not generated',
+      },
+    })
+    expect(html).toContain('timeline.json not generated')
+    expect(html).toContain('The timeline artifact is not in the scene.')
+    const refused = render({ view: 'SCHEDULE', timeseriesError: 'READ_SNAPSHOT_CHANGED: moved' })
+    expect(refused).toContain('READ_SNAPSHOT_CHANGED: moved')
+    const noSchedule = render({ view: 'SCHEDULE', analysis: EMPTY })
+    expect(noSchedule).toContain('timeline.json not generated')
+    expect(noSchedule).not.toContain('data-testid="schedule-series"')
   })
 })
 
@@ -139,7 +326,8 @@ describe('Overview', () => {
 
   it('shows every missing source as Not available with the backend reason (partial 200)', () => {
     const html = render({ analysis: EMPTY })
-    expect(html.match(/Not available/g)?.length).toBe(4)
+    // four section cards + the two schedule KPI tiles (mine life, first production)
+    expect(html.match(/Not available/g)?.length).toBe(6)
     expect(html).toContain('network.json not generated')
     expect(html).toContain('stopes.json not generated')
     expect(html).toContain('timeline.json not generated')
@@ -208,7 +396,8 @@ describe('Economics', () => {
     expect(html).toContain('Synthetic planning economics.')
     expect(html).toContain('data-testid="economics-config-editor"')
     expect(html).toContain('DEMO / SYNTHETIC ASSUMPTIONS')
-    expect(html).not.toContain('Planning NPV')
+    expect(html).not.toContain('Planning NPV USD') // no figure anywhere, only the typed status
+    expect(html).not.toContain('data-testid="cashflow-charts"')
     expect(html).not.toContain('data-testid="cashflow-table"')
     // every assumption section is present and the active method is marked
     for (const s of [
@@ -233,6 +422,9 @@ describe('Economics', () => {
     expect(html).toContain('USD 20,000') // gross revenue
     expect(html).toContain('USD 4,270') // undiscounted net
     expect(html).toContain('Mine duration')
+    expect(html).toContain('Planning IRR 12.3 %')
+    expect(html).toContain('data-testid="cashflow-charts"')
+    expect(html).toContain('Cost breakdown (whole mine), USD')
     expect(html).toContain('data-testid="cashflow-table"')
     expect(html).toContain('90–120')
     expect(html).toContain('11,700')
@@ -257,6 +449,7 @@ describe('Economics', () => {
       },
     })
     expect(html).toContain('SOURCE_NOT_AVAILABLE: requires development, production, schedule')
-    expect(html).not.toContain('Planning NPV')
+    expect(html).not.toContain('Planning NPV USD')
+    expect(html).toContain('Not available') // the KPI tile shows the typed status
   })
 })

@@ -1295,8 +1295,48 @@ export interface ProductionReport {
   failureReason: string | null
 }
 
+export interface CutFillSequencing {
+  stopingDirection: 'OVERHAND' | 'UNDERHAND'
+  blockOrder: 'SHALLOW_TO_DEEP' | 'DEEP_TO_SHALLOW'
+  panelLengthM: number
+  ribPillarWidthM: number
+  maxConcurrentPanels: number
+  sillMatCureDays: number
+  blockOrderIds: string[]
+  panelStartOrder: string[]
+}
+
+export interface CutFillBlock {
+  id: string
+  lowerLevelId: string
+  upperLevelId: string
+  startOrder: number
+  vMin: number
+  vMax: number
+  verticalHeight: number
+  panelIds: string[]
+  liftIndices: number[]
+  sillMatRequired: boolean
+}
+
+export interface CutFillPanel {
+  id: string
+  blockId: string
+  panelIndex: number
+  lowerLevelId: string
+  upperLevelId: string
+  startOrder: number
+  uMin: number
+  uMax: number
+  strikeLength: number
+  accessDevelopmentId: string
+  cutIds: string[]
+}
+
 export interface CutFillLift {
   liftIndex: number
+  blockId: string
+  liftIndexInBlock: number
   lowerLevelId: string
   upperLevelId: string
   vMin: number
@@ -1308,7 +1348,11 @@ export interface CutFillLift {
 export interface CutFillCut {
   id: string
   method: 'CUT_AND_FILL'
+  blockId: string
+  panelId: string
+  panelIndex: number
   liftIndex: number
+  liftIndexInBlock: number
   cutIndex: number
   lowerLevelId: string
   upperLevelId: string
@@ -1330,6 +1374,23 @@ export interface CutFillBackfill {
   id: string
   sourceCutId: string
   volumeM3: number
+  /** cemented sill-mat fill (the bottom lift of a block mined above an
+   * unmined block); cures with sillMatCureDays — a semantic flag only */
+  cemented: boolean
+}
+
+/** RETAINED rib pillar between two panels — never scheduled, never tonnes. */
+export interface CutFillRibPillar {
+  id: string
+  blockId: string
+  leftPanelId: string
+  rightPanelId: string
+  localBounds: LocalBounds
+  geometry: SolidGeometry
+  geometricVolumeM3: number
+  tonnesEquivalent: number
+  meanGradeProxy: number | null
+  report: ProductionReport
 }
 
 export interface CutFillMetrics {
@@ -1337,12 +1398,20 @@ export interface CutFillMetrics {
   backfillCount: number
   liftCount: number
   levelIntervalCount: number
+  blockCount: number
+  panelCount: number
+  ribPillarCount: number
+  cementedBackfillCount: number
   totalGeometricVolumeM3: number
   totalTonnes: number
+  cementedBackfillVolumeM3: number
+  totalRibPillarVolumeM3: number
+  totalRibPillarTonnesEquivalent: number
   geometricExtractionFractionOfOrebody: number
   weightedMeanGradeProxy: number | null
   actualMeanLiftHeight: number
   actualMeanCutLength: number
+  actualMeanPanelLength: number
 }
 
 export interface CutFillPayload {
@@ -1350,9 +1419,17 @@ export interface CutFillPayload {
   failureReason: string | null
   sourceRevision: string
   method: 'CUT_AND_FILL'
+  /** PR #54 review B2: the Cut & Fill production MODEL VERSION (backend
+   * `CUT_FILL_MODEL_VERSION`); a persisted artifact of another version is a
+   * typed LEGACY read the scene migrates — it never reaches the frontend */
+  cutFillModelVersion: 2
+  sequencing: CutFillSequencing | null
+  blocks: CutFillBlock[]
+  panels: CutFillPanel[]
   lifts: CutFillLift[]
   cuts: CutFillCut[]
   backfills: CutFillBackfill[]
+  ribPillars: CutFillRibPillar[]
   metrics: CutFillMetrics | null
 }
 
@@ -1467,6 +1544,9 @@ export interface LevelsPayload {
     method: string
     status: 'IMPLEMENTED' | 'UNSUPPORTED_METHOD'
     reason: string | null
+    /** PR #54 review B2: present only for a method that versions its
+     * production development (Cut & Fill) */
+    modelVersion?: number | null
   } | null
   developments: LevelDevelopment[]
   levels: {
@@ -1696,6 +1776,81 @@ export interface DevelopmentMeshReport {
   meshUrl: string | null
 }
 
+/** derived/shaft_mesh.json (hardening PR-2 H2-SH): the shaft excavation
+ * sweep — circular barrel + collar / sump caps + station drives — derived
+ * from shafts.json. A leaf artifact: it invalidates nothing and is deleted
+ * with the shafts. Rendered through the development-mesh GLB reader (same
+ * `ranges` grammar); the frontend performs no shaft engineering. */
+export interface ShaftMeshReport {
+  status: 'SUCCESS' | 'FAILED'
+  failureReason: string | null
+  shaftsRevision?: string
+  shaftCount?: number
+  stationAccessCount?: number
+  skippedShafts?: string[]
+  ringCount?: number
+  renderVertexCount?: number
+  primitiveCount?: number
+  length3d?: number
+  nominalExcavationVolume?: number
+  byKind?: Record<
+    'SHAFT' | 'SHAFT_STATION_ACCESS',
+    { count: number; length3d: number; nominalExcavationVolume: number; endpointPolicies: string[] }
+  >
+  profile?: { barrelSegments: number; driveArchSegments: number; collarZoneDiameters: number }
+  shafts?: {
+    shaftId: string
+    diameter: number
+    barrel: {
+      pieceIds: string[]
+      ringCount: number
+      triangleCount: number
+      length3d: number
+      nominalExcavationVolume: number
+      meshVolume: number
+      volumeDifferencePct: number
+      topology: {
+        manifold: boolean
+        watertight: boolean
+        outwardOrientation: boolean
+        valid: boolean
+      }
+      envelope: {
+        hardViolations: number
+        aboveTerrainBelowCollarZone: number
+        collarZoneAboveTerrain: number
+      }
+    } | null
+    stationAccesses: {
+      pieceId: string
+      levelId: string
+      length3d: number
+      triangleCount: number
+      topology: { valid: boolean; boundaryEdges: number; expectedBoundaryEdges: number }
+    }[]
+  }[]
+  booleanUnion?: string
+  limitations?: string[]
+  generationSeconds?: number
+  sources?: { shafts: boolean; rampSource: string }
+  glbBytes?: number
+  artifactRevision: string | null
+  meshUrl: string | null
+}
+
+/** `POST …/design/shafts/suggest-collar`: the planner's default collar for
+ * one declared spec — a suggestion the user copies into the explicit spec. */
+export interface CollarSuggestion {
+  shaftId: string
+  status: 'OK' | 'FAILED'
+  collar: [number, number, number] | null
+  collarSource: 'DEFAULT_DERIVED'
+  levelIds: string[]
+  collarStandoff: number
+  failureCode?: string | null
+  failureReason?: string | null
+}
+
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
 
 export interface JobProgress {
@@ -1772,6 +1927,24 @@ export interface AvailableMethod {
   defaultParameters: MethodParameters | null
 }
 
+/**
+ * PR #54 review B2 — what ONE scene read migrated: a recognized earlier
+ * derived-artifact model (today the PR #53 Cut & Fill artifacts) whose
+ * Levels closure the backend discarded under the scenario lock. Empty on
+ * every ordinary read; the frontend only shows it and regenerates nothing.
+ */
+export interface SceneMigration {
+  code: 'CUT_FILL_LEGACY_ARTIFACTS_DISCARDED'
+  /** the version-carrying artifacts found legacy */
+  artifacts: string[]
+  /** the well-formed artifacts that were legacy by derivation */
+  derivedArtifacts: string[]
+  reason: string
+  resetFrom: 'LEVELS'
+  /** every file the migration deleted, in deletion order */
+  deleted: string[]
+}
+
 export interface WorldScene {
   scenarioId: string
   coordinateSystem: 'ENU_Z_UP'
@@ -1810,6 +1983,8 @@ export interface WorldScene {
   levels: LevelsPayload | null
   /** Phase 20C.2B optional shaft infrastructure (levels → shafts → network) */
   shafts?: ShaftsPayload | null
+  /** hardening PR-2 H2-SH: the shaft excavation mesh (shafts → shaft mesh, a leaf) */
+  shaftMesh?: ShaftMeshReport | null
   network: NetworkPayload | null
   /** Phase 20C.2B capability semantics over the network (network → capability) */
   capabilityGraph?: CapabilityGraphPayload | null
@@ -1818,4 +1993,6 @@ export interface WorldScene {
   timeline: TimelinePayload | null
   communication: CommunicationPayload | null
   sensors: SensorPayload | null
+  /** PR #54 review B2: the migrations THIS read performed (absent / empty normally) */
+  migrations?: SceneMigration[]
 }

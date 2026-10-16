@@ -12,12 +12,32 @@ quantities, never reserve or resource estimates.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import Field
 
 from minegen.core.enums import MiningMethodType
 from minegen.core.models import ApiModel
+
+#: PR #54 review B2 — the Cut & Fill production MODEL VERSION. It pins the
+#: SEMANTIC shape of the persisted Cut & Fill artifacts (``stopes.json`` for
+#: CUT_AND_FILL and the ``productionDevelopment`` block of ``levels.json``):
+#:
+#:   (absent)  PR #53 Cut & Fill — one central FixedAccessPattern crosscut per
+#:             level, lifts × cuts without blocks / panels / rib pillars /
+#:             sill mats
+#:   2         hardening PR-2 H2-CF — the panel / block structure of rule 195
+#:             (``PanelAccessPattern``, ``blocks[]``, ``panels[]``,
+#:             ``ribPillars[]``, cemented sill mats, ``sequencing``)
+#:
+#: A persisted artifact of another version is LEGACY to the reader
+#: (``services/artifact_reader.py``: the typed ``CUT_FILL_LEGACY_ARTIFACT``
+#: state, never ARTIFACT_MALFORMED and never reinterpreted); the scene read
+#: migrates it explicitly by discarding the Levels closure. The global
+#: scenario ``schemaVersion`` stays 2 — the scenario DOCUMENT did not change,
+#: only the derived Cut & Fill artifacts did. A new structural change to the
+#: Cut & Fill payload bumps this constant (and the ``Literal`` on the payload).
+CUT_FILL_MODEL_VERSION: Final[int] = 2
 
 
 class StopeLocalBounds(ApiModel):
@@ -134,15 +154,78 @@ class ProductionReport(ApiModel):
     failure_reason: str | None = None
 
 
-# -- Cut & Fill (Phase 21B) --------------------------------------------------- #
+# -- Cut & Fill (Phase 21B, H2-CF structure) --------------------------------- #
+
+
+class CutFillSequencing(ApiModel):
+    """The resolved sequencing assumptions the geometry was generated under
+    (echo of ``CutFillParameters``, persisted so the schedule and every
+    consumer read ONE authority) plus the deterministic start orders:
+    ``blockOrderIds`` (blocks in start order) and ``panelStartOrder`` (every
+    panel id in its deterministic start order: block order, then centre-out
+    within a block — ties between the symmetric pair resolved to the lower
+    panel index, i.e. the −u side first)."""
+
+    stoping_direction: Literal["OVERHAND", "UNDERHAND"]
+    block_order: Literal["SHALLOW_TO_DEEP", "DEEP_TO_SHALLOW"]
+    panel_length_m: float = Field(alias="panelLengthM")
+    rib_pillar_width_m: float = Field(alias="ribPillarWidthM")
+    max_concurrent_panels: int
+    sill_mat_cure_days: float = Field(alias="sillMatCureDays")
+    block_order_ids: list[str]
+    panel_start_order: list[str]
+
+
+class CutFillBlock(ApiModel):
+    """One stope BLOCK = one level interval (its whole strike extent): the
+    unit of the block order. Its panels partition the strike extent; its
+    lifts partition the down-dip interval. ``startOrder`` is the block's
+    rank in the block order (0 first)."""
+
+    id: str
+    lower_level_id: str
+    upper_level_id: str
+    start_order: int
+    v_min: float
+    v_max: float
+    vertical_height: float
+    panel_ids: list[str]
+    lift_indices: list[int]
+    #: True when this block is mined ABOVE an unmined block (SHALLOW_TO_DEEP,
+    #: every block but the deepest): its bottom lift is a cemented sill mat
+    sill_mat_required: bool
+
+
+class CutFillPanel(ApiModel):
+    """One strike panel of a block: the schedule unit (cuts serial inside
+    the panel, lifts bottom → top). ``uMin … uMax`` is the MINED span (rib
+    pillars subtracted); ``startOrder`` is the panel's rank in the global
+    panel start order (0 first); ``cutIds`` is the panel's mining order."""
+
+    id: str
+    block_id: str
+    panel_index: int
+    lower_level_id: str
+    upper_level_id: str
+    start_order: int
+    u_min: float
+    u_max: float
+    strike_length: float
+    #: the production access CROSSCUT of this panel on the lower level
+    access_development_id: str
+    cut_ids: list[str]
 
 
 class CutFillLift(ApiModel):
-    """One lift of a level interval: an equal partition of the down-dip
-    interval between two adjacent levels into ≈ ``liftHeightM`` vertical
-    slices, ordered bottom → top."""
+    """One lift of a block: an equal partition of the down-dip interval
+    between two adjacent levels into ≈ ``liftHeightM`` vertical slices.
+    ``liftIndex`` is GLOBAL (0 = the deepest lift of the whole body,
+    increasing upward in world z); ``liftIndexInBlock`` restarts at 0 for
+    every block (0 = the block's bottom lift)."""
 
-    lift_index: int  # 0 = the bottom lift of the whole body, increasing upward
+    lift_index: int
+    block_id: str
+    lift_index_in_block: int
     lower_level_id: str
     upper_level_id: str
     v_min: float
@@ -154,7 +237,12 @@ class CutFillLift(ApiModel):
 class CutFillCut(ApiModel):
     id: str
     method: Literal["CUT_AND_FILL"]
+    block_id: str
+    panel_id: str
+    panel_index: int
     lift_index: int
+    lift_index_in_block: int
+    #: mining-order position of the cut inside its panel's lift (snake)
     cut_index: int
     lower_level_id: str
     upper_level_id: str
@@ -175,11 +263,33 @@ class CutFillCut(ApiModel):
 
 class CutFillBackfill(ApiModel):
     """Backfill of ONE cut: references the cut's void geometry (1:1), never a
-    second copy of the vertices."""
+    second copy of the vertices. ``cemented`` marks a cemented sill-mat fill
+    (the bottom lift of a block that is mined above an unmined block); it
+    cures with ``sillMatCureDays`` instead of ``schedule.backfillCureDays``.
+    Fill strength, binder content and mechanics are never modelled."""
 
     id: str
     source_cut_id: str
     volume_m3: float = Field(alias="volumeM3")
+    cemented: bool
+
+
+class CutFillRibPillar(ApiModel):
+    """RETAINED in-situ rib pillar between two adjacent panels of one block
+    (``ribPillarWidthM > 0``) — never an excavation, never scheduled, never
+    planned tonnes, never a geotechnical pillar design. ``tonnesEquivalent``
+    is the planning mass proxy of the material left in place."""
+
+    id: str
+    block_id: str
+    left_panel_id: str
+    right_panel_id: str
+    local_bounds: LocalBounds
+    geometry: SolidGeometry
+    geometric_volume_m3: float = Field(alias="geometricVolumeM3")
+    tonnes_equivalent: float
+    mean_grade_proxy: float | None
+    report: ProductionReport
 
 
 class CutFillMetrics(ApiModel):
@@ -187,12 +297,20 @@ class CutFillMetrics(ApiModel):
     backfill_count: int
     lift_count: int
     level_interval_count: int
+    block_count: int
+    panel_count: int
+    rib_pillar_count: int
+    cemented_backfill_count: int
     total_geometric_volume_m3: float = Field(alias="totalGeometricVolumeM3")
     total_tonnes: float
+    cemented_backfill_volume_m3: float = Field(alias="cementedBackfillVolumeM3")
+    total_rib_pillar_volume_m3: float = Field(alias="totalRibPillarVolumeM3")
+    total_rib_pillar_tonnes_equivalent: float
     geometric_extraction_fraction_of_orebody: float
     weighted_mean_grade_proxy: float | None
     actual_mean_lift_height: float
     actual_mean_cut_length: float
+    actual_mean_panel_length: float
 
 
 class CutFillPayload(ApiModel):
@@ -200,9 +318,17 @@ class CutFillPayload(ApiModel):
     failure_reason: str | None
     source_revision: str
     method: Literal["CUT_AND_FILL"]
+    #: ``CUT_FILL_MODEL_VERSION`` — REQUIRED: a document without it (or with
+    #: another value) is a pre-H2-CF artifact, detected by the reader BEFORE
+    #: this model is applied (``CUT_FILL_LEGACY_ARTIFACT``)
+    cut_fill_model_version: Literal[2]
+    sequencing: CutFillSequencing | None
+    blocks: list[CutFillBlock]
+    panels: list[CutFillPanel]
     lifts: list[CutFillLift]
     cuts: list[CutFillCut]
     backfills: list[CutFillBackfill]
+    rib_pillars: list[CutFillRibPillar]
     metrics: CutFillMetrics | None
 
 

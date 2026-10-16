@@ -164,7 +164,7 @@ def test_b63_every_adapter_builds_from_saved_bundle_bytes_without_services(
         assert pkg.manifest.adapter_name == target
         # Phase 23C: the two round-trip-kit adapters moved to 0.2.0; engines stay 0.1.0
         assert pkg.manifest.adapter_version == ADAPTER_VERSIONS[target]
-        assert pkg.manifest.source_mine_exchange_version == "1.3.0"
+        assert pkg.manifest.source_mine_exchange_version == "1.3.1"
     # the adapter import graph never pulled a MineGen service in
     after = {m for m in sys.modules if m.startswith("minegen.services")}
     assert after == before
@@ -341,7 +341,7 @@ def test_b9_package_is_deterministic_hashed_and_wall_clock_free(bundle: bytes, t
         assert [i.filename for i in zf.infolist()] == sorted(i.filename for i in zf.infolist())
     assert manifest["sourceSnapshot"]["scenarioRevision"] == "s1"
     assert manifest["adapterVersion"] == ADAPTER_VERSIONS[target]
-    assert manifest["sourceMineExchangeVersion"] == "1.3.0"
+    assert manifest["sourceMineExchangeVersion"] == "1.3.1"
 
 
 def test_b9_package_builder_refuses_duplicate_and_unsafe_paths() -> None:

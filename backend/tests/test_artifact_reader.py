@@ -39,6 +39,8 @@ from minegen.core.artifacts import (
     NETWORK_ARTIFACT,
     RAMP_SOURCE_FILE,
     SENSORS_ARTIFACT,
+    SHAFT_MESH_ARTIFACT,
+    SHAFT_MESH_GLB,
     SHAFTS_ARTIFACT,
     STOPES_ARTIFACT,
     TARGETS_ARTIFACT,
@@ -243,6 +245,26 @@ def stack(tmp_path: Path) -> tuple[ScenarioStore, ArtifactReader, Path]:
         derived / SHAFTS_ARTIFACT,
         _payload(levelsRevision=levels_revision, shafts=[], centerlines=[], metrics=None),
     )
+    # hardening PR-2 H2-SH: the shaft excavation mesh pair, bound to the
+    # shafts revision it swept and committed like the two meshes above
+    shafts_revision = expected_revision(derived / SHAFTS_ARTIFACT)
+    (derived / SHAFT_MESH_GLB).write_bytes(GLB_BYTES)
+    write_json(
+        derived / SHAFT_MESH_ARTIFACT,
+        {
+            "status": "SUCCESS",
+            "artifactRevision": GLB_DIGEST,
+            "meshUrl": "/shaft.glb",
+            "shaftsRevision": shafts_revision,
+        },
+    )
+    write_json(
+        derived / mesh_commit_name(SHAFT_MESH_ARTIFACT),
+        build_mesh_commit(
+            report_revision=expected_revision(derived / SHAFT_MESH_ARTIFACT),
+            glb_revision=expected_revision(derived / SHAFT_MESH_GLB),
+        ),
+    )
     write_json(
         derived / STOPES_ARTIFACT,
         _payload(method="LONGHOLE_OPEN_STOPING", stopes=[], metrics=None),
@@ -305,7 +327,7 @@ def test_read_specs_cover_every_registered_derived_artifact() -> None:
     registered = {a.name for a in derived_artifacts()}
     assert RAMP_SOURCE_FILE in registered  # the union of the directive is this set
     assert set(READ_SPECS) == registered | {RAMP_SOURCE_FILE}
-    assert len(READ_SPECS) == 17
+    assert len(READ_SPECS) == 18  # 17 at AC-01F + the PR-2 H2-SH shaft mesh
 
 
 def test_every_provenance_link_is_a_registry_closure_edge() -> None:
@@ -405,6 +427,7 @@ WRONG_SHAPE_CODES: dict[str, str | None] = {
     DEVELOPMENT_MESH_ARTIFACT: "ARTIFACT_MALFORMED",
     LEVELS_ARTIFACT: "ARTIFACT_MALFORMED",
     SHAFTS_ARTIFACT: "ARTIFACT_MALFORMED",
+    SHAFT_MESH_ARTIFACT: "ARTIFACT_MALFORMED",
     STOPES_ARTIFACT: "ARTIFACT_MALFORMED",
     TIMELINE_ARTIFACT: "ARTIFACT_MALFORMED",
     NETWORK_ARTIFACT: "ARTIFACT_MALFORMED",
@@ -471,6 +494,8 @@ def test_first_level_shape_preconditions_are_the_subscripts_consumers_perform(
         (RAMP_SOURCE_FILE, {"activeSource": "MAGIC"}),
         (TUNNEL_MESH_ARTIFACT, {"status": "SUCCESS", "artifactRevision": "short"}),
         (DEVELOPMENT_MESH_ARTIFACT, {"status": "FAILED", "sources": {}}),
+        # PR-2 H2-SH: a shaft mesh that cannot say which shafts it swept
+        (SHAFT_MESH_ARTIFACT, {"status": "FAILED"}),
         # Stage D B2: the three preconditions that tested the LIST and not its
         # ELEMENTS. The consumers subscript DICTS
         # (``lv.get("selectedCandidateId")``, ``for k, v in c.items()``,
@@ -1045,7 +1070,7 @@ def test_snapshot_observes_both_files_of_a_two_file_unit(
 ) -> None:
     _, reader, _ = stack
     snapshot = reader.snapshot(SID)
-    for glb in (TUNNEL_MESH_GLB, DEVELOPMENT_MESH_GLB):
+    for glb in (TUNNEL_MESH_GLB, DEVELOPMENT_MESH_GLB, SHAFT_MESH_GLB):
         obs = snapshot.observation(glb)
         assert obs is not None and obs.present
         assert obs.data is None, "a GLB is stat-only unless the bytes are requested"

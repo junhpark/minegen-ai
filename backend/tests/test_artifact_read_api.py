@@ -58,6 +58,8 @@ from minegen.core.artifacts import (
     NETWORK_ARTIFACT,
     RAMP_SOURCE_FILE,
     SENSORS_ARTIFACT,
+    SHAFT_MESH_ARTIFACT,
+    SHAFT_MESH_GLB,
     SHAFTS_ARTIFACT,
     STOPES_ARTIFACT,
     TARGETS_ARTIFACT,
@@ -186,6 +188,7 @@ def _build(root: Path, source: str) -> tuple[Stack, Any]:
         step("POST", "/design/tunnel", params={"sync": "true"})
         step("POST", "/design/development-mesh", params={"sync": "true"})
     step("POST", "/design/shafts")
+    step("POST", "/design/shaft-mesh")  # hardening PR-2 H2-SH
     step("POST", "/network/generate")
     step("POST", "/design/capability-graph")
     step("POST", "/design/stopes")
@@ -298,6 +301,7 @@ ROUTES: dict[str, str] = {
     DEVELOPMENT_MESH_ARTIFACT: "/design/development-mesh",
     LEVELS_ARTIFACT: "/design/levels",
     SHAFTS_ARTIFACT: "/design/shafts",
+    SHAFT_MESH_ARTIFACT: "/design/shaft-mesh",  # hardening PR-2 H2-SH
     NETWORK_ARTIFACT: "/network",
     CAPABILITY_GRAPH_ARTIFACT: "/design/capability-graph",
     STOPES_ARTIFACT: "/design/stopes",
@@ -315,6 +319,7 @@ SCENE_SLOT: dict[str, str] = {
     DEVELOPMENT_MESH_ARTIFACT: "developmentMesh",
     LEVELS_ARTIFACT: "levels",
     SHAFTS_ARTIFACT: "shafts",
+    SHAFT_MESH_ARTIFACT: "shaftMesh",  # hardening PR-2 H2-SH
     NETWORK_ARTIFACT: "network",
     CAPABILITY_GRAPH_ARTIFACT: "capabilityGraph",
     STOPES_ARTIFACT: "stopes",
@@ -360,7 +365,8 @@ def assert_scene_refuses(stack: Stack, artifact: str, code: str) -> None:
 # --------------------------------------------------------------------------- #
 
 #: the literal absence answer of every direct route (Stage A §2 / §13 I-13):
-#: 14 × 409, 3 × 404 (the recorded I-8 drift, unchanged by AC-01F) and the ONE
+#: 14 × 409 at AC-01F + 1 × 409 added by hardening PR-2 H2-SH (the shaft
+#: mesh), 3 × 404 (the recorded I-8 drift, unchanged by AC-01F) and the ONE
 #: route with a documented absent DEFAULT.
 ABSENT_ANSWERS: dict[str, tuple[int, str | None]] = {
     "/design/targets": (409, "TARGETS_NOT_GENERATED"),
@@ -377,6 +383,7 @@ ABSENT_ANSWERS: dict[str, tuple[int, str | None]] = {
     "/design/timeline": (409, "TIMELINE_NOT_GENERATED"),
     "/infrastructure/communication": (409, "COMMUNICATION_NOT_GENERATED"),
     "/infrastructure/sensors": (409, "SENSORS_NOT_GENERATED"),
+    "/design/shaft-mesh": (409, "SHAFT_MESH_NOT_GENERATED"),
     "/design/shafts": (404, "SHAFTS_NOT_GENERATED"),
     "/network": (404, "NETWORK_NOT_GENERATED"),
     "/design/capability-graph": (404, "CAPABILITY_GRAPH_NOT_GENERATED"),
@@ -403,13 +410,14 @@ ABSENT_RAMP_SOURCE: dict[str, Any] = {
 
 
 def test_absent_artifacts_answer_their_own_code(bare: Stack) -> None:
-    assert sum(1 for s, _ in ABSENT_ANSWERS.values() if s == 409) == 14
+    assert sum(1 for s, _ in ABSENT_ANSWERS.values() if s == 409) == 15
     assert sum(1 for s, _ in ABSENT_ANSWERS.values() if s == 404) == 3
     for route, expected in ABSENT_ANSWERS.items():
         assert bare.get(route) == expected, route
-    # the two GLB routes answer their report's own absence code
+    # the three GLB routes answer their report's own absence code
     assert bare.get("/design/tunnel/mesh.glb") == (409, "TUNNEL_NOT_GENERATED")
     assert bare.get("/design/development-mesh/mesh.glb") == (409, "DEVELOPMENT_MESH_NOT_GENERATED")
+    assert bare.get("/design/shaft-mesh/mesh.glb") == (409, "SHAFT_MESH_NOT_GENERATED")
 
 
 def test_absent_artifacts_are_null_in_the_scene(bare: Stack) -> None:
@@ -461,6 +469,7 @@ CORRUPT_SHARED: tuple[Corrupt, ...] = (
     Corrupt(DEVELOPMENT_MESH_ARTIFACT),
     Corrupt(LEVELS_ARTIFACT, builder=("/design/stopes", MALFORMED)),
     Corrupt(SHAFTS_ARTIFACT, builder=("/network/generate", MALFORMED)),
+    Corrupt(SHAFT_MESH_ARTIFACT),  # hardening PR-2 H2-SH
     Corrupt(NETWORK_ARTIFACT, builder=("/design/capability-graph", MALFORMED)),
     Corrupt(CAPABILITY_GRAPH_ARTIFACT),
     Corrupt(STOPES_ARTIFACT, builder=("/design/timeline", MALFORMED)),
@@ -561,7 +570,7 @@ def test_wrong_shape_is_typed_on_every_surface_layout_v2(case: Corrupt, layout_v
 def test_the_corrupt_tables_cover_every_registered_artifact() -> None:
     covered = {c.artifact for c in CORRUPT_SHARED + CORRUPT_LEGACY + CORRUPT_LAYOUT_V2}
     assert covered == set(ROUTES)
-    assert len(covered) == 17
+    assert len(covered) == 18  # 17 at AC-01F + the PR-2 H2-SH shaft mesh
 
 
 def test_an_async_job_reports_the_read_state_code(legacy: Stack) -> None:
@@ -898,6 +907,7 @@ AFTER_UNION_CASCADE: set[str] = {
     # never reaches its checks, and the next publication overwrites it.
     mesh_commit_name(TUNNEL_MESH_ARTIFACT),
     mesh_commit_name(DEVELOPMENT_MESH_ARTIFACT),
+    mesh_commit_name(SHAFT_MESH_ARTIFACT),  # hardening PR-2 H2-SH
     TARGETS_ARTIFACT,  # the artifact the writer just published
     LAYOUT_V2_ARTIFACT,
     LAYOUT_V2_SELECTED_ARTIFACT,
@@ -927,6 +937,7 @@ LAYOUT_V2_ONLY_CLOSURE: set[str] = {
     TUNNEL_MESH_ARTIFACT,
     DEVELOPMENT_MESH_ARTIFACT,
     SHAFTS_ARTIFACT,
+    SHAFT_MESH_ARTIFACT,  # hardening PR-2 H2-SH (shafts → shaft mesh)
     NETWORK_ARTIFACT,
     CAPABILITY_GRAPH_ARTIFACT,
     STOPES_ARTIFACT,
@@ -944,7 +955,7 @@ def test_the_catalogue_writer_also_deletes_the_union_on_a_malformed_source(
     ``ramp_source.json`` at its cascade. Guessing LEGACY there would keep the
     ten LAYOUT_V2-only closure members below — a whole mine derived from a
     ramp the catalogue has just invalidated. The union deletes them."""
-    assert len(LAYOUT_V2_ONLY_CLOSURE) == 10
+    assert len(LAYOUT_V2_ONLY_CLOSURE) == 11  # 10 at AC-01F + the shaft mesh
     path = layout_v2.derived / RAMP_SOURCE_FILE
     with derived_restored(layout_v2), mutated(path):
         before = {p.name for p in layout_v2.derived.iterdir() if p.is_file()}
@@ -955,7 +966,7 @@ def test_the_catalogue_writer_also_deletes_the_union_on_a_malformed_source(
         assert remaining == AFTER_CATALOGUE_REGENERATION, sorted(remaining)
         assert not (LAYOUT_V2_ONLY_CLOSURE & remaining)
         # the two-file units went whole: no orphaned GLB beside a deleted report
-        assert not {TUNNEL_MESH_GLB, DEVELOPMENT_MESH_GLB} & remaining
+        assert not {TUNNEL_MESH_GLB, DEVELOPMENT_MESH_GLB, SHAFT_MESH_GLB} & remaining
     assert layout_v2.get("/design/ramp-source")[0] == 200
 
 
@@ -995,6 +1006,7 @@ AFTER_CATALOGUE_REGENERATION: set[str] = {
     "world.json",
     mesh_commit_name(TUNNEL_MESH_ARTIFACT),
     mesh_commit_name(DEVELOPMENT_MESH_ARTIFACT),
+    mesh_commit_name(SHAFT_MESH_ARTIFACT),  # hardening PR-2 H2-SH
     LAYOUT_V2_ARTIFACT,
     RAMP_SOURCE_FILE,
 }
@@ -1300,6 +1312,7 @@ COLD_ROUTES: tuple[str, ...] = (
     "/design/ramp",
     "/design/tunnel/mesh.glb",
     "/design/development-mesh/mesh.glb",
+    "/design/shaft-mesh/mesh.glb",  # hardening PR-2 H2-SH
     "/scene",
 )
 
@@ -1782,6 +1795,11 @@ def test_every_derived_read_route_answers_world_not_generated_without_a_world(
     assert sum(1 for _, head in Q_WORLD_GUARD if head.startswith(("200", "404"))) == 4
     for route, head_answer in Q_WORLD_GUARD:
         assert no_world.get(route) == (409, "WORLD_NOT_GENERATED"), (route, head_answer)
+    # hardening PR-2 H2-SH: the two shaft-mesh routes did not exist at HEAD
+    # 12d7725 (the frozen table above stays a transcription); they join the
+    # same world guard
+    for route in ("/design/shaft-mesh", "/design/shaft-mesh/mesh.glb"):
+        assert no_world.get(route) == (409, "WORLD_NOT_GENERATED"), route
 
 
 # --------------------------------------------------------------------------- #

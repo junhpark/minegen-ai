@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from minegen.core.enums import MiningMethodType
-from minegen.core.models import RampConstraints, Scenario, TunnelProfile
+from minegen.core.models import MiningConfig, RampConstraints, Scenario, TunnelProfile
 from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import DesignCostEvaluator, clearance_policy_for
 from minegen.design.profile import build_profile
@@ -38,7 +38,9 @@ from minegen.layout.search import (
     required_clearance,
 )
 from minegen.levels.builder import LevelDevelopmentBuilder, entries_from_level_accesses
+from minegen.mining.methods.contracts import PanelAccessPattern
 from minegen.network.builder import MineNetworkBuilder
+from minegen.world.orebody import TabularOrebody
 from minegen.world.synthetic_world import SyntheticWorld, generate_world
 
 from .conftest import small_scenario
@@ -425,7 +427,11 @@ def test_cut_and_fill_gets_generic_level_access_and_backbone_but_no_longhole_lat
 ) -> None:
     sc, world = tabular
     caf = sc.model_copy(
-        update={"mining": sc.mining.model_copy(update={"method": MiningMethodType.CUT_AND_FILL})}
+        update={
+            "mining": MiningConfig.model_validate(
+                {**sc.mining.model_dump(by_alias=True), "method": MiningMethodType.CUT_AND_FILL}
+            )
+        }
     )
     s = LayoutV2Search(caf, world)
     res = s.run()
@@ -443,15 +449,20 @@ def test_cut_and_fill_gets_generic_level_access_and_backbone_but_no_longhole_lat
     assert payload.status == "SUCCESS", payload.failure_reason
     assert payload.production_development is not None
     # Phase 21B/C: CUT_AND_FILL is IMPLEMENTED — the generic backbone plus ONE
-    # central production access per level; never the longhole station lattice
+    # production access per strike PANEL and level (H2-CF: 60 m target panels
+    # → ``ceil(L / 60)`` equal panels); never the longhole station lattice
     assert payload.production_development.status == "IMPLEMENTED"
     assert payload.production_development.method == "CUT_AND_FILL"
     crosscuts = [d for d in payload.developments if d.kind.value == "CROSSCUT"]
-    assert {d.station_index for d in crosscuts} == {0}
-    assert len(crosscuts) == len(payload.levels)
+    ob = world.orebody
+    assert isinstance(ob, TabularOrebody)
+    n_panels = len(PanelAccessPattern(60.0).offsets(ob.half_length))
+    assert n_panels >= 1
+    assert {d.station_index for d in crosscuts} == set(range(n_panels))
+    assert len(crosscuts) == n_panels * len(payload.levels)
     assert payload.metrics is not None
-    assert payload.metrics.crosscut_count == len(payload.levels)
-    assert payload.metrics.stations_per_level == 1 and payload.metrics.station_pitch == 0.0
+    assert payload.metrics.crosscut_count == n_panels * len(payload.levels)
+    assert payload.metrics.stations_per_level == n_panels and payload.metrics.station_pitch == 0.0
     # the network still has the full generic route PORTAL → RAMP → RAMP_JUNCTION →
     # LEVEL_ACCESS → LEVEL_ENTRY → DRIFT, and no shortcut from the ramp to the drift
     net = (
@@ -483,18 +494,20 @@ def test_cut_and_fill_generic_backbone_is_independent_of_longhole_parameters(
 ) -> None:
     """Rule 159 regression: ``stope_length`` / ``minimum_pillar`` are LONGHOLE
     production parameters. Changing them must not move the CUT_AND_FILL
-    generic backbone drift (same extent, same length) nor its single central
-    production access (Phase 21B/C: IMPLEMENTED, one crosscut per level)."""
+    generic backbone drift (same extent, same length) nor its per-panel
+    production accesses (Phase 21B/C: IMPLEMENTED; H2-CF: one crosscut per
+    strike panel and level)."""
     sc, world = tabular
 
     def scenario_with(stope_length: float, minimum_pillar: float) -> Scenario:
         return sc.model_copy(
             update={
-                "mining": sc.mining.model_copy(
-                    update={
+                "mining": MiningConfig.model_validate(
+                    {
+                        **sc.mining.model_dump(by_alias=True),
                         "method": MiningMethodType.CUT_AND_FILL,
-                        "stope_length": stope_length,
-                        "minimum_pillar": minimum_pillar,
+                        "stopeLength": stope_length,
+                        "minimumPillar": minimum_pillar,
                     }
                 )
             }
@@ -513,14 +526,16 @@ def test_cut_and_fill_generic_backbone_is_independent_of_longhole_parameters(
         assert payload.production_development is not None
         assert payload.production_development.status == "IMPLEMENTED"
         assert payload.metrics is not None
-        assert payload.metrics.crosscut_count == len(payload.levels)
+        assert payload.metrics.crosscut_count == (
+            payload.metrics.stations_per_level * len(payload.levels)
+        )
         return payload
 
     a = generic_levels(scenario_with(20.0, 5.0))
     b = generic_levels(scenario_with(50.0, 15.0))
     assert [d.id for d in a.developments] == [d.id for d in b.developments]
-    # every development — the backbone DRIFT pieces AND the single central
-    # production CROSSCUT per level — is identical under both parameter sets
+    # every development — the backbone DRIFT pieces AND the per-panel
+    # production CROSSCUTs — is identical under both parameter sets
     for da, db in zip(a.developments, b.developments, strict=True):
         assert da.kind == db.kind and da.kind.value in ("DRIFT", "CROSSCUT")
         assert da.station_index == db.station_index
@@ -531,7 +546,9 @@ def test_cut_and_fill_generic_backbone_is_independent_of_longhole_parameters(
     kinds = {d.kind.value for d in a.developments}
     assert kinds == {"DRIFT", "CROSSCUT"}
     crosscuts = [d for d in a.developments if d.kind.value == "CROSSCUT"]
-    assert len(crosscuts) == len(a.levels) and {d.station_index for d in crosscuts} == {0}
+    assert a.metrics.stations_per_level >= 1
+    assert len(crosscuts) == a.metrics.stations_per_level * len(a.levels)
+    assert {d.station_index for d in crosscuts} == set(range(a.metrics.stations_per_level))
     assert a.metrics is not None and b.metrics is not None
     assert math.isclose(a.metrics.total_drift_length3d, b.metrics.total_drift_length3d)
     assert math.isclose(a.metrics.total_crosscut_length3d, b.metrics.total_crosscut_length3d)

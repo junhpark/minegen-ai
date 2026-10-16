@@ -51,6 +51,7 @@ RS = "ramp_source.json"
 TM, TM_GLB = "tunnel_mesh.json", "tunnel_mesh.glb"
 LV, DM, DM_GLB = "levels.json", "development_mesh.json", "development_mesh.glb"
 SH, N, CG = "shafts.json", "network.json", "capability_graph.json"
+SHM, SHM_GLB = "shaft_mesh.json", "shaft_mesh.glb"  # hardening PR-2 H2-SH
 ST, TL, CM, SN = "stopes.json", "timeline.json", "communication.json", "sensors.json"
 SOURCES: tuple[RampSource, ...] = ("LEGACY", "LAYOUT_V2")
 
@@ -68,6 +69,7 @@ EXPECTED_INPUTS: dict[str, tuple[str, ...]] = {
     ST: (S, W, LV),  # `_stopes_input_paths` :905-910 → `stopes_fingerprint` :912-913
     TL: (S, N, ST, *RAMP, LV, SH),  # `_timeline_input_paths` :982-991 → :993-994
     SH: (S, W, *RAMP, LV),  # `_shafts_input_paths` :1070-1073 (= levels + LV) → :1075-1076
+    SHM: (S, W, *RAMP, LV, SH),  # PR-2 H2-SH: `shaft_mesh_fingerprint` (= shafts + SH)
     CG: (S, N, SH),  # `_capability_input_paths` :1135-1142 → `capability_fingerprint` :1144-1145
     N: (S, *RAMP, LV, SH),  # `_network_input_paths` :1205-1214 → `network_fingerprint` :1216-1217
     TM: (S, W, T, D, *RAMP),  # `_tunnel_input_paths` :1281-1282 (= smoothing + RAMP) → :1284-1285
@@ -83,8 +85,10 @@ EXPECTED_INPUTS: dict[str, tuple[str, ...]] = {
 #: timeline (:528 → :963-966), communication (:529 → :975-980), sensors
 #: (:530 → :968-973), network (:531 → `_delete_network_artifact` :1046-1050 →
 #: `_delete_capability_graph_artifact` :1065-1068)
-RAMP_DOWN: frozenset[str] = frozenset({TM, TM_GLB, LV, DM, DM_GLB, SH, ST, TL, CM, SN, N, CG})
-LEVELS_DOWN: frozenset[str] = frozenset({SH, N, CG, ST, TL, CM, SN, DM, DM_GLB})
+RAMP_DOWN: frozenset[str] = frozenset(
+    {TM, TM_GLB, LV, DM, DM_GLB, SH, SHM, SHM_GLB, ST, TL, CM, SN, N, CG}
+)
+LEVELS_DOWN: frozenset[str] = frozenset({SH, SHM, SHM_GLB, N, CG, ST, TL, CM, SN, DM, DM_GLB})
 NOTHING: frozenset[str] = frozenset()
 
 #: FROZEN delete sets: (written artifacts, active source) → file names removed.
@@ -125,8 +129,12 @@ EXPECTED_DELETES: dict[tuple[tuple[str, ...], str], frozenset[str]] = {
     ((DM,), "LEGACY"): NOTHING,
     ((DM,), "LAYOUT_V2"): NOTHING,
     # generate_shafts :1108-1111: network(+capability), timeline, communication, sensors
-    ((SH,), "LEGACY"): frozenset({N, CG, TL, CM, SN}),
-    ((SH,), "LAYOUT_V2"): frozenset({N, CG, TL, CM, SN}),
+    # + (PR-2 H2-SH) the shaft excavation mesh pair
+    ((SH,), "LEGACY"): frozenset({N, CG, TL, CM, SN, SHM, SHM_GLB}),
+    ((SH,), "LAYOUT_V2"): frozenset({N, CG, TL, CM, SN, SHM, SHM_GLB}),
+    # generate_shaft_mesh (PR-2 H2-SH): a leaf — nothing (own stale GLB only)
+    ((SHM,), "LEGACY"): NOTHING,
+    ((SHM,), "LAYOUT_V2"): NOTHING,
     # generate_stopes :948: timeline only
     ((ST,), "LEGACY"): frozenset({TL}),
     ((ST,), "LAYOUT_V2"): frozenset({TL}),
@@ -159,6 +167,7 @@ EXPECTED_FILES: dict[str, tuple[str, ...]] = {
     LV: (LV,),
     DM: (DM, DM_GLB),  # `development_mesh_report_path` :1355-1356, `_glb_path` :1358-1359
     SH: (SH,),
+    SHM: (SHM, SHM_GLB),  # PR-2 H2-SH `shaft_mesh_report_path` / `shaft_mesh_glb_path`
     ST: (ST,),
     TL: (TL,),
     CM: (CM,),
@@ -249,7 +258,8 @@ def test_inputs_of_contributes_the_fingerprint_expansion_but_only_one_edge() -> 
     assert (T, TM) not in edges and (D, TM) not in edges and (SM, TM) in edges
     # registry-derived change detector (the census has no edge-count row): a new
     # or removed edge must be a deliberate registry edit visible in the diff
-    assert len(invalidation_edges()) == 61
+    # 61 at AC-01F + 1 (PR-2 H2-SH: shafts.json → shaft_mesh.json)
+    assert len(invalidation_edges()) == 62
 
 
 def test_unknown_artifact_is_an_error_never_an_empty_closure() -> None:
@@ -341,6 +351,7 @@ def test_live_public_fingerprint_methods_match_the_census(tmp_path: Path) -> Non
         N: design.network_fingerprint(sid),
         TM: design.tunnel_fingerprint(sid),
         DM: design.development_mesh_fingerprint(sid),
+        SHM: design.shaft_mesh_fingerprint(sid),
         CM: infra.communication_fingerprint(sid),
         SN: infra.sensors_fingerprint(sid),
     }
@@ -393,6 +404,8 @@ def test_path_accessors_bind_to_the_registered_file_names(tmp_path: Path) -> Non
         DM: design.development_mesh_report_path(sid),
         DM_GLB: design.development_mesh_glb_path(sid),
         SH: design.shafts_path(sid),
+        SHM: design.shaft_mesh_report_path(sid),
+        SHM_GLB: design.shaft_mesh_glb_path(sid),
         ST: design.stopes_path(sid),
         TL: design.timeline_path(sid),
         CM: infra.communication_path(sid),

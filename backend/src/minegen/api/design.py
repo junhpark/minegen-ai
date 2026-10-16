@@ -12,7 +12,7 @@ from minegen.api.errors import ROUTER_DESIGN, guard
 from minegen.assessment.models import DesignAssessmentPayload
 from minegen.capability.models import CapabilityGraphPayload, CapabilityPathQuery
 from minegen.core.enums import Capability
-from minegen.core.models import ApiModel, ErrorDetail
+from minegen.core.models import ApiModel, ErrorDetail, ShaftSpec
 from minegen.layout.certification import ClearancePolicyReconstructionError
 from minegen.levels.models import LevelsPayload
 from minegen.mining.models import CutFillPayload, RoomPillarPayload, StopesPayload
@@ -26,7 +26,7 @@ from minegen.services.design_service import (
 from minegen.services.effective_ramp import RampSourceSummary
 from minegen.services.job_service import JobAlreadyRunningError, JobService
 from minegen.services.workflow_stages import WorkflowStage
-from minegen.shafts.models import ShaftsPayload
+from minegen.shafts.models import CollarSuggestion, ShaftsPayload
 
 router = APIRouter(prefix="/scenarios/{scenario_id}/design", tags=["design"])
 
@@ -344,6 +344,61 @@ def get_shafts(scenario_id: str, svc: Service) -> ShaftsPayload:
         raise
     except Exception as exc:
         raise _fail(scenario_id, exc) from exc
+
+
+@router.post("/shafts/suggest-collar")
+def suggest_shaft_collar(
+    scenario_id: str, svc: Service, spec: Annotated[ShaftSpec, Body()]
+) -> CollarSuggestion:
+    """Hardening PR-2 H2-SH: the planner's DEFAULT collar for ONE declared
+    shaft spec against the current level developments (rule 182 derivation).
+    Read-only — nothing is persisted; the user copies it into the explicit
+    spec and submits the scenario (rule 124)."""
+    try:
+        return svc.suggest_shaft_collar(scenario_id, spec)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _fail(scenario_id, exc) from exc
+
+
+@router.post("/shaft-mesh")
+def generate_shaft_mesh(scenario_id: str, svc: Service) -> dict[str, Any]:
+    """Hardening PR-2 H2-SH: the shaft excavation sweep (barrel + collar /
+    sump caps + station drives) of the persisted shafts.json — a separate
+    two-file artifact that invalidates nothing. Synchronous; requires the
+    shaft artifact (404 SHAFTS_NOT_GENERATED / 409 SHAFTS_STALE otherwise)."""
+    try:
+        return svc.generate_shaft_mesh(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _fail(scenario_id, exc) from exc
+
+
+@router.get("/shaft-mesh")
+def get_shaft_mesh(scenario_id: str, svc: Service) -> dict[str, Any]:
+    try:
+        return svc.shaft_mesh(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _fail(scenario_id, exc) from exc
+
+
+@router.get("/shaft-mesh/mesh.glb")
+def get_shaft_mesh_glb(scenario_id: str, svc: Service) -> Response:
+    try:
+        data = svc.shaft_mesh_glb(scenario_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _fail(scenario_id, exc) from exc
+    return Response(
+        content=data,
+        media_type="model/gltf-binary",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.post("/capability-graph")

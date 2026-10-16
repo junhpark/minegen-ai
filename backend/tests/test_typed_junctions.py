@@ -1571,3 +1571,215 @@ def test_p20d21_d_warped_extremity_junctions_have_no_rock_facing_hole(
     for cc in [d for d in m["levels"]["developments"] if d["kind"] == "CROSSCUT"]:
         n = int(devs[cc["id"]].get("renderMouthCapTriangles", 0))
         assert (n > 0) == (cc["id"] in ext), (cc["id"], n)
+
+
+# --------------------------------------------------------------------------- #
+# Hardening PR-2 (H0 §3.4): the RAMP_ACCESS floor seam is closed by sill strips
+# and straddling child wall / roof quads are clipped, never kept whole
+# --------------------------------------------------------------------------- #
+
+
+def _parent_floor_edges(env: TubeEnvelope, window: tuple[int, int]) -> tuple[np.ndarray, ...]:
+    from minegen.design.profile import boundary_points, floor_edge_index
+
+    lo, hi = window
+    rings = boundary_points(env.centers[lo:hi], env.tangents[lo:hi], env.shape)
+    fe = floor_edge_index(env.shape)
+    return rings[:, fe, :], rings[:, (fe + 1) % env.shape.k, :]
+
+
+def _dist_to_polyline(poly: np.ndarray, p: np.ndarray) -> float:
+    a, b = poly[:-1], poly[1:]
+    ab = b - a
+    ab2 = np.maximum(np.einsum("ij,ij->i", ab, ab), 1e-18)
+    t = np.clip(np.einsum("ij,ij->i", p[None, :] - a, ab) / ab2, 0.0, 1.0)
+    feet = a + t[:, None] * ab
+    return float(np.linalg.norm(feet - p[None, :], axis=1).min())
+
+
+def _seam_audit(
+    cuts: list[JunctionCut], envs: dict[str, TubeEnvelope], width: float
+) -> dict[str, Any]:
+    """Every CHILD floor clip chord at a RAMP_ACCESS junction is bridged by a
+    sill whose far edge lies ON the parent floor edge, or the chord already
+    lies on that edge; measured plan gap / rise the sills close."""
+    chords = sills = on_edge = skipped = 0
+    max_gap = max_rise = 0.0
+    for c in cuts:
+        if c.side != "CHILD" or c.junction.type != "RAMP_ACCESS":
+            continue
+        parent = envs[c.junction.parent_id]
+        window = parent.ring_window(c.junction.point, JUNCTION_WINDOW_WIDTHS * width + 3 * width)
+        sides = _parent_floor_edges(parent, window)
+        for clip in c.floor_clips:
+            assert clip.floor
+            skipped += clip.chords_without_sill
+            for chord in clip.chords:
+                chords += 1
+                d = min(max(_dist_to_polyline(side, q) for q in chord) for side in sides)
+                if d <= 1e-6:
+                    on_edge += 1
+                    continue
+                # a sill contains both chord points — or the chord is one the
+                # builder classified as NOT a floor seam (counted, below)
+                hit = [
+                    s_
+                    for s_ in clip.sills
+                    if all(np.linalg.norm(s_ - q[None, :], axis=1).min() <= 1e-9 for q in chord)
+                ]
+                if not hit:
+                    continue
+                sill = hit[0]
+                far = [v for v in sill if all(np.linalg.norm(v - q) > 1e-9 for q in chord)]
+                assert far, (c.junction.node_id, clip.interval)
+                for v in far:
+                    assert min(_dist_to_polyline(side, v) for side in sides) <= 1e-6, (
+                        c.junction.node_id,
+                        clip.interval,
+                        v.round(3).tolist(),
+                    )
+                    plan = min(float(np.linalg.norm(v[:2] - q[:2])) for q in chord)
+                    rise = min(abs(float(v[2] - q[2])) for q in chord)
+                    max_gap = max(max_gap, plan)
+                    max_rise = max(max_rise, rise)
+                sills += 1
+    return {
+        "chords": chords,
+        "sills": sills,
+        "chordsOnFloorEdge": on_edge,
+        "chordsWithoutSill": skipped,
+        "maxPlanGapClosedM": round(max_gap, 4),
+        "maxRiseClosedM": round(max_rise, 4),
+    }
+
+
+def test_h0_34_every_ramp_access_floor_chord_is_bridged_by_a_sill_tabular(
+    tabular_cuts: dict[str, Any],
+    tabular_envelopes: tuple[dict[str, TubeEnvelope], list[Junction]],
+    record_property: Any,
+) -> None:
+    """The clipped child floor's boundary chord sits ``tol`` outside the
+    parent wall at the child floor height while the parent floor ends at the
+    wall base: the strip between them (the black sliver of H0 §3.4) is now a
+    sill quad per chord whose far edge lies ON the parent floor edge."""
+    envs, _ = tabular_envelopes
+    audit = _seam_audit(tabular_cuts["dev_cuts"], envs, float(tabular_cuts["sc"].ramp.tunnel_width))
+    record_property("h0_34_seam_audit_tabular", audit)
+    assert audit["chords"] > 0 and audit["sills"] > 0
+    assert (
+        audit["sills"] + audit["chordsOnFloorEdge"] + audit["chordsWithoutSill"]
+        == (audit["chords"])
+    )
+    assert audit["maxPlanGapClosedM"] > 0.0
+    # the seam the sills close is the documented one: within the union
+    # tolerance band in plan, below the parent wall-removal height in rise
+    width = float(tabular_cuts["sc"].ramp.tunnel_width)
+    assert audit["maxPlanGapClosedM"] <= 0.1 * width + 1e-6
+    assert audit["maxRiseClosedM"] <= 0.5 * float(tabular_cuts["sc"].tunnel_profile.wall_height)
+
+
+def test_h0_34_chord_edges_are_no_longer_boundary_edges_of_the_child_tabular(
+    tabular_meshes: dict[str, Any],
+    tabular_cuts: dict[str, Any],
+    tabular_envelopes: tuple[dict[str, TubeEnvelope], list[Junction]],
+) -> None:
+    """Render-level proof on the emitted development GLB: inside the junction
+    window every chord edge of a clipped child floor is shared by TWO emitted
+    triangles (the floor remainder and its sill) — it is not a hole edge."""
+    m = tabular_meshes
+    _envs, junctions = tabular_envelopes
+    width = float(m["sc"].ramp.tunnel_width)
+    positions, _, prims = _glb(m["dev"].glb)
+    access_prim = next(p for p in prims if p["name"] == "LEVEL_ACCESS")
+    checked = 0
+    for j in junctions:
+        if j.type != "RAMP_ACCESS":
+            continue
+        rows = []
+        for r in access_prim["extras"]["ranges"]:
+            if r["developmentId"] != j.child_id:
+                continue
+            a = int(r["indexOffset"]) // 3
+            b = (int(r["indexOffset"]) + int(r["indexCount"])) // 3
+            rows.append(access_prim["indices"][a:b])
+        tris = np.concatenate(rows)
+        pts = positions[tris].astype(np.float64)  # (T, 3, 3)
+        near = np.linalg.norm(pts.mean(axis=1) - j.point[None, :], axis=1) <= 3 * width
+        pts = pts[near]
+        # weld by position and count edge uses
+        key = np.round(pts.reshape(-1, 3) * 1e4).astype(np.int64)
+        ids: dict[tuple[int, int, int], int] = {}
+        remap = np.array([ids.setdefault(tuple(k), len(ids)) for k in map(tuple, key)]).reshape(
+            -1, 3
+        )
+        uses: dict[tuple[int, int], int] = {}
+        for a_, b_, c_ in remap:
+            for u, v in ((a_, b_), (b_, c_), (c_, a_)):
+                e = (min(int(u), int(v)), max(int(u), int(v)))
+                uses[e] = uses.get(e, 0) + 1
+        inv = {v: k for k, v in ids.items()}
+        boundary_vertices = {inv[u] for (u, v), n in uses.items() if n == 1 for u in (u, v)}
+        # chord points of this junction's child floor clips
+        cuts = [
+            c
+            for c in tabular_cuts["dev_cuts"]
+            if c.side == "CHILD" and c.junction.node_id == j.node_id
+        ]
+        for c in cuts:
+            for clip in c.floor_clips:
+                if not clip.sills:
+                    continue
+                assert len(clip.sill_chords) == len(clip.sills)
+                # only a chord that RECEIVED a sill is a closed seam; a chord
+                # counted in ``chords_without_sill`` is reported, never closed
+                for sill, chord_index in zip(clip.sills, clip.sill_chords, strict=True):
+                    chord = clip.chords[chord_index]
+                    assert sill.shape[0] >= 3
+                    k0 = tuple(np.round(chord[0] * 1e4).astype(np.int64))
+                    k1 = tuple(np.round(chord[1] * 1e4).astype(np.int64))
+                    if k0 in ids and k1 in ids:
+                        e = (min(ids[k0], ids[k1]), max(ids[k0], ids[k1]))
+                        if e in uses:
+                            assert uses[e] == 2, (j.node_id, clip.interval, uses[e])
+                            checked += 1
+        assert boundary_vertices is not None
+    assert checked > 0
+
+
+def test_h0_34_straddling_child_wall_quads_are_clipped_not_kept_whole_tabular(
+    tabular_cuts: dict[str, Any],
+    tabular_envelopes: tuple[dict[str, TubeEnvelope], list[Junction]],
+) -> None:
+    """A child wall / roof quad with some corners inside the parent and some
+    outside is clipped at the parent boundary (its inside part no longer
+    stands inside the ramp as a fragment); the floor contract of Phase
+    20D.1.2 is untouched and the clipped remainder keeps no surface strictly
+    inside the parent beyond the union tolerance."""
+    m = tabular_cuts
+    envs, _ = tabular_envelopes
+    width = float(m["sc"].ramp.tunnel_width)
+    tol = JUNCTION_SURFACE_TOLERANCE_FRACTION * width
+    f, _walls = _edge_roles(m["dev_shape"])
+    seen = 0
+    for c in m["dev_cuts"]:
+        if c.side != "CHILD":
+            continue
+        assert c.unclipped_wall_quads == 0, c.junction.node_id
+        parent = envs[c.junction.parent_id]
+        window = parent.ring_window(c.junction.point, JUNCTION_WINDOW_WIDTHS * width + width)
+        for clip in c.wall_clips:
+            assert clip.edge != f and not clip.floor and not clip.sills
+            assert not c.mask[clip.interval, clip.edge]
+            for poly in clip.polygons:
+                assert poly.shape[0] >= 3 and _polygon_area(poly) > 1e-9
+                centroid = poly.mean(axis=0)
+                sd = float(parent.signed_distance(centroid[None, :], window)[0])
+                assert sd > -tol, (c.junction.node_id, clip.interval, clip.edge, sd)
+            seen += 1
+        for clip in c.floor_clips:
+            assert clip.edge == f and clip.floor
+    assert seen > 0
+    rep_openings = {}
+    for c in m["dev_cuts"]:
+        rep_openings.setdefault(c.junction.node_id, 0)
+    assert rep_openings

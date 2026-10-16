@@ -77,7 +77,11 @@ FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
 
 EndpointPolicy = Literal["CAP", "OPEN"]
-DevelopmentMeshKind = Literal["LEVEL_ACCESS", "DRIFT", "CROSSCUT"]
+#: hardening PR-2 H2-SH: the two SHAFT kinds are swept by ``design/shaft_mesh.py``
+#: into the SEPARATE ``shaft_mesh`` artifact; they share the spec / QA
+#: contract of this module but never enter ``KIND_ORDER`` (the development
+#: mesh batch is unchanged)
+DevelopmentMeshKind = Literal["LEVEL_ACCESS", "DRIFT", "CROSSCUT", "SHAFT", "SHAFT_STATION_ACCESS"]
 KIND_ORDER: tuple[DevelopmentMeshKind, ...] = ("LEVEL_ACCESS", "DRIFT", "CROSSCUT")
 LEVELS_ARTIFACT = "levels.json"
 
@@ -685,7 +689,7 @@ class DevelopmentMeshBuilder:
                 child.quad_mask |= cut.mask
                 # Phase 20D.1.2: a whole omission (by any junction) is a
                 # superset of a clip; two clips on one quad are unsupported
-                for clip in cut.floor_clips:
+                for clip in cut.clips:
                     key = (clip.interval, clip.edge)
                     if child.quad_mask[key]:
                         continue
@@ -838,9 +842,16 @@ class DevelopmentMeshBuilder:
                     ),
                     # Phase 20D.1.2 (additive): straddling floor quads clipped at
                     # the parent boundary and the remainder triangles emitted
-                    "renderClippedFloorQuads": len(s.floor_clips),
+                    "renderClippedFloorQuads": sum(1 for c in s.floor_clips.values() if c.floor),
                     "renderReplacementTriangles": int(
                         sum(c.replacement_triangles for c in s.floor_clips.values())
+                    ),
+                    # hardening PR-2 (H0 §3.4, additive): straddling wall / roof
+                    # quads clipped the same way and the sill triangles closing
+                    # the floor seam to the parent floor edge
+                    "renderClippedWallQuads": sum(1 for c in s.floor_clips.values() if not c.floor),
+                    "renderSillTriangles": int(
+                        sum(c.sill_triangles for c in s.floor_clips.values())
                     ),
                     # Phase 20D.2 (additive): end-cap fan triangles omitted /
                     # clipped where a declared junction's child occupies the cap

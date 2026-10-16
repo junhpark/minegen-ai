@@ -33,13 +33,20 @@ def _duplicates(ids: list[str]) -> list[str]:
 
 def cut_fill_integrity(payload: dict[str, Any]) -> str | None:
     """Cut ids unique, backfill ids unique, exactly one backfill per cut with
-    a bijective ``sourceCutId`` map, and every backfill volume equal to its
-    cut's geometric volume."""
+    a bijective ``sourceCutId`` map, every backfill volume equal to its
+    cut's geometric volume; and the H2-CF structure — every cut in exactly
+    one panel and one block, every panel in exactly one block, the cemented
+    flag exactly on the bottom lift of a sill-mat block, rib pillars disjoint
+    from cuts, and the persisted start orders permutations of the panels /
+    blocks they order."""
     cuts: list[dict[str, Any]] = list(payload["cuts"])
     backfills: list[dict[str, Any]] = list(payload["backfills"])
     cut_ids = [str(c["id"]) for c in cuts]
     if dup := _duplicates(cut_ids):
         return f"{CUT_FILL_TAG}: duplicate cut ids {dup}"
+    structure = _cut_fill_structure(payload, cuts, backfills)
+    if structure is not None:
+        return structure
     backfill_ids = [str(b["id"]) for b in backfills]
     if dup := _duplicates(backfill_ids):
         return f"{CUT_FILL_TAG}: duplicate backfill ids {dup}"
@@ -71,6 +78,98 @@ def cut_fill_integrity(payload: dict[str, Any]) -> str | None:
                 f"{CUT_FILL_TAG}: backfill {b['id']} volume {vol!r} m³ disagrees with its "
                 f"cut's geometric volume {declared!r} m³"
             )
+    return None
+
+
+def _cut_fill_structure(
+    payload: dict[str, Any], cuts: list[dict[str, Any]], backfills: list[dict[str, Any]]
+) -> str | None:
+    """The block / panel / sequencing relations of the H2-CF payload."""
+    blocks: list[dict[str, Any]] = list(payload["blocks"])
+    panels: list[dict[str, Any]] = list(payload["panels"])
+    pillars: list[dict[str, Any]] = list(payload["ribPillars"])
+    sequencing = payload.get("sequencing")
+    if dup := _duplicates([str(b["id"]) for b in blocks]):
+        return f"{CUT_FILL_TAG}: duplicate block ids {dup}"
+    if dup := _duplicates([str(p["id"]) for p in panels]):
+        return f"{CUT_FILL_TAG}: duplicate panel ids {dup}"
+    if dup := _duplicates([str(p["id"]) for p in pillars]):
+        return f"{CUT_FILL_TAG}: duplicate rib pillar ids {dup}"
+    cut_id_set = {str(c["id"]) for c in cuts}
+    if overlap := sorted({str(p["id"]) for p in pillars} & cut_id_set)[:3]:
+        return f"{CUT_FILL_TAG}: rib pillar ids collide with cut ids {overlap}"
+    block_by_id = {str(b["id"]): b for b in blocks}
+    panel_by_id = {str(p["id"]): p for p in panels}
+    # panels partition: every panel in exactly one block, declared both ways
+    declared_panels = [str(pid) for b in blocks for pid in b["panelIds"]]
+    if dup := _duplicates(declared_panels):
+        return f"{CUT_FILL_TAG}: panels declared by two blocks {dup}"
+    if sorted(declared_panels) != sorted(panel_by_id):
+        return f"{CUT_FILL_TAG}: block panelIds do not partition the panels"
+    for p in panels:
+        if str(p["blockId"]) not in block_by_id:
+            return f"{CUT_FILL_TAG}: panel {p['id']} references unknown block {p['blockId']}"
+        if str(p["id"]) not in {str(x) for x in block_by_id[str(p["blockId"])]["panelIds"]}:
+            return f"{CUT_FILL_TAG}: panel {p['id']} is not listed by its block {p['blockId']}"
+    # cuts partition: every cut in exactly one panel and that panel's block
+    declared_cuts = [str(cid) for p in panels for cid in p["cutIds"]]
+    if dup := _duplicates(declared_cuts):
+        return f"{CUT_FILL_TAG}: cuts declared by two panels {dup}"
+    if sorted(declared_cuts) != sorted(cut_id_set):
+        return f"{CUT_FILL_TAG}: panel cutIds do not partition the cuts"
+    for c in cuts:
+        panel = panel_by_id.get(str(c["panelId"]))
+        if panel is None or str(c["id"]) not in {str(x) for x in panel["cutIds"]}:
+            return f"{CUT_FILL_TAG}: cut {c['id']} is not listed by its panel {c['panelId']}"
+        if str(panel["blockId"]) != str(c["blockId"]):
+            return (
+                f"{CUT_FILL_TAG}: cut {c['id']} names block {c['blockId']} but its panel "
+                f"belongs to {panel['blockId']}"
+            )
+        if str(panel["accessDevelopmentId"]) != str(c["accessDevelopmentId"]):
+            return (
+                f"{CUT_FILL_TAG}: cut {c['id']} names production access "
+                f"{c['accessDevelopmentId']} but its panel is mined from "
+                f"{panel['accessDevelopmentId']}"
+            )
+    # cemented sill mat: exactly the bottom lift of a sill-mat block
+    cut_by_id = {str(c["id"]): c for c in cuts}
+    for b in backfills:
+        cut = cut_by_id.get(str(b["sourceCutId"]))
+        if cut is None:
+            continue  # reported by the 1:1 relation check
+        block = block_by_id.get(str(cut["blockId"]))
+        if block is None:
+            return f"{CUT_FILL_TAG}: cut {cut['id']} references unknown block {cut['blockId']}"
+        expected = bool(block["sillMatRequired"]) and int(cut["liftIndexInBlock"]) == 0
+        if bool(b["cemented"]) != expected:
+            return (
+                f"{CUT_FILL_TAG}: backfill {b['id']} cemented={b['cemented']!r} but its cut is "
+                f"{'the bottom lift of a sill-mat block' if expected else 'not a sill mat'}"
+            )
+    # rib pillars reference adjacent panels of their block
+    for p in pillars:
+        for key in ("leftPanelId", "rightPanelId"):
+            panel = panel_by_id.get(str(p[key]))
+            if panel is None or str(panel["blockId"]) != str(p["blockId"]):
+                return f"{CUT_FILL_TAG}: rib pillar {p['id']} {key} is not a panel of its block"
+    # sequencing: start orders are permutations consistent with the records
+    if sequencing is None:
+        return f"{CUT_FILL_TAG}: SUCCESS payload carries no sequencing block"
+    order = [str(x) for x in sequencing["panelStartOrder"]]
+    if sorted(order) != sorted(panel_by_id) or _duplicates(order):
+        return f"{CUT_FILL_TAG}: panelStartOrder is not a permutation of the panels"
+    for rank, pid in enumerate(order):
+        if int(panel_by_id[pid]["startOrder"]) != rank:
+            return f"{CUT_FILL_TAG}: panel {pid} startOrder disagrees with panelStartOrder"
+    border = [str(x) for x in sequencing["blockOrderIds"]]
+    if sorted(border) != sorted(block_by_id) or _duplicates(border):
+        return f"{CUT_FILL_TAG}: blockOrderIds is not a permutation of the blocks"
+    for rank, bid in enumerate(border):
+        if int(block_by_id[bid]["startOrder"]) != rank:
+            return f"{CUT_FILL_TAG}: block {bid} startOrder disagrees with blockOrderIds"
+    if int(sequencing["maxConcurrentPanels"]) < 1:
+        return f"{CUT_FILL_TAG}: maxConcurrentPanels must be ≥ 1"
     return None
 
 

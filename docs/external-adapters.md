@@ -821,7 +821,8 @@ bundle's reason otherwise; a 1.2 bundle is
       data/capabilities.csv           edgeId, capability, allowed, source   (capability ≠ capacity)
       data/production_units.csv       entityId, productionKind (STOPE | CUT | BACKFILL | BENCH | PILLAR), sourceId,
                                       levelId, accessReference, plannedTonnes, geometricVolumeM3, retained,
-                                      backfill, parentEntityId
+                                      backfill, parentEntityId, cemented (MineExchange 1.3.1: true / false on a
+                                      BACKFILL row — a cemented sill-mat fill; blank on every other row)
       data/tasks.csv                  taskId, taskType, targetKind, targetReferenceKind, targetReferenceId, startDay,
                                       endDay, durationDays, dependencies (JSON list), basis quantity / unit / rate
       data/development_progress.csv   edgeId, geometryEntityId, taskId, progressStartDay, progressEndDay,
@@ -831,10 +832,11 @@ bundle's reason otherwise; a 1.2 bundle is
                                       loadingTimeMin, dumpingTimeMin, shiftCalendar, trafficPriority, dispatchLogic,
                                       crusherCapacityTph, stockpileCapacityT — COLUMNS ONLY, every value blank
 
-Pillars are RETAINED material (`retained = true`, `plannedTonnes` blank);
-a backfill is the semantic record of a cut void (`backfill = true`,
-`plannedTonnes` blank, `parentEntityId` = the source cut) — neither is
-production tonnes. Referential integrity is re-verified at the boundary
+Pillars are RETAINED material (`retained = true`, `plannedTonnes` blank) —
+Room & Pillar pillars and, since MineExchange 1.3.1, Cut & Fill rib pillars
+(the same `PILLAR` vocabulary); a backfill is the semantic record of a cut
+void (`backfill = true`, `plannedTonnes` blank, `parentEntityId` = the source
+cut, `cemented` = the sill-mat flag) — neither is production tonnes. Referential integrity is re-verified at the boundary
 (every task target an edge or an exported production unit, every dependency
 a task, every progress edge / start node and every state entity known, every
 capability edge a network edge) — a defect is
@@ -884,7 +886,7 @@ ventilation simulation, runtime synchronization, animation. No
     POST /api/v1/scenarios/{id}/export/unity
     POST /api/v1/scenarios/{id}/export/unreal
       → 200 application/zip  minegen_<id>_<target>.zip
-        X-Adapter-Name: <TARGET>, X-Adapter-Version: 0.2.0 (VENTSIM / ANYLOGIC) | 0.1.0 (UNITY / UNREAL), X-MineExchange-Version: 1.3.0
+        X-Adapter-Name: <TARGET>, X-Adapter-Version: 0.2.0 (VENTSIM / ANYLOGIC) | 0.1.0 (UNITY / UNREAL), X-MineExchange-Version: 1.3.1
       → 404 SCENARIO_NOT_FOUND · 409 WORLD_NOT_GENERATED · 409 READ_SNAPSHOT_CHANGED
       → 409 <MineExchange refusal>  (STALE / MALFORMED / MINE_EXCHANGE_EXPORT_FAILED)
       → 409 ADAPTER_REQUIRED_SOURCE_ABSENT · 409 ADAPTER_SOURCE_NOT_SUCCESS

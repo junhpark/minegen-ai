@@ -23,6 +23,7 @@ export const ARTIFACT_SLOTS: Readonly<Record<string, keyof WorldScene>> = {
   'development_mesh.json': 'developmentMesh',
   'levels.json': 'levels',
   'shafts.json': 'shafts',
+  'shaft_mesh.json': 'shaftMesh',
   'network.json': 'network',
   'capability_graph.json': 'capabilityGraph',
   'stopes.json': 'stopes',

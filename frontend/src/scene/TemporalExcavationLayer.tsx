@@ -17,6 +17,7 @@ import {
 import type {
   LevelAccessesPayload,
   LevelsPayload,
+  ShaftsPayload,
   SmoothedDeclinePayload,
   TimelinePayload,
 } from '@/types/scene'
@@ -64,6 +65,8 @@ interface DevelopmentPrimitive {
   mesh: Mesh
   kind: string
   role: 'DEVELOPMENT' | 'CAP'
+  /** the backend cap role verbatim (`<KIND>_CAP`, `SHAFT_COLLAR_CAP`, `SHAFT_SUMP_CAP`) */
+  capRole: string | null
   ranges: PieceRange[]
 }
 
@@ -114,10 +117,10 @@ function prepareDevelopment(scene: Object3D): { root: Object3D; prims: Developme
       const ranges = readPieceRanges(geometry.userData, (pieceId, indexCount) =>
         rangeMeta(geometry.userData, pieceId, indexCount),
       )
-      prims.push({ mesh, kind, role: 'DEVELOPMENT', ranges })
+      prims.push({ mesh, kind, role: 'DEVELOPMENT', capRole: null, ranges })
     } else {
       mesh.material = CAP_MATERIAL
-      prims.push({ mesh, kind, role: 'CAP', ranges: [] })
+      prims.push({ mesh, kind, role: 'CAP', capRole: role, ranges: [] })
     }
   })
   return { root, prims }
@@ -136,10 +139,12 @@ function rangeMeta(extras: unknown, pieceId: string, indexCount: number): Reveal
 export function TemporalExcavationLayer({
   rampUrl,
   developmentUrl,
+  shaftUrl = null,
   timeline,
   smoothed,
   levels,
   levelAccesses,
+  shafts = null,
   onCoverage,
 }: {
   /** Phase 06 ramp GLB, or null when the `tunnelMesh` toggle is off
@@ -147,10 +152,14 @@ export function TemporalExcavationLayer({
   rampUrl: string | null
   /** Phase 20B development GLB, or null when `developmentMesh` is off */
   developmentUrl: string | null
+  /** PR-2 H2-SH: shaft excavation GLB, or null when `shaftMesh` is off */
+  shaftUrl?: string | null
   timeline: TimelinePayload
   smoothed: SmoothedDeclinePayload
   levels: LevelsPayload | null
   levelAccesses: LevelAccessesPayload | null
+  /** PR-2 H2-SH: the owning artifact of SHAFT / SHAFT_STATION_ACCESS geometryRefs */
+  shafts?: ShaftsPayload | null
   /** edge ids rendered as excavation meshes (the caller skips their lines) */
   onCoverage?: (edgeIds: string[]) => void
 }) {
@@ -160,21 +169,28 @@ export function TemporalExcavationLayer({
   // hooks are unconditional: an absent side loads the other side's (cached)
   // GLB and is simply not prepared / rendered; the caller guarantees at
   // least one url (excavationMountPlan.mounted)
-  const anyUrl = rampUrl ?? developmentUrl ?? ''
+  const anyUrl = rampUrl ?? developmentUrl ?? shaftUrl ?? ''
   const rampGltf = useGLTF(`${API_BASE_URL}${rampUrl ?? anyUrl}`)
   const devGltf = useGLTF(`${API_BASE_URL}${developmentUrl ?? anyUrl}`)
+  const shaftGltf = useGLTF(`${API_BASE_URL}${shaftUrl ?? anyUrl}`)
 
   const ramp = useMemo(() => (rampUrl ? prepareRamp(rampGltf.scene) : null), [rampGltf, rampUrl])
   const dev = useMemo(
     () => (developmentUrl ? prepareDevelopment(devGltf.scene) : null),
     [devGltf, developmentUrl],
   )
+  // PR-2 H2-SH: the shaft GLB shares the batched `ranges` grammar, so ONE
+  // reader prepares it; its pieces are keyed by the shafts.json centerline ids
+  const shaft = useMemo(
+    () => (shaftUrl ? prepareDevelopment(shaftGltf.scene) : null),
+    [shaftGltf, shaftUrl],
+  )
 
   // identity resolution is day-dependent only through progress; the mapping
   // itself (which mesh a development is) is fixed by the artifacts
   const plan = useMemo(
-    () => resolveExcavationReveal(timeline, smoothed, levels, levelAccesses, currentDay),
-    [timeline, smoothed, levels, levelAccesses, currentDay],
+    () => resolveExcavationReveal(timeline, smoothed, levels, levelAccesses, currentDay, shafts),
+    [timeline, smoothed, levels, levelAccesses, currentDay, shafts],
   )
 
   // 20B.3-1.3: coverage is decided by VALID reveal metadata — a segment /
@@ -190,8 +206,12 @@ export function TemporalExcavationLayer({
   )
   const pieceMeta = useMemo(
     () =>
-      new Map((dev?.prims ?? []).flatMap((p) => p.ranges.map((r) => [r.pieceId, r.meta] as const))),
-    [dev],
+      new Map(
+        [...(dev?.prims ?? []), ...(shaft?.prims ?? [])].flatMap((p) =>
+          p.ranges.map((r) => [r.pieceId, r.meta] as const),
+        ),
+      ),
+    [dev, shaft],
   )
   const covered = useMemo(
     () => coveredEdgeIds(plan.reveals, rampMeta, pieceMeta),
@@ -236,9 +256,11 @@ export function TemporalExcavationLayer({
       if (p.role === 'PORTAL_CAP') p.mesh.visible = anyRamp
       else if (p.role === 'TERMINAL_CAP') p.mesh.visible = allRampComplete
     }
-    if (dev) {
+    for (const batched of [dev, shaft]) {
+      if (!batched) continue
       const completeByKind = new Map<string, boolean>()
-      for (const p of dev.prims) {
+      const anyByKind = new Map<string, boolean>()
+      for (const p of batched.prims) {
         if (p.role !== 'DEVELOPMENT') continue
         const groups = planIndexGroups(p.ranges, pieceProgress)
         const g = p.mesh.geometry
@@ -248,19 +270,28 @@ export function TemporalExcavationLayer({
         const total = p.ranges.reduce((s, r) => s + r.indexCount, 0)
         const shown = groups.reduce((s, grp) => s + grp.count, 0)
         completeByKind.set(p.kind, total > 0 && shown >= total)
+        anyByKind.set(p.kind, shown > 0)
       }
       // batched caps carry no per-piece ranges: shown only once every piece
-      // of that kind is complete (an open ring end reads as the working face)
-      for (const p of dev.prims) {
-        if (p.role === 'CAP') p.mesh.visible = completeByKind.get(p.kind) === true
+      // of that kind is complete (an open ring end reads as the working face).
+      // PR-2 H2-SH: the shaft COLLAR cap is the surface end a shaft is sunk
+      // FROM, so it shows as soon as any barrel ring is revealed (the sump
+      // cap stays the working face until the barrel is complete)
+      for (const p of batched.prims) {
+        if (p.role !== 'CAP') continue
+        p.mesh.visible =
+          p.capRole === 'SHAFT_COLLAR_CAP'
+            ? anyByKind.get(p.kind) === true
+            : completeByKind.get(p.kind) === true
       }
     }
-  }, [plan, ramp, dev])
+  }, [plan, ramp, dev, shaft])
 
   return (
     <group rotation={[-Math.PI / 2, 0, 0]}>
       {ramp ? <primitive object={ramp.root} /> : null}
       {dev ? <primitive object={dev.root} /> : null}
+      {shaft ? <primitive object={shaft.root} /> : null}
     </group>
   )
 }

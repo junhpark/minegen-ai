@@ -1,0 +1,57 @@
+{
+  "arrays.npz": {
+    "mtimeNs": 1791473841830774496,
+    "sha256": "698076f94d046dc60994b1087fbc23647a8230bfaf3e3c25928aa6316354d856",
+    "size": 497730
+  },
+  "derived/layout_v2.json": {
+    "mtimeNs": 1791473847375746064,
+    "sha256": "d50ba1beb8758607a829587b1e6a61d24833650b53d1383fc77d2c0cfb3ff23c",
+    "size": 1141102
+  },
+  "derived/layout_v2_selected.json": {
+    "mtimeNs": 1791473847489388992,
+    "sha256": "c8da1759e0710bfd0565732b8b703ed0526d5c544526d2ae33e3e02d54459efe",
+    "size": 54969
+  },
+  "derived/level_accesses.json": {
+    "mtimeNs": 1791473847487872608,
+    "sha256": "2286f0439deb8fe7a15f7202c8c8631a6cad4dd32a77dc8731b9e6c5feb2e2d7",
+    "size": 23809
+  },
+  "derived/levels.json": {
+    "mtimeNs": 1791473847628027716,
+    "sha256": "41651002a603460bb835dad388dfe6ef063e316f369a7a005dc268a14020fe65",
+    "size": 36465
+  },
+  "derived/network.json": {
+    "mtimeNs": 1791473847659641887,
+    "sha256": "2dbf7f46baf24b35bbf40ce73241663d5742857a6746a8e6b490ae820e259d7a",
+    "size": 25363
+  },
+  "derived/ramp_source.json": {
+    "mtimeNs": 1791473847493089112,
+    "sha256": "56bf1a7100e02f6fc372aef63bee2e22c9cdf72d432dcc0030397e976bdd081f",
+    "size": 29
+  },
+  "derived/stopes.json": {
+    "mtimeNs": 1791473847973289173,
+    "sha256": "793af60c17c5648f27677b9fbe99773bbbe22cd3597a5e694ccd3a2bc8f8a205",
+    "size": 454184
+  },
+  "derived/timeline.json": {
+    "mtimeNs": 1791473848111989449,
+    "sha256": "ee449834fd60b5879df6d30bc2ffe7c7d87d88f0135785165b924d1fa78e4474",
+    "size": 676735
+  },
+  "derived/world.json": {
+    "mtimeNs": 1791473841837536461,
+    "sha256": "c4ccb5116bb9ba8c37fae05e67d4389bf9ba6aae9cc4eaaee7029ec6411202cf",
+    "size": 2430
+  },
+  "scenario.json": {
+    "mtimeNs": 1791473841751765842,
+    "sha256": "37c79e8a5c22bd44e77a18867454702496d0268e590e3da6a675b961ae2fae92",
+    "size": 6237
+  }
+}

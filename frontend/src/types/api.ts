@@ -158,12 +158,28 @@ export interface DesignConfig {
   portalFootwallDistance: number
 }
 
+/** Cut & Fill slice direction inside a stope block. UNDERHAND is a declared
+ * axis the backend refuses with a typed UNSUPPORTED_STOPING_DIRECTION
+ * failure; the frontend never substitutes OVERHAND. */
+export type StopingDirection = 'OVERHAND' | 'UNDERHAND'
+/** The order in which stope blocks (level interval × strike panel) are
+ * started. Never "top-down" / "bottom-up" (those name a slice direction). */
+export type BlockOrder = 'SHALLOW_TO_DEEP' | 'DEEP_TO_SHALLOW'
+
 /** Phase 21B Cut & Fill production parameters (synthetic planning
- * assumptions; equal partitions of the interval / strike, never fill design). */
+ * assumptions; equal partitions of the interval / strike / panel, never
+ * fill design). The H2-CF sequencing fields are planning defaults the
+ * backend registry exposes — never engineering truth. */
 export interface CutFillParameters {
   kind: 'CUT_AND_FILL'
   liftHeightM: number
   cutLengthM: number
+  stopingDirection: StopingDirection
+  blockOrder: BlockOrder
+  panelLengthM: number
+  ribPillarWidthM: number
+  maxConcurrentPanels: number
+  sillMatCureDays: number
 }
 
 /** Phase 21C Room & Pillar production parameters (band-grid planning
@@ -355,4 +371,48 @@ export interface HealthResponse {
 export interface ApiErrorDetail {
   code: string
   message: string
+}
+
+// --------------------------------------------------------------------------- //
+// Hardening PR-2 H4 — baked demos (GET /demos; read-only in place)
+// --------------------------------------------------------------------------- //
+
+/** one baked demo as the backend catalogue reports it (READ ≠ TRUST applied
+ * server-side: `available` is false with a reason when the directory and the
+ * index disagree) */
+export interface DemoCatalogEntry {
+  id: string
+  title: string
+  description: string
+  orebodyType: string
+  miningMethod: string
+  preset: string
+  seed: number
+  faultCount: number | null
+  /** the workflow stages the bake completed, in order */
+  stages: string[]
+  labels: string[]
+  available: boolean
+  reason: string | null
+}
+
+/** PR #54 review B1: this backend process's automatic bake of the demos the
+ * catalogue does not list (`services/demo_materializer.py`) */
+export interface DemoMaterialization {
+  status: 'DISABLED' | 'IDLE' | 'BAKING' | 'DONE' | 'FAILED'
+  recipeId: string | null
+  stage: string | null
+  pendingRecipes: string[]
+  completedRecipes: string[]
+  failedRecipes: Record<string, string>
+}
+
+export interface DemoCatalog {
+  status: 'AVAILABLE' | 'NOT_BAKED'
+  reason: string | null
+  bakedFromCommit: string | null
+  demos: DemoCatalogEntry[]
+  notice: string
+  /** absent when the catalogue is served without a materializer */
+  materialization?: DemoMaterialization | null
 }

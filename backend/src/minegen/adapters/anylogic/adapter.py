@@ -104,9 +104,12 @@ def _production_rows(
 ) -> tuple[list[tuple[Any, ...]], list[str], str | None]:
     """Every production entity of the ACTIVE method as one generic row:
     entityId, productionKind, sourceId, levelId, accessReference,
-    plannedTonnes, geometricVolumeM3, retained, backfill, parentEntityId.
-    Pillars are RETAINED material (never production tonnes); backfills are
-    semantic records of a cut void (never production tonnes)."""
+    plannedTonnes, geometricVolumeM3, retained, backfill, parentEntityId,
+    cemented. Pillars are RETAINED material (never production tonnes) —
+    Room & Pillar pillars and, since MineExchange 1.3.1, Cut & Fill rib
+    pillars; backfills are semantic records of a cut void (never production
+    tonnes) and carry the ``cemented`` sill-mat flag (blank for every other
+    row)."""
     rows: list[tuple[Any, ...]] = []
     ids: list[str] = []
     if bundle.has(STOPES_DOC):
@@ -123,6 +126,7 @@ def _production_rows(
                     s.geometric_volume_m3,
                     False,
                     False,
+                    None,
                     None,
                 )
             )
@@ -143,6 +147,7 @@ def _production_rows(
                     False,
                     False,
                     None,
+                    None,
                 )
             )
             ids.append(c.entity_id)
@@ -159,9 +164,27 @@ def _production_rows(
                     False,
                     True,
                     b.source_cut_entity_id,
+                    b.cemented,
                 )
             )
             ids.append(b.entity_id)
+        for rp_ in cf.rib_pillars:
+            rows.append(
+                (
+                    rp_.entity_id,
+                    "PILLAR",
+                    rp_.pillar_id,
+                    None,
+                    None,
+                    None,  # retained material: never planned tonnes
+                    rp_.geometric_volume_m3,
+                    True,
+                    False,
+                    None,
+                    None,
+                )
+            )
+            ids.append(rp_.entity_id)
         return rows, ids, "CUT_FILL"
     if bundle.has(ROOM_PILLAR_DOC):
         rp = bundle.document(ROOM_PILLAR_DOC, ExchangeProductionRoomPillar)
@@ -181,6 +204,7 @@ def _production_rows(
                     False,
                     False,
                     u.room_entity_id,
+                    None,
                 )
             )
             ids.append(u.entity_id)
@@ -196,6 +220,7 @@ def _production_rows(
                     p.geometric_volume_m3,
                     True,
                     False,
+                    None,
                     None,
                 )
             )
@@ -401,6 +426,7 @@ def build_anylogic_package(bundle: MineExchangeBundle) -> AdapterPackage:
                 "retained",
                 "backfill",
                 "parentEntityId",
+                "cemented",
             ),
             production_rows,
         ).encode("utf-8"),
@@ -588,6 +614,7 @@ def build_anylogic_package(bundle: MineExchangeBundle) -> AdapterPackage:
             "productionUnitCount": len(production_rows),
             "retainedPillarCount": sum(1 for r in production_rows if r[7] is True),
             "backfillRecordCount": sum(1 for r in production_rows if r[8] is True),
+            "cementedBackfillCount": sum(1 for r in production_rows if r[10] is True),
             "taskCount": len(timeline.tasks),
             "developmentProgressCount": len(timeline.developments),
             "productionStateCount": len(timeline.production_states),
@@ -637,9 +664,11 @@ def _readme(fields: dict[str, Any]) -> bytes:
         "                            tags; capability is NOT capacity (no flow rate is implied)",
         "  production_units.csv      entityId, productionKind (STOPE | CUT | BACKFILL | BENCH |",
         "                            PILLAR), sourceId, levelId, accessReference, plannedTonnes,",
-        "                            geometricVolumeM3, retained, backfill, parentEntityId —",
-        "                            pillars are RETAINED material (no tonnes); a backfill is the",
-        "                            semantic record of a cut void (never production tonnes)",
+        "                            geometricVolumeM3, retained, backfill, parentEntityId,",
+        "                            cemented — pillars (Room & Pillar pillars, Cut & Fill rib",
+        "                            pillars) are RETAINED material (no tonnes); a backfill is the",
+        "                            semantic record of a cut void (never production tonnes);",
+        "                            cemented marks a cemented sill-mat backfill (blank otherwise)",
         "  tasks.csv                 the MineTimeline tasks: targetReferenceKind / Id resolve to",
         "                            edges.csv / production_units.csv; dependencies = JSON list",
         "  development_progress.csv  per edge: progress window, excavationStartNode,",

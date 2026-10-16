@@ -32,6 +32,7 @@ from tests.test_artifact_registry import (
     LV,
     RS,
     SH,
+    SHM,
     SM,
     SN,
     SOURCES,
@@ -115,6 +116,10 @@ class _Chain:
         if self._missing(SH):
             sh = self._post("design/shafts")
             assert sh["status"] == "SUCCESS", sh.get("failureReason")
+        if self._missing(SHM):
+            # hardening PR-2 H2-SH: the shaft mesh is a leaf of the shafts
+            shm = self._post("design/shaft-mesh")
+            assert shm["status"] == "SUCCESS", shm.get("failureReason")
         if self._missing(N):
             net = self._post("network/generate")
             assert net["status"] == "SUCCESS", net.get("failureReason")
@@ -164,6 +169,7 @@ def test_every_regeneration_deletes_exactly_the_registry_closure(
     # -- writers with an EMPTY closure (siblings / leaves) ------------------- #
     chain.case((TM,), lambda: post("design/tunnel", sync="true"), "tunnel")
     chain.case((DM,), lambda: post("design/development-mesh", sync="true"), "development mesh")
+    chain.case((SHM,), lambda: post("design/shaft-mesh"), "shaft mesh")
     chain.case((CG,), lambda: post("design/capability-graph"), "capability graph")
     chain.case((TL,), lambda: post("design/timeline"), "timeline")
     chain.case((CM,), lambda: post("infrastructure/communication"), "communication")

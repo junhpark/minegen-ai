@@ -8,7 +8,7 @@ import { STAGE_IDS, type StageId, type WorkflowStep } from '@/types/workflow'
  * Hardening H1 §4.1–4.3 — the guided workflow model (pure).
  *
  *   1 Setup · 2 Design · 3 Network · 4 Mining · 5 Systems · 6 Analysis · 7 Export
- *   [Scenario ✓][Method ✓][Layout ●][Levels ○][Excavation ○][Shafts –] …
+ *   [Scenario ✓][Method ✓][Access ✓][Layout ●][Levels ○][Excavation ○][Shafts –] …
  *
  * "Order is the screen": the stepper shows how far the mine has come and
  * what is next, from the scene manifest alone. Nothing here decides whether
@@ -26,7 +26,7 @@ export interface WorkflowStepSpec {
 }
 
 export const WORKFLOW_STEPS: readonly WorkflowStepSpec[] = [
-  { id: 'SETUP', index: 1, label: 'Setup', stages: ['SCENARIO', 'METHOD'] },
+  { id: 'SETUP', index: 1, label: 'Setup', stages: ['SCENARIO', 'METHOD', 'ACCESS'] },
   { id: 'DESIGN', index: 2, label: 'Design', stages: ['LAYOUT', 'LEVELS', 'EXCAVATION', 'SHAFTS'] },
   { id: 'NETWORK', index: 3, label: 'Network', stages: ['NETWORK', 'CAPABILITY'] },
   { id: 'MINING', index: 4, label: 'Mining', stages: ['PRODUCTION', 'SCHEDULE'] },
@@ -38,6 +38,7 @@ export const WORKFLOW_STEPS: readonly WorkflowStepSpec[] = [
 export const STAGE_LABEL: Record<StageId, string> = {
   SCENARIO: 'Scenario',
   METHOD: 'Method',
+  ACCESS: 'Access',
   LAYOUT: 'Layout',
   LEVELS: 'Levels',
   EXCAVATION: 'Excavation',
@@ -119,6 +120,7 @@ export function resetStageFor(stage: StageId): WorkflowStage | null {
   switch (stage) {
     case 'SCENARIO':
     case 'METHOD':
+    case 'ACCESS':
       return 'WORLD'
     case 'LAYOUT':
     case 'LEVELS':
@@ -189,8 +191,10 @@ export function stageArtifactState(stage: StageId, input: StageInput): ArtifactS
     case 'SCENARIO':
       return input.scenario ? 'SUCCESS' : 'ABSENT'
     case 'METHOD':
-      // the method is part of the scenario document; the stage reads done once
-      // the world of that document exists
+    case 'ACCESS':
+      // the method and the access strategy (PR #54 review B3: the shaft
+      // declaration) are part of the scenario document; the stage reads done
+      // once the world of that document exists — "Ramp only" is a decision too
       return scene ? 'SUCCESS' : 'ABSENT'
     case 'LAYOUT': {
       if (!scene) return 'ABSENT'
@@ -212,8 +216,15 @@ export function stageArtifactState(stage: StageId, input: StageInput): ArtifactS
       ).accessOnly
       return t === 'SUCCESS' && d === 'SUCCESS' && !accessOnly ? 'SUCCESS' : 'ABSENT'
     }
-    case 'SHAFTS':
-      return stateOf(scene?.shafts)
+    case 'SHAFTS': {
+      // PR #54 review B3: the Shafts stage PLANS the declared shafts and sweeps
+      // their mesh; it is done only when both exist (either failure is the
+      // stage's failure). The declaration itself lives in Setup › Access.
+      const plan = stateOf(scene?.shafts)
+      const mesh = stateOf(scene?.shaftMesh)
+      if (plan === 'FAILED' || mesh === 'FAILED') return 'FAILED'
+      return plan === 'SUCCESS' && mesh === 'SUCCESS' ? 'SUCCESS' : 'ABSENT'
+    }
     case 'NETWORK':
       return stateOf(scene?.network)
     case 'CAPABILITY':
@@ -248,7 +259,8 @@ const VIEWER_COMPLETED: ReadonlySet<StageId> = new Set<StageId>(['ANALYSIS', 'EX
  */
 const PREREQUISITE: Partial<Record<StageId, StageId>> = {
   METHOD: 'SCENARIO',
-  LAYOUT: 'METHOD',
+  ACCESS: 'METHOD',
+  LAYOUT: 'ACCESS',
   LEVELS: 'LAYOUT',
   EXCAVATION: 'LEVELS',
   SHAFTS: 'LEVELS',

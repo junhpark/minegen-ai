@@ -230,14 +230,28 @@ def sweep_rings(chain: RingChain, shape: ProfileShape) -> FloatArray:
 
 def build_logical_mesh(chain: RingChain, shape: ProfileShape) -> LogicalMesh:
     rings = sweep_rings(chain, shape)
-    r, k, _ = rings.shape
-    n_seg = int(chain.segment_of_interval.max()) + 1 if r > 1 else 1
     # cap fan apex at the profile CENTROID (the floor centerline point lies on
     # the closing floor edge and would make the two floor fan tris degenerate)
     f0 = gravity_aligned_frame(chain.tangents[0])
     f1 = gravity_aligned_frame(chain.tangents[-1])
     cap0 = chain.centers[0] + shape.centroid[0] * f0.right + shape.centroid[1] * f0.up
     cap1 = chain.centers[-1] + shape.centroid[0] * f1.right + shape.centroid[1] * f1.up
+    return logical_mesh_from_rings(chain, rings, cap0, cap1)
+
+
+def logical_mesh_from_rings(
+    chain: RingChain, rings: FloatArray, cap0: FloatArray, cap1: FloatArray
+) -> LogicalMesh:
+    """The closed logical topology over ALREADY SWEPT rings ``(R, K, 3)`` and
+    the two cap apices (hardening PR-2 H2-SH extraction from
+    ``build_logical_mesh`` — same loops, same winding, same group ids, so the
+    gravity-aligned path is bit-identical). A sweep whose frame is not the
+    rule-26 gravity frame (the vertical shaft barrel, ``design/shaft_mesh.py``)
+    supplies its own rings; the ring order must be a right-handed
+    ``(right, forward, up)`` frame so the winding below stays outward
+    (validated by the signed volume, rule 66)."""
+    r, k, _ = rings.shape
+    n_seg = int(chain.segment_of_interval.max()) + 1 if r > 1 else 1
     positions = np.vstack([rings.reshape(-1, 3), cap0, cap1])
     portal_center = r * k
     terminal_center = r * k + 1
@@ -548,7 +562,9 @@ def build_render_mesh(
             raise ValueError(
                 f"floor clip key ({ci}, {cj}) != clip ({entry.interval}, {entry.edge})"
             )
-    n_clip_vertices = int(sum(int(p.shape[0]) for c in clips.values() for p in c.polygons))
+    n_clip_vertices = int(
+        sum(int(p.shape[0]) for c in clips.values() for p in (*c.polygons, *c.sills))
+    )
     mouths_by_end: dict[str, CapCut] = dict(mouth_caps) if mouth_caps else {}
     for end_key, mouth_cut in mouths_by_end.items():
         if end_key not in ("start", "end"):
@@ -662,7 +678,11 @@ def build_render_mesh(
                 u1 = float(shape.perimeter_u[k] if jn == 0 else shape.perimeter_u[jn])
                 v0 = float(chain.chainage[i])
                 v1 = float(chain.chainage[i + 1])
-                for poly, par in zip(clip.polygons, clip.params, strict=True):
+                # hardening PR-2: the sill strips closing the floor seam are
+                # emitted with the remainder, at the quad's place in the order
+                for poly, par in zip(
+                    (*clip.polygons, *clip.sills), (*clip.params, *clip.sill_params), strict=True
+                ):
                     base = cursor
                     for q in range(int(poly.shape[0])):
                         positions[cursor] = poly[q]

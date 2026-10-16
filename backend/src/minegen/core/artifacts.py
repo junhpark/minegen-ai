@@ -24,6 +24,10 @@ LEVEL_ACCESSES_ARTIFACT = "level_accesses.json"
 LEVELS_ARTIFACT = "levels.json"
 #: Phase 20C.2B: shaft axes, stations and station drives (rule 182)
 SHAFTS_ARTIFACT = "shafts.json"
+#: hardening PR-2 H2-SH: shaft excavation sweep (barrel + caps + station
+#: drives) derived from shafts.json — typed report + GLB, invalidates nothing
+SHAFT_MESH_ARTIFACT = "shaft_mesh.json"
+SHAFT_MESH_GLB = "shaft_mesh.glb"
 #: Phase 20C.2B: capability semantics over MineNetwork ids (rule 185) —
 #: owns NO geometry, so it is not a geometryRef owner
 CAPABILITY_GRAPH_ARTIFACT = "capability_graph.json"

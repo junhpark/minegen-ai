@@ -79,7 +79,11 @@ class ProductionAccessPattern(Protocol):
 
     def offsets(self, half_span: float) -> list[float]: ...
 
-    def station_index(self, offset: float) -> int: ...
+    def station_index(self, offset: float, half_span: float) -> int:
+        """The persisted station index of the access at ``offset`` (one of
+        ``offsets(half_span)``): the lattice rank for Longhole, the panel
+        index for Cut & Fill, the fixed-list position otherwise."""
+        ...
 
     def describe_empty(self, half_span: float) -> str: ...
 
@@ -105,7 +109,7 @@ class StationLatticeAccessPattern:
         k_max = math.floor((half_span - self.margin) / self.pitch + 1e-9)
         return [k * self.pitch for k in range(-k_max, k_max + 1)]
 
-    def station_index(self, offset: float) -> int:
+    def station_index(self, offset: float, half_span: float) -> int:
         return round(offset / self.pitch)
 
     def describe_empty(self, half_span: float) -> str:
@@ -122,8 +126,9 @@ ProductionLattice = StationLatticeAccessPattern
 @dataclass(frozen=True)
 class FixedAccessPattern:
     """A fixed set of production accesses at declared span offsets — Phase
-    21B/C Cut & Fill and Room & Pillar develop ONE central production access
-    per level (``offsets_at = (0.0,)``). The generic backbone drift is still
+    21C Room & Pillar develops ONE central production access per level
+    (``offsets_at = (0.0,)``; Cut & Fill moved to the per-panel
+    ``PanelAccessPattern`` under H2-CF). The generic backbone drift is still
     developed over its full extent; the accesses only add breakpoints. The
     persisted ``stationPitch`` is 0.0: there is no lattice pitch."""
 
@@ -135,11 +140,50 @@ class FixedAccessPattern:
     def offsets(self, half_span: float) -> list[float]:
         return [o for o in self.offsets_at if abs(o) < half_span]
 
-    def station_index(self, offset: float) -> int:
+    def station_index(self, offset: float, half_span: float) -> int:
         return self.offsets_at.index(offset)
 
     def describe_empty(self, half_span: float) -> str:
         return f"central production access (half-length {half_span:g} m is not positive)"
+
+
+@dataclass(frozen=True)
+class PanelAccessPattern:
+    """H2-CF Cut & Fill production access: ONE crosscut per strike PANEL.
+    The span ``[−half_span, half_span]`` is partitioned equally into
+    ``n = ceil(2·half_span / panel_length)`` panels (rule 194 partition) and
+    the access of panel ``i`` sits at the panel centre; its station index IS
+    the panel index (``0 … n − 1``, −u → +u), so the persisted
+    ``CROSSCUT:<level>:S+0i`` id is the panel's stable access identity.
+    The generic backbone drift keeps its full extent (the accesses only add
+    breakpoints) and the persisted ``stationPitch`` is 0.0 — there is no
+    lattice pitch."""
+
+    panel_length: float
+    kind: str = "PANEL_ACCESS"
+    pitch: float = 0.0
+    defines_drift_extent: bool = False
+
+    def panels(self, half_span: float) -> list[tuple[float, float]]:
+        from minegen.mining.methods.solids import equal_partition
+
+        return equal_partition(-half_span, half_span, self.panel_length)
+
+    def offsets(self, half_span: float) -> list[float]:
+        return [0.5 * (a + b) for a, b in self.panels(half_span)]
+
+    def station_index(self, offset: float, half_span: float) -> int:
+        centres = self.offsets(half_span)
+        for i, c in enumerate(centres):
+            if abs(c - offset) <= 1e-9:
+                return i
+        raise ValueError(
+            f"offset {offset!r} is not a panel centre of half-span {half_span!r} "
+            f"(panel length {self.panel_length!r})"
+        )
+
+    def describe_empty(self, half_span: float) -> str:
+        return f"Cut & Fill panel access (half-length {half_span:g} m is not positive)"
 
 
 # --------------------------------------------------------------------------- #

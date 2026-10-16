@@ -74,6 +74,7 @@ import numpy.typing as npt
 
 from minegen.design.profile import (
     ProfileShape,
+    boundary_points,
     floor_edge_index,
     gravity_frames,
     wall_edge_indices,
@@ -109,6 +110,18 @@ JUNCTION_RING_SPACING_FRACTION = 0.1
 #: the secondary profile's coarser tessellation (≤ 1 % inscribed bias) and
 #: the gradient / frame differences of two tangent tubes.
 JUNCTION_SURFACE_TOLERANCE_FRACTION = 0.02
+#: Hardening PR-2 (H0 §3.4 seam): the sill strip that bridges a clipped child
+#: floor's boundary chord (which sits ``tol`` OUTSIDE the parent wall at the
+#: child floor elevation) to the parent floor edge (the wall base) is built
+#: only where the gap is REAL: the chord lies within this many tunnel widths
+#: of the parent floor edge in plan (adjacent to the wall base, not on the
+#: parent's window end plane) AND its rise above that edge is below the
+#: height at which the parent-side rule REMOVES the wall quad — the middle
+#: ``PARENT_QUAD_SAMPLE_FRACTIONS`` row of the parent wall height (a child
+#: floor higher than that leaves the parent wall standing, which already
+#: closes the strip). A chord outside these bounds is not a floor seam of
+#: this kind and is counted, never bridged by invented geometry.
+SILL_MAX_PLAN_DISTANCE_WIDTHS = 0.1
 #: Phase 20D.1.1 parent-side surface test. A parent quad is judged on a
 #: deterministic bilinear grid of INTERIOR surface samples (these fractions
 #: along the ring interval × along the profile edge — never the corners,
@@ -360,10 +373,36 @@ class FloorClip:
     #: outside-parent flags of the four corners in perimeter order
     corners_outside: tuple[bool, bool, bool, bool]
     junction_node_id: str
+    #: the remainder's boundary CHORDS (pairs of crossing points on the
+    #: parent's tolerance surface), in loop order — the seam the sills close
+    chords: tuple[FloatArray, ...] = ()
+    chord_params: tuple[FloatArray, ...] = ()
+    #: hardening PR-2 (H0 §3.4): sill strips bridging each chord to the parent
+    #: FLOOR edge (world loops + bilinear params copied from the chord ends);
+    #: empty for a non-floor clip or a chord away from the parent floor
+    sills: tuple[FloatArray, ...] = ()
+    sill_params: tuple[FloatArray, ...] = ()
+    #: index into ``chords`` of the chord each sill bridges (same order as
+    #: ``sills``), so a seam audit can pair every sill with its chord
+    sill_chords: tuple[int, ...] = ()
+    #: chords of a floor clip that got NO sill because they are not a floor
+    #: seam of the documented kind (not adjacent to the parent floor edge, or
+    #: the parent wall below them still stands) — counted, never invented
+    chords_without_sill: int = 0
+    #: True when this clip is a FLOOR quad (the Phase 20D.1.2 case); False
+    #: for a straddling WALL / ROOF quad clipped the same way (PR-2)
+    floor: bool = True
 
     @property
     def replacement_triangles(self) -> int:
-        return int(sum(max(int(p.shape[0]) - 2, 0) for p in self.polygons))
+        return int(
+            sum(max(int(p.shape[0]) - 2, 0) for p in self.polygons)
+            + sum(max(int(p.shape[0]) - 2, 0) for p in self.sills)
+        )
+
+    @property
+    def sill_triangles(self) -> int:
+        return int(sum(max(int(p.shape[0]) - 2, 0) for p in self.sills))
 
 
 @dataclass
@@ -382,6 +421,20 @@ class JunctionCut:
     wall_edges: tuple[int, int] = (-1, -1)
     #: CHILD floor quads clipped at the parent boundary (never masked)
     floor_clips: list[FloorClip] = field(default_factory=list)
+    #: hardening PR-2 (H0 §3.4): CHILD wall / roof quads straddling the parent
+    #: boundary, clipped the same way (their inside-parent part used to stand
+    #: inside the parent as a fragment up to one quad long)
+    wall_clips: list[FloorClip] = field(default_factory=list)
+    #: straddling wall / roof quads whose boundary could not be represented
+    #: by chords within the subdivision budget: kept WHOLE (the pre-PR-2
+    #: behaviour) and counted — never a silent approximation, never a failure
+    #: of the whole mesh for a render-only fragment
+    unclipped_wall_quads: int = 0
+
+    @property
+    def clips(self) -> list[FloorClip]:
+        """Every clipped quad of this cut (floor + wall), for the render."""
+        return [*self.floor_clips, *self.wall_clips]
 
     @property
     def removed_quads(self) -> int:
@@ -392,8 +445,16 @@ class JunctionCut:
         return len(self.floor_clips)
 
     @property
+    def clipped_wall_quads(self) -> int:
+        return len(self.wall_clips)
+
+    @property
     def replacement_triangles(self) -> int:
-        return int(sum(c.replacement_triangles for c in self.floor_clips))
+        return int(sum(c.replacement_triangles for c in self.clips))
+
+    @property
+    def sill_triangles(self) -> int:
+        return int(sum(c.sill_triangles for c in self.floor_clips))
 
     @property
     def removed_wall_quads(self) -> int:
@@ -447,25 +508,35 @@ def _boundary_crossings(
     return p_in + t[:, None] * (p_out - p_in), t
 
 
-def _dedupe_loop(poly: list[FloatArray], par: list[FloatArray]) -> tuple[FloatArray, FloatArray]:
-    """Drop consecutive (cyclic) vertices closer than ``CLIP_VERTEX_MERGE_DISTANCE``."""
+def _dedupe_loop(
+    poly: list[FloatArray], par: list[FloatArray], crossing: list[bool] | None = None
+) -> tuple[FloatArray, FloatArray, list[bool]]:
+    """Drop consecutive (cyclic) vertices closer than ``CLIP_VERTEX_MERGE_DISTANCE``
+    (a merged crossing keeps the crossing flag of the survivor)."""
+    flags = crossing if crossing is not None else [False] * len(poly)
     keep_p: list[FloatArray] = []
     keep_q: list[FloatArray] = []
-    for p, q in zip(poly, par, strict=True):
+    keep_c: list[bool] = []
+    for p, q, c in zip(poly, par, flags, strict=True):
         if keep_p and float(np.linalg.norm(p - keep_p[-1])) < CLIP_VERTEX_MERGE_DISTANCE:
+            keep_c[-1] = keep_c[-1] or c
             continue
         keep_p.append(p)
         keep_q.append(q)
+        keep_c.append(c)
     while (
         len(keep_p) > 1
         and float(np.linalg.norm(keep_p[0] - keep_p[-1])) < CLIP_VERTEX_MERGE_DISTANCE
     ):
         keep_p.pop()
         keep_q.pop()
+        dropped = keep_c.pop()
+        keep_c[0] = keep_c[0] or dropped
     q = np.asarray(keep_q, dtype=np.float64)
     return (
         np.asarray(keep_p, dtype=np.float64).reshape(-1, 3),
         q.reshape(len(keep_q), -1) if keep_q else q.reshape(0, 2),
+        keep_c,
     )
 
 
@@ -496,12 +567,14 @@ def _chord_loops(
     other: TubeEnvelope,
     window: tuple[int, int],
     tol: float,
-) -> list[tuple[list[FloatArray], list[FloatArray]]] | None:
+) -> list[tuple[list[FloatArray], list[FloatArray], list[bool]]] | None:
     """Outside-parent loops of one (sub-)quad whose corners ``pts`` (4, 3) /
     ``par`` (4, 2) are in perimeter orientation order with ``out`` flags:
     marching-squares on the corners, crossings by bisection on the quad's
-    own edges, the diagonal case decided by the centre sample. Returns None
-    when a loop edge is NOT a faithful chord of the boundary (an interior
+    own edges, the diagonal case decided by the centre sample. Each loop
+    carries a per-vertex flag telling which vertices are boundary CROSSINGS
+    (an edge between two consecutive crossings is a boundary chord). Returns
+    None when a loop edge is NOT a faithful chord of the boundary (an interior
     sample lies inside the parent: the boundary bends inside the quad, e.g.
     the wall / terminal-plane corner where the parent ends) — the caller
     subdivides."""
@@ -522,7 +595,7 @@ def _chord_loops(
         for n, m in enumerate(mixed):
             cross_pt[m] = xs[n]
             cross_par[m] = q_in[n] + ts[n] * (q_out[n] - q_in[n])
-    loops: list[tuple[list[FloatArray], list[FloatArray]]] = []
+    loops: list[tuple[list[FloatArray], list[FloatArray], list[bool]]] = []
     diagonal = int(out.sum()) == 2 and bool(out[0] == out[2])
     if diagonal:
         center = pts.mean(axis=0)
@@ -535,21 +608,25 @@ def _chord_loops(
                         (
                             [cross_pt[prev_e], pts[m], cross_pt[m]],
                             [cross_par[prev_e], par[m], cross_par[m]],
+                            [True, False, True],
                         )
                     )
     if not loops:
         poly: list[FloatArray] = []
         pp: list[FloatArray] = []
+        crossing: list[bool] = []
         for m in range(4):
             if out[m]:
                 poly.append(pts[m])
                 pp.append(par[m])
+                crossing.append(False)
             if m in cross_pt:
                 poly.append(cross_pt[m])
                 pp.append(cross_par[m])
-        loops.append((poly, pp))
+                crossing.append(True)
+        loops.append((poly, pp, crossing))
     # chord fidelity: every loop edge must stay outside-or-on the parent
-    for poly, _ in loops:
+    for poly, _, _ in loops:
         if not _edges_stay(np.stack(poly), other, window, tol, outside=True):
             return None
     return loops
@@ -603,8 +680,12 @@ def _clip_floor_quad(
     interval: int,
     edge: int,
     node_id: str,
+    *,
+    floor: bool = True,
 ) -> FloorClip | None:
-    """The outside-parent remainder of ONE straddling floor quad.
+    """The outside-parent remainder of ONE straddling floor quad (or, with
+    ``floor=False`` — hardening PR-2 — of a straddling WALL / ROOF quad,
+    the same bilinear clip).
     ``corners`` / ``inside`` are ordered [ring i vtx j, ring i vtx j+1,
     ring i+1 vtx j, ring i+1 vtx j+1] (the render builder's quad corners);
     the perimeter in the quad's triangle orientation is
@@ -619,6 +700,8 @@ def _clip_floor_quad(
     top = ~inside[list(order)]
     polygons: list[FloatArray] = []
     pars: list[FloatArray] = []
+    chords: list[FloatArray] = []
+    chord_params: list[FloatArray] = []
     stack: list[tuple[float, float, float, float, int]] = [(0.0, 1.0, 0.0, 1.0, 0)]
     while stack:
         s0, s1, u0, u1, depth = stack.pop()
@@ -626,7 +709,7 @@ def _clip_floor_quad(
         pts = np.stack([_sub_quad_point(corners, float(sv), float(uv)) for sv, uv in par])
         out = other.signed_distance(pts, window) > tol
         faithful = True
-        loops: list[tuple[list[FloatArray], list[FloatArray]]] = []
+        loops: list[tuple[list[FloatArray], list[FloatArray], list[bool]]] = []
         if not out.any():
             # all corners inside-or-on: nothing to keep — unless the boundary
             # crosses the quad interior (an outside pocket)
@@ -635,15 +718,15 @@ def _clip_floor_quad(
             faithful = False
         elif out.all():
             if _edges_stay(pts, other, window, tol, outside=True):
-                loops = [([*pts], [*par])]
+                loops = [([*pts], [*par], [False] * 4)]
             else:
                 faithful = False
         else:
-            chords = _chord_loops(pts, par, out, other, window, tol)
-            if chords is None:
+            chord_loops = _chord_loops(pts, par, out, other, window, tol)
+            if chord_loops is None:
                 faithful = False
             else:
-                loops = chords
+                loops = chord_loops
         if not faithful:
             if depth >= CLIP_MAX_SUBDIVISION_DEPTH:
                 sd_c = other.signed_distance(pts, window)
@@ -664,11 +747,17 @@ def _clip_floor_quad(
                 sm = 0.5 * (s0 + s1)
                 stack.extend([(s0, sm, u0, u1, depth + 1), (sm, s1, u0, u1, depth + 1)])
             continue
-        for poly, pp in loops:
-            p_arr, q_arr = _dedupe_loop(poly, pp)
+        for poly, pp, cr in loops:
+            p_arr, q_arr, c_arr = _dedupe_loop(poly, pp, cr)
             if p_arr.shape[0] >= 3:
                 polygons.append(p_arr)
                 pars.append(q_arr)
+                n_v = int(p_arr.shape[0])
+                for a in range(n_v):
+                    b = (a + 1) % n_v
+                    if c_arr[a] and c_arr[b]:
+                        chords.append(np.stack([p_arr[a], p_arr[b]]))
+                        chord_params.append(np.stack([q_arr[a], q_arr[b]]))
     if not polygons:
         return None
     return FloorClip(
@@ -678,6 +767,9 @@ def _clip_floor_quad(
         params=tuple(pars),
         corners_outside=(bool(top[0]), bool(top[1]), bool(top[2]), bool(top[3])),
         junction_node_id=node_id,
+        chords=tuple(chords),
+        chord_params=tuple(chord_params),
+        floor=floor,
     )
 
 
@@ -790,7 +882,7 @@ def _clip_triangle(
             if m in cross_p:
                 poly.append(cross_p[m])
                 pb.append(cross_b[m])
-        p_arr, b_arr = _dedupe_loop(poly, pb)
+        p_arr, b_arr, _ = _dedupe_loop(poly, pb)
         if p_arr.shape[0] < 3:
             return []
         if _edges_stay(p_arr, other, window, tol, outside=True):
@@ -969,6 +1061,131 @@ def _clean_render_polygon(
     return p_arr, np.stack(keep_b)
 
 
+def _nearest_on_polyline(poly: FloatArray, p: FloatArray) -> tuple[FloatArray, float]:
+    """Foot point of ``p`` on the polyline ``poly`` (M, 3) and its PLAN distance."""
+    a = poly[:-1]
+    b = poly[1:]
+    ab = b - a
+    ab2 = np.maximum(np.einsum("ij,ij->i", ab, ab), 1e-18)
+    t = np.clip(np.einsum("ij,ij->i", p[None, :] - a, ab) / ab2, 0.0, 1.0)
+    feet = a + t[:, None] * ab
+    d_plan = np.linalg.norm(feet[:, :2] - p[None, :2], axis=1)
+    i = int(np.argmin(d_plan))
+    return feet[i], float(d_plan[i])
+
+
+def _drop_collinear(loop: FloatArray, pars: FloatArray) -> tuple[FloatArray, FloatArray]:
+    """Remove loop vertices whose fan triangle (from vertex 0) is degenerate
+    (area < 1e-9) so every emitted triangle has a normal; a loop that cannot
+    keep three non-collinear vertices comes back shorter than 3."""
+    pts = [loop[i] for i in range(int(loop.shape[0]))]
+    prs = [pars[i] for i in range(int(pars.shape[0]))]
+    changed = True
+    while changed and len(pts) >= 3:
+        changed = False
+        for a in range(1, len(pts) - 1):
+            area = 0.5 * float(np.linalg.norm(np.cross(pts[a] - pts[0], pts[a + 1] - pts[0])))
+            if area < 1e-9:
+                del pts[a + 1 if a + 1 < len(pts) - 1 or len(pts) == 3 else a]
+                del prs[a + 1 if a + 1 < len(prs) - 1 or len(prs) == 3 else a]
+                changed = True
+                break
+    return np.asarray(pts, dtype=np.float64).reshape(-1, 3), np.asarray(prs, dtype=np.float64)
+
+
+def _with_sills(
+    clip: FloorClip, other: TubeEnvelope, window: tuple[int, int], width: float
+) -> FloorClip:
+    """Hardening PR-2 (H0 §3.4 seam): close the floor seam of a clipped CHILD
+    floor quad. The remainder's boundary chord sits on the parent's
+    TOLERANCE surface — ``tol`` outside the parent WALL at the CHILD floor
+    elevation — while the parent floor ends at the wall base, so between the
+    two floors a strip ``tol`` wide with the rule-188 vertical mismatch
+    (measured on RT-42 L02: 0.10–0.29 m in plan, −0.09…+0.16 m in z along
+    ≈ 10 m) was left open and read as a black sliver into the void. Each
+    chord is bridged by ONE sill quad to its foot on the parent FLOOR EDGE
+    polyline (the wall base): a real step surface between two real floors,
+    oriented outward (away from the parent void), never a floating slab.
+    A chord that is not a floor meeting (farther than
+    ``SILL_MAX_PLAN_DISTANCE_WIDTHS × width`` in plan or
+    ``SILL_MAX_RISE_FRACTION × width`` in rise from the parent floor edge)
+    gets no sill. Non-floor clips are returned unchanged."""
+    if not clip.floor or not clip.chords:
+        return clip
+    lo, hi = window
+    if hi - lo < 2:
+        return clip
+    from dataclasses import replace
+
+    rings = boundary_points(other.centers[lo:hi], other.tangents[lo:hi], other.shape)
+    fe = floor_edge_index(other.shape)
+    fn = (fe + 1) % other.shape.k
+    sides = (rings[:, fe, :], rings[:, fn, :])
+    centers = other.centers[lo:hi]
+    # the parent wall height (both wall edges reach the same local up) and the
+    # rise below which the parent-side rule removes the wall quad
+    wall_top = max(float(other.shape.points[w, 1]) for w in wall_edge_indices(other.shape))
+    wall_h = max(
+        float(other.shape.points[(w + 1) % other.shape.k, 1])
+        for w in wall_edge_indices(other.shape)
+    )
+    wall_height = max(wall_top, wall_h)
+    fractions = sorted(PARENT_QUAD_SAMPLE_FRACTIONS)
+    rise_limit = fractions[len(fractions) // 2] * wall_height
+    sills: list[FloatArray] = []
+    sill_params: list[FloatArray] = []
+    sill_chords: list[int] = []
+    skipped = 0
+    for index, (chord, par) in enumerate(zip(clip.chords, clip.chord_params, strict=True)):
+        mid = chord.mean(axis=0)
+        best: tuple[float, FloatArray, FloatArray] | None = None
+        for side in sides:
+            f0, d0 = _nearest_on_polyline(side, chord[0])
+            f1, d1 = _nearest_on_polyline(side, chord[1])
+            d = max(d0, d1)
+            if best is None or d < best[0]:
+                best = (d, f0, f1)
+        assert best is not None
+        d_plan, f0, f1 = best
+        rise = max(abs(float(chord[0][2] - f0[2])), abs(float(chord[1][2] - f1[2])))
+        if d_plan > SILL_MAX_PLAN_DISTANCE_WIDTHS * width or rise > rise_limit:
+            skipped += 1
+            continue
+        loop_pts = [chord[0], chord[1], f1, f0]
+        loop_par = [par[0], par[1], par[1], par[0]]
+        # a chord end that already sits on the parent floor edge collapses
+        # its quad corner: merge it so no degenerate fan triangle is emitted
+        loop, pars, _ = _dedupe_loop(loop_pts, loop_par)
+        loop, pars = _drop_collinear(loop, pars)
+        if loop.shape[0] < 3:
+            continue  # the chord already lies on the parent floor edge
+        area_vec = np.zeros(3)
+        for a in range(1, int(loop.shape[0]) - 1):
+            area_vec += np.cross(loop[a] - loop[0], loop[a + 1] - loop[0])
+        if float(np.linalg.norm(area_vec)) < 1e-6:
+            continue
+        # outward = away from the parent void: flip when the normal points
+        # toward the nearest parent centerline point
+        nearest = centers[int(np.argmin(np.linalg.norm(centers - mid[None, :], axis=1)))]
+        toward = nearest - mid
+        toward[2] = 0.0
+        if float(np.dot(area_vec, toward)) > 0.0:
+            loop = loop[::-1].copy()
+            pars = pars[::-1].copy()
+        sills.append(loop)
+        sill_params.append(pars)
+        sill_chords.append(index)
+    if not sills and not skipped:
+        return clip
+    return replace(
+        clip,
+        sills=tuple(sills),
+        sill_params=tuple(sill_params),
+        sill_chords=tuple(sill_chords),
+        chords_without_sill=skipped,
+    )
+
+
 def cut_tube(
     own: TubeEnvelope,
     own_rings: FloatArray,
@@ -984,9 +1201,11 @@ def cut_tube(
     quads whose four vertices are inside-or-on the parent (intruding shell,
     coincident roof) are omitted; a FLOOR quad with some corners inside-or-on
     and some outside is CLIPPED at the parent boundary (Phase 20D.1.2,
-    ``floor_clips``) instead of being kept or dropped whole. Only quads whose
-    rings lie inside the window are examined; everything else is untouched
-    by construction."""
+    ``floor_clips``) and its boundary chords are bridged to the parent floor
+    edge by sill strips (hardening PR-2, ``FloorClip.sills``); a straddling
+    WALL / ROOF quad is clipped the same way (``wall_clips``) instead of
+    being kept whole. Only quads whose rings lie inside the window are
+    examined; everything else is untouched by construction."""
     radius = JUNCTION_WINDOW_WIDTHS * width
     tol = JUNCTION_SURFACE_TOLERANCE_FRACTION * width
     r, k, _ = own_rings.shape
@@ -996,6 +1215,8 @@ def cut_tube(
     lo, hi = own.ring_window(junction.point, radius)
     other_window = other.ring_window(junction.point, radius + width)
     clips: list[FloorClip] = []
+    wall_clips: list[FloorClip] = []
+    unclipped_walls = 0
     if hi - lo < 2:
         return JunctionCut(junction, side, mask, (lo, hi), floor_edge, walls, clips)
     # all quad vertices of the windowed intervals in one query
@@ -1042,12 +1263,53 @@ def cut_tube(
                 omit[idx, floor_edge] = True  # measure-zero remainder: nothing to keep
             else:
                 clips.append(clip)
+        # hardening PR-2 (H0 §3.4): a WALL / ROOF quad with some corners
+        # inside-or-on the parent and some outside used to be kept WHOLE —
+        # its inside part stood inside the parent as a fragment up to one
+        # quad long. It is now clipped at the parent boundary exactly like a
+        # floor quad; a boundary the chord clip cannot represent keeps the
+        # quad whole and is counted, never approximated and never fatal.
+        for idx in range(len(intervals)):
+            for e in range(k):
+                if e == floor_edge or omit[idx, e] or not bool(inside_v[idx, e].any()):
+                    continue
+                try:
+                    wall_clip = _clip_floor_quad(
+                        v[idx, e],
+                        inside_v[idx, e],
+                        other,
+                        other_window,
+                        tol,
+                        int(intervals[idx]),
+                        e,
+                        junction.node_id,
+                        floor=False,
+                    )
+                except JunctionClipTopologyError:
+                    unclipped_walls += 1
+                    continue
+                if wall_clip is None:
+                    omit[idx, e] = True  # measure-zero remainder
+                else:
+                    wall_clips.append(wall_clip)
     mask[intervals] = omit
     if side == "CHILD":
         _extend_child_floor_pass(
             own, own_rings, other, junction, width, tol, floor_edge, (lo, hi), mask, clips
         )
-    return JunctionCut(junction, side, mask, (lo, hi), floor_edge, walls, clips)
+        sill_window = other.ring_window(junction.point, radius + 3.0 * width)
+        clips = [_with_sills(c, other, sill_window, width) for c in clips]
+    return JunctionCut(
+        junction,
+        side,
+        mask,
+        (lo, hi),
+        floor_edge,
+        walls,
+        clips,
+        wall_clips,
+        unclipped_walls,
+    )
 
 
 def _extend_child_floor_pass(
@@ -1130,8 +1392,12 @@ def junction_report(
         # triangles), so they count as removed — same meaning as before for
         # every whole-quad omission
         clipped_quads = sum(c.clipped_floor_quads for c in child_cuts)
+        clipped_walls = sum(c.clipped_wall_quads for c in child_cuts)
+        unclipped_walls = sum(c.unclipped_wall_quads for c in child_cuts)
+        sills = sum(c.sill_triangles for c in child_cuts)
+        no_sill = sum(cl.chords_without_sill for c in child_cuts for cl in c.floor_clips)
         replacement = sum(c.replacement_triangles for c in child_cuts)
-        child = sum(2 * c.removed_quads for c in child_cuts) + 2 * clipped_quads
+        child = sum(2 * c.removed_quads for c in child_cuts) + 2 * (clipped_quads + clipped_walls)
         # Phase 20D.2: the parent's END CAP where the child occupies it (a
         # crosscut station on a drift extremity); omitted + clipped fan
         # triangles are not emitted as-is, so they count as removed
@@ -1169,6 +1435,15 @@ def junction_report(
                 "childClippedFloorQuads": int(clipped_quads),
                 "childClippedFloorTriangles": int(2 * clipped_quads),
                 "childReplacementTriangles": int(replacement),
+                # hardening PR-2 (H0 §3.4, additive): straddling wall / roof
+                # quads clipped at the parent boundary, the ones the chord clip
+                # could not represent (kept whole), and the sill triangles that
+                # close the floor seam between the clipped child floor and the
+                # parent floor edge
+                "childClippedWallQuads": int(clipped_walls),
+                "childUnclippedWallQuads": int(unclipped_walls),
+                "childSillTriangles": int(sills),
+                "childChordsWithoutSill": int(no_sill),
                 # Phase 20D.2.1 (additive): the child mouth cap emitted on the
                 # rock-facing part of its OPEN end ring (0 at a T-junction)
                 "childMouthCapTriangles": int(mouth_emitted),
@@ -1199,6 +1474,7 @@ __all__ = [
     "PARENT_QUAD_OVERLAP_MIN",
     "PARENT_QUAD_SAMPLE_FRACTIONS",
     "RAMP_TUBE_ID",
+    "SILL_MAX_PLAN_DISTANCE_WIDTHS",
     "CapClip",
     "CapCut",
     "FloorClip",

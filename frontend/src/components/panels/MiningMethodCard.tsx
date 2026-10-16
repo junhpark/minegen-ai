@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ActionButton } from '@/components/ui/ActionButton'
 import { Metrics } from '@/components/ui/MetricRow'
 import { WorkflowCard } from '@/components/ui/WorkflowCard'
-import type { MethodParameters, MiningConfig } from '@/types/api'
+import type { BlockOrder, MethodParameters, MiningConfig, StopingDirection } from '@/types/api'
 import type { MiningMethodType } from '@/types/enums'
 import type { AvailableMethod, MiningMethodSummary } from '@/types/scene'
 import {
@@ -13,6 +13,15 @@ import {
   persistedMining,
   reconcileMiningDraft,
 } from './miningDraft'
+
+const STOPING_DIRECTION_LABEL: Record<StopingDirection, string> = {
+  OVERHAND: 'Overhand',
+  UNDERHAND: 'Underhand (not implemented)',
+}
+const BLOCK_ORDER_LABEL: Record<BlockOrder, string> = {
+  SHALLOW_TO_DEEP: 'Shallow to deep',
+  DEEP_TO_SHALLOW: 'Deep to shallow',
+}
 
 const FIELD =
   'w-full rounded-sm border border-rock-700 bg-rock-900 px-1.5 py-0.5 text-[11px] text-chalk focus:border-lamp focus:outline-none'
@@ -137,8 +146,53 @@ export function MiningMethodCard({ summary, identity, pending, enabled, onApply 
               ? [
                   num('Lift height (m)', mp.liftHeightM, (v) => setParams({ liftHeightM: v }), 0.5),
                   num('Cut length (m)', mp.cutLengthM, (v) => setParams({ cutLengthM: v })),
+                  num('Panel length (m)', mp.panelLengthM, (v) => setParams({ panelLengthM: v })),
+                  num('Rib pillar (m)', mp.ribPillarWidthM, (v) =>
+                    setParams({ ribPillarWidthM: v }),
+                  ),
+                  <label key="stoping-direction" className="block">
+                    <span className="mb-0.5 block text-[10px] text-mute">Stoping direction</span>
+                    <select
+                      data-testid="stoping-direction-select"
+                      className={FIELD}
+                      value={mp.stopingDirection}
+                      onChange={(e) =>
+                        setParams({ stopingDirection: e.target.value as StopingDirection })
+                      }
+                    >
+                      <option value="OVERHAND">Overhand (lifts bottom → top)</option>
+                      <option value="UNDERHAND">Underhand — not implemented</option>
+                    </select>
+                  </label>,
+                  <label key="block-order" className="block">
+                    <span className="mb-0.5 block text-[10px] text-mute">Block order</span>
+                    <select
+                      data-testid="block-order-select"
+                      className={FIELD}
+                      value={mp.blockOrder}
+                      onChange={(e) => setParams({ blockOrder: e.target.value as BlockOrder })}
+                    >
+                      <option value="SHALLOW_TO_DEEP">Shallow to deep (cemented sill mats)</option>
+                      <option value="DEEP_TO_SHALLOW">Deep to shallow</option>
+                    </select>
+                  </label>,
+                  num(
+                    'Concurrent panels (max)',
+                    mp.maxConcurrentPanels,
+                    (v) => setParams({ maxConcurrentPanels: Math.max(1, Math.round(v)) }),
+                    1,
+                  ),
+                  num('Sill mat cure (days)', mp.sillMatCureDays, (v) =>
+                    setParams({ sillMatCureDays: v }),
+                  ),
                 ]
               : null}
+            {mp?.kind === 'CUT_AND_FILL' ? (
+              <p className="col-span-2 text-[10px] text-mute">
+                Planning defaults, never engineering truth: panels and the concurrency bound are
+                sequencing assumptions; sill-mat cure is a planning duration.
+              </p>
+            ) : null}
             {mp?.kind === 'ROOM_AND_PILLAR'
               ? [
                   num('Room width (m)', mp.roomWidthM, (v) => setParams({ roomWidthM: v })),
@@ -202,6 +256,12 @@ function parameterRows(mp: MethodParameters | null): { label: string; value: str
     return [
       { label: 'Lift height', value: `${mp.liftHeightM} m` },
       { label: 'Cut length', value: `${mp.cutLengthM} m` },
+      { label: 'Panel length', value: `${mp.panelLengthM} m` },
+      { label: 'Rib pillar', value: `${mp.ribPillarWidthM} m` },
+      { label: 'Stoping direction', value: STOPING_DIRECTION_LABEL[mp.stopingDirection] },
+      { label: 'Block order', value: BLOCK_ORDER_LABEL[mp.blockOrder] },
+      { label: 'Concurrent panels (max)', value: `${mp.maxConcurrentPanels}` },
+      { label: 'Sill mat cure', value: `${mp.sillMatCureDays} days` },
     ]
   }
   return [

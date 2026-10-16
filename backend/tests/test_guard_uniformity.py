@@ -27,6 +27,7 @@ from minegen.services.artifact_errors import (
     ArtifactStaleError,
     CapabilityGraphNotGeneratedError,
     CapabilityGraphStaleError,
+    CutFillLegacyArtifactError,
     LayoutSelectionStaleError,
     LayoutV2NotSelectedError,
     LevelsNotGeneratedError,
@@ -78,6 +79,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "LayoutSelectionStaleError": (409, "LAYOUT_V2_SELECTION_STALE"),
     "StaleInputsError": (409, "JOB_INPUTS_CHANGED"),
     "ArtifactMalformedError": (409, "ARTIFACT_MALFORMED"),
+    "CutFillLegacyArtifactError": (409, "CUT_FILL_LEGACY_ARTIFACT"),
     "ArtifactStaleError": (409, "ARTIFACT_STALE"),
     "SceneArtifactInvalidError": (409, "SCENE_ARTIFACT_INVALID"),
     "ReadSnapshotChangedError": (409, "READ_SNAPSHOT_CHANGED"),
@@ -103,6 +105,7 @@ def _instances() -> list[Exception]:
         LayoutSelectionStaleError(sid),
         StaleInputsError(sid),
         ArtifactMalformedError("levels.json", "invalid JSON (JSONDecodeError)"),
+        CutFillLegacyArtifactError("stopes.json", None, 2),
         ArtifactStaleError("development_mesh.json", "swept under another ramp source"),
         SceneArtifactInvalidError(
             sid,

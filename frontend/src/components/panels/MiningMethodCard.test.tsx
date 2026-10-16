@@ -11,7 +11,7 @@ import {
   persistedMining,
   reconcileMiningDraft,
 } from './miningDraft'
-import { LONGHOLE } from './miningMethod.fixture'
+import { CUT_FILL_DEFAULTS, LONGHOLE } from './miningMethod.fixture'
 import { MiningMethodCard } from './MiningMethodCard'
 
 describe('miningDraftFor', () => {
@@ -27,7 +27,7 @@ describe('miningDraftFor', () => {
 
   it('switching the method takes the registry defaults, never a frontend constant', () => {
     const cf = miningDraftFor(LONGHOLE, 'CUT_AND_FILL', persistedMining(LONGHOLE))
-    expect(cf.methodParameters).toEqual({ kind: 'CUT_AND_FILL', liftHeightM: 4, cutLengthM: 15 })
+    expect(cf.methodParameters).toEqual(CUT_FILL_DEFAULTS)
     expect(cf.sublevelInterval).toBe(25) // the shared parameter is carried over
     const rp = miningDraftFor(LONGHOLE, 'ROOM_AND_PILLAR', cf)
     expect(rp.methodParameters?.kind).toBe('ROOM_AND_PILLAR')
@@ -43,10 +43,10 @@ describe('miningDraftFor', () => {
     const summary = {
       ...LONGHOLE,
       method: 'CUT_AND_FILL',
-      methodParameters: { kind: 'CUT_AND_FILL' as const, liftHeightM: 3.5, cutLengthM: 12 },
+      methodParameters: { ...CUT_FILL_DEFAULTS, liftHeightM: 3.5, cutLengthM: 12 },
     }
     expect(miningDraftFor(summary, 'CUT_AND_FILL').methodParameters).toEqual({
-      kind: 'CUT_AND_FILL',
+      ...CUT_FILL_DEFAULTS,
       liftHeightM: 3.5,
       cutLengthM: 12,
     })

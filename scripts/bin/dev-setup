@@ -1,15 +1,27 @@
 #!/usr/bin/env bash
 #
 # Prepare both dev environments without starting a server: the backend venv +
-# editable install and the frontend node_modules. Run by the devcontainer's
-# postCreateCommand so a new Codespace is ready before the first ``backend`` /
-# ``frontend`` call; safe to re-run at any time.
+# editable install, the frontend node_modules and (PR #54 review B1) the demo
+# mines that are not baked yet. Run by the devcontainer's postCreateCommand so
+# a new Codespace is ready before the first ``backend`` / ``frontend`` call;
+# safe to re-run at any time. Set MINEGEN_SKIP_DEMOS=1 to skip the demo bake.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 MINEGEN_SETUP_ONLY=1 "$here/backend"
 MINEGEN_SETUP_ONLY=1 "$here/frontend"
+
+# PR #54 review B1: the demo mines are baked on the host that serves them
+# (they are bound by file stat identity, rule 60, so they are never copied).
+# Bake only what the catalogue does not list, so a prepared checkout shows
+# File › Demos at once; a backend started without this step bakes the
+# missing demos itself in the background (MINEGEN_DEMOS_AUTOBAKE, default on).
+if [ -z "${MINEGEN_SKIP_DEMOS:-}" ]; then
+  echo
+  echo "dev-setup: baking the demo mines that are not baked yet (≈ 6 min on first run)…"
+  (cd "$here/../../backend" && PYTHONPATH=src:. .venv/bin/python ../scripts/bake_demos.py --if-missing)
+fi
 
 echo
 echo "dev-setup: ready. Start the servers in two terminals:"

@@ -96,7 +96,14 @@ export function MineScene() {
       scene?.developmentMesh?.status === 'SUCCESS' && !!scene.developmentMesh.meshUrl,
     tunnelMeshVisible: visible.has('tunnelMesh'),
     developmentMeshVisible: visible.has('developmentMesh'),
+    // PR-2 H2-SH: the shaft excavation reveal has its own toggle
+    shaftMeshAvailable: scene?.shaftMesh?.status === 'SUCCESS' && !!scene.shaftMesh.meshUrl,
+    shaftMeshVisible: visible.has('shaftMesh'),
   })
+  // PR-2 H2-SH: the shaft is shown as its excavation mesh when the sweep is
+  // available and toggled on, else as the shafts.json centerlines (never both)
+  const shaftMeshShown =
+    scene?.shaftMesh?.status === 'SUCCESS' && !!scene.shaftMesh.meshUrl && visible.has('shaftMesh')
   const excavation4D = excavationPlan.mounted
   // rules 88/91: INFRASTRUCTURE mode only; routers are never shown as
   // time-valid installed assets in 4D (installation timing is not modeled)
@@ -194,7 +201,12 @@ export function MineScene() {
           showCrosscuts={visible.has('crosscuts')}
         />
       ) : null}
-      {showStatic && scene?.shafts && visible.has('shafts') ? (
+      {showStatic && shaftMeshShown && scene?.shaftMesh?.meshUrl ? (
+        <Suspense fallback={null}>
+          <DevelopmentMeshLayer url={`${API_BASE_URL}${scene.shaftMesh.meshUrl}`} />
+        </Suspense>
+      ) : null}
+      {showStatic && scene?.shafts && visible.has('shafts') && !shaftMeshShown ? (
         <ShaftLayer shafts={scene.shafts} />
       ) : null}
       {scene?.network && visible.has('network') ? <NetworkLayer network={scene.network} /> : null}
@@ -229,10 +241,12 @@ export function MineScene() {
             developmentUrl={
               excavationPlan.development ? (scene.developmentMesh?.meshUrl ?? null) : null
             }
+            shaftUrl={excavationPlan.shaft ? (scene.shaftMesh?.meshUrl ?? null) : null}
             timeline={scene.timeline}
             smoothed={scene.smoothedDecline}
             levels={scene.levels ?? null}
             levelAccesses={scene.levelAccesses ?? null}
+            shafts={scene.shafts ?? null}
             onCoverage={onExcavationCoverage}
           />
         </Suspense>

@@ -279,8 +279,9 @@ class LevelDevelopmentBuilder:
     def station_us(self, orebody: TabularOrebody) -> list[float]:
         """The plan's production access pattern mapped onto the strike
         coordinate (symmetric about the orebody ``u = 0``): the Longhole
-        station lattice, the single central access of Cut & Fill / Room &
-        Pillar, or nothing for a method without production access."""
+        station lattice, the per-panel accesses of Cut & Fill, the single
+        central access of Room & Pillar, or nothing for a method without
+        production access."""
         pattern = self.plan.production_access_pattern(self.scenario)
         return pattern.offsets(orebody.half_length) if pattern is not None else []
 
@@ -632,7 +633,7 @@ class LevelDevelopmentBuilder:
             crosscut_count = 0
             for u_s in stations:
                 assert pattern is not None  # stations exist only with a pattern
-                k = pattern.station_index(u_s)
+                k = pattern.station_index(u_s, ob.half_length)
                 start = drift_point(u_s)
                 w_s = float(np.dot(start - ob.center, ob.w))
                 t = (ob.half_thickness - w_s) / d_dot_w
@@ -902,7 +903,7 @@ class LevelDevelopmentBuilder:
             excluded: list[ExcludedStation] = []
             for c_s in planned:
                 assert pattern is not None
-                k = pattern.station_index(c_s - mid)
+                k = pattern.station_index(c_s - mid, mid)
                 start = self._curved_drift_points(off, c_s, c_s, c_entry, float(entry[2]), g)[0]
                 tangent = off.tangent_at(c_s)
                 # bounded deterministic probe: the trace's own contact

@@ -20,6 +20,7 @@ from minegen.core.enums import MiningMethodType
 from minegen.core.models import MiningConfig, Scenario, ScenarioCreate
 from minegen.mining.methods.contracts import (
     FixedAccessPattern,
+    PanelAccessPattern,
     ProductionLattice,
     StationLatticeAccessPattern,
     station_margin,
@@ -47,7 +48,10 @@ RESERVED = [m for m in MiningMethodType if m not in IMPLEMENTED]
 
 def _scenario(method: MiningMethodType) -> Scenario:
     sc = Scenario(**ScenarioCreate(name="registry").model_dump())
-    return sc.model_copy(update={"mining": sc.mining.model_copy(update={"method": method})})
+    # re-VALIDATED so the method's canonical ``methodParameters`` resolve
+    # exactly as a client PUT would (rule 194)
+    mining = MiningConfig.model_validate({**sc.mining.model_dump(by_alias=True), "method": method})
+    return sc.model_copy(update={"mining": mining})
 
 
 def test_every_method_resolves_explicitly() -> None:
@@ -129,13 +133,20 @@ def test_registry_final_table_phase_21bc() -> None:
     }
     assert isinstance(plan_for(MiningMethodType.CUT_AND_FILL), CutFillPlan)
     assert isinstance(plan_for(MiningMethodType.ROOM_AND_PILLAR), RoomPillarPlan)
+    # Room & Pillar: ONE central production access; Cut & Fill (H2-CF): one
+    # access per strike panel of the declared ``panelLengthM``
+    sc = _scenario(MiningMethodType.ROOM_AND_PILLAR)
+    pattern = plan_for(MiningMethodType.ROOM_AND_PILLAR).production_access_pattern(sc)
+    assert isinstance(pattern, FixedAccessPattern)
+    assert pattern.offsets(100.0) == [0.0] and pattern.station_index(0.0, 100.0) == 0
+    assert pattern.pitch == 0.0 and pattern.defines_drift_extent is False
+    sc = _scenario(MiningMethodType.CUT_AND_FILL)
+    panel = plan_for(MiningMethodType.CUT_AND_FILL).production_access_pattern(sc)
+    assert isinstance(panel, PanelAccessPattern) and panel.panel_length == 60.0
+    assert panel.offsets(100.0) == [-75.0, -25.0, 25.0, 75.0]
+    assert panel.pitch == 0.0 and panel.defines_drift_extent is False
     for m in (MiningMethodType.CUT_AND_FILL, MiningMethodType.ROOM_AND_PILLAR):
-        sc = _scenario(m)
-        pattern = plan_for(m).production_access_pattern(sc)
-        assert isinstance(pattern, FixedAccessPattern)
-        assert pattern.offsets(100.0) == [0.0] and pattern.station_index(0.0) == 0
-        assert pattern.pitch == 0.0 and pattern.defines_drift_extent is False
-        assert plan_for(m).production_development(sc).status == "IMPLEMENTED"
+        assert plan_for(m).production_development(_scenario(m)).status == "IMPLEMENTED"
 
 
 def test_unregistered_method_is_a_typed_lookup_error_never_a_default() -> None:
@@ -203,7 +214,17 @@ def test_scene_mining_method_block_echoes_the_registry() -> None:
         "displayName": "Cut & Fill",
         "implementationStatus": "IMPLEMENTED",
         "productionKind": "CUT_FILL",
-        "defaultParameters": {"kind": "CUT_AND_FILL", "liftHeightM": 4.0, "cutLengthM": 15.0},
+        "defaultParameters": {
+            "kind": "CUT_AND_FILL",
+            "liftHeightM": 4.0,
+            "cutLengthM": 15.0,
+            "stopingDirection": "OVERHAND",
+            "blockOrder": "SHALLOW_TO_DEEP",
+            "panelLengthM": 60.0,
+            "ribPillarWidthM": 0.0,
+            "maxConcurrentPanels": 2,
+            "sillMatCureDays": 28.0,
+        },
     }
     assert by_method["ROOM_AND_PILLAR"]["productionKind"] == "ROOM_PILLAR"
     assert by_method["ROOM_AND_PILLAR"]["defaultParameters"]["benchCount"] == 1

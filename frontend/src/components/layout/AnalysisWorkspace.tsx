@@ -16,8 +16,22 @@ import { useViewerStore } from '@/stores/viewerStore'
 export function AnalysisWorkspace() {
   const tab = useViewerStore((s) => s.analysisTab)
   const setTab = useViewerStore((s) => s.setAnalysisTab)
+  const show3d = useViewerStore((s) => s.analysisShow3d)
+  const setShow3d = useViewerStore((s) => s.setAnalysisShow3d)
   return (
     <>
+      <header className="flex items-center justify-between border-b border-rock-700 px-4 py-2">
+        <h2 className="plate text-[13px] text-chalk">Analysis</h2>
+        <label className="flex items-center gap-1.5 text-[11px] text-chalk-dim">
+          <input
+            type="checkbox"
+            checked={show3d}
+            onChange={(e) => setShow3d(e.target.checked)}
+            data-testid="analysis-show-3d"
+          />
+          Show 3D context
+        </label>
+      </header>
       <PanelTabs
         tabs={ANALYSIS_TABS}
         active={tab}

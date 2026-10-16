@@ -24,15 +24,25 @@ const panel = read('AnalysisPanel.tsx')
 const layout = read('LayoutPanel.tsx')
 
 describe('Analysis queries are scenario-scoped', () => {
-  it('calls exactly the four read endpoints and the one economics PUT', () => {
+  it('calls exactly the six read endpoints, the one economics PUT and the one what-if POST', () => {
     expect(unique(panel, /api\.[a-zA-Z0-9]+/g)).toEqual([
       'api.getAnalysis',
       'api.getDesignAssessment',
       'api.getEconomicsConfig',
       'api.getLayoutComparison',
+      'api.getSensitivity',
+      'api.getTimeseries',
+      'api.postWhatIf',
       'api.putEconomicsConfig',
     ])
     expect((panel.match(/api\.putEconomicsConfig/g) ?? []).length).toBe(1)
+    // hardening PR-2 H3 §8.3: the what-if is a projection — the ONE POST, no
+    // invalidation, no persistence (its answer lives in the mutation state)
+    expect((panel.match(/api\.postWhatIf/g) ?? []).length).toBe(1)
+    const start = panel.indexOf('const whatIf = useMutation(')
+    const block = panel.slice(start, panel.indexOf('\n  })', start))
+    expect(block).not.toContain('invalidateQueries')
+    expect(block).not.toContain('setQueryData')
   })
 
   it('keys every query on the epoch and the scenario / scene identity', () => {
@@ -44,6 +54,13 @@ describe('Analysis queries are scenario-scoped', () => {
       "queryKey: ['layout-comparison', epoch, scenarioId, ...assessmentKey(scene), revision]",
     )
     expect(panel).toContain("queryKey: ['design-assessment', epoch, ...assessmentKey(scene)]")
+    expect(panel).toContain(
+      "queryKey: ['analysis-sensitivity', epoch, scenarioId, ...assessmentKey(scene), revision]",
+    )
+    // the time series shares the 4D results card's cache entry (one read model)
+    const seriesKey = "queryKey: ['analysis-timeseries', epoch, scenarioId, timelineRevision]"
+    expect(panel).toContain(seriesKey)
+    expect(read('../timeline/FourDResults.tsx')).toContain(seriesKey)
   })
 
   it('the Rules tab shares the Layout panel’s design-assessment cache entry', () => {
@@ -52,7 +69,13 @@ describe('Analysis queries are scenario-scoped', () => {
     expect(panel).toContain(key)
     expect(panel).toContain("queryFn: () => api.getDesignAssessment(scene?.scenarioId ?? '')")
     // no second evaluator anywhere in the analysis presentation
-    for (const file of ['RulebookPanel.tsx', 'rulebook.ts', 'LayoutComparisonPanel.tsx']) {
+    for (const file of [
+      'RulebookPanel.tsx',
+      'rulebook.ts',
+      'LayoutComparisonPanel.tsx',
+      'SensitivityPanel.tsx',
+      'SchedulePanel.tsx',
+    ]) {
       const src = read(file)
       expect(src).not.toMatch(/api\./)
       expect(src).not.toMatch(/useQuery|useMutation/)
@@ -68,6 +91,8 @@ describe('saving the economics is one PUT with a bounded effect', () => {
     expect(onSuccess).toContain("qc.setQueryData(['economics-config', epoch, scenarioId], saved)")
     expect(onSuccess).toContain("qc.invalidateQueries({ queryKey: ['mine-analysis'] })")
     expect(onSuccess).toContain("qc.invalidateQueries({ queryKey: ['layout-comparison'] })")
+    expect(onSuccess).toContain("qc.invalidateQueries({ queryKey: ['analysis-timeseries'] })")
+    expect(onSuccess).toContain("qc.invalidateQueries({ queryKey: ['analysis-sensitivity'] })")
     expect(onSuccess).not.toContain("'design-assessment'") // rules are not economics-dependent
   })
 

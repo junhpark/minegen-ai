@@ -73,6 +73,8 @@ from minegen.core.artifacts import (
     RAMP_SOURCE_FILE,
     SCENARIO_FILE,
     SENSORS_ARTIFACT,
+    SHAFT_MESH_ARTIFACT,
+    SHAFT_MESH_GLB,
     SHAFTS_ARTIFACT,
     STOPES_ARTIFACT,
     TARGETS_ARTIFACT,
@@ -250,6 +252,14 @@ ARTIFACTS: Final[tuple[ArtifactSpec, ...]] = (
         SHAFTS_ARTIFACT,
         (_derived(SHAFTS_ARTIFACT),),
         (_inputs_of(LEVELS_ARTIFACT), _file(LEVELS_ARTIFACT)),
+    ),
+    # hardening PR-2 H2-SH: the shaft excavation sweep is a two-file leaf
+    # derived from shafts.json (shafts → shaft mesh; the mesh invalidates
+    # nothing — no artifact lists it as an input)
+    ArtifactSpec(
+        SHAFT_MESH_ARTIFACT,
+        (_derived(SHAFT_MESH_ARTIFACT), _derived(SHAFT_MESH_GLB)),
+        (_inputs_of(SHAFTS_ARTIFACT), _file(SHAFTS_ARTIFACT)),
     ),
     ArtifactSpec(
         STOPES_ARTIFACT,

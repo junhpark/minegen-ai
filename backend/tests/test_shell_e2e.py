@@ -8,6 +8,14 @@ on Levels: the confirm dialog lists the backend reset plan verbatim, the
 closure is deleted, and Levels regenerates from that stage. At every stop at
 most ONE enabled primary button exists in the DOM.
 
+Hardening PR-2 (§5 header: "e2e: BASELINE + CUT_AND_FILL 데모
+Setup→Analysis→Export"): the stack also carries the CUT_AND_FILL demo, baked
+into the temporary data directory through the application's own routes
+(``minegen.demos.bake``) before the servers start, and a second test opens
+it from File › Demos — read-only demo mode (badge, demo panel, ONE primary
+"Clone to edit", 4D Loop on, the 4D results card), the full-window Analysis
+workspace (no canvas, KPI tiles, Show 3D context) and the Export download.
+
 The stack is real: a uvicorn backend on a temporary data directory and the
 Vite dev server pointed at it, both on free ports; the browser is the
 Playwright Chromium (``MINEGEN_E2E_CHROMIUM`` or the Playwright default).
@@ -95,11 +103,32 @@ def _chromium_path() -> str | None:
     return None
 
 
+#: hardening PR-2 H4 — the demo the second test opens (baked in-process)
+DEMO_ID = "demo-tabular-cut-fill"
+
+
+def _bake_cut_fill_demo(demos_dir: Path) -> None:
+    """Bake the CUT_AND_FILL demo recipe into ``demos_dir`` exactly as
+    ``scripts/bake_demos.py`` does (the same baker, the same routes), so the
+    backend started on this data directory serves it read-only."""
+    sys.path.insert(0, str(BACKEND_SRC))
+    from minegen.demos.bake import DEMO_RECIPES, DemoBaker, write_index
+
+    recipe = next(r for r in DEMO_RECIPES if r.id == DEMO_ID)
+    baker = DemoBaker(demos_dir)
+    try:
+        entry = baker.bake(recipe)
+    finally:
+        baker.close()
+    write_index(demos_dir, [entry], "shell-e2e")
+
+
 @pytest.fixture(scope="module")
 def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
     if shutil.which("npm") is None or not (FRONTEND / "node_modules").exists():
         _unavailable("frontend toolchain (npm + node_modules) not available")
     data_dir = tmp_path_factory.mktemp("shell-e2e-data")
+    _bake_cut_fill_demo(data_dir / "demos")
     api_port, web_port = _free_port(), _free_port()
     api = f"http://127.0.0.1:{api_port}"
     web = f"http://127.0.0.1:{web_port}"
@@ -107,6 +136,9 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
         **os.environ,
         "MINEGEN_DATA_DIR": str(data_dir),
         "MINEGEN_CORS_ORIGINS": json.dumps([web]),
+        # PR #54 review B1: the e2e bakes its one demo itself (above); the
+        # server under test must not start baking the other two
+        "MINEGEN_DEMOS_AUTOBAKE": "0",
     }
     backend = subprocess.Popen(
         [
@@ -272,6 +304,27 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     assert len(scenarios) == 1
     assert (scenarios[0] / "arrays.npz").exists()
 
+    # 1 Setup › Access (PR #54 review B3): the access strategy is declared
+    # BEFORE the layout — Ramp only is done already; Ramp + Shaft is applied
+    # through the scenario PUT behind the reset-plan confirmation and makes
+    # Shafts a real (waiting) stage instead of an optional one
+    _wait_glyph(page, "ACCESS", "DONE")
+    _wait_glyph(page, "SHAFTS", "OPTIONAL")
+    _click_stage(page, "ACCESS")
+    assert _primaries(page) == 0  # a clean declaration offers no primary action
+    page.check('[data-testid="access-ramp-shaft"]')
+    page.wait_for_selector('[data-testid="shaft-editor"] [data-testid="shaft-spec"]')
+    suggest = page.locator('[data-testid="shaft-editor"] button:has-text("Suggest collar")')
+    assert suggest.count() == 0  # no level development yet: the planner derives the collar
+    _assert_single_primary(page, "Access with a dirty declaration")
+    _controls(page, "Apply access strategy").click()
+    page.wait_for_selector('[data-testid="access-will-delete"], [role="dialog"]')
+    page.click('[role="dialog"] button:has-text("Apply access strategy")')
+    _wait_glyph(page, "ACCESS", "DONE", 180_000)
+    _wait_glyph(page, "SHAFTS", "WAITING")
+    assert _primaries(page) == 0
+    page.wait_for_selector('[data-testid="access-ramp-shaft"]:checked')
+
     # 2 Design › Layout: Generate → Option 1 → Activate
     _click_stage(page, "LAYOUT")
     _controls(page, "Generate candidates").click()
@@ -296,6 +349,21 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     _controls(page, "Generate development mesh").click()
     _wait_glyph(page, "EXCAVATION", "DONE")
 
+    # Shafts (PR #54 review B3): PLAN the declared shaft, then its mesh — the
+    # stage is done only with both; the declaration itself is not editable here
+    _click_stage(page, "SHAFTS")
+    assert page.locator('[data-testid="controls-host"] [data-testid="shaft-editor"]').count() == 0
+    _controls(page, "Plan shafts").click()
+    page.wait_for_selector(
+        '[data-testid="controls-host"] button:has-text("Generate shaft mesh"):enabled',
+        timeout=JOB_TIMEOUT_MS,
+    )
+    _wait_glyph(page, "SHAFTS", "NEXT")  # the plan alone is not the stage: still next
+    _assert_single_primary(page, "between the shaft plan and its mesh")
+    _controls(page, "Generate shaft mesh").click()
+    _wait_glyph(page, "SHAFTS", "DONE")
+    assert (scenarios[0] / "derived" / "shaft_mesh.glb").exists()
+
     # 3 Network · 4 Mining · 5 Systems
     _generate(page, "NETWORK", "Build network")
     _generate(page, "CAPABILITY", "Build capabilities")
@@ -313,9 +381,23 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     page.click('[data-testid="view-switcher"] button:has-text("4D")')
     page.wait_for_selector('[data-testid="stepper"]')
     assert page.locator('[data-testid="analysis-center"]').count() == 0
+    # PR-2 H3 §7: the 4D view carries Restart / Play / Loop / speed and the
+    # backend time-series results card in the right column
+    for tid in ("timeline-restart", "timeline-play", "timeline-loop", "timeline-speed-20"):
+        assert page.locator(f'[data-testid="{tid}"]').count() == 1, tid
+    page.wait_for_selector('[data-testid="fourd-results"]')
     _click_stage(page, "ANALYSIS")
     page.wait_for_selector('[data-testid="analysis-center"]')
     assert _primaries(page) == 0
+    # PR-2 H3 §8.3: the Analysis workspace is full-window — no canvas unless
+    # "Show 3D context" is on — and heads every tab with the KPI tiles
+    assert page.locator("canvas").count() == 0
+    page.wait_for_selector('[data-testid="analysis-kpis"]')
+    page.check('[data-testid="analysis-show-3d"]')
+    page.wait_for_selector("canvas")
+    assert page.locator('[data-testid="analysis-center"][data-split="true"]').count() == 1
+    page.uncheck('[data-testid="analysis-show-3d"]')
+    page.wait_for_selector("canvas", state="detached")
     _wait_glyph(page, "ANALYSIS", "DONE")
     _wait_glyph(page, "EXPORT", "NEXT")
 
@@ -334,6 +416,7 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     page.wait_for_selector('[data-testid="reset-will-delete"]')
     listed = page.locator('[data-testid="reset-will-delete"] li').all_inner_texts()
     assert "levels.json" in listed and "network.json" in listed and "timeline.json" in listed
+    assert "shafts.json" in listed and "shaft_mesh.json" in listed  # planned on the levels
     assert "layout_v2_selected.json" not in listed  # upstream is never part of the closure
     page.click('[role="dialog"] button:has-text("Delete")')
     _wait_glyph(page, "LEVELS", "NEXT")
@@ -358,6 +441,16 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     _click_stage(page, "EXCAVATION")
     _controls(page, "Generate development mesh").click()
     _wait_glyph(page, "EXCAVATION", "DONE")
+    # the declared shaft survives the reset (it is the scenario's), its plan does not
+    _wait_glyph(page, "SHAFTS", "NEXT")
+    _click_stage(page, "SHAFTS")
+    _controls(page, "Plan shafts").click()
+    page.wait_for_selector(
+        '[data-testid="controls-host"] button:has-text("Generate shaft mesh"):enabled',
+        timeout=JOB_TIMEOUT_MS,
+    )
+    _controls(page, "Generate shaft mesh").click()
+    _wait_glyph(page, "SHAFTS", "DONE")
     _generate(page, "NETWORK", "Build network")
     _generate(page, "CAPABILITY", "Build capabilities")
     _generate(page, "PRODUCTION", "Generate Stopes")
@@ -370,4 +463,63 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     page.wait_for_selector('[data-testid="analysis-center"]')
     _wait_glyph(page, "ANALYSIS", "DONE")
     _wait_glyph(page, "EXPORT", "NEXT")
+    assert errors == []
+
+
+def test_cut_fill_demo_opens_read_only_then_analysis_and_export(
+    browser: tuple[Any, list[str]], stack: dict[str, Any]
+) -> None:
+    """Hardening PR-2 H4 — File › Demos › the CUT_AND_FILL demo: read-only
+    demo mode, then Analysis (full-window) and the Export download."""
+    page, errors = browser
+    demos_dir = stack["data_dir"] / "demos"
+    before = {
+        str(p.relative_to(demos_dir)): (p.stat().st_size, p.stat().st_mtime_ns)
+        for p in sorted(demos_dir.rglob("*"))
+        if p.is_file()
+    }
+    page.click('header button:has-text("File")')
+    page.click('[role="menu"] [role="menuitem"]:has-text("Demos")')
+    page.wait_for_selector('[data-testid="demo-list"] button:not([disabled])')
+    page.click('[data-testid="demo-list"] button:not([disabled])')
+    # demo mode: the badge, the demo panel instead of the controls host,
+    # exactly ONE primary ("Clone to edit"), no "Reset from here"
+    page.wait_for_selector('[data-testid="demo-badge"]')
+    page.wait_for_selector('[data-testid="demo-panel"]')
+    assert page.locator('[data-testid="controls-host"]').count() == 0
+    assert page.locator('[data-testid="reset-from-here"]').count() == 0
+    assert _primaries(page) == 1
+    # text_content, not inner_text: the button's `plate` style upper-cases its rendering
+    primary = page.locator('button[data-variant="primary"]:enabled').text_content() or ""
+    assert primary.strip() == "Clone to edit", primary
+    assert page.locator('[data-testid="demo-auto-tour"]').is_checked()
+    # every baked stage reads DONE in the stepper (the demo's artifacts)
+    for stage in ("SCENARIO", "LAYOUT", "LEVELS", "NETWORK", "PRODUCTION", "SCHEDULE"):
+        _wait_glyph(page, stage, "DONE")
+    # 4D: Loop is on for a demo; the results card reads the backend series
+    page.click('[data-testid="view-switcher"] button:has-text("4D")')
+    page.wait_for_selector('[data-testid="timeline-loop"]')
+    # Loop is a toggle BUTTON (aria-pressed), on for a demo
+    assert page.locator('[data-testid="timeline-loop"]').get_attribute("aria-pressed") == "true"
+    page.wait_for_selector('[data-testid="fourd-results"]')
+    # Analysis: full-window, KPI tiles, the Sensitivity tab's what-if label
+    _click_stage(page, "ANALYSIS")
+    page.wait_for_selector('[data-testid="analysis-center"]')
+    assert page.locator("canvas").count() == 0
+    page.wait_for_selector('[data-testid="analysis-kpis"]')
+    page.click('[data-testid="analysis-center"] button:has-text("Sensitivity")')
+    page.wait_for_selector('[data-testid="what-if-label"]', timeout=JOB_TIMEOUT_MS)
+    assert page.locator('[data-testid="what-if-form"]').count() == 1
+    # Export stays available for a demo (its controls host is shown there)
+    _click_stage(page, "EXPORT")
+    with page.expect_download(timeout=JOB_TIMEOUT_MS) as dl:
+        _controls(page, "Export MineExchange").click()
+    assert dl.value.suggested_filename.endswith(".zip")
+    # nothing in the demo directory moved: byte- and stat-identical
+    after = {
+        str(p.relative_to(demos_dir)): (p.stat().st_size, p.stat().st_mtime_ns)
+        for p in sorted(demos_dir.rglob("*"))
+        if p.is_file()
+    }
+    assert after == before
     assert errors == []

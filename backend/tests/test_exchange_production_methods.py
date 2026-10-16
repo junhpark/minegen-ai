@@ -1,7 +1,7 @@
-"""MineExchange 1.2 semantics (now carried by 1.3.0) — Cut & Fill / Room & Pillar
+"""MineExchange 1.2 semantics (now carried by 1.3.1) — Cut & Fill / Room & Pillar
 production export (Phase 21B/C).
 
-MX-1  version 1.3.0 (1.2 semantics unchanged); a Longhole bundle carries no
+MX-1  version 1.3.1 (1.2 semantics unchanged); a Longhole bundle carries no
       CUT_FILL / ROOM_PILLAR group and no methodParameters block (1.1.0 shape unchanged)
 MX-2  CF world-only: CUT_FILL ARTIFACT_ABSENT (no STOPES group), typed
       methodParameters DTO, productionKind CUT_FILL
@@ -145,8 +145,8 @@ def test_mx1_version_and_longhole_shape_unchanged(client: TestClient) -> None:
     _post(client, f"/api/v1/scenarios/{sid}/world/generate")
     b = export(client, sid)
     assert_integrity(b)
-    assert MINE_EXCHANGE_VERSION == "1.3.0"
-    assert b.manifest["mineExchangeVersion"] == "1.3.0"
+    assert MINE_EXCHANGE_VERSION == "1.3.1"
+    assert b.manifest["mineExchangeVersion"] == "1.3.1"
     om = b.omissions()
     assert om["STOPES"] == "ARTIFACT_ABSENT"
     assert "CUT_FILL" not in om and "ROOM_PILLAR" not in om
@@ -178,6 +178,12 @@ def test_mx2_cut_fill_world_only_omission_and_typed_parameters(client: TestClien
         "kind": "CUT_AND_FILL",
         "liftHeightM": 4.0,
         "cutLengthM": 15.0,
+        "stopingDirection": "OVERHAND",
+        "blockOrder": "SHALLOW_TO_DEEP",
+        "panelLengthM": 60.0,
+        "ribPillarWidthM": 0.0,
+        "maxConcurrentPanels": 2,
+        "sillMatCureDays": 28.0,
     }
     assert mm["production"]["status"] == "NOT_GENERATED"
     assert mm["production"]["productionKind"] == "CUT_FILL"
@@ -197,7 +203,7 @@ def test_mx3_cut_fill_cuts_and_backfills(cut_fill: TabularStack, cut_fill_bundle
     cuts_by_id = {c["id"]: c for c in src["cuts"]}
     doc = b.json("production/cut_fill.json")
     assert doc["semanticType"] == "PRODUCTION_CUT_FILL"
-    assert doc["mineExchangeVersion"] == "1.3.0" and doc["method"] == "CUT_AND_FILL"
+    assert doc["mineExchangeVersion"] == "1.3.1" and doc["method"] == "CUT_AND_FILL"
     assert doc["coordinateFrame"] == "LOCAL_ENU_Z_UP"
     assert doc["sourceArtifact"] == STOPES_ARTIFACT
     f = b.files["production/cut_fill.json"]
@@ -261,8 +267,19 @@ def test_mx4_cut_fill_metrics_and_parameters_are_typed(
         "weightedMeanGradeProxy",
         "actualMeanLiftHeight",
         "actualMeanCutLength",
+        # 1.3.1 (H2-CF)
+        "blockCount",
+        "panelCount",
+        "ribPillarCount",
+        "cementedBackfillCount",
+        "cementedBackfillVolumeM3",
+        "totalRibPillarVolumeM3",
+        "totalRibPillarTonnesEquivalent",
+        "actualMeanPanelLength",
     }
     mining = cut_fill.client.get(f"/api/v1/scenarios/{cut_fill.sid}").json()["mining"]
+    # 1.3.1: the typed parameter DTO carries EVERY scenario parameter — the
+    # 1.3.0 exporter silently dropped the H2-CF fields
     assert doc["parameters"] == mining["methodParameters"]
     mm = b.json("semantics/mining_method.json")
     assert mm["parameters"]["methodParameters"] == mining["methodParameters"]
@@ -507,3 +524,148 @@ def test_mx8_corrupted_geometry_is_refused_never_trusted(
     assert "do not match" in msg or "unknown room" in msg
     assert export(cut_fill.client, cut_fill.sid).files
     assert export(room_pillar.client, room_pillar.sid).files
+
+
+# --------------------------------------------------------------------------- #
+# MX-11 … MX-13 — MineExchange 1.3.1 (hardening PR-2, H2-CF)
+# --------------------------------------------------------------------------- #
+
+
+def test_mx11_cut_fill_blocks_panels_sequencing_and_cemented_backfills(
+    cut_fill: TabularStack, cut_fill_bundle: Bundle
+) -> None:
+    b = cut_fill_bundle
+    src = cut_fill.artifact(STOPES_ARTIFACT)
+    doc = b.json("production/cut_fill.json")
+    assert doc["mineExchangeVersion"] == "1.3.1"
+    # sequencing: the resolved assumptions and the deterministic start orders
+    seq = doc["sequencing"]
+    assert seq == src["sequencing"]
+    assert seq["stopingDirection"] == "OVERHAND" and seq["blockOrder"] == "SHALLOW_TO_DEEP"
+    assert seq["maxConcurrentPanels"] == 2
+    # blocks / panels are SEMANTIC (no geometry file) and reference exported cuts
+    cut_eids = {c["entityId"] for c in doc["cuts"]}
+    assert [bl["blockId"] for bl in doc["blocks"]] == seq["blockOrderIds"]
+    assert [pn["panelId"] for pn in doc["panels"]] == seq["panelStartOrder"]
+    panel_ids = {pn["panelId"] for pn in doc["panels"]}
+    for bl in doc["blocks"]:
+        assert set(bl["panelIds"]) <= panel_ids and bl["liftIndices"]
+        assert isinstance(bl["sillMatRequired"], bool)
+    crosscuts = {e["sourceId"]: e["entityId"] for e in _entities(b, "CROSSCUT")}
+    for pn in doc["panels"]:
+        assert pn["blockId"] in {bl["blockId"] for bl in doc["blocks"]}
+        assert pn["cutEntityIds"] and set(pn["cutEntityIds"]) <= cut_eids
+        assert pn["accessEntityId"] == crosscuts[pn["accessDevelopmentId"]]
+        assert pn["uMax"] > pn["uMin"]
+    assert not any(e["kind"] in ("BLOCK", "PANEL") for e in b.manifest["entities"])
+    # every cut names its block / panel / lift-in-block exactly as persisted
+    by_cut = {c["id"]: c for c in src["cuts"]}
+    for c in doc["cuts"]:
+        rec = by_cut[c["cutId"]]
+        assert (c["blockId"], c["panelId"], c["panelIndex"], c["liftIndexInBlock"]) == (
+            rec["blockId"],
+            rec["panelId"],
+            rec["panelIndex"],
+            rec["liftIndexInBlock"],
+        )
+        assert c["panelId"] in panel_ids
+    for lf in doc["lifts"]:
+        assert lf["blockId"] in {bl["blockId"] for bl in doc["blocks"]}
+        assert lf["liftIndexInBlock"] >= 0
+    # cemented sill mats: the flag is the persisted one and some exist (default order)
+    by_bf = {bf["id"]: bf for bf in src["backfills"]}
+    assert all(bf["cemented"] == by_bf[bf["backfillId"]]["cemented"] for bf in doc["backfills"])
+    cemented = [bf for bf in doc["backfills"] if bf["cemented"]]
+    assert cemented and len(cemented) == doc["metrics"]["cementedBackfillCount"]
+    # no rib pillars with the default width → no PILLAR entity, metrics 0
+    assert doc["ribPillars"] == [] and doc["metrics"]["ribPillarCount"] == 0
+    assert not _entities(b, "PILLAR")
+    assert not any(p.startswith("production/cut_fill/pillars/") for p in b.entries)
+
+
+@pytest.fixture(scope="module")
+def cut_fill_rib(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TabularStack]:
+    stack = _method_stack(
+        tmp_path_factory.mktemp("exchange-cut-fill-rib"),
+        "CUT_AND_FILL",
+        {
+            "kind": "CUT_AND_FILL",
+            "liftHeightM": 4.0,
+            "cutLengthM": 15.0,
+            "stopingDirection": "OVERHAND",
+            "blockOrder": "DEEP_TO_SHALLOW",
+            "panelLengthM": 60.0,
+            "ribPillarWidthM": 6.0,
+            "maxConcurrentPanels": 1,
+            "sillMatCureDays": 28.0,
+        },
+    )
+    yield stack
+    stack.close()
+
+
+def test_mx12_rib_pillars_are_pillar_entities_with_their_own_closed_prisms(
+    cut_fill_rib: TabularStack,
+) -> None:
+    b = export(cut_fill_rib.client, cut_fill_rib.sid)
+    assert_integrity(b)
+    src = cut_fill_rib.artifact(STOPES_ARTIFACT)
+    doc = b.json("production/cut_fill.json")
+    assert doc["parameters"]["ribPillarWidthM"] == 6.0
+    assert doc["sequencing"]["blockOrder"] == "DEEP_TO_SHALLOW"
+    assert not any(bf["cemented"] for bf in doc["backfills"])  # no sill mat deep-first
+    assert doc["metrics"]["cementedBackfillCount"] == 0
+    pillars = _entities(b, "PILLAR")
+    assert len(pillars) == len(src["ribPillars"]) == len(doc["ribPillars"]) > 0
+    by_src = {p["id"]: p for p in src["ribPillars"]}
+    for ent, row in zip(pillars, doc["ribPillars"], strict=True):
+        assert ent["entityId"] == row["entityId"] == f"pillar:{row['pillarId']}"
+        assert ent["sourceArtifact"] == STOPES_ARTIFACT and ent["sourceId"] == row["pillarId"]
+        rec = by_src[row["pillarId"]]
+        assert ent["levelId"] == next(
+            bl["lowerLevelId"] for bl in doc["blocks"] if bl["blockId"] == row["blockId"]
+        )
+        _check_solid(b, ent, "PILLAR_SOLID", rec)
+        assert all(p.startswith("production/cut_fill/pillars/") for p in ent["files"][:3])
+        assert row["tonnesEquivalent"] == rec["tonnesEquivalent"]
+        assert row["geometricVolumeM3"] == rec["geometricVolumeM3"]
+        assert {row["leftPanelId"], row["rightPanelId"]} <= {pn["panelId"] for pn in doc["panels"]}
+    assert doc["metrics"]["ribPillarCount"] == len(pillars)
+    assert doc["metrics"]["totalRibPillarVolumeM3"] == src["metrics"]["totalRibPillarVolumeM3"]
+    # pillars are production ENTITIES of the bundle but never production
+    # units (the schedule never targets them — tests/test_production_timeline
+    # CF-18 — and this stack carries no timeline: TIMELINE is ARTIFACT_ABSENT)
+    pillar_eids = {p["entityId"] for p in pillars}
+    assert b.omissions()["TIMELINE"] == "ARTIFACT_ABSENT"
+    mm = b.json("semantics/mining_method.json")
+    assert mm["production"]["unitCount"] == len(src["cuts"])
+    assert set(pillar_eids) <= set(mm["production"]["entityIds"])
+
+
+def test_mx13_longhole_and_room_pillar_documents_keep_their_1_3_0_shape(
+    client: TestClient, room_pillar_bundle: Bundle
+) -> None:
+    """1.3.1 is an additive PATCH: no Longhole / Room & Pillar document gains a
+    key, and the STL / OBJ / DXF / CSV writers never embed the version — only
+    the GLB generator / node extras carry it."""
+    sid = _create(client)
+    _post(client, f"/api/v1/scenarios/{sid}/world/generate")
+    b = export(client, sid)
+    mm = b.json("semantics/mining_method.json")
+    assert "methodParameters" not in mm["parameters"]
+    new_keys = {"sequencing", "blocks", "panels", "ribPillars", "cemented", "blockId", "panelId"}
+    assert not (set(mm) & new_keys)
+    rp = room_pillar_bundle.json("production/room_pillar.json")
+    assert not (set(rp) & new_keys)
+    assert set(rp["parameters"]) == {
+        "kind",
+        "roomWidthM",
+        "pillarWidthM",
+        "headingHeightM",
+        "benchCount",
+        "boundaryPillarM",
+    }
+    src_root = Path(__file__).resolve().parents[1] / "src" / "minegen" / "exchange" / "formats"
+    for name in ("stl.py", "obj.py", "dxf.py", "csv_table.py", "asc.py"):
+        assert "MINE_EXCHANGE_VERSION" not in (src_root / name).read_text(encoding="utf-8"), name
+    assert "MINE_EXCHANGE_VERSION" in (src_root / "glb.py").read_text(encoding="utf-8")

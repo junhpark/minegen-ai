@@ -53,13 +53,23 @@ export function productionKindOf(payload: ProductionPayload): ProductionKind | n
 /** Every solid of the ACTIVE production payload, in persisted order. */
 export function productionSolids(payload: ProductionPayload): ProductionSolid[] {
   if (payload.method === 'CUT_AND_FILL') {
-    return payload.cuts.map((c) => ({
-      id: c.id,
-      kind: 'CUT',
-      geometry: c.geometry,
-      valid: c.report.valid,
-      scheduled: true,
-    }))
+    return [
+      ...payload.cuts.map((c): ProductionSolid => ({
+        id: c.id,
+        kind: 'CUT',
+        geometry: c.geometry,
+        valid: c.report.valid,
+        scheduled: true,
+      })),
+      // rib pillars are RETAINED material (never scheduled, never tonnes)
+      ...payload.ribPillars.map((p): ProductionSolid => ({
+        id: p.id,
+        kind: 'PILLAR',
+        geometry: p.geometry,
+        valid: p.report.valid,
+        scheduled: false,
+      })),
+    ]
   }
   if (payload.method === 'ROOM_AND_PILLAR') {
     return [
@@ -123,7 +133,9 @@ export const PRODUCTION_ACTION: Record<ProductionKind, string> = {
 export function productionSummary(payload: ProductionPayload): string | null {
   if (payload.method === 'CUT_AND_FILL') {
     const m = payload.metrics
-    return m ? `${m.cutCount} cuts · ${m.liftCount} lifts · ${m.backfillCount} backfills` : null
+    if (!m) return null
+    const pillars = m.ribPillarCount > 0 ? ` · ${m.ribPillarCount} rib pillars` : ''
+    return `${m.cutCount} cuts · ${m.panelCount} panels · ${m.blockCount} blocks · ${m.backfillCount} backfills${pillars}`
   }
   if (payload.method === 'ROOM_AND_PILLAR') {
     const m = payload.metrics

@@ -1,0 +1,16 @@
+{
+  "cutFillModelVersion": null,
+  "generatedFromGitSha": "1bd68c807730d12053d723d1189c4b901a18cf3e",
+  "miningMethod": "CUT_AND_FILL",
+  "note": "PR #53 Cut & Fill scenario directory captured through the PR #53 routes; stat.json restores the size / mtime_ns identities the world commit record and the layout revisions bind to",
+  "scenarioId": "cf148ef2bd63",
+  "stages": [
+    "WORLD",
+    "LAYOUT",
+    "ACTIVATE",
+    "LEVELS",
+    "NETWORK",
+    "PRODUCTION",
+    "SCHEDULE"
+  ]
+}

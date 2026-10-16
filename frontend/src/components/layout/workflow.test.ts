@@ -60,6 +60,8 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
     expect(modeForStage('ANALYSIS')).toBe('ANALYSIS')
     expect(modeForStage('EXPORT')).toBe('DESIGN')
     expect(designTabFor('METHOD')).toBe('MINING')
+    // PR #54 review B3: the Access stage's card lives in Setup (no Design tab)
+    expect(designTabFor('ACCESS')).toBe('LAYOUT')
     expect(designTabFor('EXCAVATION')).toBe('DEVELOP')
     expect(designTabFor('CAPABILITY')).toBe('NETWORK')
     expect(designTabFor('LAYOUT')).toBe('LAYOUT')
@@ -68,6 +70,7 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
   it('maps each stage to its backend reset stage explicitly (Setup → WORLD preview only)', () => {
     expect(resetStageFor('SCENARIO')).toBe('WORLD')
     expect(resetStageFor('METHOD')).toBe('WORLD')
+    expect(resetStageFor('ACCESS')).toBe('WORLD')
     expect(resetStageFor('LEVELS')).toBe('LEVELS')
     expect(resetStageFor('EXCAVATION')).toBe('EXCAVATION')
     expect(resetStageFor('ANALYSIS')).toBeNull()
@@ -87,6 +90,7 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
     })
     expect(g.SCENARIO).toBe('NEXT')
     expect(g.METHOD).toBe('WAITING')
+    expect(g.ACCESS).toBe('WAITING')
     expect(g.LAYOUT).toBe('WAITING')
     expect(g.SHAFTS).toBe('OPTIONAL')
     expect(g.ANALYSIS).toBe('WAITING')
@@ -110,6 +114,7 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
     })
     expect(g.SCENARIO).toBe('DONE')
     expect(g.METHOD).toBe('DONE')
+    expect(g.ACCESS).toBe('DONE') // "Ramp only" is a decision too (PR #54 review B3)
     expect(g.LAYOUT).toBe('DONE')
     expect(g.LEVELS).toBe('DONE')
     expect(g.EXCAVATION).toBe('NEXT') // one of the two meshes is missing
@@ -170,6 +175,34 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
     expect(g.SHAFTS).toBe('WAITING') // declared shafts are a real stage
   })
 
+  it('a declared shaft is done only when its plan AND its mesh exist (PR #54 review B3)', () => {
+    const base = {
+      scenario: true,
+      shaftSpecCount: 1,
+      running: none,
+      completed: none,
+    }
+    const built = scene({
+      rampSource: { activeSource: 'LAYOUT_V2', available: true },
+      levels: ok('levels'),
+    })
+    expect(stageStatuses({ ...base, scene: built }).SHAFTS).toBe('WAITING')
+    const planned = stageStatuses({ ...base, scene: scene({ ...built, shafts: ok('shafts') }) })
+    expect(planned.SHAFTS).toBe('WAITING') // the plan alone is not the stage
+    const swept = stageStatuses({
+      ...base,
+      scene: scene({ ...built, shafts: ok('shafts'), shaftMesh: ok('shaft-mesh') }),
+    })
+    expect(swept.SHAFTS).toBe('DONE')
+    const failedMesh = stageStatuses({
+      ...base,
+      scene: scene({ ...built, shafts: ok('shafts'), shaftMesh: { status: 'FAILED' } }),
+    })
+    expect(failedMesh.SHAFTS).toBe('FAILED')
+    // no declaration: optional, whatever exists below
+    expect(stageStatuses({ ...base, shaftSpecCount: 0, scene: built }).SHAFTS).toBe('OPTIONAL')
+  })
+
   it('Analysis follows the last Systems stage and Export follows Analysis; the viewer completes them (S2)', () => {
     const built = scene({
       rampSource: { activeSource: 'LAYOUT_V2', available: true },
@@ -228,6 +261,8 @@ describe('workflow model (hardening H1 §4.1–4.3)', () => {
     expect(entryStageOf('SETUP', g)).toBe('SCENARIO')
     expect(entryStageOf('NETWORK', g)).toBe('NETWORK')
     expect(nextStage('SCENARIO')).toBe('METHOD')
+    expect(nextStage('METHOD')).toBe('ACCESS')
+    expect(nextStage('ACCESS')).toBe('LAYOUT')
     expect(nextStage('EXPORT')).toBeNull()
   })
 })

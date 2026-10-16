@@ -153,6 +153,13 @@ class DevelopmentMeshNotGeneratedError(LookupError):
     http_status: ClassVar[int] = 409
 
 
+class ShaftMeshNotGeneratedError(LookupError):
+    """shaft_mesh.json does not exist for the scenario (hardening PR-2 H2-SH)."""
+
+    code: ClassVar[str] = "SHAFT_MESH_NOT_GENERATED"
+    http_status: ClassVar[int] = 409
+
+
 class LevelsNotGeneratedError(LookupError):
     """levels.json does not exist for the scenario."""
 
@@ -291,6 +298,21 @@ class ShaftsStaleError(RuntimeError):
         )
 
 
+class ShaftMeshStaleError(RuntimeError):
+    """shaft_mesh.json was swept from a different ``shafts.json`` revision
+    than the one on disk (hardening PR-2 H2-SH): the mesh is a derivative of
+    the shaft geometry and never served beside moved shafts."""
+
+    code: ClassVar[str] = "SHAFT_MESH_STALE"
+    http_status: ClassVar[int] = 409
+
+    def __init__(self, scenario_id: str) -> None:
+        super().__init__(
+            f"the shaft excavation mesh of scenario '{scenario_id}' belongs to a previous "
+            "shaft revision; POST …/design/shaft-mesh again"
+        )
+
+
 class LayoutSelectionStaleError(RuntimeError):
     """``layout_v2_selected.json`` was written for a different layout-v2
     catalogue revision than the one on disk (Phase 20B.1-v2 1.1). The
@@ -343,6 +365,49 @@ class ArtifactMalformedError(RuntimeError):
         super().__init__(f"the persisted artifact '{artifact}' is not usable: {detail}")
         self.artifact = artifact
         self.detail = detail
+
+
+class CutFillLegacyArtifactError(RuntimeError):
+    """PR #54 review B2 — a persisted Cut & Fill artifact (``stopes.json``
+    under CUT_AND_FILL, or a ``levels.json`` whose ``productionDevelopment``
+    is CUT_AND_FILL) of an EARLIER Cut & Fill model version than
+    ``mining.models.CUT_FILL_MODEL_VERSION``: the PR #53 shape (one central
+    crosscut per level, no blocks / panels / sill mats). It is a recognized
+    older model, not corruption — never ARTIFACT_MALFORMED, never
+    reinterpreted and never served: the scene read migrates it explicitly by
+    discarding the Levels closure (``WorldService.scene``), every other read
+    answers this typed 409 until the levels are regenerated."""
+
+    code: ClassVar[str] = "CUT_FILL_LEGACY_ARTIFACT"
+    http_status: ClassVar[int] = 409
+
+    def __init__(
+        self,
+        artifact: str,
+        found_version: int | None,
+        required_version: int,
+        *,
+        source_artifact: str | None = None,
+    ) -> None:
+        found = "absent" if found_version is None else str(found_version)
+        subject = (
+            f"the persisted artifact '{artifact}' is a legacy Cut & Fill artifact"
+            if source_artifact is None
+            else (
+                f"the persisted artifact '{artifact}' derives from the legacy Cut & Fill "
+                f"artifact '{source_artifact}'"
+            )
+        )
+        super().__init__(
+            f"{subject} (cutFillModelVersion {found}, current {required_version}); it is "
+            "never reinterpreted — the scene read discards the level development and "
+            "everything below it, then regenerate Levels → Production → Schedule"
+        )
+        self.artifact = artifact
+        self.found_version = found_version
+        self.required_version = required_version
+        #: the LEGACY artifact this one derives from (``None`` on the source itself)
+        self.source_artifact = source_artifact
 
 
 class ArtifactStaleError(RuntimeError):

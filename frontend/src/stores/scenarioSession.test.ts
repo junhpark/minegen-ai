@@ -345,3 +345,36 @@ describe('scenario REVISION boundary (a PUT under the same id — review blocker
     expect(r()).toBe(r0 + 4)
   })
 })
+
+describe('demo identity (hardening PR-2 H4)', () => {
+  const entry = {
+    id: 'demo-a',
+    title: 'Demo A',
+    description: '',
+    orebodyType: 'TABULAR',
+    miningMethod: 'LONGHOLE_OPEN_STOPING',
+    preset: 'BASELINE',
+    seed: 1,
+    faultCount: 1,
+    stages: ['WORLD'],
+    labels: ['DEMO', 'SYNTHETIC'],
+    available: true,
+    reason: null,
+  }
+  it('is part of the scenario transition and never survives the next one', () => {
+    activateScenario(scenario('demo-a'), entry)
+    expect(state().demo).toEqual(entry)
+    // re-selecting the same id refreshes the document and keeps the demo fact
+    activateScenario(scenario('demo-a'), entry)
+    expect(state().demo).toEqual(entry)
+    // a saved scenario clears it; so does a revision replace and a null scenario
+    activateScenario(scenario('B'))
+    expect(state().demo).toBeNull()
+    activateScenario(scenario('demo-a'), entry)
+    activateScenarioRevision(scenario('demo-a'))
+    expect(state().demo).toBeNull()
+    activateScenario(scenario('demo-a'), entry)
+    activateScenario(null)
+    expect(state().demo).toBeNull()
+  })
+})

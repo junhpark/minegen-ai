@@ -1,0 +1,267 @@
+{
+  "capability": {
+    "edgeTypeCapabilities": null
+  },
+  "design": {
+    "baseCostPerM": 1.0,
+    "bottomMiningMargin": 10.0,
+    "candidateAlongStrikeSpan": 100.0,
+    "candidateCount": 5,
+    "minimumSurfaceCover": 0.0,
+    "orebodyExclusionBuffer": 5.0,
+    "orebodySterilizationRange": 15.0,
+    "orebodySterilizationWeight": 5.0,
+    "portalFootwallDistance": 350.0,
+    "restrictedZones": [],
+    "rockPenaltyWeight": 2.0,
+    "search": {
+      "allowReverseGrade": false,
+      "goalShotMaxHeadingChangeDeg": 45.0,
+      "goalShotRadiusPrimitives": 5.0,
+      "gradeFractions": [
+        0.0,
+        0.5,
+        1.0
+      ],
+      "headingBins": 16,
+      "heuristicWeight": 2.0,
+      "maxCandidatesPerLevel": 5,
+      "maxChainBacktracks": 24,
+      "maxExpansionsPerCandidate": 250000,
+      "maxSampleSpacing": 2.0,
+      "maxSearchSeconds": null,
+      "standoffRadiusFactor": 3.0,
+      "tieBreakBucketPrimitives": 2.0,
+      "tieBreakMode": "cone",
+      "turnPenaltyFactor": 0.5,
+      "verticalTolerance": 0.5,
+      "xyResolution": 5.0,
+      "zResolution": 1.0
+    },
+    "smoothing": {
+      "bendingWeight": 1.0,
+      "controlSpacing": 5.0,
+      "fidelityWeight": 0.1,
+      "gradeNumericalTolerance": 1e-05,
+      "maxDeviationFromRaw": 10.0,
+      "maxFieldCostIncreasePct": 5.0,
+      "maxIterations": 200,
+      "maxRepairs": 3,
+      "outputSpacing": 2.0,
+      "radiusNumericalTolerance": 0.05,
+      "repairBlendFactor": 0.5,
+      "stepSize": 0.03
+    },
+    "topMiningMargin": 10.0
+  },
+  "fieldSampling": {
+    "spacingX": 10.0,
+    "spacingY": 10.0,
+    "spacingZ": 10.0
+  },
+  "geology": {
+    "faults": [
+      {
+        "coreHalfWidth": 2.5,
+        "corePenalty": 50.0,
+        "damageZonePenalty": 10.0,
+        "dipDeg": 65.0,
+        "influenceHalfWidth": 20.0,
+        "origin": {
+          "x": -60.0,
+          "y": -80.0,
+          "z": 0.0
+        },
+        "strikeDeg": 120.0
+      }
+    ],
+    "rockQuality": {
+      "correlationLengthXy": 80.0,
+      "correlationLengthZ": 40.0,
+      "maximum": 90.0,
+      "mean": 65.0,
+      "minimum": 20.0,
+      "std": 12.0
+    }
+  },
+  "id": "cf148ef2bd63",
+  "infrastructure": {
+    "communication": {
+      "assetType": "MESH_ROUTER",
+      "backhaulRangeM": 120.0,
+      "candidateSpacingM": 40.0,
+      "coverageRangeM": 100.0,
+      "demandSpacingM": 20.0,
+      "requiredCoverageFraction": 1.0
+    },
+    "sensors": {
+      "assetType": "GAS_SENSOR",
+      "candidateSpacingM": 40.0,
+      "demandSpacingM": 20.0,
+      "monitoringRangeM": 60.0,
+      "requiredCoverageFraction": 1.0
+    }
+  },
+  "layout": {
+    "access": {
+      "accessSamplingSpacing": 2.0,
+      "anchorStandoff": null,
+      "entryPolicy": "NEAREST_TO_RAMP",
+      "junctionSearchSpacing": 10.0,
+      "junctionWindowAbove": 45.0,
+      "junctionWindowBelow": 10.0,
+      "maxGradient": null,
+      "maximumAccessLength": 300.0,
+      "maximumTurnoutHeadingChangeDeg": 100.0,
+      "minTurnRadius": null,
+      "minimumAccessLength": 15.0,
+      "minimumExcavationSeparation": null,
+      "minimumRampJunctionSpacing": 40.0,
+      "minimumRampToEntryPlanSeparation": null,
+      "minimumTurnoutStraightBuffer": 25.0,
+      "preferredAccessLength": null
+    },
+    "accessReach": 60.0,
+    "approachMinGradientFraction": 0.5,
+    "clearanceRefinementFactor": 2,
+    "clearanceRefinementMaxCells": 8000000,
+    "footwallStandoff": null,
+    "levelIntervalTolerance": 1e-06,
+    "longitudinal": {
+      "orientations": [
+        "STRIKE_POSITIVE",
+        "STRIKE_NEGATIVE"
+      ],
+      "sides": [
+        "FOOTWALL",
+        "HANGING_WALL"
+      ]
+    },
+    "longitudinalExtension": 400.0,
+    "minStraightLength": 20.0,
+    "sampleSpacing": 2.0,
+    "sectionSamplingSpacing": 2.0,
+    "shortlistSize": 12,
+    "spiral": {
+      "entryOrientationsDeg": [
+        -45.0,
+        0.0,
+        45.0
+      ],
+      "turnSenses": [
+        "CW",
+        "CCW"
+      ],
+      "turnsPerLevel": [
+        1.0,
+        1.5,
+        2.0
+      ]
+    },
+    "switchback": {
+      "initialTurnSenses": [
+        "CW",
+        "CCW"
+      ],
+      "legsPerLevel": [
+        1,
+        2
+      ],
+      "principalOrientationsDeg": [
+        -20.0,
+        0.0,
+        20.0
+      ],
+      "stationLengthsM": null
+    },
+    "targetGradients": [
+      0.12,
+      0.1
+    ],
+    "weights": {
+      "development": 1.0,
+      "geology": 1.0,
+      "geometry": 1.0
+    },
+    "worldMargin": 25.0
+  },
+  "mining": {
+    "method": "CUT_AND_FILL",
+    "methodParameters": {
+      "cutLengthM": 15.0,
+      "kind": "CUT_AND_FILL",
+      "liftHeightM": 4.0
+    },
+    "minimumPillar": 5.0,
+    "stopeLength": 30.0,
+    "sublevelInterval": 25.0
+  },
+  "name": "legacy-pr53-cut-fill",
+  "orebody": {
+    "center": {
+      "x": 40.0,
+      "y": 20.0,
+      "z": -50.0
+    },
+    "density": 2.8,
+    "dipDeg": 70.0,
+    "gradeCorrelationLengthXy": 80.0,
+    "gradeCorrelationLengthZ": 40.0,
+    "gradeVariability": 0.3,
+    "height": 120.0,
+    "length": 200.0,
+    "meanGrade": 4.2,
+    "orebodyType": "TABULAR",
+    "strikeDeg": 35.0,
+    "thickness": 12.0,
+    "warpedVein": null
+  },
+  "portal": null,
+  "ramp": {
+    "clearance": 3.0,
+    "footwallAccessOffset": 20.0,
+    "levelDriftGradient": 0.0,
+    "maxGradient": 0.12,
+    "minTurnRadius": 18.0,
+    "tunnelHeight": 5.0,
+    "tunnelWidth": 5.0
+  },
+  "schedule": {
+    "backfillCureDays": 7.0,
+    "backfillM3PerDay": 500.0,
+    "crosscutAdvanceMPerDay": 4.0,
+    "driftAdvanceMPerDay": 5.0,
+    "levelAccessAdvanceMPerDay": 4.0,
+    "muckingTonnesPerDay": 1500.0,
+    "rampAdvanceMPerDay": 4.0,
+    "shaftSinkMPerDay": 1.5,
+    "shaftStationAccessAdvanceMPerDay": 4.0,
+    "stopePreparationDays": 5.0,
+    "stopingTonnesPerDay": 1000.0
+  },
+  "schemaVersion": 2,
+  "seed": 42,
+  "shafts": {
+    "maximumStationAccessLength": 200.0,
+    "minimumShaftSeparation": null,
+    "specs": []
+  },
+  "terrain": {
+    "baseElevation": 100.0,
+    "gridSpacing": 10.0,
+    "octaves": 3,
+    "relief": 40.0
+  },
+  "tunnelProfile": {
+    "archSegments": 16,
+    "creaseAngleDeg": 40.0,
+    "ringMaxSpacing": 2.0,
+    "ringMaxTurnDeg": 7.0,
+    "wallHeight": 2.5
+  },
+  "world": {
+    "depth": 250.0,
+    "sizeX": 400.0,
+    "sizeY": 400.0
+  }
+}

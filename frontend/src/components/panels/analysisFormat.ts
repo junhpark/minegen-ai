@@ -2,7 +2,7 @@
  * Phase 22A/B — display formatting of backend analysis numbers. Pure
  * presentation: rounding for the readout only, never a computation.
  */
-import type { Availability } from '@/types/analysis'
+import type { Availability, PlanningIrr } from '@/types/analysis'
 import type { StatusTone } from '@/components/ui/presentation'
 
 const F0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
@@ -65,4 +65,23 @@ export const METHOD_LABEL: Record<string, string> = {
   ROOM_AND_PILLAR: 'Room & Pillar',
   SUBLEVEL_CAVING: 'Sublevel Caving',
   SHRINKAGE_STOPING: 'Shrinkage Stoping',
+}
+
+/** hardening PR-2 H3 §8.2 — the Planning IRR readout: a percentage when
+ * DEFINED, the typed reason otherwise (never NaN, never a blank) */
+export function irrText(irr: PlanningIrr | null | undefined): string {
+  if (!irr) return '—'
+  if (irr.status === 'DEFINED' && irr.annualRate !== null) {
+    return `${(irr.annualRate * 100).toFixed(1)} %`
+  }
+  if (irr.status === 'NOT_DEFINED') return `NOT_DEFINED · ${irr.reason ?? ''}`.trim()
+  return 'NOT_CONFIGURED'
+}
+
+/** signed currency delta in the layout-comparison convention: `+USD 5,700`,
+ * `−USD 5,700`, `±USD 0` — the sign is the backend's, never recomputed */
+export function signedMoney(v: number | null | undefined, code: string | null): string {
+  if (v === null || v === undefined) return '—'
+  const sign = v > 0 ? '+' : v < 0 ? '−' : '±'
+  return `${sign}${money(Math.abs(v), code)}`
 }

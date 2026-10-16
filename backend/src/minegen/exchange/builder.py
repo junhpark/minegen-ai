@@ -78,9 +78,13 @@ from minegen.exchange.models import (
     ExchangeCapabilityEdge,
     ExchangeCapabilityNode,
     ExchangeCut,
+    ExchangeCutFillBlock,
     ExchangeCutFillLift,
     ExchangeCutFillMetrics,
+    ExchangeCutFillPanel,
     ExchangeCutFillParameters,
+    ExchangeCutFillRibPillar,
+    ExchangeCutFillSequencing,
     ExchangeDevelopmentProgress,
     ExchangeEgressAdvisory,
     ExchangeEntity,
@@ -1916,6 +1920,11 @@ _PILLAR_NOTES = (
     "retained pillar prism (material left in place); planning geometry, never a "
     "geotechnical pillar design or certification; never scheduled",
 )
+_RIB_PILLAR_NOTES = (
+    "retained Cut & Fill rib pillar prism between two panels of one block (material left "
+    "in place); planning geometry, never a geotechnical pillar design or certification; "
+    "never scheduled, never planned tonnes",
+)
 
 #: production omission group / semantics document per typed payload class
 _PRODUCTION_KIND: dict[type, ProductionKind] = {
@@ -2169,7 +2178,16 @@ def _cut_fill_parameters(scenario: Scenario) -> ExchangeCutFillParameters:
     mp = scenario.mining.method_parameters
     if not isinstance(mp, CutFillParameters):
         raise ExchangeExportError("scenario carries no CutFillParameters for CUT_AND_FILL")
-    return ExchangeCutFillParameters(lift_height_m=mp.lift_height_m, cut_length_m=mp.cut_length_m)
+    return ExchangeCutFillParameters(
+        lift_height_m=mp.lift_height_m,
+        cut_length_m=mp.cut_length_m,
+        stoping_direction=mp.stoping_direction,
+        block_order=mp.block_order,
+        panel_length_m=mp.panel_length_m,
+        rib_pillar_width_m=mp.rib_pillar_width_m,
+        max_concurrent_panels=mp.max_concurrent_panels,
+        sill_mat_cure_days=mp.sill_mat_cure_days,
+    )
 
 
 def _room_pillar_parameters(scenario: Scenario) -> ExchangeRoomPillarParameters:
@@ -2203,8 +2221,11 @@ def _cut_fill(
 ) -> list[str]:
     """CUT entities (one closed prism each under ``production/cut_fill/cuts/``)
     + BACKFILL entities (semantic, 1:1, referencing the cut; no geometry
-    file) + ``production/cut_fill.json``. Persisted order (lowest lift first,
-    cuts along strike) is the bundle order — it is the mining sequence."""
+    file) + 1.3.1 PILLAR entities for the retained rib pillars (one closed
+    prism each under ``production/cut_fill/pillars/``) + the semantic blocks /
+    panels / sequencing + ``production/cut_fill.json``. Persisted order (the
+    panel start order, then the panel's own lifts bottom → top, cuts in a
+    snake) is the bundle order."""
     assert inputs.stopes is not None
     revision = inputs.stopes.revision
     crosscut_entities = _crosscut_entity_by_source(centerlines)
@@ -2273,6 +2294,10 @@ def _cut_fill(
                 cut_index=int(rec["cutIndex"]),
                 lower_level_id=str(rec["lowerLevelId"]),
                 upper_level_id=str(rec["upperLevelId"]),
+                block_id=str(rec["blockId"]),
+                panel_id=str(rec["panelId"]),
+                panel_index=int(rec["panelIndex"]),
+                lift_index_in_block=int(rec["liftIndexInBlock"]),
                 access_development_id=access_dev,
                 access_entity_id=crosscut_entities.get(access_dev),
                 backfill_entity_id=bid,
@@ -2301,6 +2326,7 @@ def _cut_fill(
                 source_cut_id=cid,
                 source_cut_entity_id=eid,
                 volume_m3=bf_volume,
+                cemented=bool(bf["cemented"]),
             )
         )
     if backfill_by_cut:
@@ -2315,6 +2341,8 @@ def _cut_fill(
             v_max=float(lf["vMax"]),
             vertical_height=float(lf["verticalHeight"]),
             cut_entity_ids=[cut_entity_id(str(c)) for c in lf["cutIds"]],
+            block_id=str(lf["blockId"]),
+            lift_index_in_block=int(lf["liftIndexInBlock"]),
         )
         for lf in doc.get("lifts", [])
     ]
@@ -2323,24 +2351,164 @@ def _cut_fill(
         for ceid in lf.cut_entity_ids:
             if ceid not in cut_entity_ids:
                 raise ExchangeExportError(f"lift {lf.lift_index} references unknown cut {ceid!r}")
+    # 1.3.1: blocks / panels (semantic) — every reference re-verified
+    block_ids = {str(b["id"]) for b in doc.get("blocks", [])}
+    panel_ids = {str(pn["id"]) for pn in doc.get("panels", [])}
+    if len(block_ids) != len(doc.get("blocks", [])):
+        raise ExchangeExportError(f"{STOPES_ARTIFACT}: duplicate block ids")
+    if len(panel_ids) != len(doc.get("panels", [])):
+        raise ExchangeExportError(f"{STOPES_ARTIFACT}: duplicate panel ids")
+    blocks_out = []
+    for b in doc.get("blocks", []):
+        for pn in b["panelIds"]:
+            if str(pn) not in panel_ids:
+                raise ExchangeExportError(f"block {b['id']} references unknown panel {pn!r}")
+        blocks_out.append(
+            ExchangeCutFillBlock(
+                block_id=str(b["id"]),
+                lower_level_id=str(b["lowerLevelId"]),
+                upper_level_id=str(b["upperLevelId"]),
+                start_order=int(b["startOrder"]),
+                v_min=float(b["vMin"]),
+                v_max=float(b["vMax"]),
+                vertical_height=float(b["verticalHeight"]),
+                panel_ids=[str(pn) for pn in b["panelIds"]],
+                lift_indices=[int(i) for i in b["liftIndices"]],
+                sill_mat_required=bool(b["sillMatRequired"]),
+            )
+        )
+    panels_out = []
+    for pn in doc.get("panels", []):
+        if str(pn["blockId"]) not in block_ids:
+            raise ExchangeExportError(
+                f"panel {pn['id']} references unknown block {pn['blockId']!r}"
+            )
+        panel_cut_eids = [cut_entity_id(str(c)) for c in pn["cutIds"]]
+        for ceid in panel_cut_eids:
+            if ceid not in cut_entity_ids:
+                raise ExchangeExportError(f"panel {pn['id']} references unknown cut {ceid!r}")
+        access_dev = str(pn["accessDevelopmentId"])
+        panels_out.append(
+            ExchangeCutFillPanel(
+                panel_id=str(pn["id"]),
+                block_id=str(pn["blockId"]),
+                panel_index=int(pn["panelIndex"]),
+                lower_level_id=str(pn["lowerLevelId"]),
+                upper_level_id=str(pn["upperLevelId"]),
+                start_order=int(pn["startOrder"]),
+                u_min=float(pn["uMin"]),
+                u_max=float(pn["uMax"]),
+                strike_length=float(pn["strikeLength"]),
+                access_development_id=access_dev,
+                access_entity_id=crosscut_entities.get(access_dev),
+                cut_entity_ids=panel_cut_eids,
+            )
+        )
+    for rec in doc.get("cuts", []):
+        if str(rec["blockId"]) not in block_ids or str(rec["panelId"]) not in panel_ids:
+            raise ExchangeExportError(
+                f"cut {rec['id']} references unknown block / panel "
+                f"{rec['blockId']!r} / {rec['panelId']!r}"
+            )
+    # 1.3.1: retained rib pillars — PILLAR entities with their own closed prisms
+    rib_pillars_out = []
+    rib_seen: set[str] = set()
+    for pl in doc.get("ribPillars", []):
+        pid = str(pl["id"])
+        if pid in rib_seen or pid in seen:
+            raise ExchangeExportError(f"{STOPES_ARTIFACT}: duplicate rib pillar id {pid!r}")
+        rib_seen.add(pid)
+        if str(pl["blockId"]) not in block_ids:
+            raise ExchangeExportError(f"rib pillar {pid} references unknown block")
+        if str(pl["leftPanelId"]) not in panel_ids or str(pl["rightPanelId"]) not in panel_ids:
+            raise ExchangeExportError(f"rib pillar {pid} references unknown panel")
+        peid = pillar_entity_id(pid)
+        paths, declared = _export_prism(
+            peid,
+            "PILLAR",
+            pid,
+            "pillarId",
+            pl,
+            revision,
+            "production/cut_fill/pillars",
+            "PILLAR_SOLID",
+            _RIB_PILLAR_NOTES,
+            files,
+        )
+        pillar_files = [*paths, "production/cut_fill.json"]
+        entities.append(
+            ExchangeEntity(
+                entity_id=peid,
+                kind="PILLAR",
+                level_id=str(pl.get("lowerLevelId") or _block_lower_level(doc, pl["blockId"])),
+                source_artifact=STOPES_ARTIFACT,
+                source_id=pid,
+                files=pillar_files,
+            )
+        )
+        ids.append(peid)
+        rib_pillars_out.append(
+            ExchangeCutFillRibPillar(
+                entity_id=peid,
+                pillar_id=pid,
+                block_id=str(pl["blockId"]),
+                left_panel_id=str(pl["leftPanelId"]),
+                right_panel_id=str(pl["rightPanelId"]),
+                local_bounds=_local_bounds(pl["localBounds"]),
+                geometric_volume_m3=declared,
+                tonnes_equivalent=float(pl["tonnesEquivalent"]),
+                mean_grade_proxy=_grade(pl.get("meanGradeProxy")),
+                files=pillar_files,
+            )
+        )
+    sequencing = doc.get("sequencing")
+    if not isinstance(sequencing, dict):
+        raise ExchangeExportError(
+            f"{STOPES_ARTIFACT}: SUCCESS Cut & Fill payload has no sequencing"
+        )
+    for pid in sequencing["panelStartOrder"]:
+        if str(pid) not in panel_ids:
+            raise ExchangeExportError(f"panelStartOrder names unknown panel {pid!r}")
+    for bid_ in sequencing["blockOrderIds"]:
+        if str(bid_) not in block_ids:
+            raise ExchangeExportError(f"blockOrderIds names unknown block {bid_!r}")
     doc_out = ExchangeProductionCutFill(
         mine_exchange_version=MINE_EXCHANGE_VERSION,
         source_artifact=STOPES_ARTIFACT,
         source_revision=revision,
         method=str(doc["method"]),
         parameters=_cut_fill_parameters(inputs.scenario),
+        sequencing=ExchangeCutFillSequencing(
+            stoping_direction=str(sequencing["stopingDirection"]),
+            block_order=str(sequencing["blockOrder"]),
+            panel_length_m=float(sequencing["panelLengthM"]),
+            rib_pillar_width_m=float(sequencing["ribPillarWidthM"]),
+            max_concurrent_panels=int(sequencing["maxConcurrentPanels"]),
+            sill_mat_cure_days=float(sequencing["sillMatCureDays"]),
+            block_order_ids=[str(x) for x in sequencing["blockOrderIds"]],
+            panel_start_order=[str(x) for x in sequencing["panelStartOrder"]],
+        ),
+        blocks=blocks_out,
+        panels=panels_out,
         lifts=lifts,
         cuts=cuts_out,
         backfills=backfills_out,
+        rib_pillars=rib_pillars_out,
         metrics=_cut_fill_metrics(doc.get("metrics")),
         notes=[
             "one authoritative closed prism per cut (production/cut_fill/cuts/); cuts share "
             "boundary faces along strike and between lifts; no union, no aggregate body",
             "a BACKFILL entity fills its source cut's void 1:1 and owns no geometry — its "
-            "shape IS the cut solid (sourceCutEntityId)",
-            "cut order (lifts bottom → top, cuts along strike) is the planned mining "
-            "sequence; volume / tonnes / grade proxy are planning quantities, never "
-            "reserves or resources",
+            "shape IS the cut solid (sourceCutEntityId); cemented = a cemented sill-mat fill "
+            "(semantic flag, no fill mechanics)",
+            "1.3.1: blocks (level intervals) and panels (strike partition) are semantic "
+            "parents; cut order (panel start order — block order then centre-out — then "
+            "lifts bottom → top, cuts in a snake) is the planned mining sequence; "
+            "maxConcurrentPanels is a precedence rule, never a capacity",
+            "1.3.1: retained rib pillars are PILLAR entities with one closed prism each "
+            "(production/cut_fill/pillars/) — material left in place, never scheduled, "
+            "never planned tonnes",
+            "volume / tonnes / grade proxy are planning quantities, never reserves or resources",
         ],
     )
     files.append(
@@ -2356,6 +2524,13 @@ def _cut_fill(
         )
     )
     return ids
+
+
+def _block_lower_level(doc: dict[str, Any], block_id: str) -> str:
+    for b in doc.get("blocks", []):
+        if str(b["id"]) == str(block_id):
+            return str(b["lowerLevelId"])
+    raise ExchangeExportError(f"rib pillar references unknown block {block_id!r}")
 
 
 def _cut_fill_metrics(metrics: object) -> ExchangeCutFillMetrics | None:
@@ -2374,6 +2549,14 @@ def _cut_fill_metrics(metrics: object) -> ExchangeCutFillMetrics | None:
         weighted_mean_grade_proxy=_grade(metrics.get("weightedMeanGradeProxy")),
         actual_mean_lift_height=float(metrics["actualMeanLiftHeight"]),
         actual_mean_cut_length=float(metrics["actualMeanCutLength"]),
+        block_count=int(metrics["blockCount"]),
+        panel_count=int(metrics["panelCount"]),
+        rib_pillar_count=int(metrics["ribPillarCount"]),
+        cemented_backfill_count=int(metrics["cementedBackfillCount"]),
+        cemented_backfill_volume_m3=float(metrics["cementedBackfillVolumeM3"]),
+        total_rib_pillar_volume_m3=float(metrics["totalRibPillarVolumeM3"]),
+        total_rib_pillar_tonnes_equivalent=float(metrics["totalRibPillarTonnesEquivalent"]),
+        actual_mean_panel_length=float(metrics["actualMeanPanelLength"]),
     )
 
 

@@ -149,7 +149,7 @@ def assert_integrity(b: Bundle) -> None:
         assert not path.startswith("/") and ".." not in path.split("/") and "\\" not in path
     assert set(b.entries) - listed == {"manifest.json"}
     m = b.manifest
-    assert m["mineExchangeVersion"] == MINE_EXCHANGE_VERSION == "1.3.0"
+    assert m["mineExchangeVersion"] == MINE_EXCHANGE_VERSION == "1.3.1"
     assert m["coordinateSystem"]["name"] == "LOCAL_ENU_Z_UP"
     assert m["coordinateSystem"]["crs"] == "LOCAL_SYNTHETIC"
     assert m["units"]["length"] == "metre"
