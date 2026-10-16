@@ -286,7 +286,7 @@ const GLYPH_TONE: Record<StageTool['glyph'], string> = {
 }
 
 const BASE =
-  'flex h-[52px] w-[64px] flex-col items-center justify-center gap-0.5 rounded-sm px-1 text-[10px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40'
+  'flex h-[52px] min-w-[64px] flex-col items-center justify-center gap-0.5 rounded-sm px-1 text-[10px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40'
 
 function ToolButton({
   tool,
