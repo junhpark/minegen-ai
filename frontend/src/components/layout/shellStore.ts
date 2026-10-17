@@ -23,6 +23,21 @@ import type { StageId } from '@/types/workflow'
  */
 export type StageToneReports = Partial<Record<StageId, Readonly<Record<string, StatusTone>>>>
 
+/**
+ * Hardening PR-3 — a reset confirmation requested from the ribbon's quick
+ * access, the flow dock or the controls column: ONE dialog host (`ResetDialogs`,
+ * mounted once in `App`) serves every request, so a band or dock re-render
+ * never loses an open confirmation. `nonce` distinguishes repeated requests.
+ */
+export type ResetRequest =
+  { kind: 'STAGE'; stage: StageId; nonce: number } | { kind: 'MINE'; nonce: number }
+
+/** the File menu opened on a section by a ribbon tool (Open… / Demos) */
+export interface FileMenuRequest {
+  section: 'OPEN' | 'DEMOS'
+  nonce: number
+}
+
 interface ShellState {
   controlsHost: HTMLElement | null
   resultsHost: HTMLElement | null
@@ -31,6 +46,12 @@ interface ShellState {
   setResultsHost: (el: HTMLElement | null) => void
   /** `reporter` identifies the mounted card (unique per instance); `null` withdraws it */
   reportTone: (stage: StageId, reporter: string, tone: StatusTone | null) => void
+  resetDialog: ResetRequest | null
+  openResetDialog: (request: { kind: 'STAGE'; stage: StageId } | { kind: 'MINE' }) => void
+  closeResetDialog: () => void
+  fileMenuRequest: FileMenuRequest | null
+  requestFileMenu: (section: FileMenuRequest['section']) => void
+  clearFileMenuRequest: () => void
 }
 
 export const useShellStore = create<ShellState>()((set) => ({
@@ -51,6 +72,14 @@ export const useShellStore = create<ShellState>()((set) => ({
       else stageTones[stage] = next
       return { stageTones }
     }),
+  resetDialog: null,
+  openResetDialog: (request) =>
+    set((s) => ({ resetDialog: { ...request, nonce: (s.resetDialog?.nonce ?? 0) + 1 } })),
+  closeResetDialog: () => set({ resetDialog: null }),
+  fileMenuRequest: null,
+  requestFileMenu: (section) =>
+    set((s) => ({ fileMenuRequest: { section, nonce: (s.fileMenuRequest?.nonce ?? 0) + 1 } })),
+  clearFileMenuRequest: () => set({ fileMenuRequest: null }),
 }))
 
 /** the aggregated tone of a stage: RUNNING if any mounted card reports a

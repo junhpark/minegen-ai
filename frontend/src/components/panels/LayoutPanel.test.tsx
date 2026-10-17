@@ -256,7 +256,7 @@ describe('LayoutPanel', () => {
     expect(html).not.toContain('LEVEL_SERVICE_INFEASIBLE')
     // the winner is the default pick: its detail block is shown
     expect(html).toContain('SPIRAL-n1-CW-e+0-g0.120')
-    expect(html).toContain('3825 m')
+    expect(html).toContain('3,825 m')
     expect(html).toContain('R ≥ 18.8 m')
     expect(html).toContain('20.0 m ≥ 10.6 m (bound 10.8 m)')
     // Phase 20B: explicit access, never "served" by an RL crossing
@@ -304,7 +304,7 @@ describe('LayoutPanel', () => {
       }),
     )
     expect(html).toContain('(active)')
-    expect(html).toContain('Layout v2 · SPIRAL-n1-CW-e+0-g0.120 (active)')
+    expect(html).toContain('Option 1 · SPIRAL (active)')
     expect(html).toContain('PARAMETRIC_V2 · 4 segments · layout_v2_selected.json')
   })
 })

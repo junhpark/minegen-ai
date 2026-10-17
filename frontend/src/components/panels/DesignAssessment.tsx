@@ -1,3 +1,6 @@
+import { Fragment, useState } from 'react'
+import { HoverDetail } from '@/components/ui/HoverDetail'
+import { toggled } from '@/components/ui/interaction'
 import type {
   AssessmentCheck,
   CandidateComparisonRow,
@@ -20,6 +23,14 @@ const AUTHORITY_LABEL: Record<AssessmentCheck['authority'], string> = {
   DERIVED_VALIDATION: 'validation',
   ADVISORY: 'advisory',
   INFORMATIONAL: 'info',
+}
+
+/** the long form, shown in the check's detail only */
+const AUTHORITY_LONG: Record<AssessmentCheck['authority'], string> = {
+  HARD_DESIGN_RULE: 'Hard design rule',
+  DERIVED_VALIDATION: 'Derived validation',
+  ADVISORY: 'Design advisory — not a statutory compliance determination',
+  INFORMATIONAL: 'Informational',
 }
 
 /** the status mark: hard rules / validations use ✓ / ✗, an advisory always
@@ -82,14 +93,120 @@ function readout(c: AssessmentCheck): string {
   }
 }
 
+/**
+ * PR-3 round 2 — one readable line per check (mark · title · the backend
+ * readout · authority badge); the backend summary, the long authority
+ * label, the source artifact / field and the evidence open on hover and
+ * on click (an expanded row). Nothing new is computed: the detail shows
+ * the same `AssessmentCheck` fields the row already carried.
+ */
+function CheckDetail({ c }: { c: AssessmentCheck }) {
+  const m = mark(c)
+  const evidence = Object.entries(c.evidence).filter(
+    ([, v]) => v === null || ['string', 'number', 'boolean'].includes(typeof v),
+  )
+  return (
+    <div
+      className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[11px] leading-snug"
+      aria-label="check detail"
+    >
+      <div className="col-span-2 leading-relaxed text-chalk-dim">{c.summary}</div>
+      <span className="text-mute">Status</span>
+      <span className={`readout ${m.className}`}>{statusLabel(c)}</span>
+      <span className="text-mute">Authority</span>
+      <span className="readout text-chalk-dim">{AUTHORITY_LONG[c.authority]}</span>
+      <span className="text-mute">Source</span>
+      <span className="readout break-words text-chalk-dim">
+        {c.sourceArtifact} · {c.sourceField}
+      </span>
+      {evidence.map(([k, v]) => (
+        <Fragment key={k}>
+          <span className="break-words text-mute">{humanKey(k)}</span>
+          <span className="readout break-words text-chalk-dim">{v === null ? '—' : String(v)}</span>
+        </Fragment>
+      ))}
+    </div>
+  )
+}
+
+/** an evidence key as words ("accessibleLevels" → "accessible levels") —
+ * presentation of the backend key, never a renamed field */
+function humanKey(key: string): string {
+  return key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase()
+}
+
+function CheckRow({ c }: { c: AssessmentCheck }) {
+  const [open, setOpen] = useState(false)
+  const m = mark(c)
+  return (
+    <li
+      className="py-0.5"
+      data-check-id={c.id}
+      data-authority={c.authority}
+      data-status={c.status}
+      data-scope={c.scope}
+      aria-label={`${c.title}: ${statusLabel(c)} (${AUTHORITY_LABEL[c.authority]})`}
+    >
+      <HoverDetail label={`${c.title} detail`} detail={<CheckDetail c={c} />}>
+        <button
+          type="button"
+          onClick={() => setOpen(toggled)}
+          aria-expanded={open}
+          className="flex w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-sm px-1 py-1 text-left transition-colors hover:bg-rock-900/60"
+        >
+          <span
+            className={`readout w-3 shrink-0 text-center text-[12px] ${m.className}`}
+            aria-hidden="true"
+          >
+            {m.glyph}
+          </span>
+          <span
+            className={`min-w-0 flex-1 basis-[11rem] text-[12px] leading-snug ${
+              c.authority === 'ADVISORY' ? 'italic text-chalk-dim' : 'text-chalk'
+            }`}
+          >
+            {c.title}
+            {c.scope === 'INACTIVE_LAYOUT_V2' && c.status !== 'NOT_APPLICABLE' ? (
+              <span className="text-mute"> (inactive)</span>
+            ) : null}
+          </span>
+          {/* the readout and the badge sit beside a short title and wrap
+              under a long one — the title is never squeezed */}
+          <span className="ml-auto flex items-center gap-1.5 pl-4">
+            <span className={`readout text-[11px] ${m.className}`}>{readout(c)}</span>
+            <span
+              className={`shrink-0 whitespace-nowrap rounded-sm border px-1 text-[9px] uppercase ${
+                c.authority === 'ADVISORY'
+                  ? 'border-dashed border-chalk-dim text-chalk-dim'
+                  : c.authority === 'INFORMATIONAL'
+                    ? 'border-rock-700 text-mute'
+                    : 'border-rock-700 text-chalk-dim'
+              }`}
+            >
+              {AUTHORITY_LABEL[c.authority]}
+            </span>
+          </span>
+        </button>
+      </HoverDetail>
+      {open ? (
+        <div
+          className="mb-1 ml-5 rounded-sm border border-rock-700 bg-rock-900/60 px-2 py-1.5"
+          data-testid="check-detail"
+        >
+          <CheckDetail c={c} />
+        </div>
+      ) : null}
+    </li>
+  )
+}
+
 export function DesignAssessmentList({ assessment }: { assessment: DesignAssessmentPayload }) {
   return (
-    <div className="readout mt-2 text-[11px]" aria-label="design assessment">
-      <div className="flex justify-between text-chalk-dim">
-        <span>DESIGN ASSESSMENT</span>
-        <span className="text-mute">read-only projection · no statutory claim</span>
+    <div className="mt-2" aria-label="design assessment">
+      <div className="readout text-[10px] text-mute">
+        DESIGN ASSESSMENT · read-only projection · no statutory claim
       </div>
-      <div className="mt-0.5 text-mute" aria-label="assessment scope">
+      <div className="readout mt-0.5 text-[10px] text-mute" aria-label="assessment scope">
         {assessment.activeSource === 'LAYOUT_V2'
           ? `active design: Layout v2 · ${assessment.activeDesignCandidateId ?? '—'}`
           : assessment.layoutScope === 'INACTIVE_LAYOUT_V2'
@@ -97,56 +214,22 @@ export function DesignAssessmentList({ assessment }: { assessment: DesignAssessm
             : 'active design: LEGACY (Hybrid-A*) · no layout-v2 catalogue'}
       </div>
       <ul className="mt-1">
-        {assessment.checks.map((c) => {
-          const m = mark(c)
-          return (
-            <li
-              key={c.id}
-              className="py-0.5"
-              data-check-id={c.id}
-              data-authority={c.authority}
-              data-status={c.status}
-              data-scope={c.scope}
-              aria-label={`${c.title}: ${statusLabel(c)} (${AUTHORITY_LABEL[c.authority]})`}
-            >
-              <div className="flex items-start gap-1">
-                <span className={`w-3 shrink-0 text-center ${m.className}`} aria-hidden="true">
-                  {m.glyph}
-                </span>
-                <span
-                  className={`flex-1 ${c.authority === 'ADVISORY' ? 'italic text-chalk-dim' : ''}`}
-                >
-                  {c.title}
-                  {c.scope === 'INACTIVE_LAYOUT_V2' && c.status !== 'NOT_APPLICABLE' ? (
-                    <span className="text-mute"> (inactive)</span>
-                  ) : null}
-                </span>
-                <span
-                  className={`shrink-0 whitespace-nowrap rounded-sm border px-1 text-[9px] uppercase ${
-                    c.authority === 'ADVISORY'
-                      ? 'border-dashed border-chalk-dim text-chalk-dim'
-                      : c.authority === 'INFORMATIONAL'
-                        ? 'border-rock-700 text-mute'
-                        : 'border-rock-700 text-chalk-dim'
-                  }`}
-                >
-                  {AUTHORITY_LABEL[c.authority]}
-                </span>
-              </div>
-              <div className={`pl-4 text-right ${m.className}`}>{readout(c)}</div>
-            </li>
-          )
-        })}
+        {assessment.checks.map((c) => (
+          <CheckRow key={c.id} c={c} />
+        ))}
       </ul>
       {assessment.egressAdvisory ? (
-        <div className="mt-1 text-mute" aria-label="dual-egress advisory note">
+        <div className="readout mt-1 text-[11px] text-mute" aria-label="dual-egress advisory note">
           Dual-egress design advisory: {assessment.egressAdvisory.meetingNodeCount} /{' '}
           {assessment.egressAdvisory.undergroundNodeCount} underground nodes meet the{' '}
           {assessment.egressAdvisory.requiredRoutes}-route design criterion. This is a design
           advisory, not a statutory compliance determination.
         </div>
       ) : null}
-      <pre className="mt-1 whitespace-pre-wrap font-sans text-mute" aria-label="selection summary">
+      <pre
+        className="readout mt-1 text-[11px] whitespace-pre-wrap font-sans text-mute"
+        aria-label="selection summary"
+      >
         {assessment.summary}
       </pre>
     </div>
@@ -181,7 +264,7 @@ export function AlternativesTable({ assessment }: { assessment: DesignAssessment
       ) : rows.length === 0 ? (
         <div className="mt-1 text-mute">no feasible candidate</div>
       ) : (
-        <table className="mt-1 w-full table-fixed border-collapse whitespace-nowrap text-[10px]">
+        <table className="mt-1 w-full table-fixed border-collapse whitespace-nowrap text-[11px]">
           <colgroup>
             <col className="w-3" />
             <col />

@@ -149,7 +149,9 @@ describe('switching a stage is presentation only (§19, hardening H1 §4.2)', ()
   const design = read(join(LAYOUT, 'DesignWorkspace.tsx'))
   const systems = read(join(LAYOUT, 'SystemsWorkspace.tsx'))
   const analysis = read(join(LAYOUT, 'AnalysisWorkspace.tsx'))
-  const stepper = read(join(LAYOUT, 'StepperBar.tsx'))
+  // PR-3: the ribbon band and the flow dock replaced the stepper row
+  const ribbon = read(join(LAYOUT, 'Ribbon.tsx'))
+  const flowDock = read(join(LAYOUT, 'FlowDock.tsx'))
 
   it('every panel stays mounted and is gated on its own tab, never unmounted', () => {
     expect(design).toContain("<LayoutPanel active={tab === 'LAYOUT'} />")
@@ -166,10 +168,11 @@ describe('switching a stage is presentation only (§19, hardening H1 §4.2)', ()
     }
   })
 
-  it('the stepper and the workspaces only set viewer state — they run no mutation', () => {
-    expect(stepper).toContain('setStage(st)')
+  it('the ribbon, the flow dock and the workspaces only set viewer state — they run no mutation', () => {
+    expect(ribbon).toContain('onStage={setStage}')
+    expect(flowDock).toContain('onSelect={setStage}')
     expect(analysis).toContain('onSelect={setTab}')
-    for (const src of [design, systems, analysis, stepper]) {
+    for (const src of [design, systems, analysis, ribbon, flowDock]) {
       expect(src).not.toContain('mutate')
       expect(src).not.toContain('setLayerVisible')
       expect(src).not.toContain('api.')
@@ -227,14 +230,26 @@ describe('the View panel keeps Layers reachable and independent (§6, hardening 
   })
 })
 
-describe('view modes are not workflow steps (hardening H1 §4.1)', () => {
+describe('view modes are not workflow steps (hardening H1 §4.1, PR-3 ribbon)', () => {
   const top = read(join(LAYOUT, 'TopBar.tsx'))
+  const ribbon = read(join(LAYOUT, 'Ribbon.tsx'))
+  const model = read(join(LAYOUT, 'ribbonModel.ts'))
   const switcher = read(join(LAYOUT, 'ViewSwitcher.tsx'))
 
-  it('the ribbon lists the seven steps and no view mode', () => {
-    expect(top).toContain('WORKFLOW_STEPS.map')
-    expect(top).not.toContain('APP_MODES')
-    expect(top).not.toContain("'WALKTHROUGH'")
+  it('the ribbon tabs are the seven steps (from WORKFLOW_STEPS) plus a View tab — never a view mode as a step', () => {
+    expect(top).toContain('<RibbonTabs />')
+    expect(ribbon).toContain('RIBBON_TABS.map')
+    expect(model).toContain(
+      '...WORKFLOW_STEPS.map((s) => ({ id: s.id, index: s.index, label: s.label }))',
+    )
+    expect(model).toContain("{ id: 'VIEW', index: null, label: 'View' }")
+    for (const src of [top, ribbon, model]) {
+      expect(src).not.toContain('APP_MODES')
+      expect(src).not.toContain("'WALKTHROUGH'")
+    }
+    // selecting the View tab changes no stage; a step tab opens its entry stage
+    expect(ribbon).toContain("if (tab.id === 'VIEW') setRibbonTab('VIEW')")
+    expect(ribbon).toContain('else setStage(entryStageOf(tab.id, glyphs))')
   })
 
   it('3D | 4D | Walk live in the view switcher and keep the walkthrough readiness gate', () => {

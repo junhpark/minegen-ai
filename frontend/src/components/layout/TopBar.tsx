@@ -1,32 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '@/api/client'
-import { useStageGlyphs } from '@/components/layout/useStageGlyphs'
-import { entryStageOf, stepOf, WORKFLOW_STEPS } from '@/components/layout/workflow'
+import { RibbonTabs } from '@/components/layout/Ribbon'
+import { useShellStore } from '@/components/layout/shellStore'
 import { openDemo } from '@/scenario/demos'
 import { openScenario } from '@/scenario/openScenario'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 
 /**
- * Hardening H1 §4.2 — the ribbon:
+ * Hardening H1 §4.2 / PR-3 — the top bar:
  *
- *   MineGen-AI · File ▾ · 1 Setup · 2 Design · 3 Network · 4 Mining · 5 Systems · 6 Analysis · 7 Export · backend
+ *   MineGen-AI · File ▾ · 1 Setup · 2 Design · … · 7 Export · View ·        backend
  *
- * A ribbon step opens its NEXT / failed stage (else its first stage). The
- * 3D / 4D / Walk VIEW modes are not here: they are a view switcher over the
- * viewport, because a view is not a workflow step. The File menu is the
- * second path to the same implementations (Open = the Setup stage's saved
- * list, Export = the Export stage, Import results = Analysis › Simulation
- * Results) — two paths, one implementation each.
+ * The step tabs are the ribbon's TAB row (`RibbonTabs`): a step tab opens
+ * its NEXT / failed stage (else its first stage) and the band under the bar
+ * shows that step's tools; the View tab shows the viewport tools. The
+ * 3D / 4D / Walk VIEW modes are not workflow steps: they live in the View
+ * tab and in the switcher over the viewport. The File menu is the second
+ * path to the same implementations (Open = the Setup stage's saved list,
+ * Demos = the baked catalogue, Export = the Export stage, Import results =
+ * Analysis › Simulation Results) — two paths, one implementation each; the
+ * Setup band's Open… / Demos tools open this menu on that section.
  */
 export function TopBar() {
-  const stage = useViewerStore((s) => s.stage)
-  const setStage = useViewerStore((s) => s.setStage)
   const demo = useScenarioStore((s) => s.demo)
-  const glyphs = useStageGlyphs()
   const health = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 15000 })
-  const currentStep = stepOf(stage)
 
   return (
     <header className="flex h-10 items-center border-b border-rock-700 bg-rock-800 px-3">
@@ -44,29 +43,7 @@ export function TopBar() {
         </span>
       ) : null}
 
-      <nav className="ml-4 flex gap-0.5" aria-label="workflow steps">
-        {WORKFLOW_STEPS.map((step) => {
-          const active = step.id === currentStep
-          return (
-            <button
-              key={step.id}
-              type="button"
-              onClick={() => setStage(entryStageOf(step.id, glyphs))}
-              aria-current={active ? 'step' : undefined}
-              data-step={step.id}
-              className={[
-                'plate whitespace-nowrap rounded-sm px-2 py-1 text-[12px] transition-colors',
-                active
-                  ? 'bg-rock-700 text-lamp shadow-[inset_0_-2px_0_0_var(--color-lamp)]'
-                  : 'text-chalk-dim hover:bg-rock-700/60 hover:text-chalk',
-              ].join(' ')}
-            >
-              <span className="readout mr-1 text-[10px] text-mute">{step.index}</span>
-              {step.label}
-            </button>
-          )
-        })}
-      </nav>
+      <RibbonTabs />
 
       <div className="readout ml-auto flex items-center gap-2 text-[11px]">
         <span
@@ -94,6 +71,16 @@ function FileMenu() {
   const [openList, setOpenList] = useState(false)
   const [demoList, setDemoList] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
+  // PR-3: the Setup band's Open… / Demos tools open this menu on a section
+  const request = useShellStore((s) => s.fileMenuRequest)
+  const clearRequest = useShellStore((s) => s.clearFileMenuRequest)
+  useEffect(() => {
+    if (!request) return
+    setOpen(true)
+    setOpenList(request.section === 'OPEN')
+    setDemoList(request.section === 'DEMOS')
+    clearRequest()
+  }, [request, clearRequest])
   const setStage = useViewerStore((s) => s.setStage)
   const setAnalysisTab = useViewerStore((s) => s.setAnalysisTab)
   const current = useScenarioStore((s) => s.scenario)

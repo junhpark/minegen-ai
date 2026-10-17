@@ -1,14 +1,22 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { api, ApiError } from '@/api/client'
 import { JobProgress } from '@/components/panels/JobProgress'
 import { assessmentKey } from '@/components/panels/assessmentKey'
 import { AlternativesTable, DesignAssessmentList } from '@/components/panels/DesignAssessment'
 import { compareCandidates } from '@/components/panels/layoutOrder'
+import {
+  currentDesignLabel,
+  optionBriefRows,
+  optionLabel,
+  optionSummaryLine,
+  optionValue,
+} from '@/components/panels/candidateSummary'
 import { catalogueExcludedLines, catalogueLevelSummary } from '@/components/panels/levelCoverage'
 import { ActionButton } from '@/components/ui/ActionButton'
 import { artifactTone, nextActionVariant } from '@/components/ui/presentation'
 import { Disclosure } from '@/components/ui/Disclosure'
+import { HoverDetail } from '@/components/ui/HoverDetail'
 import { Metrics } from '@/components/ui/MetricRow'
 import { WorkflowCard } from '@/components/ui/WorkflowCard'
 import { afterLayoutActivate, afterLayoutRegen, afterLayoutSelect } from '@/scene/invalidation'
@@ -215,59 +223,81 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
         </p>
       ) : null}
       {catalogue ? (
-        <div className="readout mt-2 text-[11px]">
-          {/* hardening H1 §4.3: candidates read "Option n" in rank order;
-              the candidate id, family parameters and scores stay in Details
-              (the enumeration itself is unchanged) */}
-          <ul className="mt-1 max-h-56 overflow-y-auto" aria-label="layout candidates">
-            {candidates.map((c) => (
-              <li key={c.candidateId}>
-                <button
-                  type="button"
-                  onClick={() => p.onPick(c.candidateId)}
-                  aria-pressed={picked === c.candidateId}
-                  data-candidate-id={c.candidateId}
-                  className={`flex w-full flex-col py-0.5 text-left ${
-                    picked === c.candidateId ? 'text-lamp' : 'text-chalk-dim'
-                  }`}
-                >
-                  <span className="flex w-full justify-between">
-                    <span>
-                      {c.rank !== null ? `Option ${String(c.rank)} ` : ''}
-                      <span className="text-mute">{c.family}</span>
-                      {c.rank === null ? ` ${shortId(c)}` : ''}
-                      {c.candidateId === catalogue.winnerId ? ' ★' : ''}
-                      {c.candidateId === rampSource?.candidateId && active === 'LAYOUT_V2'
-                        ? ' (active)'
-                        : c.candidateId === selected?.candidateId
-                          ? ' (selected)'
-                          : ''}
-                    </span>
-                    <span className={c.status === 'FEASIBLE' ? '' : 'text-danger'}>
-                      {c.status === 'FEASIBLE'
-                        ? c.scores
-                          ? c.scores.total.toFixed(3)
-                          : '—'
-                        : c.status}
-                    </span>
-                  </span>
-                  <span className="flex w-full justify-between text-mute">
-                    <span>
-                      {c.accessibleLevels !== null
-                        ? `${String(c.accessibleLevels)}/${String(c.requiredLevels)} accessible`
-                        : `${String(c.screenedLevels)}/${String(c.requiredLevels)} screened`}
-                      {c.diagnostics ? ` · ramp ${c.diagnostics.length3d.toFixed(0)} m` : ''}
-                      {c.access ? ` · access ${c.access.totalAccessLength.toFixed(0)} m` : ''}
-                    </span>
-                    <span>
-                      {c.scores
-                        ? `D ${c.scores.development.toFixed(2)} · G ${c.scores.geology.toFixed(2)} · M ${c.scores.geometry.toFixed(2)}`
-                        : c.failureReasons.join(', ')}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
+        <div className="mt-2 text-[11px]">
+          {/* hardening H1 §4.3 / PR-3 round 2: candidates read "Option n" in
+              rank order on ONE readable row (family, score, a summary line);
+              the group scores, geometry, access and clearance open on hover
+              or in the picked row, and the candidate id stays in Details */}
+          <ul
+            className="mt-1 flex max-h-[28rem] flex-col gap-1 overflow-y-auto"
+            aria-label="layout candidates"
+          >
+            {candidates.map((c) => {
+              const isPicked = picked === c.candidateId
+              const value = optionValue(c)
+              const state =
+                c.candidateId === rampSource?.candidateId && active === 'LAYOUT_V2'
+                  ? 'active'
+                  : c.candidateId === selected?.candidateId
+                    ? 'selected'
+                    : null
+              return (
+                <li key={c.candidateId}>
+                  <HoverDetail
+                    label={`${optionLabel(c)} details`}
+                    detail={<OptionBrief candidate={c} />}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => p.onPick(c.candidateId)}
+                      aria-pressed={isPicked}
+                      aria-expanded={isPicked}
+                      data-candidate-id={c.candidateId}
+                      className={`flex w-full flex-col rounded-sm border px-2 py-1.5 text-left transition-colors ${
+                        isPicked
+                          ? 'border-lamp bg-rock-900 text-chalk'
+                          : 'border-rock-700 text-chalk-dim hover:border-rock-600 hover:bg-rock-900/60'
+                      }`}
+                    >
+                      <span className="flex w-full items-baseline justify-between gap-2">
+                        <span className="flex min-w-0 items-baseline gap-1.5">
+                          <span className="text-[13px] font-semibold">{optionLabel(c)} </span>
+                          <span className="plate rounded-sm border border-rock-600 px-1 text-[9px] text-mute">
+                            {c.family}
+                          </span>
+                          {c.candidateId === catalogue.winnerId ? (
+                            <span className="text-[11px] text-lamp" title="ranking winner">
+                              ★
+                            </span>
+                          ) : null}
+                          {state ? (
+                            <span className="plate rounded-sm bg-lamp/15 px-1 text-[9px] text-lamp">
+                              {state}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span
+                          className={`readout shrink-0 text-[13px] ${value.feasible ? '' : 'text-danger'}`}
+                        >
+                          {value.text}
+                        </span>
+                      </span>
+                      <span className="readout mt-0.5 text-[11px] text-mute">
+                        {optionSummaryLine(c)}
+                      </span>
+                    </button>
+                  </HoverDetail>
+                  {isPicked ? (
+                    <div
+                      className="mx-1 border-x border-b border-rock-700 bg-rock-900/60 px-2 py-1.5"
+                      data-testid="option-detail"
+                    >
+                      <OptionBrief candidate={c} />
+                    </div>
+                  ) : null}
+                </li>
+              )
+            })}
           </ul>
           <label className="mt-1 flex items-center gap-1 text-mute">
             <input
@@ -322,31 +352,25 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
             <div className="flex justify-between">
               <span className="text-mute">Current design</span>
               <span className={layoutActive ? 'text-lamp' : 'text-chalk-dim'}>
-                {layoutActive
-                  ? `Layout v2 · ${rampSource?.candidateId ?? '—'} (active)`
-                  : active === 'LEGACY' && (rampSource?.available ?? false)
-                    ? 'Legacy decline (Hybrid-A*) — advanced'
-                    : 'none yet'}
+                {currentDesignLabel(catalogue, rampSource)}
               </span>
             </div>
-            {rampSource ? (
+            {rampSource && !rampSource.available ? (
               <div className="mt-1 text-mute">
-                {rampSource.available
-                  ? `${rampSource.sourceKind ?? '—'} · ${String(rampSource.segmentCount)} segments · ${rampSource.owningArtifact}`
-                  : 'generate candidates, then Select or Activate one to make it the design'}
+                generate candidates, then Select or Activate one to make it the design
               </div>
             ) : null}
             {catalogue ? (
               <>
-                <div className="mt-1 flex justify-between text-chalk-dim">
+                <div className="mt-1 flex justify-between gap-2 text-chalk-dim">
                   <span className={catalogue.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
                     {catalogue.status === 'SUCCESS' ? 'SUCCESS' : 'NO FEASIBLE CANDIDATE'}
                   </span>
-                  <span>
-                    {catalogue.feasibleCount} feasible / {catalogue.candidateCount} enumerated
+                  <span className="text-right">
+                    {catalogue.feasibleCount} feasible / {catalogue.candidateCount} enumerated ·{' '}
+                    {catalogueLevelSummary(catalogue)}
                   </span>
                 </div>
-                <div className="mt-1 text-mute">{catalogueLevelSummary(catalogue)}</div>
                 {catalogueExcludedLines(catalogue).map((line) => (
                   <div
                     key={line}
@@ -367,6 +391,12 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
             <>
               <Metrics
                 rows={[
+                  rampSource?.available
+                    ? {
+                        label: 'Active ramp',
+                        value: `${rampSource.sourceKind ?? '—'} · ${String(rampSource.segmentCount)} segments · ${rampSource.owningArtifact}`,
+                      }
+                    : null,
                   {
                     label: 'Clearance basis',
                     value: `${catalogue.clearanceBasis}${
@@ -419,6 +449,28 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
         />
       ) : null}
     </>
+  )
+}
+
+/** the detail of ONE option — the hover panel and the expanded picked row
+ * show the same backend rows (never the candidate id, rule 191) */
+function OptionBrief({ candidate }: { candidate: LayoutCandidateSummary }) {
+  return (
+    <div
+      className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[11px] leading-snug"
+      aria-label="option detail"
+    >
+      {optionBriefRows(candidate).map((r) => (
+        <Fragment key={r.label}>
+          <span className="text-mute">{r.label}</span>
+          <span
+            className={`readout break-words ${r.tone === 'danger' ? 'text-danger' : 'text-chalk-dim'}`}
+          >
+            {r.value}
+          </span>
+        </Fragment>
+      ))}
+    </div>
   )
 }
 
@@ -525,8 +577,4 @@ function shortPick(catalogue: LayoutV2Catalogue, id: string): string | undefined
 
 function isFeasible(catalogue: LayoutV2Catalogue, id: string): boolean {
   return catalogue.candidates.some((c) => c.candidateId === id && c.status === 'FEASIBLE')
-}
-
-function shortId(c: LayoutCandidateSummary): string {
-  return c.candidateId.slice(c.family.length + 1)
 }

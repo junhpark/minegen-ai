@@ -12,6 +12,7 @@ import {
   systemsTabFor,
 } from '@/components/layout/workflow'
 import type { StageId, ViewMode } from '@/types/workflow'
+import type { Pane, RibbonTab } from '@/components/layout/ribbonModel'
 
 export type CameraMode = 'orbit' | 'walkthrough'
 export type WalkthroughContext = 'STATIC_FINAL' | 'TIMELINE_SNAPSHOT'
@@ -80,6 +81,21 @@ export interface ViewerState {
   /** camera preset request (nonce increments so the same preset can be re-applied) */
   cameraPreset: { kind: 'ISO' | 'TOP' | 'FIT'; nonce: number }
   requestCameraPreset: (kind: 'ISO' | 'TOP' | 'FIT') => void
+  /**
+   * Hardening PR-3 — the ribbon tab the band shows. `null` follows the
+   * current stage's step; 'VIEW' is the viewport tab (no stage). Any stage
+   * change returns the band to the stage's step. Viewer-local, never
+   * persisted.
+   */
+  ribbonTab: RibbonTab | null
+  setRibbonTab: (tab: RibbonTab | null) => void
+  /** Hardening PR-3 — the flow dock (stage node graph) under the viewport */
+  flowDock: boolean
+  setFlowDock: (visible: boolean) => void
+  /** Hardening PR-3 — the two columns can be hidden (CAD-style); the panels
+   * stay MOUNTED (display only), so every job poll keeps its lifetime */
+  panes: Record<Pane, boolean>
+  setPane: (pane: Pane, visible: boolean) => void
 
   setMode: (mode: AppMode) => void
   setCameraMode: (cameraMode: CameraMode) => void
@@ -198,7 +214,12 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
       current.setMode('ANALYSIS')
     }
     set((s) => {
-      const next: Partial<ViewerState> = { stage, designTab: designTabFor(stage) }
+      const next: Partial<ViewerState> = {
+        stage,
+        designTab: designTabFor(stage),
+        // PR-3: the band follows the stage's step again
+        ribbonTab: null,
+      }
       const systems = systemsTabFor(stage)
       if (systems) next.systemsTab = systems
       const analysis = analysisTabFor(stage)
@@ -230,6 +251,12 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   cameraPreset: { kind: 'ISO', nonce: 0 },
   requestCameraPreset: (kind) =>
     set((s) => ({ cameraPreset: { kind, nonce: s.cameraPreset.nonce + 1 } })),
+  ribbonTab: null,
+  setRibbonTab: (ribbonTab) => set({ ribbonTab }),
+  flowDock: true,
+  setFlowDock: (flowDock) => set({ flowDock }),
+  panes: { controls: true, results: true },
+  setPane: (pane, visible) => set((s) => ({ panes: { ...s.panes, [pane]: visible } })),
 
   setNavigationMode: (navigationMode) => set({ navigationMode }),
   setMode: (mode) =>
