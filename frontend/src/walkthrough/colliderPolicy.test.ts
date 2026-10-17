@@ -74,31 +74,32 @@ describe('development physics per walkthrough context (Phase 20D.2, rule 187)', 
     expect(resolveDevelopmentPhysics('STATIC_FINAL', ok)).toEqual({
       mount: true,
       meshUrl: ok.meshUrl,
+      mode: 'STATIC_ALL',
     })
   })
 
   it('STATIC_FINAL without a development mesh keeps the ramp-only walkthrough (Case A)', () => {
-    expect(resolveDevelopmentPhysics('STATIC_FINAL', null)).toEqual({ mount: false, meshUrl: null })
-    expect(resolveDevelopmentPhysics('STATIC_FINAL', undefined)).toEqual({
-      mount: false,
-      meshUrl: null,
-    })
-    expect(resolveDevelopmentPhysics('STATIC_FINAL', { status: 'FAILED', meshUrl: null })).toEqual({
-      mount: false,
-      meshUrl: null,
-    })
+    const none = { mount: false, meshUrl: null, mode: 'STATIC_ALL' }
+    expect(resolveDevelopmentPhysics('STATIC_FINAL', null)).toEqual(none)
+    expect(resolveDevelopmentPhysics('STATIC_FINAL', undefined)).toEqual(none)
+    expect(resolveDevelopmentPhysics('STATIC_FINAL', { status: 'FAILED', meshUrl: null })).toEqual(
+      none,
+    )
     expect(resolveDevelopmentPhysics('STATIC_FINAL', { status: 'SUCCESS', meshUrl: null })).toEqual(
-      {
-        mount: false,
-        meshUrl: null,
-      },
+      none,
     )
   })
 
-  it('TIMELINE_SNAPSHOT never mounts the final development mesh, even when advertised', () => {
+  it('TIMELINE_SNAPSHOT mounts the development mesh in TEMPORAL_ACTIVE mode (PR-4 W1a) — never the final layout', () => {
     expect(resolveDevelopmentPhysics('TIMELINE_SNAPSHOT', ok)).toEqual({
+      mount: true,
+      meshUrl: ok.meshUrl,
+      mode: 'TEMPORAL_ACTIVE',
+    })
+    expect(resolveDevelopmentPhysics('TIMELINE_SNAPSHOT', null)).toEqual({
       mount: false,
       meshUrl: null,
+      mode: 'TEMPORAL_ACTIVE',
     })
   })
 })
@@ -134,12 +135,20 @@ describe('STATIC_FINAL physics-world composition (Phase 20D.2, T4 / M6)', () => 
     expect(resolveWalkthroughComposition('STATIC_FINAL', ok, 'NOT_MOUNTED').failClosed).toBe(true)
   })
 
-  it('TIMELINE_SNAPSHOT never composes development colliders', () => {
+  it('TIMELINE_SNAPSHOT composes development colliders under the same three cases (PR-4 W1a)', () => {
     expect(resolveWalkthroughComposition('TIMELINE_SNAPSHOT', ok, 'VALID')).toEqual({
+      tunnelCollider: true,
+      developmentCollider: true,
+      failClosed: false,
+    })
+    expect(resolveWalkthroughComposition('TIMELINE_SNAPSHOT', null, 'NOT_MOUNTED')).toEqual({
       tunnelCollider: true,
       developmentCollider: false,
       failClosed: false,
     })
+    expect(resolveWalkthroughComposition('TIMELINE_SNAPSHOT', ok, 'MALFORMED').failClosed).toBe(
+      true,
+    )
   })
 
   it('T6 invariant: development collider mounted ⇔ development mesh visible (every context / artifact state)', () => {

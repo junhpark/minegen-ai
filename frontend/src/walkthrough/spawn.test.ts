@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { SmoothedDeclinePayload } from '@/types/scene'
 import { WALKTHROUGH_CONFIG } from './config'
-import { resolveSpawnAtChainage, resolveWalkthroughSpawn } from './spawn'
+import { DRONE_CHASE, PERSON_CHASE, vehicleChase } from './navigation'
+import {
+  bodySpawnChainageM,
+  resolveBodySpawn,
+  resolveSpawnAtChainage,
+  resolveWalkthroughSpawn,
+} from './spawn'
 
 function smoothed(points: number[]): SmoothedDeclinePayload {
   return {
@@ -95,5 +101,39 @@ describe('resolveSpawnAtChainage (hotfix 2 — level teleport pose)', () => {
     expect(resolveSpawnAtChainage(multi, WALKTHROUGH_CONFIG, 10_000)).toBeNull()
     expect(resolveSpawnAtChainage(multi, WALKTHROUGH_CONFIG, -1)).toBeNull()
     expect(resolveSpawnAtChainage(multi, WALKTHROUGH_CONFIG, Number.NaN)).toBeNull()
+  })
+})
+
+describe('third-person body spawn (PR-4 W2): the chase line starts inside the tunnel', () => {
+  it('each body spawns its chase line deeper than the 6 m entry reference', () => {
+    const base = WALKTHROUGH_CONFIG.spawnChainageM
+    expect(base).toBe(6.0)
+    expect(bodySpawnChainageM(WALKTHROUGH_CONFIG, PERSON_CHASE)).toBeCloseTo(base + 4.5)
+    expect(bodySpawnChainageM(WALKTHROUGH_CONFIG, DRONE_CHASE)).toBeCloseTo(base + 3.5)
+    // 45 t truck: tail anchor 10.5 / 2 − 0.3 = 4.95 m + the 5 m line
+    expect(bodySpawnChainageM(WALKTHROUGH_CONFIG, vehicleChase('UG_ADT_45T'))).toBeCloseTo(
+      base + 4.95 + 5.0,
+    )
+    expect(bodySpawnChainageM(WALKTHROUGH_CONFIG, vehicleChase('UG_ADT_60T'))).toBeCloseTo(
+      base + 5.5 + 5.0,
+    )
+  })
+
+  it('is the chainage form at the body chainage (same floor reference, same yaw)', () => {
+    const chase = vehicleChase('UG_ADT_45T')
+    const a = resolveBodySpawn(smoothed(LINE), WALKTHROUGH_CONFIG, chase)!
+    const b = resolveSpawnAtChainage(
+      smoothed(LINE),
+      WALKTHROUGH_CONFIG,
+      bodySpawnChainageM(WALKTHROUGH_CONFIG, chase),
+    )!
+    expect(a).toEqual(b)
+    const chain = Math.hypot(
+      a.floorPositionMine[0] - 10,
+      a.floorPositionMine[1] - 0,
+      a.floorPositionMine[2] - 100,
+    )
+    expect(chain).toBeCloseTo(15.95, 9)
+    expect(a.yaw).toBeCloseTo(0, 9)
   })
 })

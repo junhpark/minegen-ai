@@ -720,16 +720,27 @@ observation only. Raw logs and `verification-summary.json` live under
     Frontend must never reconstruct tunnel engineering geometry for
     collision.
 
-101. **Walkthrough player contract**:
-    First-person locomotion uses an upright collision-constrained Rapier
-    capsule under gravity. No fly, noclip, normal-movement teleport or
-    jump. Mouse pitch affects view only; walking remains
-    gravity-horizontal.
+101. **Walkthrough player contract** (amended by hardening PR-4, rule 226):
+    locomotion is a THIRD-PERSON avatar on ONE kinematic-position Rapier
+    body driven by a `KinematicCharacterController` (collide-and-slide,
+    autostep and snap-to-ground sized per mode in
+    `walkthrough/navigation.ts::locomotionFor`, gravity integrated by the
+    player) against the exact excavation trimeshes and the temporal
+    barriers — PERSON an upright capsule, VEHICLE the planning box of a
+    documented truck class (`walkthrough/vehicle.ts`), DRONE a sphere
+    without gravity. No noclip, no normal-movement teleport, no jump; the
+    camera is a chase camera orbiting the avatar's eye point and its pitch
+    affects the view only — walking stays gravity-horizontal. Autostep is
+    sized for the documented floor residuals (rule 188's ≈ 0.2 m wall-line
+    offset, the sill strips) and is never a substitute for an open doorway
+    (rule 226's probe proves the doorways open without it).
 
 102. **Walkthrough spawn contract**:
     Initial player pose is deterministically derived from the
     authoritative effective decline at the portal end, slightly inside the
-    tunnel and above its floor. Arbitrary world-origin fallback is
+    tunnel and above its floor (the 6 m entry reference; a third-person
+    body starts deeper by its own chase line so the avatar AND its camera
+    are inside the tunnel, rule 226 c). Arbitrary world-origin fallback is
     forbidden.
 
 103. **Static walkthrough scope**:
@@ -755,10 +766,12 @@ observation only. Raw logs and `verification-summary.json` live under
     candidate/network references. Frontend may not invent devices or
     placements.
 
-107. **Center-ray line-of-sight**:
-    Interaction uses the first-person camera center ray, bounded runtime
-    interaction distance and authoritative tunnel occlusion. Through-rock
-    or distance-only interaction is forbidden.
+107. **Center-ray line-of-sight** (amended by PR-4): interaction uses the
+    ray from the AVATAR's eye point along the exact camera-forward
+    direction (the chase camera looks through the avatar; the crosshair
+    marks the line), bounded runtime interaction distance and
+    authoritative tunnel occlusion. Through-rock or distance-only
+    interaction is forbidden.
 
 108. **Static planned-asset semantics**:
     Phase 14 infrastructure shown in walkthrough is a static planned
@@ -819,7 +832,9 @@ observation only. Raw logs and `verification-summary.json` live under
 118. **Static walkthrough regression**:
     Phase 15 temporal integration must not change Phase 13/14 STATIC_FINAL
     collision, spawn, pointer-lock, locomotion or planned-asset inspection
-    semantics.
+    semantics. (PR-4 changed the locomotion and camera contract for BOTH
+    contexts deliberately — rules 101 / 226; the collision authority, the
+    spawn rule and the planned-asset inspection semantics are unchanged.)
 119. Scenario realization vs world generation (Phase 17): every stochastic
      PARAMETER draw happens in the explicit, non-persistent realization
      step (`POST /scenarios/realize`, `services/scenario_realizer.py`);
@@ -1816,10 +1831,14 @@ code, the code and the rule win and the map is corrected.
      (`walkthrough/apertureBarrier.ts`, a rule 115 analogue: never persisted,
      never engineering geometry); apertures declared but not locatable from
      the authoritative level accesses fail the temporal session closed.
-     Final development geometry never leaks into a snapshot and temporal
-     branch traversal is deferred. Minimap, ramp-chainage teleport, branch
-     teleport / routing and branch infrastructure interaction are unchanged
-     / later scope.
+     Final development geometry never leaks into a snapshot. Hardening
+     PR-4 (rule 226) delivered temporal branch traversal: a snapshot mounts
+     the development pieces whose Phase 10 state is ACTIVE and closes every
+     opening onto a not-yet-active development with a plug; the ramp
+     aperture barrier closes only the turnouts whose access is not ACTIVE,
+     over the backend-reported doorway footprint. The level-aware minimap
+     and the level-entry teleport are PR-4 too (rules 220 / 226); branch
+     infrastructure interaction stays later scope.
 
 188. RAMP_ACCESS vertical continuity (Phase 20B.x). A level-access branch leaves
      the main ramp INSIDE the ramp's own floor, so its vertical profile is
@@ -2665,8 +2684,14 @@ code, the code and the rule win and the map is corrected.
      resolved authority is reported with the targets; a chainage outside
      the walkable centerline extent is dropped, ids are deduplicated and
      the list is sorted by chainage, so a failed level development never
-     hides a turnout that the ramp already has. Branch teleport stays later
-     scope (rule 187).
+     hides a turnout that the ramp already has. Hardening PR-4 adds the
+     BRANCH teleport (`levelEntryTargets`): one `LEVEL_ENTRY` target per
+     level whose access excavation is collided — every OK access in a
+     STATIC_FINAL walk with the development mesh, the ACTIVE accesses of a
+     TIMELINE_SNAPSHOT — carrying the level's RL and ordered after its own
+     turnout; the pose is resolved by the same deterministic spawn rule on
+     the authoritative access centerline (`resolveSpawnOnPolyline`, 3 m
+     short of the entry, facing the drift), never on an invented point.
 
 221. Analysis time series and 4D playback (hardening PR-2 H3 §6–7). `GET
      …/analysis/timeseries?bucketDays=<n>` is a READ-ONLY projection of the
@@ -2897,3 +2922,98 @@ code, the code and the rule win and the map is corrected.
      Backend-authored strings (failure reasons, candidate ids, demo text)
      and 3D labels stay as the backend wrote them. `IBM Plex Sans KR` is the
      Hangul fallback of the three font families; no i18n library is added.
+
+226. Walk overhaul (hardening PR-4, Park: "램프에서 나갈 수 없다 · 3인칭 ·
+     레벨별 미니맵"). Four contracts, each measured before it was written:
+     (a) DOORWAY PROBE AND PARENT EXTENSION. `tests/test_junction_passability.py`
+         walks every declared junction's child centerline from the junction
+         point (3 widths, 0.5 m steps) with four rays — sill 0.3 m, head
+         1.6 m, shoulders ± 0.6 m at 1.0 m — against the parent and child
+         RENDER triangles (exact Möller–Trumbore, 1 mm travel) and requires
+         zero hits. It found a ramp wall slab standing across the outer
+         half of every shallow-angle access of the TABULAR fixture from
+         10 m to ≈ 13.7 m along the access (the 2-width parent window was
+         sized for the child's INNER wall, `R·acos(1 − w/R)` ≈ 1.6 w; the
+         full body clears at `R·acos(1 − 2w/R)` ≈ 2.8 w). The PARENT side
+         of `cut_tube` now continues interval by interval past the window
+         in both directions while an interval still loses a quad
+         (`_extend_parent_pass`, bounded by `PARENT_EXTENSION_MAX_WIDTHS`
+         = 6, the same `PARENT_QUAD_OVERLAP_MIN` rule, the floor never cut)
+         and every junction opening reports `parentCutChainage` (the
+         doorway's chainage footprint on the parent) and
+         `parentExtensionIntervals`. CHILD cuts, the clip / sill rules and
+         the logical mesh are unchanged. The frontend never patches a
+         doorway (rule 187): an open doorway is proven on the backend mesh.
+     (b) TEMPORAL DEVELOPMENT TRAVERSAL (`walkthrough/temporalDevelopmentPlan.ts`).
+         A TIMELINE_SNAPSHOT mounts one trimesh per LEVEL_ACCESS / DRIFT /
+         CROSSCUT piece whose Phase 10 state is ACTIVE (rule 114: fully
+         completed, never DEVELOPING), mapped through each development's
+         `geometryRef` to its owning artifact and the GLB `ranges` identity
+         (rule 173) — the piece's index window of the same buffers, plus the
+         batched cap primitive of every active kind — and shows exactly those
+         pieces (`TemporalDevelopmentLayer`, the same pure plan; rule 187's
+         visual = collidable). Every opening of an ACTIVE excavation onto a
+         not-yet-active development is closed by an ephemeral PLUG (rule 115
+         analogue, `#2a251f`): ACCESS_END (the access's open end ring at the
+         entry when no drift piece is active), DRIFT_FACE (the shared ring
+         plane between an active and an inactive drift piece), CROSSCUT_MOUTH
+         (flush with the drift wall). The ramp aperture barrier closes only
+         the turnouts whose access is NOT active and spans the backend
+         `parentCutChainage` (+ 1 width margin; the nominal 2-width window
+         on older reports). Topology comes from MineNetwork, tangents from
+         the owning centerlines; an ACTIVE development without a GLB piece,
+         an edge the network lacks, a centerline end not welded to its node,
+         or an access ACTIVE before its ramp segment fails the session
+         CLOSED (rule 117). The legacy chain (no level accesses) stays
+         ramp-only in time.
+     (c) THIRD PERSON (`WalkthroughPlayer.tsx`, `chaseCamera.ts`, `vehicle.ts`,
+         `avatars.tsx`): rule 101 as amended; PERSON walks camera-relative
+         and faces its walk, VEHICLE steers its heading by the bicycle rule
+         `yaw rate = speed / turning radius` (floored at 2 m/s so a stopped
+         truck can be aimed, capped at 60°/s, sense flipped in reverse) and
+         drives along it, DRONE flies horizontally along the camera yaw with
+         Space / C vertical. The vehicle presets are REPRESENTATIVE PLANNING
+         DIMENSIONS of three truck classes (UG ADT 45 t ≈ 10.5 × 3.0 × 2.9 m,
+         UG ADT 60 t ≈ 11.6 × 3.6 × 3.4 m, RDT 40 t ≈ 9.0 × 3.6 × 3.3 m,
+         outer turning radii 8.5 / 9.5 / 9.0 m) — never a manufacturer
+         specification, certified clearance or vehicle dynamics; the HUD
+         says so. The chase camera orbits the avatar's eye point (IJKL,
+         pitch clamped) — a truck from a TAIL line anchored just behind its
+         dump body, 0.9 m right, 5 m back at 18° elevation and AIMED one
+         body length ahead (`lookAheadM`: the bin in the lower part of the
+         frame, the drive ahead in the centre; a person aims 1.5 m over its
+         head; a 5 m drive has no room for a long look-down line behind a
+         3 m body) — and is resolved
+         against the authoritative colliders by `world.castRay` (the avatar
+         excluded): pulled in along the view line, flattened step by step
+         when the roof blocks the line before the minimum distance, and
+         NEVER past a hit — when every pitch is blocked inside the minimum
+         distance the camera is cramped at the longest clear line's clear
+         point (`resolveChase`, floored just past the near plane: a
+         close-up, never a view from inside the rock); the eye point feeds
+         the interaction ray (rule 107) and the headlamp. Each body spawns
+         its chase line INSIDE the tunnel: the rule 102 entry reference
+         (6 m) plus `anchorBackM + distanceM` (`bodySpawnChainageM` —
+         person 10.5 m, drone 9.5 m, 45 t truck ≈ 16 m; measured: a truck
+         at the 6 m reference had its tail on the portal plane and its
+         camera pulled against the bin by the portal cap). A vehicle
+         heading change is refused for the step when the rotated body would
+         intersect the tunnel (`world.intersectionsWithShape`): a kinematic
+         rotation is not collision-checked by the character controller and
+         must never clip a wall. A mode or
+         preset change remounts the body at the deterministic spawn (§29).
+         Avatars are procedural primitives (no asset, rule 15) whose visual
+         envelope never exceeds the collider box (the truck's bin and cab
+         top ARE the preset height: measured on tour 6, a bin 0.5 m above
+         the box put the chase anchor below the bin and filled the frame).
+     (d) LEVEL-AWARE MINIMAP (`walkthrough/levelMap.ts`, `MinimapOverlay.tsx`).
+         The avatar's RL picks the nearest required level inside half the
+         median level spacing (levels from the level accesses, else the
+         catalogue, else the ramp's level references / legacy segment
+         ends — never invented); the map shows THAT level's drifts and
+         crosscuts, its access, the ramp samples inside the level band and
+         its network nodes, fitted north-up to the level (between levels:
+         the ramp band around the RL); a level ladder places the RL among
+         every level. In a snapshot only the ACTIVE ramp prefix / ACTIVE
+         pieces are drawn. Nothing is computed from screen coordinates and
+         nothing is persisted (rule 99).

@@ -26,11 +26,19 @@ import type {
   WorldScene,
 } from '@/types/scene'
 
-export interface TeleportTarget {
-  id: string
-  label: string
-  chainageM: number
-}
+/** A ramp station (portal / turnout) placed by main-ramp chainage, or — PR-4
+ * W3 — a LEVEL_ENTRY placed at the end of the level's access branch. */
+export type TeleportTarget =
+  | { kind: 'RAMP'; id: string; label: string; chainageM: number }
+  | {
+      kind: 'LEVEL_ENTRY'
+      id: string
+      label: string
+      levelId: string
+      elevation: number
+      /** main-ramp chainage of the level's turnout (ordering only) */
+      chainageM: number
+    }
 
 export type TeleportAuthority =
   'NETWORK_RAMP_JUNCTION' | 'LEVEL_ACCESS_JUNCTION' | 'RAMP_SEGMENT_BOUNDARY' | 'NONE'
@@ -56,6 +64,7 @@ function fromNetwork(network: NetworkPayload | null | undefined): TeleportTarget
   for (const node of network.nodes) {
     if (node.type !== 'RAMP_JUNCTION' || !finite(node.chainage)) continue
     out.push({
+      kind: 'RAMP',
       id: node.id,
       label: node.levelId ? `Turnout ${node.levelId}` : node.id,
       chainageM: node.chainage,
@@ -72,6 +81,7 @@ function fromLevelAccesses(
   for (const a of accesses.accesses) {
     if (a.status !== 'OK' || !finite(a.rampJunctionChainage)) continue
     out.push({
+      kind: 'RAMP',
       id: `RAMP_JUNCTION:${a.levelId}`,
       label: `Turnout ${a.levelId}`,
       chainageM: a.rampJunctionChainage,
@@ -94,6 +104,7 @@ function fromSegments(smoothed: SmoothedDeclinePayload): TeleportTarget[] | null
     }
     if (seg.rampJunction && finite(seg.rampJunction.chainage)) {
       out.push({
+        kind: 'RAMP',
         id: `RAMP_JUNCTION:${seg.rampJunction.levelId}`,
         label: `Turnout ${seg.rampJunction.levelId}`,
         chainageM: seg.rampJunction.chainage,
@@ -103,7 +114,12 @@ function fromSegments(smoothed: SmoothedDeclinePayload): TeleportTarget[] | null
       seg.effectiveSource !== 'PARAMETRIC_V2' &&
       seg.levelId
     ) {
-      out.push({ id: `LEVEL_ENTRY:${seg.levelId}`, label: `Level ${seg.levelId}`, chainageM: acc })
+      out.push({
+        kind: 'RAMP',
+        id: `LEVEL_ENTRY:${seg.levelId}`,
+        label: `Level ${seg.levelId}`,
+        chainageM: acc,
+      })
     }
   }
   return out.length > 0 ? out : null
@@ -123,21 +139,59 @@ export function resolveTeleportAuthority(scene: WorldScene | null | undefined): 
   return { authority: 'NONE', turnouts: [] }
 }
 
+/**
+ * PR-4 W3 branch teleport: a LEVEL_ENTRY target per level whose access
+ * excavation is collided — `mountedLevelIds` (STATIC_FINAL with the
+ * development mesh: every OK access; TIMELINE_SNAPSHOT: the accesses ACTIVE
+ * at the snapshot day). The target carries the level's RL and its turnout
+ * chainage for ordering; the pose itself is resolved on the access
+ * centerline by the runtime (3 m short of the entry, facing the drift).
+ */
+export function levelEntryTargets(
+  accesses: LevelAccessesPayload | null | undefined,
+  mountedLevelIds: ReadonlySet<string>,
+): TeleportTarget[] {
+  if (!accesses || accesses.status !== 'SUCCESS') return []
+  const out: TeleportTarget[] = []
+  for (const a of accesses.accesses) {
+    if (a.status !== 'OK' || !a.centerline || !mountedLevelIds.has(a.levelId)) continue
+    if (!finite(a.elevation) || !finite(a.rampJunctionChainage)) continue
+    out.push({
+      kind: 'LEVEL_ENTRY',
+      id: `LEVEL_ENTRY:${a.levelId}`,
+      label: `Level ${a.levelId} entry`,
+      levelId: a.levelId,
+      elevation: a.elevation,
+      chainageM: a.rampJunctionChainage,
+    })
+  }
+  return out
+}
+
 export function resolveTeleportTargets(
   scene: WorldScene | null | undefined,
   chainagePoints: readonly number[],
+  mountedLevelIds: ReadonlySet<string> = new Set(),
 ): TeleportTarget[] {
   if (!scene?.smoothedDecline || chainagePoints.length < 6) return []
   const extent = chainageExtent(chainagePoints)
-  const targets: TeleportTarget[] = [{ id: 'PORTAL', label: 'Portal', chainageM: 0 }]
+  const targets: TeleportTarget[] = [{ kind: 'RAMP', id: 'PORTAL', label: 'Portal', chainageM: 0 }]
   const seen = new Set<string>(['PORTAL'])
-  for (const t of resolveTeleportAuthority(scene).turnouts) {
+  for (const t of [
+    ...resolveTeleportAuthority(scene).turnouts,
+    ...levelEntryTargets(scene.levelAccesses, mountedLevelIds),
+  ]) {
     // beyond the emitted (ACTIVE-prefix) centerline → not walkable, not offered
     if (t.chainageM < 0 || t.chainageM > extent + 1e-6 || seen.has(t.id)) continue
     seen.add(t.id)
     targets.push(t)
   }
-  // deterministic order: down the ramp
-  targets.sort((a, b) => a.chainageM - b.chainageM || a.id.localeCompare(b.id))
+  // deterministic order: down the ramp, a turnout before its level entry
+  targets.sort(
+    (a, b) =>
+      a.chainageM - b.chainageM ||
+      (a.kind === b.kind ? 0 : a.kind === 'RAMP' ? -1 : 1) ||
+      a.id.localeCompare(b.id),
+  )
   return targets
 }

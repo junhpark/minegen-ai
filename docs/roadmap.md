@@ -53,15 +53,16 @@ Phase 20 is **COMPLETE** (Phase 20D.3 closeout):
 | 20C warped / shaft / capability (section(z) curved development, shaft planner, capability graph, construction ServiceReference) | DONE |
 | 20D unified geometry (typed junction union, child-floor clipping, cap cut, child mouth cap) | DONE |
 | 20D branch walkthrough (STATIC_FINAL development collision, temporal aperture barriers) | DONE |
+| PR-4 Walk overhaul (doorway probe + parent extension, temporal development traversal with plugs, third-person person / truck / drone, level-aware minimap, level-entry teleport) | DONE |
 | 20D assessment / comparison (read-only design assessment, candidate comparison, dual-egress advisory) | DONE |
 
 Deferred Phase 20 backlog — explicitly not blocking, each a later phase or
 follow-up decided on its own: bounded local A* refinement of a layout
 candidate; new layout families (FIGURE_EIGHT / HYBRID, true straight-insert
-turnouts); temporal branch traversal in the TIMELINE_SNAPSHOT walkthrough
-(development colliders by day); the all-development exact CSG / watertight
-union and a banked junction floor; branch teleport / routing, branch
-infrastructure interaction and a branch-aware minimap; shaft mesh, inclined
+turnouts); the all-development exact CSG / watertight union and a banked
+junction floor; branch routing and branch infrastructure interaction
+(temporal branch traversal, the branch teleport and the level-aware minimap
+landed in hardening PR-4, rule 226); shaft mesh, inclined
 shafts and shaft placement optimization; a ramp ↔ level-drift separation
 diagnostic (never a gate); the WARPED stope geometry (typed Phase 09
 boundary); the remaining NO_FEASIBLE portal-approach seeds; the recorded

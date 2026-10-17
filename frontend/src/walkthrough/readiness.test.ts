@@ -108,13 +108,16 @@ describe('walkthrough derived visibility (§15)', () => {
       ])
     })
 
-    it('TIMELINE_SNAPSHOT keeps the ramp-only contract even if development physics were claimed', () => {
+    it('TIMELINE_SNAPSHOT shows the development mesh exactly when its ACTIVE-piece physics is mounted (PR-4 W1a)', () => {
       expect([...deriveVisibleLayers('WALKTHROUGH', withDev, 'TIMELINE_SNAPSHOT', true)]).toEqual([
         'tunnelMesh',
+        'developmentMesh',
       ])
-      // an unknown context is the narrower (temporal) set, never the static one
+      expect([...deriveVisibleLayers('WALKTHROUGH', withDev, 'TIMELINE_SNAPSHOT', false)]).toEqual([
+        'tunnelMesh',
+      ])
+      // an unknown context never shows it
       expect([...deriveVisibleLayers('WALKTHROUGH', withDev, null, true)]).toEqual(['tunnelMesh'])
-      expect([...deriveVisibleLayers('WALKTHROUGH', withDev)]).toEqual(['tunnelMesh'])
     })
 
     it('never mutates the stored preference and passes DESIGN through untouched', () => {

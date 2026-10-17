@@ -518,9 +518,45 @@ Search details에만(규칙 191), 호버 패널은 ⓘ와 같은 `placePopover` 
 
 | 결정 | 내용 |
 |---|---|
-| 방식 | gettext 식: 소스 문자열은 영어(테스트가 단언하는 키 그대로), 렌더 시 `tr(text, vars?)`(`i18n/t.ts`)가 한국어 사전(`i18n/ko.ts`, 873건)을 찾고 없으면 영어 그대로. 공용 프리미티브(WorkflowCard · StatusBadge · ActionButton · Disclosure · PanelSection · MetricRow · PanelTabs · ModalDialog · InfoPopover · 리본 ToolButton · 플로우 독)가 자기 라벨을 번역하므로 호출부는 영어 키를 그대로 넘긴다. 합성 문자열은 템플릿(`'Reset from {stage}'`, `'{n} levels'` → `'레벨 {n}개'`): 치환은 조회 뒤라 어순 재배치 가능 |
+| 방식 | gettext 식: 소스 문자열은 영어(테스트가 단언하는 키 그대로), 렌더 시 `tr(text, vars?)`(`i18n/t.ts`)가 한국어 사전(`i18n/ko.ts`, 892건)을 찾고 없으면 영어 그대로. 공용 프리미티브(WorkflowCard · StatusBadge · ActionButton · Disclosure · PanelSection · MetricRow · PanelTabs · ModalDialog · InfoPopover · 리본 ToolButton · 플로우 독)가 자기 라벨을 번역하므로 호출부는 영어 키를 그대로 넘긴다. 합성 문자열은 템플릿(`'Reset from {stage}'`, `'{n} levels'` → `'레벨 {n}개'`): 치환은 조회 뒤라 어순 재배치 가능 |
 | 기본값·전환 | `i18n/locale.ts`: 기본 **ko**, `VITE_DEFAULT_LOCALE=en`으로 빌드 고정, 브라우저별 선택은 `localStorage`(시나리오 필드 아님), `<html lang>` 동기. 상단 바 `한 / EN` 스위치(`locale-switch`). 전환 시 앱 트리를 `key={locale}`로 리마운트(`Root.tsx`) — 스토어·쿼리 캐시는 React 밖이라 유지, 열린 디스클로저 같은 일시 상태만 초기화. 요청·산출물·스테이지 불변 |
 | 서체 | `IBM Plex Sans KR`(Google Fonts)을 세 서체 패밀리의 폴백으로 추가(라틴은 Barlow/Plex 유지, 한글만 KR); `:lang(ko) .plate`는 자간 0.04em |
 | 테스트 | vitest `test.env.VITE_DEFAULT_LOCALE = 'en'`(기존 영어 단언 전부 유지), `i18n/i18n.test.tsx`(기본값 해석, 치환, 사전 건전성 — 빈 값 없음 · 키의 플레이스홀더 보존 · 한글 키 없음, 한국어 렌더), e2e 개발 서버 `en` 고정 + 한국어 전환(`설정` 탭, `html lang`) 후 영어 복귀 |
 | 용어집 | `docs/i18n/terminology.json`(117 용어: 광체 · 하반 · 주향 · 경사 · 램프(사갱) · 갱구 · 수갱 · 레벨 · 드리프트 · 크로스컷 · 광주 · 충전 · 채광법 …, 채택 이유 포함) + `scripts/i18n_glossary.py` → `docs/i18n/glossary-ko-en.xlsx`(UI strings 시트: 영어 → 한국어 + 검토 열; Terminology 시트). Park 검증 후 수정 반영 |
 | 남은 것 | 백엔드가 만드는 문자열(실패 사유, 데모 설명, 후보 id)은 그대로; 설계 평가 제목 9개는 사전으로 번역. drei `<Text>` 3D 라벨(L01 등)은 영어/ID 유지 |
+
+## 15. PR-4 — Walk 대수선 (hardening-4-walkthrough, base `hardening-3-workspace-ui`)
+
+Park(PR-3 라운드 4 지시, 스크린샷 1장): "1) 램프에서 walk 기능을 하면 geometry가 결합되는 부분에서 이런식으로 되어 있고 나갈 수 없게 되어 있어. 어떻게 해야하니? 2) 사람·차량·드론을 3인칭으로, 차량은 실제 RDT/ADT 크기 준용. 3) 미니맵은 반복되는 geometry에서 어색 — 레벨 구역에 들어오면 미니맵이 바뀌는 식으로."
+
+### 15.1 측정 — 왜 나갈 수 없었나
+
+| 원인 | 측정 | 조치 |
+|---|---|---|
+| (a) 4D에서 들어온 Walk(TIMELINE_SNAPSHOT) | 스크린샷의 어두운 벽은 `ApertureBarrierSet`의 `#2a251f` 면 — 20D.2가 분기 통행을 보류하면서 모든 분기부를 벽선 장벽으로 막아둔 설계 | W1a: 스냅샷 날에 ACTIVE인 LEVEL_ACCESS / DRIFT / CROSSCUT 조각을 충돌·표시하고, 미완 구간으로 열리는 구멍은 플러그로 막음(§15.2) |
+| (b) 정적 Walk의 램프 벽 잔재 | 새 백엔드 탐침 `tests/test_junction_passability.py`(모든 선언 분기부, 자식 중심선 3폭·0.5 m 간격, 광선 4가닥: 바닥 0.3 m · 머리 1.6 m · 어깨 ±0.6 m @1.0 m, Möller–Trumbore)가 TABULAR 픽스처의 얕은 각 분기부 3곳(L01·L02·L03)에서 어깨 광선 명중: 접근로를 따라 10.0 m 지점, 바닥 위 0.74 m의 **램프 벽 삼각형**. 2폭(10 m) 부모 창은 자식 **안쪽 벽**(`R·acos(1−w/R)` ≈ 1.6 w)만 기준으로 잡혀 있어 자식 몸체 전체가 램프 벽선을 벗어나는 `R·acos(1−2w/R)` ≈ 2.8 w(13.7 m)까지의 벽 슬랩이 접근로 바깥 절반에 서 있었음 | `cut_tube` PARENT 쪽에 연속 확장 패스(`_extend_parent_pass`: 창 밖으로 양방향, 쿼드를 잃는 구간이 끝나면 정지, `PARENT_EXTENSION_MAX_WIDTHS` = 6 바운드, 동일 `PARENT_QUAD_OVERLAP_MIN` 규칙, 바닥은 절대 미절단). 개구부 보고에 `parentCutChainage`(부모 체인지 발자국) · `parentExtensionIntervals` 추가. 탐침 재실행: 명중 0 |
+| DRIFT_STATION:L02:2 | 광선 출발점이 크로스컷 시작 링 평면 위(동일평면) → t≈0 잡음 | 탐침 1 mm 이동 임계(`t > 1e-3`) — 기하 변경 없음 |
+
+### 15.2 구현
+
+| 항목 | 내용 |
+|---|---|
+| W1a 시간축 분기 통행 | `walkthrough/temporalDevelopmentPlan.ts`(순수): ACTIVE 개발 → 규칙 173 매핑(geometryRef → 소유 아티팩트 → GLB `ranges` pieceId) → 조각별 트라이메시(`buildDevelopmentColliderUnits(geometry, selection)`, 같은 버퍼의 인덱스 창) + 활성 종류의 캡 프리미티브; 플러그 3종(ACCESS_END · DRIFT_FACE · CROSSCUT_MOUTH, 네트워크 토폴로지 + 소유 중심선 접선, `PlugBarrierSet`); 램프 개구부 장벽은 접근로가 ACTIVE가 아닌 레벨만, 범위는 백엔드 `parentCutChainage` + 1폭(구 보고는 2폭 창). 표시는 `TemporalDevelopmentLayer`(같은 계획 함수 → 보이는 것 = 충돌하는 것). 불일치는 세션 종료(fail closed) |
+| W1b 캐릭터 컨트롤러 | `WalkthroughPlayer`: kinematicPosition 바디 + `KinematicCharacterController`(슬라이드, autostep 사람 0.35 / 차량 0.5 m, snap-to-ground, 경사 한계, 중력 수동 적분, `useBeforePhysicsStep` 고정 스텝). autostep은 규칙 188의 ≈0.2 m 벽선 잔차·실 스트립용이며 열린 통로의 대체물이 아님(탐침이 보증) |
+| W2 3인칭 | 추적 카메라(`chaseCamera.ts`: 아바타 눈점 궤도, IJKL, 피치 클램프, `world.castRay` 가림 끌어당김 + 지붕에 막히면 피치를 단계적으로 평탄화, 명중 지점을 절대 넘지 않음 — 모든 피치가 최소 거리 안에서 막히면 가장 긴 가용 선의 가용점에 둠(`cramped`, 근평면 바로 밖이 하한); 트럭은 차체 뒤 꼬리 앵커 · 우측 0.9 m · 뒤 5 m · 앙각 18° · 조준점은 차체 길이만큼 앞(`lookAheadM`: 적재함은 화면 아래, 진행 방향이 중앙; 사람은 머리 위 1.5 m, 드론 1 m 앞) — 첫 투어에서 캡 기준 10 m 선이 지붕에 걸려 적재함 뒷면 앞 2.5 m로 끌려온 것, 투어 5에서 구 cramped 규칙이 스폰 트럭 뒤 카메라를 포털 평면 1 m 밖에 둔 것을 측정), 바디 스폰 = 규칙 102 입구 기준 6 m + 추적선(`anchorBackM + distanceM`: 사람 10.5 · 드론 9.5 · 45 t 트럭 ≈ 16 m — 6 m 기준에선 트럭 꼬리가 포털 평면 위, 카메라가 포털 캡에 막혀 적재함에 밀착됨을 측정), 차량 회전은 회전된 차체가 갱도와 교차하면 그 스텝에서 거부(`world.intersectionsWithShape`; 캐릭터 컨트롤러는 병진만 검사); 아바타의 시각 외피는 충돌 박스를 넘지 않음(적재함·캡 상단 = 프리셋 높이 — 투어 6에서 박스보다 0.5 m 높은 적재함이 앵커를 가려 화면을 채운 것을 측정), 아바타(`avatars.tsx` 절차적 프리미티브), 차량 프리셋(`vehicle.ts`: UG ADT 45 t 10.5×3.0×2.9 · UG ADT 60 t 11.6×3.6×3.4 · RDT 40 t 9.0×3.6×3.3 m, 회전반경 8.5/9.5/9.0 m — **대표 등급 제원, 사양 아님**, HUD에 표기), 조향 = 자전거 규칙(속도/회전반경, 2 m/s 하한, 60°/s 상한, 후진 시 반전). 눈점이 상호작용 광선(규칙 107)과 헤드램프 원점. V / HUD 선택으로 트럭 등급 전환(리마운트) |
+| W3 레벨 미니맵 | `levelMap.ts`: RL → 레벨 선택(중위 레벨 간격의 절반), 그 레벨의 드리프트·크로스컷·접근로·램프 띠·네트워크 노드를 북쪽 위로 피팅, 레벨 사이는 램프 띠, 레벨 사다리; 시간축은 ACTIVE만. "이동…"에 LEVEL_ENTRY 대상(접근로가 충돌 중인 레벨만, 접근로 중심선 끝 3 m 앞, 규칙 220 개정) |
+| 규칙 | 101 · 107 · 118 · 187 · 220 개정, 226 신설 |
+
+### 15.3 수락
+
+브라우저 투어 `shots_walk.py`(프로덕션 빌드 `VITE_DEFAULT_LOCALE=en`, 빈 데이터 디렉터리): 월드 → 레이아웃 → 레벨 → 굴착 메시(램프+개발) → 네트워크 → 생산 → 스케줄 → Walk(3인칭 사람 · 램프 보행 · 분기부 L01 이동 · 레벨 L01 입구 이동 · 드리프트 진입 · 차량 45 t/60 t · 드론 · 미니맵) → 4D 중간 날 → Walk(시간축: 열린 분기부 · 레벨 입구 · 막힌 분기부). 결과는 §15.4에 기록.
+
+### 15.4 결과
+
+| 항목 | 결과 |
+|---|---|
+| 브라우저 투어 7(`shots_walk.py`: 프로덕션 빌드 `VITE_DEFAULT_LOCALE=en`, 빈 데이터 디렉터리, Chromium swiftshader 1600×950) | 14장(walk-01 … walk-09b), page errors 0; 콘솔은 CDN 글꼴 인증서(`ERR_CERT_AUTHORITY_INVALID`, 라우팅된 로컬 폴백)와 Rapier 초기화 경고뿐. 스폰 CH: 사람 10 m · 45 t 트럭 16 m · 60 t 트럭 20 m(좌회전 후) · 드론 16 m. 정적 "이동…" 27개(포털 + 분기부 L01–L13 + 레벨 입구 L01–L13), 분기부 L01 → 미니맵 `L01 · RL 156 m`, 레벨 입구 → 드리프트 진입. 4D 509.8일(전체 1,132.9일) 스냅샷의 "이동…" 7개(포털 + 분기부·레벨 입구 L01–L03 — ACTIVE 접근로만), 열린 분기부 L01 통과 · 시간축 레벨 입구 L01 |
+| 분기부 개구부 보고(투어 시나리오 13 레벨) | `parentCutChainage` 폭 8.5–9.6 m(탐침 측정: 분기부 약 1 m 뒤에서 시작), `parentExtensionIntervals` L12 0 · L05/L06/L07/L09 2 · 나머지 1 |
+| 탐침 `backend/tests/test_junction_passability.py` | 3 passed(11.5 s): 선언 분기부 전부 탐침, 통행 단면 명중 0, 부모 확장 ≥ 1건 보고 |
+| 투어 5·6에서 잡아 고친 트럭 카메라 결함 3건 | ① cramped 규칙이 최소 거리를 유지해 카메라가 포털 평면 1 m 밖(투어 5 walk-06) → 가장 긴 가용 선의 가용점(`CRAMPED_FLOOR_M` 0.2 m 하한); ② 6 m 스폰에서 트럭 꼬리가 포털 평면 위, 추적선이 포털 캡에 막힘(투어 5 walk-05b) → 바디 스폰 = 기준 6 m + `anchorBackM + distanceM`(투어 6: CH 16 m); ③ 적재함 시각 높이 3.41 m > 충돌 박스 2.9 m → 앵커가 적재함 아래(투어 6 walk-05: 적재함이 화면 상단 1/4부터 채움) → 외피 = 프리셋 높이, 조준점 차체 길이 앞(`lookAheadM`; 투어 7 walk-05b: 적재함 하단 1/5, 캡·갱도 중앙). 회전 교차 거부(`intersectionsWithShape`)는 같은 패스에서 추가 |
+| 게이트 | frontend 5종 · FAST · FINAL FULL — 수치는 PR 본문과 규칙 126 보고에 기록 |

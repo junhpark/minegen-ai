@@ -19,9 +19,11 @@ import { buildColliderUnits } from './tunnelRuntimeGeometry'
 const DIR = new Vector3()
 
 /**
- * Center-crosshair targeting (rule 107). Every frame: cast the exact
- * camera-forward ray, take the authoritative tunnel
- * occlusion distance from the SAME Phase 06 GLB triangles (a detached
+ * Center-ray targeting (rule 107, PR-4 third person). Every frame: cast the
+ * ray from the AVATAR's eye point along the exact camera-forward direction
+ * (the chase camera looks through the avatar, so this is the line the
+ * crosshair marks — never mouse-screen coordinates), take the authoritative
+ * tunnel occlusion distance from the SAME Phase 06 GLB triangles (a detached
  * double-sided raycast mesh built once from the proven runtime geometry —
  * §8 option A, no reconstruction), then run the pure focus math with the
  * runtime range and hit proxies. Focus is reported ONLY when the focused
@@ -32,11 +34,14 @@ export function WalkthroughInteraction({
   assets,
   focusedRef,
   onFocusChange,
+  eyeRef,
 }: {
   geometry: TunnelRuntimeGeometry
   assets: readonly WalkthroughInteractableAsset[]
   focusedRef: { current: string | null }
   onFocusChange: (id: string | null) => void
+  /** avatar eye point, Three coordinates (the camera when absent) */
+  eyeRef?: { current: Vector3 }
 }) {
   const camera = useThree((s) => s.camera)
 
@@ -72,10 +77,11 @@ export function WalkthroughInteraction({
     let next: string | null = null
     if (assets.length > 0) {
       camera.getWorldDirection(DIR)
-      raycaster.set(camera.position, DIR)
+      const origin = eyeRef?.current ?? camera.position
+      raycaster.set(origin, DIR)
       const wallHit = raycaster.intersectObject(occluder, true)[0]
       next = computeFocus(
-        [camera.position.x, camera.position.y, camera.position.z],
+        [origin.x, origin.y, origin.z],
         [DIR.x, DIR.y, DIR.z],
         assets,
         wallHit ? wallHit.distance : null,

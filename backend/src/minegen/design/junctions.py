@@ -430,6 +430,25 @@ class JunctionCut:
     #: behaviour) and counted — never a silent approximation, never a failure
     #: of the whole mesh for a render-only fragment
     unclipped_wall_quads: int = 0
+    #: hardening PR-4 (W1b): the ring-interval range the PARENT side actually
+    #: examined — the ``window_rings`` plus the contiguous extension past the
+    #: window on each side while an interval still lost a quad
+    #: (``_extend_parent_pass``); equals ``window_rings`` when nothing was
+    #: cut at the window edge. CHILD cuts keep ``None``.
+    extended_rings: tuple[int, int] | None = None
+    #: chainage span [min, max] along THIS tube's centerline of every interval
+    #: that lost a quad (``None`` when the mask is empty): the doorway's
+    #: footprint on the parent, consumed by the temporal aperture barrier
+    cut_chainage: tuple[float, float] | None = None
+
+    @property
+    def extension_intervals(self) -> int:
+        """Ring intervals cut OUTSIDE the nominal window (parent side)."""
+        if self.extended_rings is None:
+            return 0
+        lo, hi = self.window_rings
+        elo, ehi = self.extended_rings
+        return int(max(lo - elo, 0) + max(ehi - hi, 0))
 
     @property
     def clips(self) -> list[FloorClip]:
@@ -1230,6 +1249,7 @@ def cut_tube(
         ],
         axis=2,
     )  # (I, K, 4, 3)
+    extended: tuple[int, int] | None = None
     if side == "PARENT":
         samples = _quad_surface_samples(v)  # (I, K, S, 3)
         n_samples = samples.shape[2]
@@ -1237,6 +1257,10 @@ def cut_tube(
         inside = (sd.reshape(len(intervals), k, n_samples) < -tol).sum(axis=2)
         omit = inside >= PARENT_QUAD_OVERLAP_MIN
         omit[:, floor_edge] = False  # the parent floor supports the doorway
+        mask[intervals] = omit
+        extended = _extend_parent_pass(
+            own, own_rings, other, junction, width, tol, floor_edge, (lo, hi), mask
+        )
     else:
         sd = other.signed_distance(v.reshape(-1, 3), other_window).reshape(len(intervals), k, 4)
         inside_v = sd <= tol
@@ -1292,13 +1316,19 @@ def cut_tube(
                     omit[idx, e] = True  # measure-zero remainder
                 else:
                     wall_clips.append(wall_clip)
-    mask[intervals] = omit
     if side == "CHILD":
+        mask[intervals] = omit
         _extend_child_floor_pass(
             own, own_rings, other, junction, width, tol, floor_edge, (lo, hi), mask, clips
         )
         sill_window = other.ring_window(junction.point, radius + 3.0 * width)
         clips = [_with_sills(c, other, sill_window, width) for c in clips]
+    cut_rows = np.flatnonzero(mask.any(axis=1))
+    span = (
+        (float(own.chainage[int(cut_rows.min())]), float(own.chainage[int(cut_rows.max()) + 1]))
+        if cut_rows.size
+        else None
+    )
     return JunctionCut(
         junction,
         side,
@@ -1309,7 +1339,86 @@ def cut_tube(
         clips,
         wall_clips,
         unclipped_walls,
+        extended,
+        span,
     )
+
+
+#: Safety bound of the parent-side extension pass, in tunnel widths from the
+#: junction point: a child body that still overlaps the parent this far out
+#: is not a doorway any more (a drive running inside the parent), so the pass
+#: stops and the truncation is reported instead of cutting the parent open
+#: indefinitely. A tangential access clears a R = 37 m ramp's wall line with
+#: its full width at ≈ sqrt(2·R·w) ≈ 3.9 widths.
+PARENT_EXTENSION_MAX_WIDTHS = 6.0
+
+
+def _extend_parent_pass(
+    own: TubeEnvelope,
+    own_rings: FloatArray,
+    other: TubeEnvelope,
+    junction: Junction,
+    width: float,
+    tol: float,
+    floor_edge: int,
+    window: tuple[int, int],
+    mask: BoolArray,
+) -> tuple[int, int]:
+    """Hardening PR-4 (W1b, doorway probe finding): the PARENT quads are
+    judged past the window edge, ring interval by ring interval in BOTH
+    directions along the parent, until the first interval that loses no quad.
+    The window (``JUNCTION_WINDOW_WIDTHS`` = 2 widths) was sized for the
+    CHILD's inner wall to clear the parent (≈ R·acos(1 − w/R) ≈ 1.6 w for
+    R = 18 m, w = 5 m); the child's full body leaves the parent wall line
+    only at lateral = w (≈ R·acos(1 − 2w/R) ≈ 2.8 w, 13.7 m), so at every
+    shallow-angle ramp turnout of the TABULAR fixture a ramp wall slab
+    survived from 10 m to ≈ 13.7 m along the access, standing across the
+    access's outer half (``tests/test_junction_passability.py``: the shoulder
+    probe 0.6 m off the centerline at 1.0 m hit it at chainage 10.0 m, the
+    triangle 0.74 m above the floor). The same ``PARENT_QUAD_OVERLAP_MIN``
+    surface rule decides every extended quad; the floor edge is never cut;
+    the pass is contiguous from the window (a clean interval ends it) and
+    bounded by ``PARENT_EXTENSION_MAX_WIDTHS``, so a parent the child merely
+    passes near elsewhere is never touched. Returns the examined ring range."""
+    lo, hi = window
+    r, k, _ = own_rings.shape
+    limit = PARENT_EXTENSION_MAX_WIDTHS * width
+
+    def judge(i: int) -> bool:
+        reach = float(np.linalg.norm(own.centers[[i, i + 1]] - junction.point, axis=1).max())
+        if reach > limit:
+            return False
+        corners = np.stack(
+            [
+                own_rings[i],
+                np.roll(own_rings[i], -1, axis=0),
+                own_rings[i + 1],
+                np.roll(own_rings[i + 1], -1, axis=0),
+            ],
+            axis=1,
+        )  # (K, 4, 3)
+        samples = _quad_surface_samples(corners)  # (K, S, 3)
+        other_window = other.ring_window(junction.point, reach + width)
+        sd = other.signed_distance(samples.reshape(-1, 3), other_window)
+        inside = (sd.reshape(k, samples.shape[1]) < -tol).sum(axis=1)
+        omit = inside >= PARENT_QUAD_OVERLAP_MIN
+        omit[floor_edge] = False
+        if not bool(omit.any()):
+            return False
+        mask[i] |= omit
+        return True
+
+    ehi = hi
+    for i in range(hi - 1, r - 1):
+        if not judge(i):
+            break
+        ehi = i + 2
+    elo = lo
+    for i in range(lo - 1, -1, -1):
+        if not judge(i):
+            break
+        elo = i
+    return (min(elo, lo), max(ehi, hi))
 
 
 def _extend_child_floor_pass(
@@ -1418,10 +1527,19 @@ def junction_report(
             for c in mouths
         )
         mouth_clipped = sum(c.clipped_triangles for c in mouths)
+        spans = [c.cut_chainage for c in parent_cuts if c.cut_chainage is not None]
         openings.append(
             {
                 **j.to_dict(),
                 "parentRemovedTriangles": int(parent),
+                # hardening PR-4 (W1b, additive): the doorway's footprint along
+                # the PARENT centerline (chainage of the first / last interval
+                # that lost a quad) and how many intervals the contiguous
+                # extension cut beyond the nominal window
+                "parentCutChainage": (
+                    [min(sp[0] for sp in spans), max(sp[1] for sp in spans)] if spans else None
+                ),
+                "parentExtensionIntervals": int(sum(c.extension_intervals for c in parent_cuts)),
                 "parentCapOmittedTriangles": int(cap_omitted),
                 "parentCapClippedTriangles": int(cap_clipped),
                 "parentCapReplacementTriangles": int(cap_replacement),
@@ -1471,6 +1589,7 @@ __all__ = [
     "JUNCTION_WINDOW_WIDTHS",
     "MOUTH_CAP_MIN_AREA_M2",
     "MOUTH_CAP_VERTEX_MERGE_M",
+    "PARENT_EXTENSION_MAX_WIDTHS",
     "PARENT_QUAD_OVERLAP_MIN",
     "PARENT_QUAD_SAMPLE_FRACTIONS",
     "RAMP_TUBE_ID",

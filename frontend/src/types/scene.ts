@@ -1681,11 +1681,27 @@ export interface NetworkPayload {
   }[]
 }
 
+export interface TunnelJunctionOpening {
+  type: 'RAMP_ACCESS' | 'ACCESS_DRIFT' | 'DRIFT_CROSSCUT'
+  nodeId: string
+  parentId: string
+  childId: string
+  levelId: string
+  point: [number, number, number]
+  childEnd: 'start' | 'end'
+  removedTriangles: number
+  /** PR-4 W1b: chainage span [min, max] along the PARENT centerline of the
+   * ring intervals that lost a quad — the doorway's footprint on the parent
+   * (absent on pre-PR-4 artifacts, null when nothing was cut) */
+  parentCutChainage?: [number, number] | null
+  parentExtensionIntervals?: number
+}
 export interface TunnelJunctionSummary {
   count: number
   byType: Record<string, number>
   openedEndpointCount: number
   removedTriangles: number
+  openings?: TunnelJunctionOpening[]
 }
 
 export interface TunnelMeshReport {

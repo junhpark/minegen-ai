@@ -1709,7 +1709,15 @@ CSG, voxel remesh or global SDF:
     inside the child (a sample-count threshold, not a measured area
     fraction). The parent FLOOR edge (identified from the profile geometry by
     `profile.floor_edge_index`, never a hard-coded index) is never a
-    parent-side cut: it is the doorway's supporting floor.
+    parent-side cut: it is the doorway's supporting floor. Hardening PR-4
+    (rule 226a): the parent quads are judged PAST the window too — interval
+    by interval in both directions while an interval still loses a quad
+    (`_extend_parent_pass`, bounded by `PARENT_EXTENSION_MAX_WIDTHS` = 6) —
+    because the 2-width window was sized for the child's inner wall and the
+    doorway probe (`tests/test_junction_passability.py`) found a ramp wall
+    slab standing across the outer half of every shallow-angle TABULAR
+    access from 10 m to ≈ 13.7 m; each opening now reports
+    `parentCutChainage` and `parentExtensionIntervals`.
   - **CHILD non-floor**: the 20D.1 containment rule — a quad whose four
     vertices are inside-or-on the parent's swept envelope (the intruding tube
     and the coincident roof; the parent keeps those surfaces) is omitted

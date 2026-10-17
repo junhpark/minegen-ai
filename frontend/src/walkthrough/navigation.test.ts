@@ -10,7 +10,9 @@ import {
   personSpeed,
   VEHICLE_CONFIG,
   vehicleDriveVelocity,
-  vehicleSteerDelta,
+  vehicleSignedSpeed,
+  locomotionFor,
+  chaseFor,
 } from './navigation'
 
 const K = (over: Partial<typeof NO_KEYS & { boost: boolean }>) => ({
@@ -56,8 +58,8 @@ describe('PERSON (§36)', () => {
   })
 })
 
-describe('VEHICLE (camera-yaw drive, hotfix 2)', () => {
-  it('drives exactly along the camera yaw: forward 8, boost 12, reverse mirrored', () => {
+describe('VEHICLE (heading drive — hotfix 2 speeds, PR-4 third person)', () => {
+  it('drives exactly along the heading: forward 8, boost 12, reverse mirrored', () => {
     const fwd = vehicleDriveVelocity({ forward: true, backward: false, boost: false }, 0)
     expect(Math.hypot(fwd[0], fwd[1])).toBeCloseTo(8.0, 9)
     expect(fwd[1]).toBeCloseTo(-8.0, 9) // yaw 0 drives down -Z
@@ -79,13 +81,52 @@ describe('VEHICLE (camera-yaw drive, hotfix 2)', () => {
     expect(both).toHaveLength(2) // [vx, vz] only — gravity owns vy
   })
 
-  it('A/D steer the camera yaw at a bounded dt-scaled 60 deg/s', () => {
-    const rate = (VEHICLE_CONFIG.steeringRateDegPerSec * Math.PI) / 180
-    expect(vehicleSteerDelta({ left: true, right: false }, 0.5)).toBeCloseTo(rate * 0.5, 12)
-    expect(vehicleSteerDelta({ left: false, right: true }, 0.5)).toBeCloseTo(-rate * 0.5, 12)
-    expect(vehicleSteerDelta({ left: true, right: true }, 0.5)).toBe(0)
-    // one 60 fps frame turns at most 1 degree — no instant flips
-    expect(Math.abs(vehicleSteerDelta({ left: true, right: false }, 1 / 60))).toBeLessThan(0.02)
+  it('signed speed drives the heading integration: + forward, − reverse, 0 neutral', () => {
+    expect(vehicleSignedSpeed({ forward: true, backward: false, boost: false })).toBe(8)
+    expect(vehicleSignedSpeed({ forward: false, backward: true, boost: true })).toBe(-12)
+    expect(vehicleSignedSpeed({ forward: true, backward: true, boost: false })).toBe(0)
+  })
+})
+
+describe('third-person locomotion and chase configs (PR-4 W1b / W2)', () => {
+  it('grounded modes step and snap, the drone does neither', () => {
+    for (const mode of ['PERSON', 'VEHICLE'] as const) {
+      const l = locomotionFor(mode)
+      expect(l.gravity).toBe(true)
+      expect(l.autostepMaxHeightM).toBeGreaterThan(0)
+      expect(l.autostepMaxHeightM).toBeLessThanOrEqual(0.5)
+      expect(l.snapToGroundM).toBeGreaterThan(0)
+    }
+    const d = locomotionFor('DRONE')
+    expect(d.gravity).toBe(false)
+    expect(d.autostepMaxHeightM).toBe(0)
+    expect(d.snapToGroundM).toBe(0)
+  })
+
+  it('every chase config looks down at the avatar by default and keeps a positive minimum distance', () => {
+    for (const mode of ['PERSON', 'VEHICLE', 'DRONE'] as const) {
+      const c = chaseFor(mode)
+      expect(c.defaultPitchDeg).toBeLessThan(0)
+      expect(c.pitchMinDeg).toBeLessThan(c.defaultPitchDeg)
+      expect(c.pitchMaxDeg).toBeGreaterThan(0)
+      expect(c.minDistanceM).toBeGreaterThan(0)
+      expect(c.minDistanceM).toBeLessThan(c.distanceM)
+    }
+    // the truck is chased from behind its body: a longer class anchors further back
+    expect(chaseFor('VEHICLE', 'UG_ADT_60T').anchorBackM).toBeGreaterThan(
+      chaseFor('VEHICLE', 'UG_ADT_45T').anchorBackM,
+    )
+    expect(chaseFor('VEHICLE', 'UG_ADT_45T').anchorBackM).toBeCloseTo(10.5 / 2 - 0.3)
+    expect(chaseFor('PERSON').anchorBackM).toBe(0)
+    // a truck aims one body length ahead of its tail base; a person just
+    // over the head; a drone slightly ahead
+    expect(chaseFor('VEHICLE', 'UG_ADT_45T').lookAheadM).toBe(10.5)
+    expect(chaseFor('VEHICLE', 'UG_ADT_60T').lookAheadM).toBe(11.6)
+    expect(chaseFor('PERSON').lookAheadM).toBe(1.5)
+    expect(chaseFor('DRONE').lookAheadM).toBe(1.0)
+    // the vehicle body is the preset's planning box
+    expect(navigationBody('VEHICLE', 'RDT_40T').bodyHeightM).toBe(3.3)
+    expect(navigationBody('VEHICLE', 'UG_ADT_60T').bodyRadiusM).toBe(1.8)
   })
 })
 

@@ -9,6 +9,7 @@ import { deriveVisibleLayers } from '@/walkthrough/readiness'
 import { resolveDevelopmentPhysics } from '@/walkthrough/colliderPolicy'
 import { temporalActiveSegmentIds } from '@/walkthrough/temporalPlan'
 import { TemporalTunnelLayer } from '@/walkthrough/TemporalTunnelLayer'
+import { TemporalDevelopmentLayer } from '@/walkthrough/TemporalDevelopmentLayer'
 import { AccessTargetsLayer } from './AccessTargetsLayer'
 import { FaultLayer } from './FaultLayer'
 import { OrebodyLayer } from './OrebodyLayer'
@@ -186,13 +187,31 @@ export function MineScene() {
           </Suspense>
         ) : null
       ) : null}
-      {showStatic &&
-      scene?.developmentMesh?.status === 'SUCCESS' &&
+      {scene?.developmentMesh?.status === 'SUCCESS' &&
       scene.developmentMesh.meshUrl &&
       visible.has('developmentMesh') ? (
-        <Suspense fallback={null}>
-          <DevelopmentMeshLayer url={`${API_BASE_URL}${scene.developmentMesh.meshUrl}`} />
-        </Suspense>
+        temporalWalk ? (
+          temporalIds !== null && walkthroughSnapshotDay !== null ? (
+            // PR-4 W1a: the ACTIVE development pieces of the snapshot day — the
+            // same plan the runtime mounts its colliders from (rule 187)
+            <Suspense fallback={null}>
+              <TemporalDevelopmentLayer
+                url={`${API_BASE_URL}${scene.developmentMesh.meshUrl}`}
+                timeline={scene.timeline}
+                levels={scene.levels}
+                levelAccesses={scene.levelAccesses}
+                network={scene.network}
+                smoothed={scene.smoothedDecline}
+                snapshotDay={walkthroughSnapshotDay}
+                activeRampSegmentIds={temporalIds}
+              />
+            </Suspense>
+          ) : null
+        ) : showStatic ? (
+          <Suspense fallback={null}>
+            <DevelopmentMeshLayer url={`${API_BASE_URL}${scene.developmentMesh.meshUrl}`} />
+          </Suspense>
+        ) : null
       ) : null}
       {showStatic && scene?.levels && (visible.has('levels') || visible.has('crosscuts')) ? (
         <LevelDevelopmentLayer

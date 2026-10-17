@@ -46,20 +46,21 @@ export const READINESS_MESSAGES: Record<Exclude<WalkthroughReadiness, 'READY'>, 
  * first person, so ONLY the excavation environment survives. Phase 20D.2
  * (rule 187): the walkthrough shows exactly the excavation geometry whose
  * collision it mounts — the ramp tunnel always, the development excavation
- * meshes when STATIC_FINAL mounts their physics — so "collider active but
+ * meshes when their physics is mounted (STATIC_FINAL: the final layout;
+ * TIMELINE_SNAPSHOT, PR-4 W1a: the ACTIVE pieces only, the final layout
+ * never leaks into a historical snapshot) — so "collider active but
  * geometry invisible" and "toggle off → boundary gone" are both impossible
- * by construction; TIMELINE_SNAPSHOT keeps the ramp-only temporal contract
- * (the final development mesh never leaks into a historical snapshot).
- * Other modes are untouched.
+ * by construction. Other modes are untouched.
  */
 export function walkthroughAuthorityLayers(
   walkthroughContext: 'STATIC_FINAL' | 'TIMELINE_SNAPSHOT' | null,
   developmentPhysicsMounted: boolean,
 ): ReadonlySet<string> {
-  // an unknown context is treated as temporal (the narrower set): the
-  // development mesh is shown only when STATIC_FINAL is explicit AND its
-  // physics is mounted
-  if (walkthroughContext === 'STATIC_FINAL' && developmentPhysicsMounted) {
+  // the development mesh is shown exactly when its physics is mounted — in
+  // STATIC_FINAL as the full final layout, in a TIMELINE_SNAPSHOT (PR-4
+  // W1a) as the ACTIVE pieces the temporal development layer renders; an
+  // unknown context never shows it
+  if (walkthroughContext !== null && developmentPhysicsMounted) {
     return new Set(['tunnelMesh', 'developmentMesh'])
   }
   return new Set(['tunnelMesh'])

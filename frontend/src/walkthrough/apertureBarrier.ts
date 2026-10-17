@@ -19,8 +19,15 @@
  * exactly the chord the swept wall itself follows between its rings (rule
  * 65: refinement rings lie on the validated polyline), so a curved ramp is
  * covered without a straight-line approximation across the whole window.
- * The window mirrors the backend cut locality (`JUNCTION_WINDOW_WIDTHS` = 2
- * tunnel widths about the junction) plus one width of margin on each side.
+ * The window is the backend's OWN doorway footprint when the tunnel report
+ * carries it (PR-4 W1b `openings[].parentCutChainage`, the ramp chainage
+ * span of the intervals the cut removed — the parent-side extension can run
+ * past the nominal window on a shallow turnout) plus one width of margin on
+ * each side; an older report without the span falls back to the nominal
+ * cut locality (`JUNCTION_WINDOW_WIDTHS` = 2 tunnel widths about the
+ * junction) plus the same margin. PR-4 W1a: a level whose LEVEL_ACCESS is
+ * ACTIVE at the snapshot day (`openLevelIds`) gets NO barrier — its access
+ * excavation is collided and the turnout is a real doorway.
  *
  * Fail closed (rule 117 analogue): apertures declared but no usable level
  * accesses, a count mismatch, or a junction not welded to the ramp
@@ -197,6 +204,7 @@ export function resolveApertureContainment(
   smoothed: SmoothedDeclinePayload,
   activeSegmentIds: readonly string[],
   ramp: { tunnelWidth: number; tunnelHeight: number },
+  openLevelIds: ReadonlySet<string> = new Set(),
 ): ApertureContainment {
   const expected = tunnelJunctions?.byType?.RAMP_ACCESS ?? 0
   if (!Number.isInteger(expected) || expected < 0) {
@@ -232,12 +240,29 @@ export function resolveApertureContainment(
   const active = new Set(activeSegmentIds)
   const width = ramp.tunnelWidth
   const half = (APERTURE_WINDOW_WIDTHS + APERTURE_MARGIN_WIDTHS) * width
+  const margin = APERTURE_MARGIN_WIDTHS * width
+  // the backend's doorway footprint per level (PR-4 W1b), when reported
+  const spanByLevel = new Map<string, [number, number]>()
+  for (const o of tunnelJunctions?.openings ?? []) {
+    if (o.type !== 'RAMP_ACCESS') continue
+    const span = o.parentCutChainage
+    if (
+      Array.isArray(span) &&
+      span.length === 2 &&
+      Number.isFinite(span[0]) &&
+      Number.isFinite(span[1]) &&
+      span[1] >= span[0]
+    ) {
+      spanByLevel.set(o.levelId, [span[0], span[1]])
+    }
+  }
   const pieces: ApertureBarrierPiece[] = []
   const seen = new Set<string>()
   for (const access of declared) {
     if (seen.has(access.levelId))
       return invalid(expected, `duplicate level access ${access.levelId}`)
     seen.add(access.levelId)
+    if (openLevelIds.has(access.levelId)) continue // the access is collided: open doorway
     const J = access.rampJunction as Vec3
     // the junction is welded onto the ramp centerline (a shared boundary point)
     let iJ = -1
@@ -276,8 +301,26 @@ export function resolveApertureContainment(
     }
     if (side === 0) return invalid(expected, `branch side of ${access.levelId} is undecidable`)
     const sJ = poly.chainage[iJ]!
-    const lo = sJ - half
-    const hi = sJ + half
+    const span = spanByLevel.get(access.levelId)
+    // the reported footprint must belong to THIS junction: the access leaves
+    // the ramp centerline at the junction with the ramp's own width, so the
+    // first removed ramp interval starts within a width of the junction and
+    // the footprint ends inside the backend's extension bound (6 widths past
+    // the 2-width window); anything else is a report / ramp mismatch → fail
+    // closed rather than guessing where the doorway is
+    if (
+      span &&
+      (span[0] < sJ - width ||
+        span[0] > sJ + width ||
+        span[1] > sJ + (APERTURE_WINDOW_WIDTHS + 6) * width)
+    ) {
+      return invalid(
+        expected,
+        `reported doorway span of ${access.levelId} does not fit its junction`,
+      )
+    }
+    const lo = span ? span[0] - margin : sJ - half
+    const hi = span ? span[1] + margin : sJ + half
     for (let i = 0; i < poly.points.length - 1; i++) {
       if (!active.has(poly.intervalSegment[i]!)) continue
       const a = poly.chainage[i]!
