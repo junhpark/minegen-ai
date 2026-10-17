@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { tr } from '@/i18n/t'
 
 interface Props {
   title: string
@@ -36,11 +37,11 @@ export function ModalDialog({ title, onClose, children, footer }: Props) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={title}
-        className="w-[380px] max-w-[92vw] rounded-sm border border-rock-600 bg-rock-800 shadow-xl"
+        aria-label={tr(title)}
+        className="w-[380px] max-w-[92vw] rounded-md border border-rock-600/80 bg-rock-800 shadow-float"
       >
         <header className="border-b border-rock-700 px-4 py-2.5">
-          <h2 className="plate text-[13px] text-chalk">{title}</h2>
+          <h2 className="plate text-[13px] text-chalk">{tr(title)}</h2>
         </header>
         <div className="max-h-[60vh] overflow-y-auto px-4 py-3 text-[12px] leading-relaxed text-chalk-dim">
           {children}
@@ -82,7 +83,7 @@ export function DialogButton({
       disabled={disabled}
       className={`plate rounded-sm px-3 py-1 text-[12px] disabled:cursor-not-allowed disabled:opacity-40 ${style}`}
     >
-      {children}
+      {typeof children === 'string' ? tr(children) : children}
     </button>
   )
 }

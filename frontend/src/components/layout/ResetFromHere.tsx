@@ -2,6 +2,7 @@ import { runningStages, useShellStore } from '@/components/layout/shellStore'
 import { resettable, resetStageFor, STAGE_LABEL } from '@/components/layout/workflow'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening H1 §4.4 — "Reset from here" for the current stage, in the
@@ -42,7 +43,7 @@ export function ResetFromHere() {
                 : 'This stage owns no design artifact'
         }
       >
-        Reset from {STAGE_LABEL[stage]}…
+        {tr('Reset from {stage}…', { stage: tr(STAGE_LABEL[stage]) })}
       </button>
     </div>
   )

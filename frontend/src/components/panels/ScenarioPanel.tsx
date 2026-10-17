@@ -24,6 +24,7 @@ import { activateScenario, scenarioEpoch } from '@/stores/scenarioSession'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { fmtMeters } from '@/utils/format'
+import { tr } from '@/i18n/t'
 
 const INPUT =
   'w-full rounded-sm border border-rock-700 bg-rock-900 px-2 py-1 text-chalk focus:border-lamp focus:outline-none'
@@ -111,7 +112,7 @@ export function SetupPanel() {
     ? scene.rampSource.activeSource === 'LAYOUT_V2'
       ? 'Layout v2'
       : 'Legacy decline'
-    : 'no design yet'
+    : tr('no design yet')
 
   // ONE primary: creating a mine while none exists, else generating the
   // missing world of a loaded scenario; with a world both are secondary
@@ -121,10 +122,12 @@ export function SetupPanel() {
   return (
     <WorkflowCard
       stage="SCENARIO"
-      title="Scenario"
+      title={tr('Scenario')}
       tone={scenario ? (scene ? 'READY' : 'NOT_GENERATED') : 'NOT_GENERATED'}
-      statusLabel={scenario ? (scene ? 'World ready' : 'No world') : 'No mine'}
-      info="A synthetic mine: terrain, an authoritative orebody solid and seeded numerical rock-quality and grade fields, plus the declared fault planes. Every stochastic parameter is drawn once by the backend when you randomize, then persisted resolved, so the same scenario always reproduces the same world. It is a synthetic sandbox — never a measured, estimated or imported orebody."
+      statusLabel={scenario ? (scene ? tr('World ready') : tr('No world')) : 'No mine'}
+      info={tr(
+        'A synthetic mine: terrain, an authoritative orebody solid and seeded numerical rock-quality and grade fields, plus the declared fault planes. Every stochastic parameter is drawn once by the backend when you randomize, then persisted resolved, so the same scenario always reproduces the same world. It is a synthetic sandbox — never a measured, estimated or imported orebody.',
+      )}
       summary={
         scenario ? (
           <>
@@ -132,7 +135,8 @@ export function SetupPanel() {
               {scenario.name}
             </div>
             <div>
-              {scenario.orebody.orebodyType} · seed {scenario.seed} · {design}
+              {tr(scenario.orebody.orebodyType)} · {tr('seed {seed}', { seed: scenario.seed })} ·{' '}
+              {design}
             </div>
           </>
         ) : (
@@ -142,11 +146,11 @@ export function SetupPanel() {
       action={
         <div data-testid="setup-form">
           <label className="mb-2 block">
-            <span className="mb-1 block text-[11px] text-chalk-dim">Name</span>
+            <span className="mb-1 block text-[11px] text-chalk-dim">{tr('Name')}</span>
             <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
           </label>
           <label className="mb-2 block">
-            <span className="mb-1 block text-[11px] text-chalk-dim">Preset</span>
+            <span className="mb-1 block text-[11px] text-chalk-dim">{tr('Preset')}</span>
             <select
               value={preset}
               onChange={(e) => {
@@ -164,7 +168,7 @@ export function SetupPanel() {
           </label>
           <div className="mb-2 grid grid-cols-[1fr_auto_auto] items-end gap-2">
             <label className="block">
-              <span className="mb-1 block text-[11px] text-chalk-dim">Seed</span>
+              <span className="mb-1 block text-[11px] text-chalk-dim">{tr('Seed')}</span>
               <input
                 type="number"
                 value={seed}
@@ -176,7 +180,7 @@ export function SetupPanel() {
               />
             </label>
             <label className="block w-16">
-              <span className="mb-1 block text-[11px] text-chalk-dim">Faults</span>
+              <span className="mb-1 block text-[11px] text-chalk-dim">{tr('Faults')}</span>
               <input
                 type="number"
                 min={0}
@@ -195,7 +199,7 @@ export function SetupPanel() {
               onClick={() => realize.mutate()}
               disabled={realize.isPending || busy}
               className="plate rounded-sm border border-rock-600 px-2 py-1 text-[12px] text-chalk hover:bg-rock-700 disabled:opacity-50"
-              title="Preview the deterministic realization for this preset + seed"
+              title={tr('Preview the deterministic realization for this preset + seed')}
             >
               {realize.isPending ? '…' : 'Randomize'}
             </button>
@@ -226,9 +230,9 @@ export function SetupPanel() {
             variant={createVariant}
             disabled={busy}
             onClick={() => create.mutate()}
-            title="Persist the reviewed scenario and generate its world in one step"
+            title={tr('Persist the reviewed scenario and generate its world in one step')}
           >
-            {create.isPending ? 'Creating mine…' : 'Create mine'}
+            {create.isPending ? tr('Creating mine…') : tr('Create mine')}
           </ActionButton>
           {scenario ? (
             <div className="mt-1.5">
@@ -236,7 +240,9 @@ export function SetupPanel() {
                 variant={worldVariant}
                 disabled={busy}
                 onClick={() => generate.mutate()}
-                title="Regenerate the world of the loaded scenario from its persisted document (same seed, same world)"
+                title={tr(
+                  'Regenerate the world of the loaded scenario from its persisted document (same seed, same world)',
+                )}
               >
                 {generate.isPending
                   ? 'Generating world…'
@@ -252,7 +258,7 @@ export function SetupPanel() {
             </p>
           ) : null}
           <Disclosure
-            label="Saved mines"
+            label={tr('Saved mines')}
             hint={list.isSuccess ? String(list.data.length) : undefined}
           >
             {list.isSuccess && list.data.length > 0 ? (
@@ -275,7 +281,7 @@ export function SetupPanel() {
                 ))}
               </ul>
             ) : (
-              <p className="text-mute">No saved mines yet.</p>
+              <p className="text-mute">{tr('No saved mines yet.')}</p>
             )}
           </Disclosure>
         </div>
@@ -300,18 +306,18 @@ export function ParametersPanel({ scenario }: { scenario: Scenario | null }) {
            every value into the remainder. Long labels now WRAP inside
            their own column, so all values keep one left edge. */
         <dl className="readout grid grid-cols-[7.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1.5 text-[11px]">
-          <dt className="break-words text-mute">World</dt>
+          <dt className="break-words text-mute">{tr('World')}</dt>
           <dd className="break-words">
             {scenario.world.sizeX} × {scenario.world.sizeY} m
           </dd>
-          <dt className="break-words text-mute">Model depth</dt>
+          <dt className="break-words text-mute">{tr('Model depth')}</dt>
           <dd className="break-words">
             {fmtMeters(scenario.world.depth, 0)} below{' '}
             {fmtMeters(scenario.terrain.baseElevation, 0)}
           </dd>
-          <dt className="break-words text-mute">Orebody</dt>
+          <dt className="break-words text-mute">{tr('Orebody')}</dt>
           <dd className="break-words">{scenario.orebody.orebodyType}</dd>
-          <dt className="break-words text-mute">Strike / dip</dt>
+          <dt className="break-words text-mute">{tr('Strike / dip')}</dt>
           <dd className="break-words">
             {scenario.orebody.strikeDeg}° / {scenario.orebody.dipDeg}°
           </dd>
@@ -320,53 +326,57 @@ export function ParametersPanel({ scenario }: { scenario: Scenario | null }) {
               them, so the readout must not imply otherwise */}
           {scenario.orebody.orebodyType === 'WARPED_VEIN' && scenario.orebody.warpedVein ? (
             <>
-              <dt className="break-words text-mute">Nominal size</dt>
+              <dt className="break-words text-mute">{tr('Nominal size')}</dt>
               <dd className="break-words">
                 {fmtMeters(scenario.orebody.length, 0)} × {fmtMeters(scenario.orebody.height, 0)}
               </dd>
-              <dt className="break-words text-mute">Nominal thickness</dt>
+              <dt className="break-words text-mute">{tr('Nominal thickness')}</dt>
               <dd className="break-words">{fmtMeters(scenario.orebody.thickness, 0)}</dd>
               <dt className="break-words text-mute">
-                Morphology
-                <span className="block text-[10px] leading-tight">synthetic, irregular</span>
+                {tr('Morphology')}
+                <span className="block text-[10px] leading-tight">
+                  {tr('synthetic, irregular')}
+                </span>
               </dt>
               <dd className="break-words">{morphologySummary(scenario.orebody.warpedVein)}</dd>
             </>
           ) : (
             <>
-              <dt className="break-words text-mute">Thickness</dt>
+              <dt className="break-words text-mute">{tr('Thickness')}</dt>
               <dd className="break-words">{fmtMeters(scenario.orebody.thickness, 0)}</dd>
             </>
           )}
           {/* the synthetic-RMR disclaimer is kept in full on its own line;
               it is never abbreviated to a misleading "RMR" */}
           <dt className="break-words text-mute">
-            Rock quality
-            <span className="block text-[10px] leading-tight">synthetic RMR-like, 0-100</span>
+            {tr('Rock quality')}
+            <span className="block text-[10px] leading-tight">
+              {tr('synthetic RMR-like, 0-100')}
+            </span>
           </dt>
           <dd className="break-words">
             {scenario.geology.rockQuality.mean} ± {scenario.geology.rockQuality.std}
           </dd>
-          <dt className="break-words text-mute">Faults</dt>
+          <dt className="break-words text-mute">{tr('Faults')}</dt>
           <dd className="break-words">{scenario.geology.faults.length}</dd>
           {/* Phase 18: numerical field spacing — never a "Block" size or a
               mining-unit setting (rule 127) */}
           <dt className="break-words text-mute">
-            Field sampling
-            <span className="block text-[10px] leading-tight">numerical spacing</span>
+            {tr('Field sampling')}
+            <span className="block text-[10px] leading-tight">{tr('numerical spacing')}</span>
           </dt>
           <dd className="break-words">
             {scenario.fieldSampling.spacingX} × {scenario.fieldSampling.spacingY} ×{' '}
             {scenario.fieldSampling.spacingZ} m
           </dd>
-          <dt className="break-words text-mute">Max grade</dt>
+          <dt className="break-words text-mute">{tr('Max grade')}</dt>
           <dd className="break-words">{(scenario.ramp.maxGradient * 100).toFixed(0)} %</dd>
-          <dt className="break-words text-mute">Min radius</dt>
+          <dt className="break-words text-mute">{tr('Min radius')}</dt>
           <dd className="break-words">{fmtMeters(scenario.ramp.minTurnRadius, 0)}</dd>
         </dl>
       ) : (
         <p className="text-[11px] text-mute">
-          No scenario loaded. Create one, then generate its world.
+          {tr('No scenario loaded. Create one, then generate its world.')}
         </p>
       )}
     </>

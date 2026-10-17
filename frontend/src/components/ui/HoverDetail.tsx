@@ -87,7 +87,7 @@ export function HoverDetail({ label, detail, children, width = 300 }: Props) {
       data-testid="hover-detail"
       data-placement={placement ? `${placement.vertical} ${placement.horizontal}` : undefined}
       style={style}
-      className="pointer-events-none z-50 rounded-sm border border-rock-600 bg-rock-950 px-2.5 py-2 text-left text-[11px] leading-relaxed font-normal tracking-normal text-chalk-dim normal-case shadow-lg"
+      className="pointer-events-none z-50 rounded-md border border-rock-600/80 bg-rock-950/95 px-2.5 py-2 text-left text-[11px] leading-relaxed font-normal tracking-normal text-chalk-dim normal-case shadow-float backdrop-blur"
     >
       {detail}
     </div>

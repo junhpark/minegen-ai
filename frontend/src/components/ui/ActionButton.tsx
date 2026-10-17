@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { type ActionVariant } from './presentation'
+import { tr } from '@/i18n/t'
 
 interface Props {
   variant: ActionVariant
@@ -11,9 +12,10 @@ interface Props {
 
 const STYLE: Record<ActionVariant, string> = {
   // the next key action of the current workflow
-  primary: 'bg-lamp text-rock-950 hover:bg-lamp-deep hover:text-chalk',
+  primary:
+    'bg-gradient-to-b from-lamp to-lamp-deep/90 text-rock-950 shadow-glow hover:from-chalk hover:to-lamp hover:text-rock-950',
   // regeneration / auxiliary action on an existing result
-  secondary: 'border border-lamp text-lamp hover:bg-lamp hover:text-rock-950',
+  secondary: 'border border-lamp/80 text-lamp hover:border-lamp hover:bg-lamp hover:text-rock-950',
 }
 
 /**
@@ -31,9 +33,9 @@ export function ActionButton({ variant, onClick, disabled = false, title, childr
       disabled={disabled}
       title={title}
       data-variant={variant}
-      className={`plate w-full rounded-sm px-3 py-1.5 text-[13px] disabled:cursor-not-allowed disabled:opacity-40 ${STYLE[variant]}`}
+      className={`plate w-full rounded-md px-3 py-1.5 text-[13px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none ${STYLE[variant]}`}
     >
-      {children}
+      {typeof children === 'string' ? tr(children) : children}
     </button>
   )
 }

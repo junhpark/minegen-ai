@@ -2830,8 +2830,8 @@ code, the code and the rule win and the map is corrected.
      deterministic, tested as data; one backend-reported metric line per
      node — names and counts echoed from the scene manifest, nothing
      computed on the client); clicking a node goes to that stage and
-     nothing else. The band and the dock run no generation, mutation,
-     request or layer change and carry no `data-variant`, so a stage's ONE
+     nothing else. The band and the dock run no generation, mutation or
+     request and carry no `data-variant`, so a stage's ONE
      primary action stays in the controls column and the single enabled
      primary invariant holds; hiding a column (View › Controls / Results)
      is display-only — every feature panel stays mounted. Walk hides the
@@ -2855,3 +2855,45 @@ code, the code and the rule win and the map is corrected.
      the card's Search details and the "Current design" readout names the
      option (`Option n · FAMILY (active)`), never a bare id when the
      catalogue knows it.
+
+     Round 3 (Park's second screenshot review): the View tab's band gains
+     the LAYERS group (`VIEW_LAYER_TOOLS`, tested as data) — the coarse
+     form of the Visibility tree: one tool = one group of tree layers
+     (Terrain · Orebody · Faults · Slice · Ramp · Levels · Shafts · Network ·
+     Production · Systems), pressed when every member is visible, setting
+     every member through the store's own `setLayerVisible`; the rule-187
+     walkthrough authority set still bypasses the stored toggles. Every
+     Visibility-tree row toggles a layer the scene READS
+     (`layerGroups.ts`, scanned against `MineScene.tsx`); a dead checkbox
+     is a defect. Analysis › Layouts is written in the option-row grammar
+     (`Option n` · family chip · ★ winner · active / selected chip ·
+     `engineering rank #n` sub-line, fixed-width tabular number columns,
+     the comparable-cost bar inside the row) with rules 204–206 untouched.
+     A mine DURATION reads in Julian years with the backend days beside it
+     (`duration()`: `3.1 yr (1,133 d)`, 365.25 d/yr — the Planning NPV
+     timing); milestones stay day counts. The polish tokens (`warn`,
+     `shadow-card / float / glow`, `.figures`) are presentation only.
+
+225. UI locale (PR-3 round 4 — Park: Korean by default, mine-site
+     terminology). The UI is authored in ENGLISH source strings, which stay
+     the keys the tests assert; `tr(text, vars?)` (`i18n/t.ts`) renders them
+     through the Korean dictionary (`i18n/ko.ts`) and falls back to the
+     English text — a missing entry is visible, never empty. The shared
+     primitives (WorkflowCard, StatusBadge, ActionButton, Disclosure,
+     PanelSection, MetricRow, PanelTabs, ModalDialog, InfoPopover, the
+     ribbon tools, the flow dock) translate their own labels, so callers
+     keep passing the English key; composed strings are templates whose
+     placeholders are substituted AFTER the lookup (`'{n} levels'` →
+     `'레벨 {n}개'`). The default locale is `ko`; `VITE_DEFAULT_LOCALE=en`
+     pins a build (vitest and the browser e2e are pinned, so every English
+     assertion keeps its meaning, and the e2e exercises the Korean switch
+     explicitly); the person's choice is per browser (`localStorage`,
+     `<html lang>`), never a scenario field, and switching remounts the app
+     tree (`Root.tsx`, `key={locale}`) — stores and the query cache
+     survive, no request, artifact or stage changes. Terminology follows
+     Korean mine-site usage and is recorded with its reasoning in
+     `docs/i18n/terminology.json`; `scripts/i18n_glossary.py` builds the
+     reviewable `docs/i18n/glossary-ko-en.xlsx` from the dictionary.
+     Backend-authored strings (failure reasons, candidate ids, demo text)
+     and 3D labels stay as the backend wrote them. `IBM Plex Sans KR` is the
+     Hangul fallback of the three font families; no i18n library is added.

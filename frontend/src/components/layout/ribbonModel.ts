@@ -1,6 +1,7 @@
 import type { AnalysisTab } from '@/components/panels/workflowTabs'
 import { ANALYSIS_TABS } from '@/components/panels/workflowTabs'
 import type { IconName } from '@/components/ui/icons'
+import type { LayerId } from '@/types/enums'
 import type { StageId, ViewMode, WorkflowStep } from '@/types/workflow'
 import { resettable, STAGE_LABEL, stepOf, type StageGlyph, WORKFLOW_STEPS } from './workflow'
 
@@ -16,8 +17,12 @@ import { resettable, STAGE_LABEL, stepOf, type StageGlyph, WORKFLOW_STEPS } from
  * carries that step's STAGES as navigation tools — each with the stage's
  * status glyph (the same presentation the stepper showed: a backend artifact
  * status, never a new vocabulary) — plus the step's commands. The VIEW tab
- * (3D / 4D / Walk, camera presets, panes, the flow dock) is a viewport tab,
- * not a workflow step: selecting it changes no stage. The QUICK ACCESS area
+ * (3D / 4D / Walk, camera presets, the scene LAYERS, panes, the flow dock)
+ * is a viewport tab, not a workflow step: selecting it changes no stage. The
+ * Layers group (PR-3 round 3) is the coarse form of the Visibility tree —
+ * every tool sets the SAME `viewerStore.visibleLayers` entries the tree's
+ * checkboxes toggle (display-only viewer state; the walkthrough authority
+ * set of rule 187 still bypasses it) and nothing else. The QUICK ACCESS area
  * at the right of the band is the same in every tab: "Reset from <stage>"
  * and "Reset mine" — the two ways back, always one click away.
  *
@@ -62,6 +67,8 @@ export type RibbonCommand =
   | { type: 'CAMERA'; preset: CameraPreset }
   | { type: 'PANE'; pane: Pane; visible: boolean }
   | { type: 'FLOW_DOCK'; visible: boolean }
+  /** show or hide every layer of one View › Layers tool (viewer state only) */
+  | { type: 'LAYERS'; layers: readonly LayerId[]; visible: boolean }
   | { type: 'ANALYSIS_TAB'; tab: AnalysisTab }
   | { type: 'ANALYSIS_3D'; show: boolean }
   | { type: 'IMPORT_RESULTS' }
@@ -91,6 +98,10 @@ export interface CommandTool {
   reason?: string | undefined
   /** a destructive tool (the reset confirmations) is drawn in the danger tone */
   danger?: boolean | undefined
+  /** PR-3 round 4: a COMPOSED label / hint ("Reset from Layout") is rendered
+   * from its template and variables so the dictionary can translate both
+   * halves (`label` / `hint` keep the composed English for the tests) */
+  template?: { label: string; hint: string; vars: Record<string, string> } | undefined
 }
 
 export type RibbonTool = StageTool | CommandTool
@@ -99,6 +110,8 @@ export interface RibbonGroup {
   id: string
   label: string
   tools: readonly RibbonTool[]
+  /** round 4: a composed label ("2 Design") rendered from its template */
+  template?: { label: string; vars: Record<string, string> } | undefined
 }
 
 export interface RibbonContext {
@@ -115,9 +128,102 @@ export interface RibbonContext {
   jobRunning: boolean
   flowDock: boolean
   panes: Record<Pane, boolean>
+  /** the stored layer toggles (`viewerStore.visibleLayers`, never the derived
+   * walkthrough / 4D set) — the Layers tools read their pressed state here */
+  layers: ReadonlySet<LayerId>
   analysisTab: AnalysisTab
   analysisShow3d: boolean
 }
+
+/**
+ * The View › Layers tools (PR-3 round 3 — Park: "View 탭에서 지형 같은 걸
+ * 켜고 끌 수 있어야"). One tool = one or more Visibility-tree layers that
+ * belong together on screen; it is PRESSED when every member is visible and
+ * sets every member at once. The fine-grained tree in the Status & results
+ * column keeps the per-layer checkboxes; the band never defines a layer of
+ * its own (every id is a `LayerId` the scene reads). Results overlays and the
+ * legacy diagnostics stay tree-only (they are mode-specific).
+ */
+export interface ViewLayerTool {
+  id: string
+  label: string
+  icon: IconName
+  hint: string
+  layers: readonly LayerId[]
+}
+
+export const VIEW_LAYER_TOOLS: readonly ViewLayerTool[] = [
+  {
+    id: 'terrain',
+    label: 'Terrain',
+    icon: 'terrain',
+    hint: 'Terrain surface',
+    layers: ['terrain'],
+  },
+  {
+    id: 'orebody',
+    label: 'Orebody',
+    icon: 'orebody',
+    hint: 'The orebody solid',
+    layers: ['orebody'],
+  },
+  {
+    id: 'faults',
+    label: 'Faults',
+    icon: 'faults',
+    hint: 'Scenario fault planes',
+    layers: ['faults'],
+  },
+  {
+    id: 'slice',
+    label: 'Slice',
+    icon: 'slice',
+    hint: 'Spatial-field slice (rock quality, grade, fault zone)',
+    layers: ['rockQuality'],
+  },
+  {
+    id: 'ramp',
+    label: 'Ramp',
+    icon: 'ramp',
+    hint: 'The active ramp: tunnel mesh and effective centerline',
+    layers: ['tunnelMesh', 'smoothedDecline'],
+  },
+  {
+    id: 'levels',
+    label: 'Levels',
+    icon: 'levels',
+    hint: 'Level development: accesses, drifts, crosscuts and their excavation mesh',
+    layers: ['developmentMesh', 'levelAccesses', 'levels', 'crosscuts'],
+  },
+  {
+    id: 'shafts',
+    label: 'Shafts',
+    icon: 'shafts',
+    hint: 'Shaft axes, stations and the shaft excavation mesh',
+    layers: ['shafts', 'shaftMesh'],
+  },
+  {
+    id: 'network',
+    label: 'Network',
+    icon: 'network',
+    hint: 'Mine network nodes and edges',
+    layers: ['network'],
+  },
+  {
+    id: 'production',
+    label: 'Production',
+    icon: 'production',
+    hint: 'Production geometry (stopes, cuts, rooms)',
+    layers: ['stopes'],
+  },
+  {
+    id: 'systems',
+    label: 'Systems',
+    icon: 'systems',
+    hint: 'Communication routers / coverage and gas sensors / monitoring coverage',
+    layers: ['routers', 'coverage', 'sensors', 'sensorCoverage'],
+  },
+]
 
 export const STAGE_ICON: Record<StageId, IconName> = {
   SCENARIO: 'scenario',
@@ -185,7 +291,7 @@ function command(
   icon: IconName,
   hint: string,
   cmd: RibbonCommand,
-  extra: Partial<Pick<CommandTool, 'active' | 'disabled' | 'reason' | 'danger'>> = {},
+  extra: Partial<Pick<CommandTool, 'active' | 'disabled' | 'reason' | 'danger' | 'template'>> = {},
 ): CommandTool {
   return {
     kind: 'COMMAND',
@@ -206,6 +312,7 @@ export function ribbonBand(tab: RibbonTab, ctx: RibbonContext): RibbonGroup[] {
   const stages: RibbonGroup = {
     id: `${step.id}-stages`,
     label: `${String(step.index)} ${step.label}`,
+    template: { label: '{index} {step}', vars: { index: String(step.index), step: step.label } },
     tools: stageTools(step.stages, ctx),
   }
   switch (step.id) {
@@ -347,6 +454,29 @@ function viewBand(ctx: RibbonContext): RibbonGroup[] {
       ),
     },
     {
+      id: 'layers',
+      label: 'Layers',
+      tools: VIEW_LAYER_TOOLS.map((t) => {
+        const on = t.layers.every((l) => ctx.layers.has(l))
+        return command(
+          `layer-${t.id}`,
+          t.label,
+          t.icon,
+          t.hint,
+          { type: 'LAYERS', layers: t.layers, visible: !on },
+          {
+            active: on,
+            disabled: !ctx.hasScene || inWalk,
+            reason: !ctx.hasScene
+              ? 'Generate a world first'
+              : inWalk
+                ? 'Walk shows the walkable excavation only'
+                : undefined,
+          },
+        )
+      }),
+    },
+    {
       id: 'panels',
       label: 'Panels',
       tools: [
@@ -408,7 +538,16 @@ export function quickAccess(ctx: RibbonContext): CommandTool[] {
       'resetStage',
       stageReason ?? `Delete the ${STAGE_LABEL[ctx.stage]} result and everything derived from it`,
       { type: 'RESET_FROM', stage: ctx.stage },
-      { disabled: !stageResettable || ctx.jobRunning, reason: stageReason, danger: true },
+      {
+        disabled: !stageResettable || ctx.jobRunning,
+        reason: stageReason,
+        danger: true,
+        template: {
+          label: 'Reset from {stage}',
+          hint: stageReason ?? 'Delete the {stage} result and everything derived from it',
+          vars: { stage: STAGE_LABEL[ctx.stage] },
+        },
+      },
     ),
     command(
       'reset-mine',

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { InfoPopover } from '@/components/ui/InfoPopover'
+import { tr } from '@/i18n/t'
 
 interface Props {
   title: string
@@ -43,7 +44,7 @@ export function PanelSection({
 }: Props) {
   const expanded = collapsible ? (open ?? true) : true
   return (
-    <section className="border-b border-rock-700 px-4 py-3">
+    <section className="border-b border-rock-700/70 px-4 py-3">
       <header className="mb-2 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
           {collapsible ? (
@@ -56,20 +57,20 @@ export function PanelSection({
               <span aria-hidden className="readout text-[10px]">
                 {expanded ? '▾' : '▸'}
               </span>
-              <h2 className="plate text-[12px]">{title}</h2>
+              <h2 className="plate text-[12px]">{tr(title)}</h2>
             </button>
           ) : (
-            <h2 className="plate text-[12px] text-chalk-dim">{title}</h2>
+            <h2 className="plate text-[12px] text-chalk-dim">{tr(title)}</h2>
           )}
           {info ? <InfoPopover label={title}>{info}</InfoPopover> : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {status}
           {actions}
-          {tag ? <span className="readout text-[10px] text-mute">{tag}</span> : null}
+          {tag ? <span className="readout text-[10px] text-mute">{tr(tag)}</span> : null}
         </div>
       </header>
-      {note ? <p className="mb-2 text-[11px] leading-relaxed text-mute">{note}</p> : null}
+      {note ? <p className="mb-2 text-[11px] leading-relaxed text-mute">{tr(note)}</p> : null}
       {expanded ? children : null}
     </section>
   )

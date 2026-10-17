@@ -19,6 +19,7 @@ import {
   persistedDraft,
   reconcileEconomicsDraft,
 } from './economicsDraft'
+import { tr } from '@/i18n/t'
 
 const FIELD =
   'w-full rounded-sm border border-rock-700 bg-rock-900 px-1.5 py-0.5 text-[11px] text-chalk focus:border-lamp focus:outline-none'
@@ -91,8 +92,8 @@ export function EconomicsConfigEditor(p: Props) {
   return (
     <div className="flex flex-col gap-1.5" data-testid="economics-config-editor">
       <div className="flex items-center gap-1.5 text-[11px] text-chalk-dim">
-        <span>Configure assumptions</span>
-        <InfoPopover label="planning economics assumptions">
+        <span>{tr('Configure assumptions')}</span>
+        <InfoPopover label={tr('planning economics assumptions')}>
           Every number is an explicit planning assumption you enter; nothing is defaulted or
           estimated. Revenue is planned mined tonnes × gross revenue per mined tonne (the grade
           proxy is never a revenue input). Development cost is edge length × rate per edge type;
@@ -101,19 +102,19 @@ export function EconomicsConfigEditor(p: Props) {
           scenario and changes no mine geometry, production or schedule.
         </InfoPopover>
       </div>
-      <Section title="Currency">
+      <Section title={tr('Currency')}>
         {text('Currency code (3 letters, no conversion)', draft.currencyCode, (v) =>
           setDraft((d) => ({ ...d, currencyCode: v.toUpperCase() })),
         )}
       </Section>
-      <Section title="Development costs">
+      <Section title={tr('Development costs')}>
         {DEVELOPMENT_RATE_KEYS.map((k) =>
           text(DEVELOPMENT_RATE_LABEL[k], draft.developmentCosts[k], (v) =>
             setDraft((d) => ({ ...d, developmentCosts: { ...d.developmentCosts, [k]: v } })),
           ),
         )}
       </Section>
-      <Section title="Production costs">
+      <Section title={tr('Production costs')}>
         {PRODUCTION_RATE_KEYS.map((k) =>
           text(
             PRODUCTION_RATE_LABEL[k],
@@ -123,16 +124,16 @@ export function EconomicsConfigEditor(p: Props) {
           ),
         )}
       </Section>
-      <Section title="Processing / backfill">
+      <Section title={tr('Processing / backfill')}>
         {scalar('processingCostPerTonne')}
         {scalar('backfillCostPerM3')}
       </Section>
-      <Section title="Revenue assumption">{scalar('grossRevenuePerMinedTonne')}</Section>
-      <Section title="Fixed / capital cost">
+      <Section title={tr('Revenue assumption')}>{scalar('grossRevenuePerMinedTonne')}</Section>
+      <Section title={tr('Fixed / capital cost')}>
         {scalar('fixedOperatingCostPerDay')}
         {scalar('initialCapitalCost')}
       </Section>
-      <Section title="Discounting">
+      <Section title={tr('Discounting')}>
         {scalar('annualDiscountRate')}
         {scalar('cashflowBucketDays')}
       </Section>
@@ -142,9 +143,11 @@ export function EconomicsConfigEditor(p: Props) {
         disabled={!p.enabled || p.saving}
         onClick={() => setDraft(() => draftFromConfig(DEMO_ASSUMPTIONS))}
         className="plate w-full rounded-sm border border-rock-600 px-3 py-1 text-[11px] text-chalk-dim hover:border-lamp hover:text-lamp disabled:cursor-not-allowed disabled:opacity-40"
-        title="Loads illustrative round numbers into the editor. Nothing is saved until you press Save."
+        title={tr(
+          'Loads illustrative round numbers into the editor. Nothing is saved until you press Save.',
+        )}
       >
-        Use demo assumptions — DEMO / SYNTHETIC ASSUMPTIONS
+        {tr('Use demo assumptions — DEMO / SYNTHETIC ASSUMPTIONS')}
       </button>
       {parsed.config === null && dirty ? (
         <p className="text-[10px] text-mute">Missing or invalid: {parsed.problems.join(', ')}</p>
@@ -156,9 +159,11 @@ export function EconomicsConfigEditor(p: Props) {
         onClick={() => {
           if (parsed.config) p.onSave(parsed.config)
         }}
-        title="Writes economics.json beside the scenario and reloads the analysis; no mine artifact is regenerated"
+        title={tr(
+          'Writes economics.json beside the scenario and reloads the analysis; no mine artifact is regenerated',
+        )}
       >
-        {p.saving ? 'Saving assumptions…' : 'Save assumptions'}
+        {p.saving ? tr('Saving assumptions…') : tr('Save assumptions')}
       </ActionButton>
     </div>
   )

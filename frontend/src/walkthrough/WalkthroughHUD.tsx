@@ -1,5 +1,6 @@
 import { NAVIGATION_MODES, type WalkthroughNavigationMode } from './navigation'
 import type { TeleportTarget } from './teleport'
+import { tr } from '@/i18n/t'
 
 /**
  * Compact walkthrough overlay (Phase 16 §31–34): center crosshair, a
@@ -61,13 +62,13 @@ export function WalkthroughHUD({
       {focusedKind ? (
         <div className="readout absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-4 rounded-sm bg-rock-900/80 px-2 py-1 text-center text-[11px] text-lamp">
           <div>{focusedKind}</div>
-          <div className="text-chalk-dim">E Inspect</div>
+          <div className="text-chalk-dim">{tr('E Inspect')}</div>
         </div>
       ) : null}
       <div className="pointer-events-auto absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1">
         {teleportTargets.length > 0 && onTeleport ? (
           <select
-            aria-label="Teleport to level"
+            aria-label={tr('Teleport to level')}
             className="plate rounded-sm bg-rock-900/80 px-1.5 py-0.5 text-[11px] text-chalk-dim"
             value=""
             onChange={(e) => {
@@ -77,7 +78,7 @@ export function WalkthroughHUD({
             }}
           >
             <option value="" disabled>
-              Go to…
+              {tr('Go to…')}
             </option>
             {teleportTargets.map((t) => (
               <option key={t.id} value={t.id}>
@@ -106,9 +107,9 @@ export function WalkthroughHUD({
       {temporal ? (
         <div className="readout absolute right-3 top-3 rounded-sm bg-rock-900/80 px-3 py-2 text-right text-[11px] leading-relaxed">
           <div className="text-lamp">Day {snapshotDay.toFixed(1)}</div>
-          <div className="text-chalk-dim">Timeline snapshot</div>
-          <div className="text-chalk-dim">Completed decline only</div>
-          <div className="mt-1 text-mute">Return to 4D to change time</div>
+          <div className="text-chalk-dim">{tr('Timeline snapshot')}</div>
+          <div className="text-chalk-dim">{tr('Completed decline only')}</div>
+          <div className="mt-1 text-mute">{tr('Return to 4D to change time')}</div>
         </div>
       ) : null}
       {import.meta.env.DEV ? (

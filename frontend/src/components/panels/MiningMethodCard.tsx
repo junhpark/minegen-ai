@@ -13,6 +13,7 @@ import {
   persistedMining,
   reconcileMiningDraft,
 } from './miningDraft'
+import { tr } from '@/i18n/t'
 
 const STOPING_DIRECTION_LABEL: Record<StopingDirection, string> = {
   OVERHAND: 'Overhand',
@@ -65,7 +66,7 @@ export function MiningMethodCard({ summary, identity, pending, enabled, onApply 
   const dirty = miningDraftIsDirty(draft, persisted)
   const num = (label: string, value: number, set: (v: number) => void, step = 1) => (
     <label key={label} className="block">
-      <span className="mb-0.5 block text-[10px] text-mute">{label}</span>
+      <span className="mb-0.5 block text-[10px] text-mute">{tr(label)}</span>
       <input
         type="number"
         className={FIELD}
@@ -89,20 +90,25 @@ export function MiningMethodCard({ summary, identity, pending, enabled, onApply 
   return (
     <WorkflowCard
       stage="METHOD"
-      title="Mining method"
+      title={tr('Mining method')}
       tone={activeImplemented ? 'ACTIVE' : 'INACTIVE'}
       statusLabel={IMPLEMENTATION_LABEL[summary.implementationStatus]}
-      info="The mining method is a scenario parameter. The backend registry decides which methods this version implements: Longhole Open Stoping, Cut & Fill and Room & Pillar plan production geometry and a schedule; a method that is not implemented still receives level access and the generic footwall drift, and nothing is substituted from another method. Applying a change rewrites the scenario, clears every derived design artifact and regenerates the world from the same seed."
-      summary={<span data-testid="mining-method-name">{summary.displayName}</span>}
+      info={tr(
+        'The mining method is a scenario parameter. The backend registry decides which methods this version implements: Longhole Open Stoping, Cut & Fill and Room & Pillar plan production geometry and a schedule; a method that is not implemented still receives level access and the generic footwall drift, and nothing is substituted from another method. Applying a change rewrites the scenario, clears every derived design artifact and regenerates the world from the same seed.',
+      )}
+      summary={<span data-testid="mining-method-name">{tr(summary.displayName)}</span>}
       notice={
         activeImplemented
           ? null
-          : `${summary.displayName} production is not implemented in this version. Level access and the generic footwall drift are still designed.`
+          : tr(
+              '{method} production is not implemented in this version. Level access and the generic footwall drift are still designed.',
+              { method: tr(summary.displayName) },
+            )
       }
       action={
         <div className="flex flex-col gap-1.5">
           <label className="block">
-            <span className="mb-0.5 block text-[10px] text-mute">Method</span>
+            <span className="mb-0.5 block text-[10px] text-mute">{tr('Method')}</span>
             <select
               data-testid="mining-method-select"
               className={FIELD}
@@ -151,7 +157,9 @@ export function MiningMethodCard({ summary, identity, pending, enabled, onApply 
                     setParams({ ribPillarWidthM: v }),
                   ),
                   <label key="stoping-direction" className="block">
-                    <span className="mb-0.5 block text-[10px] text-mute">Stoping direction</span>
+                    <span className="mb-0.5 block text-[10px] text-mute">
+                      {tr('Stoping direction')}
+                    </span>
                     <select
                       data-testid="stoping-direction-select"
                       className={FIELD}
@@ -160,20 +168,22 @@ export function MiningMethodCard({ summary, identity, pending, enabled, onApply 
                         setParams({ stopingDirection: e.target.value as StopingDirection })
                       }
                     >
-                      <option value="OVERHAND">Overhand (lifts bottom → top)</option>
-                      <option value="UNDERHAND">Underhand — not implemented</option>
+                      <option value="OVERHAND">{tr('Overhand (lifts bottom → top)')}</option>
+                      <option value="UNDERHAND">{tr('Underhand — not implemented')}</option>
                     </select>
                   </label>,
                   <label key="block-order" className="block">
-                    <span className="mb-0.5 block text-[10px] text-mute">Block order</span>
+                    <span className="mb-0.5 block text-[10px] text-mute">{tr('Block order')}</span>
                     <select
                       data-testid="block-order-select"
                       className={FIELD}
                       value={mp.blockOrder}
                       onChange={(e) => setParams({ blockOrder: e.target.value as BlockOrder })}
                     >
-                      <option value="SHALLOW_TO_DEEP">Shallow to deep (cemented sill mats)</option>
-                      <option value="DEEP_TO_SHALLOW">Deep to shallow</option>
+                      <option value="SHALLOW_TO_DEEP">
+                        {tr('Shallow to deep (cemented sill mats)')}
+                      </option>
+                      <option value="DEEP_TO_SHALLOW">{tr('Deep to shallow')}</option>
                     </select>
                   </label>,
                   num(
@@ -201,7 +211,7 @@ export function MiningMethodCard({ summary, identity, pending, enabled, onApply 
                     setParams({ headingHeightM: v }),
                   ),
                   <label key="bench" className="block">
-                    <span className="mb-0.5 block text-[10px] text-mute">Bench mode</span>
+                    <span className="mb-0.5 block text-[10px] text-mute">{tr('Bench mode')}</span>
                     <select
                       data-testid="bench-mode-select"
                       className={FIELD}
@@ -224,9 +234,11 @@ export function MiningMethodCard({ summary, identity, pending, enabled, onApply 
             variant={dirty ? 'primary' : 'secondary'}
             disabled={!enabled || pending || !dirty}
             onClick={() => onApply(draft)}
-            title="Rewrites the scenario: every derived artifact is cleared and the world is regenerated"
+            title={tr(
+              'Rewrites the scenario: every derived artifact is cleared and the world is regenerated',
+            )}
           >
-            {pending ? 'Applying method…' : 'Apply method'}
+            {pending ? tr('Applying method…') : tr('Apply method')}
           </ActionButton>
         </div>
       }

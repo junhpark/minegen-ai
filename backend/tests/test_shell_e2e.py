@@ -173,7 +173,10 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
             "--strictPort",
         ],
         cwd=FRONTEND,
-        env={**os.environ, "VITE_API_BASE_URL": api},
+        # PR-3 round 4: the UI defaults to Korean; this test reads the ENGLISH
+        # source strings, so the dev server is pinned to `en` and the Korean
+        # default is exercised explicitly through the language switch below
+        env={**os.environ, "VITE_API_BASE_URL": api, "VITE_DEFAULT_LOCALE": "en"},
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
     )
@@ -475,6 +478,15 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     page.click('[data-testid="ribbon-tabs"] [data-step="VIEW"]')
     page.wait_for_selector('[data-testid="ribbon-band"][data-tab="VIEW"]')
     assert _current_stage(page) == "ANALYSIS"
+    # PR-3 round 4 — the UI language: Korean renders the same contract (the
+    # app tree remounts, stage and artifacts untouched), English comes back
+    page.click('[data-testid="locale-switch"] [data-locale="ko"]')
+    page.wait_for_selector('[data-testid="ribbon-tabs"] [data-step="SETUP"]:has-text("설정")')
+    assert page.locator("html").get_attribute("lang") == "ko"
+    assert _current_stage(page) == "ANALYSIS"
+    page.click('[data-testid="locale-switch"] [data-locale="en"]')
+    page.wait_for_selector('[data-testid="ribbon-tabs"] [data-step="SETUP"]:has-text("Setup")')
+    assert page.locator("html").get_attribute("lang") == "en"
     # a flow-dock node is the way back to a stage: Design › Layout
     page.click('[data-testid="flow-graph"] [data-stage="LAYOUT"]')
     page.wait_for_selector('[data-testid="ribbon-band"][data-tab="DESIGN"]')

@@ -199,7 +199,9 @@ The ribbon (`components/layout/Ribbon.tsx`, model `ribbonModel.ts`): a step
 tab opens its NEXT / failed stage and its band lists that step's stages as
 navigation tools (each with the stage glyph) plus the step's commands; the
 View tab's band holds the viewport tools (3D · 4D · Walk, camera presets,
-Controls / Results / Flow toggles) and changes no stage. The band's quick
+the scene Layers — the coarse form of the Visibility tree, each tool setting
+the same `viewerStore.visibleLayers` entries the tree's checkboxes toggle —
+and the Controls / Results / Flow toggles) and changes no stage. The band's quick
 access carries the two ways back on every tab — "Reset from <stage>" (the
 backend plan of the current stage, rule 219) and "Reset mine" (the
 from=WORLD plan, then world regeneration from the persisted document —
@@ -207,8 +209,17 @@ rules 40 / 46 / 119); both confirmations are served by the one dialog host
 `ResetDialogs`. The flow dock (`FlowDock.tsx`, model `flowGraph.ts`) draws
 the stages as nodes of the development flow with the prerequisite chain as
 edges and one backend-reported metric per node; a node click is a stage
-change and nothing else. Neither the band nor the dock runs a request, a
-mutation or a layer change (`workflowPreservation.test.ts`).
+change and nothing else. Neither the band nor the dock runs a request or a
+mutation; the only layer write is the View › Layers tools' store setter
+(`workflowPreservation.test.ts`).
+
+UI locale (PR-3 round 4, rule 225): components render English source
+strings through `tr()` (`src/i18n/t.ts`); the Korean dictionary
+(`src/i18n/ko.ts`) is the lookup, `src/i18n/locale.ts` the default (`ko`,
+`VITE_DEFAULT_LOCALE` pins a build, `localStorage` remembers a choice) and
+`Root.tsx` remounts the tree on a switch. The glossary workbook is generated
+by `scripts/i18n_glossary.py` from the dictionary and
+`docs/i18n/terminology.json`.
 
 Vocabulary (`types/workflow.ts`): a STEP is a ribbon tab, a STAGE is a
 ribbon-band tool / flow-dock node and the unit of "Reset from here"; both are frontend-local

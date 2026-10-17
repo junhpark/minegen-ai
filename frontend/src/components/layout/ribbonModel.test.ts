@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { ANALYSIS_TABS } from '@/components/panels/workflowTabs'
 import { STAGE_IDS, type StageId } from '@/types/workflow'
+import { LAYER_IDS, type LayerId } from '@/types/enums'
 import {
   effectiveTab,
   quickAccess,
   RIBBON_TABS,
   ribbonBand,
+  VIEW_LAYER_TOOLS,
   type CommandTool,
   type RibbonContext,
   type RibbonTab,
@@ -36,6 +38,7 @@ const ctx = (over: Partial<RibbonContext> = {}): RibbonContext => ({
   jobRunning: false,
   flowDock: true,
   panes: { controls: true, results: true },
+  layers: new Set<LayerId>(['terrain', 'orebody', 'faults', 'tunnelMesh', 'smoothedDecline']),
   analysisTab: 'OVERVIEW',
   analysisShow3d: false,
   ...over,
@@ -131,8 +134,62 @@ describe('ribbon band — the step tabs', () => {
 })
 
 describe('ribbon band — the View tab', () => {
-  it('has the view modes, the camera presets and the panel toggles', () => {
-    expect(ribbonBand('VIEW', ctx()).map((g) => g.id)).toEqual(['view-mode', 'camera', 'panels'])
+  it('has the view modes, the camera presets, the layers and the panel toggles', () => {
+    expect(ribbonBand('VIEW', ctx()).map((g) => g.id)).toEqual([
+      'view-mode',
+      'camera',
+      'layers',
+      'panels',
+    ])
+  })
+
+  describe('layers (round 3) — the coarse form of the Visibility tree', () => {
+    it('every tool names only LayerIds the store knows, and ids are unique', () => {
+      const known = new Set<string>(LAYER_IDS)
+      for (const t of VIEW_LAYER_TOOLS) {
+        expect(t.layers.length).toBeGreaterThan(0)
+        for (const l of t.layers) expect(known.has(l)).toBe(true)
+      }
+      expect(new Set(VIEW_LAYER_TOOLS.map((t) => t.id)).size).toBe(VIEW_LAYER_TOOLS.length)
+      expect(tools('VIEW', ctx(), 'layers').map((t) => t.id)).toEqual(
+        VIEW_LAYER_TOOLS.map((t) => `layer-${t.id}`),
+      )
+    })
+
+    it('is pressed when EVERY member layer is visible and sets every member at once', () => {
+      const c = ctx()
+      const terrain = command('VIEW', c, 'layer-terrain')
+      expect(terrain.active).toBe(true)
+      expect(terrain.command).toEqual({ type: 'LAYERS', layers: ['terrain'], visible: false })
+      // ramp = tunnel mesh + effective centerline: both on → pressed, hide both
+      const ramp = command('VIEW', c, 'layer-ramp')
+      expect(ramp.active).toBe(true)
+      expect(ramp.command).toEqual({
+        type: 'LAYERS',
+        layers: ['tunnelMesh', 'smoothedDecline'],
+        visible: false,
+      })
+      // one member off → not pressed, the click shows every member
+      const half = ctx({ layers: new Set<LayerId>(['tunnelMesh']) })
+      const rampHalf = command('VIEW', half, 'layer-ramp')
+      expect(rampHalf.active).toBe(false)
+      expect(rampHalf.command).toEqual({
+        type: 'LAYERS',
+        layers: ['tunnelMesh', 'smoothedDecline'],
+        visible: true,
+      })
+      expect(command('VIEW', half, 'layer-terrain').active).toBe(false)
+    })
+
+    it('needs a world and is not offered in Walk (the walkthrough authority set decides there)', () => {
+      expect(command('VIEW', ctx({ hasScene: false }), 'layer-orebody').reason).toBe(
+        'Generate a world first',
+      )
+      const walk = command('VIEW', ctx({ view: 'WALK' }), 'layer-orebody')
+      expect(walk.disabled).toBe(true)
+      expect(walk.reason).toBe('Walk shows the walkable excavation only')
+      expect(command('VIEW', ctx(), 'layer-orebody').disabled).toBe(false)
+    })
   })
 
   it('marks the active view and applies the Walk readiness gate', () => {

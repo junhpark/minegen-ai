@@ -6,6 +6,7 @@ import type {
   CandidateComparisonRow,
   DesignAssessmentPayload,
 } from '@/types/scene'
+import { tr } from '@/i18n/t'
 
 /**
  * Phase 20D.3 — design assessment + candidate comparison (rule 189).
@@ -41,7 +42,10 @@ function mark(c: AssessmentCheck): { glyph: string; className: string } {
     return { glyph: '?', className: 'text-mute' }
   }
   if (c.authority === 'ADVISORY') {
-    return { glyph: '!', className: c.status === 'SATISFIED' ? 'text-chalk' : 'text-danger' }
+    return {
+      glyph: '!',
+      className: c.status === 'SATISFIED' ? 'text-chalk' : 'text-danger',
+    }
   }
   if (c.authority === 'INFORMATIONAL') return { glyph: 'i', className: 'text-chalk-dim' }
   return c.status === 'SATISFIED'
@@ -52,9 +56,9 @@ function mark(c: AssessmentCheck): { glyph: string; className: string } {
 function statusLabel(c: AssessmentCheck): string {
   switch (c.status) {
     case 'SATISFIED':
-      return c.authority === 'ADVISORY' ? 'criterion met (advisory)' : 'satisfied'
+      return c.authority === 'ADVISORY' ? tr('criterion met (advisory)') : tr('satisfied')
     case 'NOT_SATISFIED':
-      return c.authority === 'ADVISORY' ? 'criterion not met (advisory)' : 'not satisfied'
+      return c.authority === 'ADVISORY' ? tr('criterion not met (advisory)') : tr('not satisfied')
     case 'NOT_APPLICABLE':
       return 'NOT APPLICABLE'
     case 'NOT_EVALUATED':
@@ -68,22 +72,32 @@ function readout(c: AssessmentCheck): string {
   if (c.status === 'NOT_EVALUATED' || c.status === 'NOT_APPLICABLE') return statusLabel(c)
   switch (c.id) {
     case 'DUAL_EGRESS_ADVISORY':
-      return `${String(e.meetingNodeCount)}/${String(e.undergroundNodeCount)} nodes · ${String(e.requiredRoutes)} routes`
+      return tr('{a}/{b} nodes · {r} routes', {
+        a: String(e.meetingNodeCount),
+        b: String(e.undergroundNodeCount),
+        r: String(e.requiredRoutes),
+      })
     case 'REQUIRED_CAPABILITY_PATHS':
-      return `${String(e.satisfiedPathCount)}/${String(e.requiredPathCount)} paths`
+      return tr('{a}/{b} paths', {
+        a: String(e.satisfiedPathCount),
+        b: String(e.requiredPathCount),
+      })
     case 'ALL_REQUIRED_LEVELS_ACCESSIBLE':
-      return `${String(e.accessibleLevels)}/${String(e.requiredLevels)} levels`
+      return tr('{a}/{b} levels', { a: String(e.accessibleLevels), b: String(e.requiredLevels) })
     case 'CLEARANCE_VALIDATED':
       return typeof e.conservativeMinimumClearance === 'number' &&
         typeof e.requiredClearance === 'number'
         ? `${e.conservativeMinimumClearance.toFixed(1)} m ≥ ${e.requiredClearance.toFixed(1)} m (${String(e.clearanceBasis)})`
         : statusLabel(c)
     case 'GEOMETRY_VALIDATED':
-      return `${String(e.invalidSampleCount)} invalid / ${String(e.sampleCount)} samples`
+      return tr('{a} invalid / {b} samples', {
+        a: String(e.invalidSampleCount),
+        b: String(e.sampleCount),
+      })
     case 'CANDIDATE_FEASIBLE':
       return String(e.status)
     case 'SELECTED_IS_RANKING_WINNER':
-      return e.selectedRank == null ? statusLabel(c) : `rank ${String(e.selectedRank)}`
+      return e.selectedRank == null ? statusLabel(c) : tr('rank {n}', { n: String(e.selectedRank) })
     case 'ACTIVE_RAMP_SOURCE':
       return String(e.activeSource)
     case 'LAYOUT_SELECTED':
@@ -108,14 +122,14 @@ function CheckDetail({ c }: { c: AssessmentCheck }) {
   return (
     <div
       className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[11px] leading-snug"
-      aria-label="check detail"
+      aria-label={tr('check detail')}
     >
-      <div className="col-span-2 leading-relaxed text-chalk-dim">{c.summary}</div>
-      <span className="text-mute">Status</span>
-      <span className={`readout ${m.className}`}>{statusLabel(c)}</span>
-      <span className="text-mute">Authority</span>
-      <span className="readout text-chalk-dim">{AUTHORITY_LONG[c.authority]}</span>
-      <span className="text-mute">Source</span>
+      <div className="col-span-2 leading-relaxed text-chalk-dim">{tr(c.summary)}</div>
+      <span className="text-mute">{tr('Status')}</span>
+      <span className={`readout ${m.className}`}>{tr(statusLabel(c))}</span>
+      <span className="text-mute">{tr('Authority')}</span>
+      <span className="readout text-chalk-dim">{tr(AUTHORITY_LONG[c.authority])}</span>
+      <span className="text-mute">{tr('Source')}</span>
       <span className="readout break-words text-chalk-dim">
         {c.sourceArtifact} · {c.sourceField}
       </span>
@@ -165,9 +179,9 @@ function CheckRow({ c }: { c: AssessmentCheck }) {
               c.authority === 'ADVISORY' ? 'italic text-chalk-dim' : 'text-chalk'
             }`}
           >
-            {c.title}
+            {tr(c.title)}
             {c.scope === 'INACTIVE_LAYOUT_V2' && c.status !== 'NOT_APPLICABLE' ? (
-              <span className="text-mute"> (inactive)</span>
+              <span className="text-mute"> {tr('(inactive)')}</span>
             ) : null}
           </span>
           {/* the readout and the badge sit beside a short title and wrap
@@ -183,7 +197,7 @@ function CheckRow({ c }: { c: AssessmentCheck }) {
                     : 'border-rock-700 text-chalk-dim'
               }`}
             >
-              {AUTHORITY_LABEL[c.authority]}
+              {tr(AUTHORITY_LABEL[c.authority])}
             </span>
           </span>
         </button>
@@ -202,16 +216,18 @@ function CheckRow({ c }: { c: AssessmentCheck }) {
 
 export function DesignAssessmentList({ assessment }: { assessment: DesignAssessmentPayload }) {
   return (
-    <div className="mt-2" aria-label="design assessment">
+    <div className="mt-2" aria-label={tr('design assessment')}>
       <div className="readout text-[10px] text-mute">
-        DESIGN ASSESSMENT · read-only projection · no statutory claim
+        {tr('DESIGN ASSESSMENT · read-only projection · no statutory claim')}
       </div>
-      <div className="readout mt-0.5 text-[10px] text-mute" aria-label="assessment scope">
+      <div className="readout mt-0.5 text-[10px] text-mute" aria-label={tr('assessment scope')}>
         {assessment.activeSource === 'LAYOUT_V2'
-          ? `active design: Layout v2 · ${assessment.activeDesignCandidateId ?? '—'}`
+          ? tr('active design: Layout v2 · {id}', { id: assessment.activeDesignCandidateId ?? '—' })
           : assessment.layoutScope === 'INACTIVE_LAYOUT_V2'
-            ? 'active design: LEGACY (Hybrid-A*) · layout-v2 checks describe the INACTIVE layout-v2 selection'
-            : 'active design: LEGACY (Hybrid-A*) · no layout-v2 catalogue'}
+            ? tr(
+                'active design: LEGACY (Hybrid-A*) · layout-v2 checks describe the INACTIVE layout-v2 selection',
+              )
+            : tr('active design: LEGACY (Hybrid-A*) · no layout-v2 catalogue')}
       </div>
       <ul className="mt-1">
         {assessment.checks.map((c) => (
@@ -219,7 +235,10 @@ export function DesignAssessmentList({ assessment }: { assessment: DesignAssessm
         ))}
       </ul>
       {assessment.egressAdvisory ? (
-        <div className="readout mt-1 text-[11px] text-mute" aria-label="dual-egress advisory note">
+        <div
+          className="readout mt-1 text-[11px] text-mute"
+          aria-label={tr('dual-egress advisory note')}
+        >
           Dual-egress design advisory: {assessment.egressAdvisory.meetingNodeCount} /{' '}
           {assessment.egressAdvisory.undergroundNodeCount} underground nodes meet the{' '}
           {assessment.egressAdvisory.requiredRoutes}-route design criterion. This is a design
@@ -228,7 +247,7 @@ export function DesignAssessmentList({ assessment }: { assessment: DesignAssessm
       ) : null}
       <pre
         className="readout mt-1 text-[11px] whitespace-pre-wrap font-sans text-mute"
-        aria-label="selection summary"
+        aria-label={tr('selection summary')}
       >
         {assessment.summary}
       </pre>
@@ -249,7 +268,7 @@ export function AlternativesTable({ assessment }: { assessment: DesignAssessment
   // re-sorted, never filtered here
   const rows = assessment.candidateComparison
   return (
-    <div className="readout mt-2 text-[11px]" aria-label="candidate alternatives">
+    <div className="readout mt-2 text-[11px]" aria-label={tr('candidate alternatives')}>
       <div className="flex justify-between text-chalk-dim">
         <span>
           ALTERNATIVES
@@ -260,9 +279,9 @@ export function AlternativesTable({ assessment }: { assessment: DesignAssessment
         <span className="text-mute">{rows.length} rows · ranking order · ● winner</span>
       </div>
       {assessment.layoutScope === 'NONE' ? (
-        <div className="mt-1 text-mute">no layout-v2 catalogue</div>
+        <div className="mt-1 text-mute">{tr('no layout-v2 catalogue')}</div>
       ) : rows.length === 0 ? (
-        <div className="mt-1 text-mute">no feasible candidate</div>
+        <div className="mt-1 text-mute">{tr('no feasible candidate')}</div>
       ) : (
         <table className="mt-1 w-full table-fixed border-collapse whitespace-nowrap text-[11px]">
           <colgroup>
@@ -275,10 +294,10 @@ export function AlternativesTable({ assessment }: { assessment: DesignAssessment
           <thead className="text-mute">
             <tr>
               <th className="text-left font-normal">#</th>
-              <th className="truncate text-left font-normal">Candidate · Family</th>
-              <th className="text-right font-normal">Score · Δ</th>
-              <th className="text-right font-normal">Access</th>
-              <th className="text-right font-normal">Status</th>
+              <th className="truncate text-left font-normal">{tr('Candidate · Family')}</th>
+              <th className="text-right font-normal">{tr('Score · Δ')}</th>
+              <th className="text-right font-normal">{tr('Access')}</th>
+              <th className="text-right font-normal">{tr('Status')}</th>
             </tr>
           </thead>
           <tbody className="align-top">

@@ -1,4 +1,5 @@
 import { focusTab, nextTabId, tabElementId } from './interaction'
+import { tr } from '@/i18n/t'
 
 export interface PanelTab<T extends string> {
   id: T
@@ -59,7 +60,7 @@ export function PanelTabs<T extends string>({ tabs, active, onSelect, label, pan
                 : 'text-chalk-dim hover:text-chalk',
             ].join(' ')}
           >
-            {t.label}
+            {tr(t.label)}
           </button>
         )
       })}

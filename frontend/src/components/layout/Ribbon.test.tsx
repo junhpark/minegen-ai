@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import type { LayerId } from '@/types/enums'
 import { STAGE_IDS, type StageId } from '@/types/workflow'
 import { RibbonBandBody } from './Ribbon'
 import { quickAccess, ribbonBand, type RibbonContext, type RibbonTab } from './ribbonModel'
@@ -21,6 +22,7 @@ const ctx = (over: Partial<RibbonContext> = {}): RibbonContext => ({
   jobRunning: false,
   flowDock: true,
   panes: { controls: true, results: true },
+  layers: new Set<LayerId>(['terrain', 'orebody']),
   analysisTab: 'OVERVIEW',
   analysisShow3d: false,
   ...over,
@@ -68,6 +70,10 @@ describe('RibbonBandBody (hardening PR-3)', () => {
     )
     expect(html).toContain('data-group="camera"')
     expect(html).toContain('data-group="panels"')
+    // round 3: the Layers group shows each tool's pressed state
+    expect(html).toContain('data-group="layers"')
+    expect(html).toContain('aria-pressed="true" data-tool="layer-terrain"')
+    expect(html).toContain('aria-pressed="false" data-tool="layer-ramp"')
   })
 
   it('a demo has no quick access (viewer-only)', () => {

@@ -1,5 +1,6 @@
 import type { MiningConfig } from '@/types/api'
 import { ScenarioChangeDialog } from './ScenarioChangeDialog'
+import { tr } from '@/i18n/t'
 
 interface Props {
   scenarioId: string
@@ -36,7 +37,7 @@ export function MethodChangeDialog({
       pending={mining}
       attempt={attempt}
       hasWorld={hasWorld}
-      title="Change mining method"
+      title={tr('Change mining method')}
       intro="The world is regenerated with the same seed; everything from Layout on is reset."
       confirmLabel="Apply method"
       listTestId="method-will-delete"

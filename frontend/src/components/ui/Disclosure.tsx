@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react'
 import { toggled } from './interaction'
+import { tr } from '@/i18n/t'
 
 interface Props {
   /** trigger text, e.g. "Details" or "Advanced" */
@@ -47,10 +48,10 @@ export function Disclosure({
         <span aria-hidden className="readout text-[10px]">
           {open ? '▾' : '▸'}
         </span>
-        <span>{label}</span>
-        {hint ? <span className="readout ml-auto text-[10px] normal-case">{hint}</span> : null}
+        <span>{tr(label)}</span>
+        {hint ? <span className="readout ml-auto text-[10px] normal-case">{tr(hint)}</span> : null}
       </button>
-      <div id={panelId} hidden={!open} className="readout mt-1 text-[11px]">
+      <div id={panelId} hidden={!open} className="figures mt-1 text-[11px] leading-relaxed">
         {children}
       </div>
     </div>

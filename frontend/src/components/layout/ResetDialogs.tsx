@@ -11,6 +11,7 @@ import { useViewerStore } from '@/stores/viewerStore'
 import type { StageId } from '@/types/workflow'
 import { useShellStore } from './shellStore'
 import { resetStageFor, STAGE_LABEL } from './workflow'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening PR-3 — the ONE host of the two reset confirmations, mounted once
@@ -106,7 +107,7 @@ function ResetStageDialog({ stage, nonce }: { stage: StageId; nonce: number }) {
   const current = plan.isSuccess && !plan.isFetching ? plan.data : null
   return (
     <ModalDialog
-      title={`Reset from ${STAGE_LABEL[stage]}`}
+      title={tr('Reset from {stage}', { stage: tr(STAGE_LABEL[stage]) })}
       onClose={close}
       footer={
         <>
@@ -126,28 +127,32 @@ function ResetStageDialog({ stage, nonce }: { stage: StageId; nonce: number }) {
             }}
           >
             {reset.isPending
-              ? 'Deleting…'
+              ? tr('Deleting…')
               : reading
-                ? 'Reading plan…'
+                ? tr('Reading plan…')
                 : current
-                  ? `Delete ${String(current.willDelete.length)} file${current.willDelete.length === 1 ? '' : 's'}`
-                  : 'Delete'}
+                  ? tr(current.willDelete.length === 1 ? 'Delete {n} file' : 'Delete {n} files', {
+                      n: current.willDelete.length,
+                    })
+                  : tr('Delete')}
           </DialogButton>
         </>
       }
     >
       {planChanged ? (
         <p role="status" className="mb-2 text-warn" data-testid="reset-plan-changed">
-          The mine changed since this plan was read — nothing was deleted. The list below is the
-          current plan; confirm it again.
+          {tr(
+            'The mine changed since this plan was read — nothing was deleted. The list below is the current plan; confirm it again.',
+          )}
         </p>
       ) : null}
       {current ? (
         current.present ? (
           <>
             <p className="mb-2">
-              The backend will delete these derived files (the stage&apos;s own artifacts and
-              everything that depends on them). Regenerate from this stage afterwards.
+              {tr(
+                "The backend will delete these derived files (the stage's own artifacts and everything that depends on them). Regenerate from this stage afterwards.",
+              )}
             </p>
             <ul className="readout list-disc pl-4 text-[11px]" data-testid="reset-will-delete">
               {current.willDelete.map((f) => (
@@ -156,10 +161,10 @@ function ResetStageDialog({ stage, nonce }: { stage: StageId; nonce: number }) {
             </ul>
           </>
         ) : (
-          <p>Nothing to reset — this stage has no generated result yet.</p>
+          <p>{tr('Nothing to reset — this stage has no generated result yet.')}</p>
         )
       ) : reading ? (
-        <p className="text-mute">Reading the reset plan…</p>
+        <p className="text-mute">{tr('Reading the reset plan…')}</p>
       ) : null}
       {errorText ? (
         <p role="alert" className="mt-2 text-[11px] text-danger">
@@ -230,17 +235,18 @@ function ResetMineDialog({ nonce }: { nonce: number }) {
             }}
           >
             {regenerate.isPending
-              ? 'Regenerating world…'
+              ? tr('Regenerating world…')
               : reading
-                ? 'Reading reset plan…'
-                : 'Clear design & regenerate world'}
+                ? tr('Reading reset plan…')
+                : tr('Clear design & regenerate world')}
           </DialogButton>
         </>
       }
     >
       <p className="mb-2">
-        Back to the generated world: the scenario document is kept and its world is regenerated from
-        the same seed, which clears every design artifact. The backend will delete:
+        {tr(
+          'Back to the generated world: the scenario document is kept and its world is regenerated from the same seed, which clears every design artifact. The backend will delete:',
+        )}
       </p>
       {plan.isSuccess && !plan.isFetching ? (
         plan.data.willDelete.length > 0 ? (
@@ -251,15 +257,17 @@ function ResetMineDialog({ nonce }: { nonce: number }) {
           </ul>
         ) : (
           <p className="text-mute" data-testid="reset-mine-will-delete">
-            No design artifact exists yet — only the world is regenerated.
+            {tr('No design artifact exists yet — only the world is regenerated.')}
           </p>
         )
       ) : errorText && !regenerate.error ? (
         <p role="alert" className="text-danger">
-          The reset plan could not be read — nothing is applied until it is: {errorText}
+          {tr('The reset plan could not be read — nothing is applied until it is: {error}', {
+            error: errorText,
+          })}
         </p>
       ) : (
-        <p className="text-mute">Reading the reset plan…</p>
+        <p className="text-mute">{tr('Reading the reset plan…')}</p>
       )}
       {regenerate.error ? (
         <p role="alert" className="mt-2 text-[11px] text-danger">

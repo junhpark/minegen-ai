@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useTimelineStore } from '@/stores/timelineStore'
 import { advancePlayback, PLAYBACK_SPEEDS } from '@/timeline/playback'
+import { tr } from '@/i18n/t'
 
 /**
  * Phase 10 timeline control (§20): playback advances `currentDay` at
@@ -72,7 +73,7 @@ export function TimelineControl() {
   if (!active) {
     return (
       <div className="flex h-full items-center px-3 text-[11px] text-mute">
-        Timeline — schedule the mine development to enable 4D playback
+        {tr('Timeline — schedule the mine development to enable 4D playback')}
       </div>
     )
   }
@@ -83,10 +84,10 @@ export function TimelineControl() {
         type="button"
         className="plate rounded-sm border border-edge px-2 py-0.5 hover:border-lamp"
         onClick={restart}
-        title="Restart at the first day"
+        title={tr('Restart at the first day')}
         data-testid="timeline-restart"
       >
-        Restart
+        {tr('Restart')}
       </button>
       <button
         type="button"
@@ -94,7 +95,7 @@ export function TimelineControl() {
         onClick={() => (playing ? pause() : play())}
         data-testid="timeline-play"
       >
-        {playing ? 'Pause' : 'Play'}
+        {playing ? tr('Pause') : tr('Play')}
       </button>
       <button
         type="button"
@@ -102,11 +103,11 @@ export function TimelineControl() {
           loop ? 'border-lamp text-lamp' : 'border-edge text-mute hover:border-lamp'
         }`}
         onClick={() => setLoop(!loop)}
-        title="Restart at the start day when the schedule end is reached"
+        title={tr('Restart at the start day when the schedule end is reached')}
         aria-pressed={loop}
         data-testid="timeline-loop"
       >
-        Loop
+        {tr('Loop')}
       </button>
       {PLAYBACK_SPEEDS.map((sp) => (
         <button

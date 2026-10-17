@@ -22,6 +22,8 @@ import {
   availabilityTone,
   cubic,
   days,
+  duration,
+  durationParts,
   EDGE_TYPE_LABEL,
   fmt0,
   fmt1,
@@ -42,6 +44,7 @@ import { RulebookBody } from './RulebookPanel'
 import { ScheduleBody } from './SchedulePanel'
 import { SensitivityBody } from './SensitivityPanel'
 import type { AnalysisTab } from './workflowTabs'
+import { tr } from '@/i18n/t'
 
 const errorText = (err: unknown): string | null =>
   err instanceof ApiError
@@ -224,7 +227,9 @@ export function AnalysisPanelBody(p: AnalysisPanelBodyProps) {
   if (p.view === 'SIMULATION') return null
   if (p.scenarioId === null) {
     return (
-      <p className="px-4 py-3 text-[11px] text-mute">Load a scenario to analyse its mine plan.</p>
+      <p className="px-4 py-3 text-[11px] text-mute">
+        {tr('Load a scenario to analyse its mine plan.')}
+      </p>
     )
   }
   // the KPI tiles head every analysis tab once the analysis read model exists
@@ -318,39 +323,44 @@ export function KpiTiles({
 }) {
   const eco = analysis.economics
   const sched = analysis.schedule
-  const tiles: { label: string; value: string; note: string }[] = [
+  const life = durationParts(sched.mineDurationDays)
+  const tiles: { label: string; value: string; note: string; sub?: string | undefined }[] = [
     {
       label: 'Planning NPV',
       value: eco.summary ? money(eco.summary.npv, code) : AVAILABILITY_LABEL[eco.availability],
       note: eco.summary
-        ? `discount ${fmt2(eco.annualDiscountRate)} · ${fmt0(eco.cashflowBucketDays)}-day buckets`
-        : 'planning economics',
+        ? tr('discount {rate} · {days}-day buckets', {
+            rate: fmt2(eco.annualDiscountRate),
+            days: fmt0(eco.cashflowBucketDays),
+          })
+        : tr('planning economics'),
     },
     {
       label: 'Planning IRR',
       value: irrText(eco.planningIrr),
       note:
         eco.planningIrr.status === 'DEFINED'
-          ? 'annual, mid-bucket timing'
+          ? tr('annual, mid-bucket timing')
           : eco.planningIrr.status === 'NOT_DEFINED'
-            ? 'no single rate'
-            : 'planning economics',
+            ? tr('no single rate')
+            : tr('planning economics'),
     },
     {
       label: 'Mine life',
-      value: days(sched.mineDurationDays),
+      value: life ? life.years : '—',
+      sub: life?.days,
       note:
         sched.availability === 'AVAILABLE'
-          ? 'baseline schedule'
-          : AVAILABILITY_LABEL[sched.availability],
+          ? tr('baseline schedule')
+          : tr(AVAILABILITY_LABEL[sched.availability]),
     },
     {
       label: 'First production day',
       value: days(sched.firstProductionDay),
       note:
         sched.availability === 'AVAILABLE'
-          ? 'earliest STOPING start'
-          : AVAILABILITY_LABEL[sched.availability],
+          ? tr('earliest STOPING start')
+          : tr(AVAILABILITY_LABEL[sched.availability]),
     },
   ]
   return (
@@ -359,15 +369,23 @@ export function KpiTiles({
       data-testid="analysis-kpis"
     >
       {tiles.map((t) => (
-        <div key={t.label} className="rounded-sm border border-rock-700 bg-rock-900/70 px-3 py-2">
-          <div className="plate text-[10px] text-mute">{t.label}</div>
+        <div
+          key={t.label}
+          className="rounded-md border border-rock-700/70 bg-gradient-to-b from-rock-800 to-rock-900/80 px-3 py-2 shadow-card"
+        >
+          <div className="plate text-[10px] text-mute">{tr(t.label)}</div>
           <div
-            className={`mt-0.5 leading-tight break-words text-chalk ${
-              t.value.length > 14 ? 'text-[13px]' : 'text-[18px]'
+            className={`figures mt-0.5 leading-tight break-words text-chalk ${
+              // a typed status (NOT_CONFIGURED, NOT_DEFINED · reason) or a long
+              // figure reads small; a number reads on the display face
+              /^[A-Z_]/.test(t.value) || t.value.length > 16
+                ? 'text-[13px]'
+                : 'font-display text-[24px] font-semibold tracking-wide'
             }`}
             data-kpi={t.label}
           >
             {t.value}
+            {t.sub ? <span className="ml-1.5 text-[11px] text-chalk-dim">({t.sub})</span> : null}
           </div>
           <div className="text-[10px] text-mute">{t.note}</div>
         </div>
@@ -396,9 +414,9 @@ function OverviewCards({
     <>
       {coverage.length > 0 ? (
         <WorkflowCard
-          title="Level coverage"
+          title={tr('Level coverage')}
           tone={artifactTone(levels, false)}
-          statusLabel="Levels excluded"
+          statusLabel={tr('Levels excluded')}
           info="Required levels the level development did not receive, as reported by the backend level artifact (rule 141): a TABULAR level above the footwall's top edge has ore above it but no footwall contact next to it, so no drift or crosscut can reach the slab there; the production interval below it is unserved. The dip-aware hint is the top mining margin that would give every level a footwall contact."
           summary={<span data-testid="level-coverage-summary">{coverage[0]}</span>}
           details={
@@ -413,16 +431,20 @@ function OverviewCards({
         />
       ) : null}
       <WorkflowCard
-        title="Development"
+        title={tr('Development')}
         tone={availabilityTone(dev.availability)}
         statusLabel={AVAILABILITY_LABEL[dev.availability]}
-        info="Development quantities are read from the MineNetwork edges: length is the 3-D centerline length per edge type and the excavation volume is length × cross-section area summed per edge. It is a GROSS volume — junction overlaps are not unioned. The declared network metrics are cross-checked against the edges and never overwritten."
+        info={tr(
+          'Development quantities are read from the MineNetwork edges: length is the 3-D centerline length per edge type and the excavation volume is length × cross-section area summed per edge. It is a GROSS volume — junction overlaps are not unioned. The declared network metrics are cross-checked against the edges and never overwritten.',
+        )}
         failure={dev.reason}
         summary={
           dev.totals ? (
             <span>
-              {metres(dev.totals.totalDevelopmentLengthM)} ·{' '}
-              {cubic(dev.totals.grossDevelopmentVolumeM3)} gross
+              {tr('{length} · {volume} gross', {
+                length: metres(dev.totals.totalDevelopmentLengthM),
+                volume: cubic(dev.totals.grossDevelopmentVolumeM3),
+              })}
             </span>
           ) : null
         }
@@ -450,16 +472,20 @@ function OverviewCards({
         }
       />
       <WorkflowCard
-        title="Production"
+        title={tr('Production')}
         tone={availabilityTone(prod.availability)}
         statusLabel={AVAILABILITY_LABEL[prod.availability]}
-        info="Planned mined tonnes are the production geometry (stopes, cuts or extraction units) × density — a planning quantity, never a resource or reserve. The grade proxy is the tonnage-weighted Phase 09 planning proxy and is informational only; it is never a revenue input. Backfill and retained pillars are reported separately and are not production."
+        info={tr(
+          'Planned mined tonnes are the production geometry (stopes, cuts or extraction units) × density — a planning quantity, never a resource or reserve. The grade proxy is the tonnage-weighted Phase 09 planning proxy and is informational only; it is never a revenue input. Backfill and retained pillars are reported separately and are not production.',
+        )}
         failure={prod.reason}
         summary={
           prod.availability === 'AVAILABLE' ? (
             <span>
-              {prod.method ? (METHOD_LABEL[prod.method] ?? prod.method) : ''} ·{' '}
-              {tonnes(prod.totalPlannedMinedTonnes)} planned mined
+              {tr('{method} · {tonnes} planned mined', {
+                method: prod.method ? tr(METHOD_LABEL[prod.method] ?? prod.method) : '',
+                tonnes: tonnes(prod.totalPlannedMinedTonnes),
+              })}
             </span>
           ) : null
         }
@@ -482,15 +508,20 @@ function OverviewCards({
         }
       />
       <WorkflowCard
-        title="Schedule"
+        title={tr('Schedule')}
         tone={availabilityTone(sched.availability)}
         statusLabel={AVAILABILITY_LABEL[sched.availability]}
-        info="Schedule figures come from the deterministic precedence-only MineTimeline baseline: a synthetic planning baseline, never a production forecast. First production is the earliest STOPING task start."
+        info={tr(
+          'Schedule figures come from the deterministic precedence-only MineTimeline baseline: a synthetic planning baseline, never a production forecast. First production is the earliest STOPING task start.',
+        )}
         failure={sched.reason}
         summary={
           sched.availability === 'AVAILABLE' ? (
             <span>
-              Baseline duration {days(sched.mineDurationDays)} · {fmt0(sched.taskCount)} tasks
+              {tr('Baseline duration {duration} · {tasks} tasks', {
+                duration: duration(sched.mineDurationDays),
+                tasks: fmt0(sched.taskCount),
+              })}
             </span>
           ) : null
         }
@@ -498,7 +529,7 @@ function OverviewCards({
           sched.availability === 'AVAILABLE' ? (
             <Metrics
               rows={[
-                { label: 'Baseline duration', value: days(sched.mineDurationDays) },
+                { label: 'Baseline duration', value: duration(sched.mineDurationDays) },
                 { label: 'Ramp complete', value: days(sched.rampCompletionDay) },
                 { label: 'First production', value: days(sched.firstProductionDay) },
                 { label: 'Tasks', value: fmt0(sched.taskCount) },
@@ -510,16 +541,20 @@ function OverviewCards({
         }
       />
       <WorkflowCard
-        title="Ratios"
+        title={tr('Ratios')}
         tone={availabilityTone(ratios.availability)}
         statusLabel={AVAILABILITY_LABEL[ratios.availability]}
-        info="Development intensity of the plan: total development length and gross development volume per thousand planned mined tonnes. Undefined (shown as —) when planned mined tonnes are zero."
+        info={tr(
+          'Development intensity of the plan: total development length and gross development volume per thousand planned mined tonnes. Undefined (shown as —) when planned mined tonnes are zero.',
+        )}
         failure={ratios.reason}
         summary={
           ratios.availability === 'AVAILABLE' ? (
             <span>
-              {fmt1(ratios.developmentMetresPerKt)} m/kt · {fmt1(ratios.grossDevelopmentM3PerKt)}{' '}
-              m³/kt
+              {tr('{a} m/kt · {b} m³/kt', {
+                a: fmt1(ratios.developmentMetresPerKt),
+                b: fmt1(ratios.grossDevelopmentM3PerKt),
+              })}
             </span>
           ) : null
         }
@@ -572,15 +607,14 @@ function EconomicsCards(p: AnalysisPanelBodyProps & { analysis: MineAnalysisPayl
         data-testid="economics-disclaimer"
       >
         {eco.disclaimer}{' '}
-        <InfoPopover label="planning economics">
-          The figures are a deterministic projection of explicit user assumptions over the planned
-          development lengths, planned mined tonnes and the timeline baseline. They are not a
-          feasibility study, a resource or reserve estimate, a bankable figure or an investment
-          recommendation. Planning NPV discounts each cashflow bucket at its midpoint day.
+        <InfoPopover label={tr('planning economics')}>
+          {tr(
+            'The figures are a deterministic projection of explicit user assumptions over the planned development lengths, planned mined tonnes and the timeline baseline. They are not a feasibility study, a resource or reserve estimate, a bankable figure or an investment recommendation. Planning NPV discounts each cashflow bucket at its midpoint day.',
+          )}
         </InfoPopover>
       </div>
       <WorkflowCard
-        title="Planning economics"
+        title={tr('Planning economics')}
         tone={availabilityTone(eco.availability)}
         statusLabel={AVAILABILITY_LABEL[eco.availability]}
         info="Development cost = edge length × rate per edge type, spread over each development task. Production mining cost = planned mined tonnes × the active method's rate over STOPING; processing cost and gross revenue over MUCKING; Cut & Fill backfill cost over BACKFILL. Fixed operating cost is linear over the mine duration and initial capital sits in the first bucket. Baseline Planning NPV = Σ bucket net cashflow / (1 + rate)^(midpoint day / 365.25)."
@@ -618,7 +652,7 @@ function EconomicsCards(p: AnalysisPanelBodyProps & { analysis: MineAnalysisPayl
                 },
                 { label: 'Baseline Planning NPV', value: money(s.npv, code) },
                 { label: 'Planning IRR', value: irrText(eco.planningIrr) },
-                { label: 'Mine duration', value: days(p.analysis.schedule.mineDurationDays) },
+                { label: 'Mine duration', value: duration(p.analysis.schedule.mineDurationDays) },
                 {
                   label: 'Discount rate / bucket',
                   value: `${fmt2(eco.annualDiscountRate)} / ${fmt0(eco.cashflowBucketDays)} d`,
@@ -630,7 +664,7 @@ function EconomicsCards(p: AnalysisPanelBodyProps & { analysis: MineAnalysisPayl
       />
       {s ? (
         <section className="border-b border-rock-700 px-4 py-3">
-          <h3 className="plate mb-1.5 text-[12px] text-chalk">Planning Cashflow</h3>
+          <h3 className="plate mb-1.5 text-[12px] text-chalk">{tr('Planning Cashflow')}</h3>
           <CashflowCharts buckets={eco.cashflow} summary={s} code={code} />
           <div className="mt-2">
             <CashflowTable buckets={eco.cashflow} code={code} />

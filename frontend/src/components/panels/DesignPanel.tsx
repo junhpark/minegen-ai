@@ -46,6 +46,7 @@ import type {
   TimelinePayload,
   TunnelMeshReport,
 } from '@/types/scene'
+import { tr } from '@/i18n/t'
 
 /**
  * Mine development over the ACTIVE Effective Ramp. Phase 20E splits the
@@ -488,7 +489,9 @@ function NoDesignNotice({ rampReady }: { rampReady: boolean }) {
   if (rampReady) return null
   return (
     <p className="border-b border-rock-700 px-4 py-2 text-[11px] leading-relaxed text-chalk-dim">
-      No active design yet — generate mine-layout candidates in the Layout tab and activate one.
+      {tr(
+        'No active design yet — generate mine-layout candidates in the Layout tab and activate one.',
+      )}
     </p>
   )
 }
@@ -518,7 +521,7 @@ function DevelopView(p: DesignPanelBodyProps) {
 
       <WorkflowCard
         stage="LEVELS"
-        title="Level development"
+        title={tr('Level development')}
         tone={artifactTone(levels, p.levelsPending)}
         info="Drifts and crosscuts on each required level, anchored exactly at the level entry that the ramp's level access reaches. The backend owns the geometry; this panel echoes it."
         summary={
@@ -582,7 +585,7 @@ function DevelopView(p: DesignPanelBodyProps) {
 
       <WorkflowCard
         stage="EXCAVATION"
-        title="Development mesh"
+        title={tr('Development mesh')}
         tone={artifactTone(developmentMesh, p.developmentMeshBusy)}
         info="The excavation volume of the level access, drift and crosscut centerlines, swept with the same gravity-aligned profile as the ramp tunnel. Junction openings are typed local cuts; there is no general boolean union yet, so a neighbouring tube's inner wall can stay visible at a turnout."
         summary={
@@ -654,9 +657,11 @@ function DevelopView(p: DesignPanelBodyProps) {
 
       <WorkflowCard
         stage="EXCAVATION"
-        title="Ramp tunnel mesh"
+        title={tr('Ramp tunnel mesh')}
         tone={artifactTone(tunnel, p.tunnelBusy)}
-        info="The ramp excavation volume: a closed tube swept along the validated ramp centerline with a gravity-aligned floor, so the profile never banks. Nominal volume is the profile area times the 3-D centerline length; the closed-mesh signed volume is computed separately as a quality check."
+        info={tr(
+          'The ramp excavation volume: a closed tube swept along the validated ramp centerline with a gravity-aligned floor, so the profile never banks. Nominal volume is the profile area times the 3-D centerline length; the closed-mesh signed volume is computed separately as a quality check.',
+        )}
         summary={tunnel ? <TunnelSummary tunnel={tunnel} /> : null}
         failure={tunnel && tunnel.status !== 'SUCCESS' ? tunnel.failureReason : null}
         action={
@@ -712,7 +717,7 @@ function DevelopView(p: DesignPanelBodyProps) {
 
       <WorkflowCard
         stage="SHAFTS"
-        title="Shafts"
+        title={tr('Shafts')}
         tone={artifactTone(shafts, p.shaftsPending)}
         info="Optional vertical infrastructure declared in Setup › Access (never a ramp layout family). This stage PLANS the declared shafts against the level development: each gets a collar on the terrain, one station per required level welded onto an existing level node, and a sump bottom; the shaft mesh below sweeps the plan. Changing the declaration itself is a Setup decision (it rewrites the scenario and resets the design). The ramp always remains the mine's primary access."
         summary={
@@ -728,8 +733,9 @@ function DevelopView(p: DesignPanelBodyProps) {
         notice={
           p.shaftSpecCount === 0 ? (
             <>
-              No shaft declared — the mine stays ramp-only. To add one, choose Ramp + Shaft in Setup
-              › Access (that rewrites the scenario and resets the design).
+              {tr(
+                'No shaft declared — the mine stays ramp-only. To add one, choose Ramp + Shaft in Setup › Access (that rewrites the scenario and resets the design).',
+              )}
             </>
           ) : null
         }
@@ -753,7 +759,7 @@ function DevelopView(p: DesignPanelBodyProps) {
                 <li key={sh.shaftId} className="text-mute">
                   <div className={sh.status === 'OK' ? 'text-chalk-dim' : 'text-danger'}>
                     {sh.shaftId} · {sh.role.toLowerCase()} ·{' '}
-                    {sh.collarSource === 'EXPLICIT' ? 'explicit collar' : 'default collar'}
+                    {sh.collarSource === 'EXPLICIT' ? tr('explicit collar') : tr('default collar')}
                     {sh.status === 'OK' ? '' : ` · ${sh.failureCode ?? 'FAILED'}`}
                   </div>
                   {sh.status === 'OK' ? (
@@ -772,7 +778,7 @@ function DevelopView(p: DesignPanelBodyProps) {
 
       <WorkflowCard
         stage="SHAFTS"
-        title="Shaft excavation"
+        title={tr('Shaft excavation')}
         tone={artifactTone(p.shaftMesh, p.shaftMeshPending)}
         info="The excavation sweep of the planned shafts: a circular barrel on the vertical axis with a collar cap and a sump cap, plus one station drive per level, all on the shafts' own centerlines. It is a derivative of the shaft plan — re-planning the shafts deletes it — and it invalidates nothing else. No cage or hoist is modelled and the shaft is not a walkthrough space."
         summary={
@@ -787,7 +793,7 @@ function DevelopView(p: DesignPanelBodyProps) {
         failure={p.shaftMesh?.status === 'FAILED' ? p.shaftMesh.failureReason : null}
         notice={
           shafts === null ? (
-            <>Plan the shafts first — the sweep follows the planned geometry.</>
+            <>{tr('Plan the shafts first — the sweep follows the planned geometry.')}</>
           ) : shafts.status !== 'SUCCESS' ? (
             <>The shaft plan is FAILED; only validated shafts are swept.</>
           ) : null
@@ -813,7 +819,7 @@ function DevelopView(p: DesignPanelBodyProps) {
                   <div className="text-chalk-dim">
                     {sh.shaftId} · ⌀{sh.diameter.toFixed(1)} m ·{' '}
                     {sh.barrel
-                      ? `${String(sh.barrel.ringCount)} rings · ${sh.barrel.triangleCount.toLocaleString()} tris · ${sh.barrel.topology.watertight && sh.barrel.topology.manifold ? 'watertight' : 'open'}`
+                      ? `${String(sh.barrel.ringCount)} rings · ${sh.barrel.triangleCount.toLocaleString()} tris · ${sh.barrel.topology.watertight && sh.barrel.topology.manifold ? tr('watertight') : tr('open')}`
                       : 'no barrel'}
                   </div>
                   <div className="break-words">
@@ -849,13 +855,13 @@ function TunnelSummary({ tunnel }: { tunnel: TunnelMeshReport }) {
     <>
       {tunnel.ringCount} rings · {tunnel.triangleCount?.toLocaleString() ?? '—'} tris ·{' '}
       {closed ? (
-        <span className="text-lamp">watertight</span>
+        <span className="text-lamp">{tr('watertight')}</span>
       ) : connected ? (
         <span className="text-lamp">
           junction-connected · {tunnel.junctions!.openedEndpointCount} apertures
         </span>
       ) : (
-        <span className="text-danger">open</span>
+        <span className="text-danger">{tr('open')}</span>
       )}
     </>
   )
@@ -876,17 +882,19 @@ function NetworkView(p: DesignPanelBodyProps) {
 
       <WorkflowCard
         stage="NETWORK"
-        title="Mine network"
+        title={tr('Mine network')}
         tone={artifactTone(network, p.networkPending)}
-        info="Where connections exist: the mine as a graph of portals, ramp junctions, level entries, junctions, stope accesses and shaft nodes, joined by ramp, level-access, drift, crosscut and shaft edges. It answers connectivity and surface-egress questions and is the topology the schedule and the infrastructure planning build on. It is rebuilt from the authoritative centerlines rather than incrementally patched."
+        info={tr(
+          'Where connections exist: the mine as a graph of portals, ramp junctions, level entries, junctions, stope accesses and shaft nodes, joined by ramp, level-access, drift, crosscut and shaft edges. It answers connectivity and surface-egress questions and is the topology the schedule and the infrastructure planning build on. It is rebuilt from the authoritative centerlines rather than incrementally patched.',
+        )}
         summary={
           nm && network?.validation ? (
             <>
               {nm.nodeCount} nodes · {nm.edgeCount} edges ·{' '}
               {network.validation.connected ? (
-                <span className="text-lamp">connected</span>
+                <span className="text-lamp">{tr('connected')}</span>
               ) : (
-                <span className="text-danger">split</span>
+                <span className="text-danger">{tr('split')}</span>
               )}
             </>
           ) : null
@@ -898,7 +906,11 @@ function NetworkView(p: DesignPanelBodyProps) {
             disabled={!p.networkEnabled}
             onClick={p.onGenerateNetwork}
           >
-            {p.networkPending ? 'Building network…' : network ? 'Rebuild network' : 'Build network'}
+            {p.networkPending
+              ? 'Building network…'
+              : network
+                ? tr('Rebuild network')
+                : tr('Build network')}
           </ActionButton>
         }
         details={
@@ -938,7 +950,7 @@ function NetworkView(p: DesignPanelBodyProps) {
 
       <WorkflowCard
         stage="CAPABILITY"
-        title="Capabilities"
+        title={tr('Capabilities')}
         tone={artifactTone(capabilityGraph, p.capabilityPending)}
         info="What each connection MAY be used for — personnel, haulage, ventilation path, utilities, emergency egress — as typed tags over the network's node and edge ids. It is a separate layer from the network's geometry and topology, and it is never a capacity: tonnes per hour, people per hour, airflow and hoist cycles are not modelled. Dual egress is reported as a design advisory only, never as regulatory compliance."
         summary={
@@ -1029,7 +1041,7 @@ function MiningView(p: DesignPanelBodyProps) {
 
       <WorkflowCard
         stage="PRODUCTION"
-        title="Production"
+        title={tr('Production')}
         tone={artifactTone(production, p.productionPending)}
         info="The planned production volumes of the scenario's mining method — longhole stopes between adjacent levels, Cut & Fill lifts of cuts with their 1:1 backfills, or Room & Pillar rooms (heading and benches) with retained pillars — as orebody-aligned prisms the backend generated from the level development. Volume, tonnes and the grade proxy are deterministic planning quantities — never resources, reserves, a feasibility grade or a geotechnical pillar design."
         summary={summary}
@@ -1057,9 +1069,11 @@ function MiningView(p: DesignPanelBodyProps) {
 
       <WorkflowCard
         stage="SCHEDULE"
-        title="Schedule"
+        title={tr('Schedule')}
         tone={artifactTone(timeline, p.timelinePending)}
-        info="An earliest-start baseline over a precedence-only task graph: each task starts when its dependencies end. There are no resource limits and no optimization, so it is a synthetic planning baseline — never a production forecast. It overlays temporal state on the existing geometry and owns no geometry itself."
+        info={tr(
+          'An earliest-start baseline over a precedence-only task graph: each task starts when its dependencies end. There are no resource limits and no optimization, so it is a synthetic planning baseline — never a production forecast. It overlays temporal state on the existing geometry and owns no geometry itself.',
+        )}
         summary={
           tm ? (
             <>

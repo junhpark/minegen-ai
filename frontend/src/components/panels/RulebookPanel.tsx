@@ -7,6 +7,7 @@ import {
   rulebookStatus,
   SCOPE_LABEL,
 } from './rulebook'
+import { tr } from '@/i18n/t'
 
 /**
  * Phase 22C — the Design Rulebook (rule 203).
@@ -45,11 +46,11 @@ export function RulebookBody({ assessment, error, loading }: RulebookBodyProps) 
   }
   const inactive = assessment.layoutScope === 'INACTIVE_LAYOUT_V2'
   return (
-    <section className="border-b border-rock-700 px-4 py-3" aria-label="design rulebook">
+    <section className="border-b border-rock-700 px-4 py-3" aria-label={tr('design rulebook')}>
       <header className="mb-1.5 flex items-center justify-between gap-2">
         <h3 className="plate flex items-center gap-1.5 text-[12px] text-chalk">
-          Design Rulebook
-          <InfoPopover label="Design Rulebook">
+          {tr('Design Rulebook')}
+          <InfoPopover label={tr('Design Rulebook')}>
             A read-only presentation of the design assessment: each row is one recorded design rule,
             design validation, design advisory or informational fact with its authority and scope.
             Nothing is re-evaluated here and no overall compliance score exists. A design advisory
@@ -58,7 +59,7 @@ export function RulebookBody({ assessment, error, loading }: RulebookBodyProps) 
         </h3>
         <span className="text-[10px] uppercase text-mute">{assessment.checks.length} rules</span>
       </header>
-      <div className="mb-1.5 text-[11px] text-mute" aria-label="rulebook scope">
+      <div className="mb-1.5 text-[11px] text-mute" aria-label={tr('rulebook scope')}>
         {assessment.activeSource === 'LAYOUT_V2'
           ? `Active design: Layout v2 · ${assessment.activeDesignCandidateId ?? '—'}`
           : inactive
@@ -81,9 +82,9 @@ export function RulebookBody({ assessment, error, loading }: RulebookBodyProps) 
         </colgroup>
         <thead className="text-mute">
           <tr>
-            <th className="text-left font-normal">Category</th>
-            <th className="text-left font-normal">Rule</th>
-            <th className="text-right font-normal">Status</th>
+            <th className="text-left font-normal">{tr('Category')}</th>
+            <th className="text-left font-normal">{tr('Rule')}</th>
+            <th className="text-right font-normal">{tr('Status')}</th>
           </tr>
         </thead>
         <tbody className="align-top">
@@ -99,21 +100,22 @@ export function RulebookBody({ assessment, error, loading }: RulebookBodyProps) 
                 data-scope={c.scope}
                 data-rulebook-status={st.text}
               >
-                <td className="pt-1 pr-1 text-mute">{CATEGORY_LABEL[c.category]}</td>
-                <td className="pt-1 pr-1 text-chalk-dim">{c.title}</td>
+                <td className="pt-1 pr-1 text-mute">{tr(CATEGORY_LABEL[c.category])}</td>
+                <td className="pt-1 pr-1 text-chalk-dim">{tr(c.title)}</td>
                 <td className={`pt-1 text-right whitespace-nowrap ${st.className}`}>
                   {st.glyph ? <span aria-hidden="true">{st.glyph} </span> : null}
-                  {st.text}
+                  {tr(st.text)}
                 </td>
               </tr>,
               <tr key={`${c.id}:detail`} data-check-detail={c.id}>
                 <td colSpan={3} className="pb-1 text-mute">
                   <div>
-                    <span className="uppercase">Authority</span> {AUTHORITY_LABEL[c.authority]} ·{' '}
-                    <span className="uppercase">Scope</span> {SCOPE_LABEL[c.scope]}
+                    <span className="uppercase">{tr('Authority')}</span>{' '}
+                    {tr(AUTHORITY_LABEL[c.authority])} ·{' '}
+                    <span className="uppercase">{tr('Scope')}</span> {tr(SCOPE_LABEL[c.scope])}
                   </div>
                   <div className="break-words" aria-label="evidence">
-                    <span className="uppercase">Evidence</span> {evidenceText(c)}
+                    <span className="uppercase">{tr('Evidence')}</span> {evidenceText(c)}
                   </div>
                   {c.authority === 'ADVISORY' ? (
                     <div className="italic">{RULEBOOK_ADVISORY_NOTE}</div>
@@ -125,8 +127,9 @@ export function RulebookBody({ assessment, error, loading }: RulebookBodyProps) 
         </tbody>
       </table>
       <p className="mt-1.5 text-[10px] text-mute">
-        Read-only projection of the design assessment · no overall compliance score · advisories are
-        design advisories, not statutory compliance determinations.
+        {tr(
+          'Read-only projection of the design assessment · no overall compliance score · advisories are design advisories, not statutory compliance determinations.',
+        )}
       </p>
     </section>
   )

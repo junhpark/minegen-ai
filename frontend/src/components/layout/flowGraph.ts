@@ -3,6 +3,7 @@ import type { Scenario } from '@/types/api'
 import type { WorldScene } from '@/types/scene'
 import { STAGE_IDS, type StageId } from '@/types/workflow'
 import { PREREQUISITE } from './workflow'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening PR-3 — the mine development FLOW as a node graph (pure).
@@ -95,34 +96,38 @@ export interface FlowMetricInput {
   completed: ReadonlySet<StageId>
 }
 
+// the count templates are dictionary keys (`'{n} levels'` → `'레벨 {n}개'`)
 const plural = (n: number, noun: string, many = `${noun}s`): string =>
-  `${String(n)} ${n === 1 ? noun : many}`
+  tr(`{n} ${n === 1 ? noun : many}`, { n })
 
 const failedOr = (a: { status: string } | null | undefined, text: () => string): string =>
-  a == null ? '—' : a.status === 'SUCCESS' ? text() : 'failed'
+  a == null ? '—' : a.status === 'SUCCESS' ? text() : tr('failed')
 
 /** the one-line metric under a flow node: backend-reported names and counts */
 export function flowMetric(stage: StageId, input: FlowMetricInput): string {
   const { scenario, scene } = input
   switch (stage) {
     case 'SCENARIO':
-      return scenario ? `${scenario.name} · #${String(scenario.seed)}` : 'no mine'
+      return scenario ? `${scenario.name} · #${String(scenario.seed)}` : tr('no mine')
     case 'METHOD':
-      return scene ? scene.miningMethod.displayName : '—'
+      return scene ? tr(scene.miningMethod.displayName) : '—'
     case 'ACCESS': {
       if (!scenario) return '—'
       const n = scenario.shafts?.specs.length ?? 0
-      return n === 0 ? 'Ramp only' : `Ramp + ${plural(n, 'shaft')}`
+      return n === 0 ? tr('Ramp only') : tr('Ramp + {shafts}', { shafts: plural(n, 'shaft') })
     }
     case 'LAYOUT': {
       if (!scene) return '—'
       if (scene.rampSource.available) {
         return scene.rampSource.activeSource === 'LAYOUT_V2'
           ? (scene.rampSource.candidateId ?? 'layout v2')
-          : 'legacy decline'
+          : tr('legacy decline')
       }
       return scene.layoutV2
-        ? `${String(scene.layoutV2.feasibleCount)} / ${String(scene.layoutV2.candidateCount)} feasible`
+        ? tr('{feasible} / {total} feasible', {
+            feasible: scene.layoutV2.feasibleCount,
+            total: scene.layoutV2.candidateCount,
+          })
         : '—'
     }
     case 'LEVELS':
@@ -130,17 +135,17 @@ export function flowMetric(stage: StageId, input: FlowMetricInput): string {
     case 'EXCAVATION': {
       const t = scene?.tunnelMesh ?? null
       const d = scene?.developmentMesh ?? null
-      if (t?.status === 'FAILED' || d?.status === 'FAILED') return 'failed'
-      if (t && d) return 'ramp + development'
-      if (t) return 'ramp tunnel'
+      if (t?.status === 'FAILED' || d?.status === 'FAILED') return tr('failed')
+      if (t && d) return tr('ramp + development')
+      if (t) return tr('ramp tunnel')
       return '—'
     }
     case 'SHAFTS': {
       const declared = scenario?.shafts?.specs.length ?? 0
-      if (!scene?.shafts) return scenario && declared === 0 ? 'none declared' : '—'
+      if (!scene?.shafts) return scenario && declared === 0 ? tr('none declared') : '—'
       return failedOr(scene.shafts, () => {
         const n = scene.shafts?.metrics?.shaftCount ?? scene.shafts?.shafts.length ?? 0
-        const mesh = scene.shaftMesh?.status === 'SUCCESS' ? ' · mesh' : ''
+        const mesh = scene.shaftMesh?.status === 'SUCCESS' ? ` ${tr('· mesh')}` : ''
         return `${plural(n, 'shaft')}${mesh}`
       })
     }
@@ -159,12 +164,11 @@ export function flowMetric(stage: StageId, input: FlowMetricInput): string {
         const kind = productionKindOf(payload)
         // the unit noun of the kind is already plural ("stopes", "cuts", …)
         const noun = kind ? PRODUCTION_UNIT_NOUN[kind] : 'units'
-        return `${String(productionUnitCount(payload))} ${noun}`
+        return tr('{n} {noun}', { n: productionUnitCount(payload), noun: tr(noun) })
       })
     case 'SCHEDULE':
-      return failedOr(
-        scene?.timeline,
-        () => `ends day ${String(Math.round(scene?.timeline?.endDay ?? 0))}`,
+      return failedOr(scene?.timeline, () =>
+        tr('ends day {day}', { day: Math.round(scene?.timeline?.endDay ?? 0) }),
       )
     case 'COMMUNICATION':
       return failedOr(scene?.communication, () =>
@@ -175,8 +179,8 @@ export function flowMetric(stage: StageId, input: FlowMetricInput): string {
         plural(scene?.sensors?.selectedSensors.length ?? 0, 'sensor'),
       )
     case 'ANALYSIS':
-      return input.completed.has(stage) ? 'shown' : '—'
+      return input.completed.has(stage) ? tr('shown') : '—'
     case 'EXPORT':
-      return input.completed.has(stage) ? 'downloaded' : '—'
+      return input.completed.has(stage) ? tr('downloaded') : '—'
   }
 }

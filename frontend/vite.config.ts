@@ -25,5 +25,9 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // PR-3 round 4: the UI defaults to Korean; the tests assert the ENGLISH
+    // source strings, so the test build is pinned to `en` (i18n tests set the
+    // locale explicitly to render Korean)
+    env: { VITE_DEFAULT_LOCALE: 'en' },
   },
 })

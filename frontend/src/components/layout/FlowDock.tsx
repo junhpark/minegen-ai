@@ -5,6 +5,7 @@ import { STAGE_IDS, type StageId } from '@/types/workflow'
 import { flowLayout, flowMetric, type FlowLayout } from './flowGraph'
 import { useStageGlyphs } from './useStageGlyphs'
 import { GLYPH_TEXT, STAGE_LABEL, type StageGlyph } from './workflow'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening PR-3 — the FLOW dock: the mine development stages drawn as a
@@ -42,24 +43,25 @@ export function FlowDock() {
   }, [scenario, scene, completion, sceneRevision])
   return (
     <section
-      className="shrink-0 border-t border-rock-700 bg-rock-900"
+      className="shrink-0 border-t border-rock-700/70 bg-rock-900"
       data-testid="flow-dock"
-      aria-label="mine development flow"
+      aria-label={tr('mine development flow')}
     >
       <header className="flex h-6 items-center gap-3 px-3">
-        <span className="plate text-[11px] text-chalk-dim">Mine development flow</span>
+        <span className="plate text-[11px] text-chalk-dim">{tr('Mine development flow')}</span>
         <span className="readout truncate text-[10px] text-mute">
-          click a stage to go back to it · ✓ done · ● next · ○ waiting · ✗ failed · ↻ running · –
-          optional
+          {tr(
+            'click a stage to go back to it · ✓ done · ● next · ○ waiting · ✗ failed · ↻ running · – optional',
+          )}
         </span>
         <button
           type="button"
           onClick={() => setFlowDock(false)}
-          title="Hide the flow (View › Flow shows it again)"
+          title={tr('Hide the flow (View › Flow shows it again)')}
           className="readout ml-auto rounded-sm px-1.5 text-[10px] text-mute hover:bg-rock-800 hover:text-chalk"
           data-testid="flow-dock-hide"
         >
-          ▾ hide
+          {tr('▾ hide')}
         </button>
       </header>
       <div className="overflow-x-auto">
@@ -118,7 +120,7 @@ export function FlowGraphBody({
       style={{ width, height }}
       data-testid="flow-graph"
       role="group"
-      aria-label="development stages"
+      aria-label={tr('development stages')}
     >
       <svg className="absolute inset-0" width={width} height={height} aria-hidden>
         {layout.edges.map((e) => {
@@ -154,19 +156,19 @@ export function FlowGraphBody({
             aria-current={current ? 'step' : undefined}
             data-stage={n.stage}
             data-glyph={g}
-            title={`${STAGE_LABEL[n.stage]} — ${g.toLowerCase()} · ${metrics[n.stage]}`}
+            title={`${tr(STAGE_LABEL[n.stage])} — ${tr(g.toLowerCase())} · ${metrics[n.stage]}`}
             style={{ left: x, top: y, width: NODE_W, height: NODE_H }}
             className={[
-              'absolute flex flex-col justify-center rounded-sm border bg-rock-800 px-2 text-left transition-colors hover:bg-rock-700',
+              'absolute flex flex-col justify-center rounded-md border bg-gradient-to-b from-rock-800 to-rock-900 px-2 text-left shadow-card transition-colors hover:from-rock-700 hover:to-rock-800',
               NODE_TONE[g],
-              current ? 'ring-2 ring-lamp' : '',
+              current ? 'ring-2 ring-lamp shadow-glow' : '',
             ].join(' ')}
           >
             <span className="flex items-center gap-1 text-[11px] leading-none">
               <span aria-hidden className={`readout text-[10px] ${GLYPH_TONE[g]}`}>
                 {GLYPH_TEXT[g]}
               </span>
-              <span className="plate truncate">{STAGE_LABEL[n.stage]}</span>
+              <span className="plate truncate">{tr(STAGE_LABEL[n.stage])}</span>
             </span>
             <span className="readout mt-0.5 truncate text-[9px] text-mute" data-metric>
               {metrics[n.stage]}

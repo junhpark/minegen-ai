@@ -5,6 +5,7 @@ import { cloneDemo } from '@/scenario/demos'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import type { DemoCatalogEntry } from '@/types/api'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening PR-2 H4 — the CONTROLS column while a baked demo is open
@@ -64,7 +65,7 @@ export function DemoPanelBody({
 }) {
   return (
     <section className="border-b border-rock-700 px-4 py-3" data-testid="demo-panel">
-      <div className="mb-1 flex flex-wrap gap-1" aria-label="demo labels">
+      <div className="mb-1 flex flex-wrap gap-1" aria-label={tr('demo labels')}>
         {demo.labels.map((l) => (
           <span
             key={l}
@@ -77,15 +78,15 @@ export function DemoPanelBody({
       <h3 className="text-[13px] text-chalk">{demo.title}</h3>
       <p className="mt-1 text-[11px] leading-relaxed text-chalk-dim">{demo.description}</p>
       <dl className="readout mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[10px] text-mute">
-        <dt>Orebody</dt>
+        <dt>{tr('Orebody')}</dt>
         <dd className="text-chalk-dim">{demo.orebodyType}</dd>
-        <dt>Method</dt>
+        <dt>{tr('Method')}</dt>
         <dd className="text-chalk-dim">{demo.miningMethod}</dd>
-        <dt>Seed</dt>
+        <dt>{tr('Seed')}</dt>
         <dd className="text-chalk-dim">
           {demo.preset} · {demo.seed}
         </dd>
-        <dt>Baked stages</dt>
+        <dt>{tr('Baked stages')}</dt>
         <dd className="text-chalk-dim">{demo.stages.join(' → ')}</dd>
       </dl>
       {!sceneLoaded ? (
@@ -106,7 +107,7 @@ export function DemoPanelBody({
           onChange={(e) => onTour(e.target.checked)}
           data-testid="demo-auto-tour"
         />
-        Auto tour (cycle the camera presets)
+        {tr('Auto tour (cycle the camera presets)')}
       </label>
       <div className="mt-2">
         <ActionButton
@@ -115,7 +116,7 @@ export function DemoPanelBody({
           onClick={onClone}
           title="Create a saved, editable scenario from this demo's document; its world is regenerated from the same seed"
         >
-          {cloning ? 'Cloning…' : 'Clone to edit'}
+          {cloning ? tr('Cloning…') : tr('Clone to edit')}
         </ActionButton>
       </div>
       {cloneError ? (

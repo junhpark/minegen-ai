@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { tr } from '@/i18n/t'
 
 export interface Metric {
   label: string
@@ -8,9 +9,11 @@ export interface Metric {
 /** One label / value line of a detailed readout. */
 export function MetricRow({ label, value }: Metric) {
   return (
-    <div className="flex justify-between gap-2">
-      <span className="text-mute">{label}</span>
-      <span className="text-right break-words text-chalk-dim">{value}</span>
+    <div className="flex justify-between gap-3 border-b border-rock-800/60 py-px last:border-b-0">
+      <span className="text-mute">{tr(label)}</span>
+      <span className="readout text-right break-words text-chalk-dim">
+        {typeof value === 'string' ? tr(value) : value}
+      </span>
     </div>
   )
 }

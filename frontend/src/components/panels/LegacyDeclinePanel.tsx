@@ -18,6 +18,7 @@ import type {
   SmoothedDeclinePayload,
   WorldScene,
 } from '@/types/scene'
+import { tr } from '@/i18n/t'
 
 export const LEGACY_SECTION_TITLE = 'Legacy decline (Hybrid-A*) — Advanced'
 export const LEGACY_SECTION_NOTE =
@@ -181,9 +182,9 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
       onToggle={p.onToggle}
       note={LEGACY_SECTION_NOTE}
     >
-      <div className="readout mb-2 text-[11px]" aria-label="ramp source switch">
-        <div className="mb-1 text-mute">Effective ramp source (advanced)</div>
-        <div className="flex gap-1" role="radiogroup" aria-label="ramp source">
+      <div className="readout mb-2 text-[11px]" aria-label={tr('ramp source switch')}>
+        <div className="mb-1 text-mute">{tr('Effective ramp source (advanced)')}</div>
+        <div className="flex gap-1" role="radiogroup" aria-label={tr('ramp source')}>
           {(['LEGACY', 'LAYOUT_V2'] as const).map((src) => (
             <button
               key={src}
@@ -202,7 +203,7 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
                   : 'border-rock-700 text-chalk-dim hover:border-lamp'
               }`}
             >
-              {src === 'LEGACY' ? 'Legacy (Hybrid-A*)' : 'Layout v2'}
+              {src === 'LEGACY' ? tr('Legacy (Hybrid-A*)') : tr('Layout v2')}
             </button>
           ))}
         </div>
@@ -224,16 +225,16 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
       ) : null}
       {scenario ? (
         <dl className="readout mb-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-          <dt className="text-mute">Sublevel</dt>
+          <dt className="text-mute">{tr('Sublevel')}</dt>
           <dd>{fmtMeters(scenario.mining.sublevelInterval, 0)}</dd>
-          <dt className="text-mute">Footwall offset</dt>
+          <dt className="text-mute">{tr('Footwall offset')}</dt>
           <dd>{fmtMeters(scenario.ramp.footwallAccessOffset, 0)}</dd>
-          <dt className="text-mute">Candidates</dt>
+          <dt className="text-mute">{tr('Candidates')}</dt>
           <dd>
             {scenario.design.candidateCount} over ±
             {(scenario.design.candidateAlongStrikeSpan / 2).toFixed(0)} m
           </dd>
-          <dt className="text-mute">Exclusion</dt>
+          <dt className="text-mute">{tr('Exclusion')}</dt>
           <dd>{fmtMeters(scenario.design.orebodyExclusionBuffer, 0)} buffer</dd>
         </dl>
       ) : null}
@@ -285,7 +286,7 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
         </div>
       ) : (
         <p className="mt-2 text-[11px] text-mute">
-          Legacy only: decline access elevations and footwall candidates per level.
+          {tr('Legacy only: decline access elevations and footwall candidates per level.')}
         </p>
       )}
 
@@ -333,7 +334,7 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
             ))}
           </ul>
           <div className="mt-1 text-mute">
-            Raw search centerline — never a final engineering design.
+            {tr('Raw search centerline — never a final engineering design.')}
           </div>
         </div>
       ) : null}
@@ -406,7 +407,7 @@ export function LegacyDeclineBody(p: LegacyDeclineBodyProps) {
             ))}
           </ul>
           <div className="mt-1 text-mute">
-            Validated effective centerline — the input the ramp tunnel mesh is swept on.
+            {tr('Validated effective centerline — the input the ramp tunnel mesh is swept on.')}
           </div>
         </div>
       ) : null}

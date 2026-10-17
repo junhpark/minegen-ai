@@ -25,6 +25,7 @@ import {
 import { runningStages, useShellStore } from './shellStore'
 import { useStageGlyphs } from './useStageGlyphs'
 import { entryStageOf, GLYPH_TEXT } from './workflow'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening PR-3 — the Office / CAD ribbon: a TAB row in the top bar and a
@@ -63,17 +64,17 @@ export function RibbonTabs() {
             aria-current={current ? 'step' : undefined}
             data-step={tab.id}
             className={[
-              'plate whitespace-nowrap rounded-sm px-2 py-1 text-[12px] transition-colors',
+              'plate whitespace-nowrap rounded-md px-2.5 py-1 text-[12px] transition-colors',
               current
-                ? 'bg-rock-700 text-lamp shadow-[inset_0_-2px_0_0_var(--color-lamp)]'
-                : 'text-chalk-dim hover:bg-rock-700/60 hover:text-chalk',
+                ? 'bg-rock-700/80 text-lamp shadow-[inset_0_-2px_0_0_var(--color-lamp)]'
+                : 'text-chalk-dim hover:bg-rock-700/50 hover:text-chalk',
               tab.id === 'VIEW' ? 'ml-2 border-l border-rock-700 pl-3' : '',
             ].join(' ')}
           >
             {tab.index !== null ? (
               <span className="readout mr-1 text-[10px] text-mute">{tab.index}</span>
             ) : null}
-            {tab.label}
+            {tr(tab.label)}
           </button>
         )
       })}
@@ -88,6 +89,7 @@ function useRibbonContext(): RibbonContext {
   const view = useViewerStore((s) => s.viewMode())
   const flowDock = useViewerStore((s) => s.flowDock)
   const panes = useViewerStore((s) => s.panes)
+  const layers = useViewerStore((s) => s.visibleLayers)
   const analysisTab = useViewerStore((s) => s.analysisTab)
   const analysisShow3d = useViewerStore((s) => s.analysisShow3d)
   const scenario = useScenarioStore((s) => s.scenario)
@@ -115,6 +117,7 @@ function useRibbonContext(): RibbonContext {
       jobRunning,
       flowDock,
       panes,
+      layers,
       analysisTab,
       analysisShow3d,
     }),
@@ -129,19 +132,23 @@ function useRibbonContext(): RibbonContext {
       jobRunning,
       flowDock,
       panes,
+      layers,
       analysisTab,
       analysisShow3d,
     ],
   )
 }
 
-/** every ribbon command is a store action — never a request or a mutation */
+/** every ribbon command is a store action — never a request or a mutation
+ * (a View › Layers tool writes the same `visibleLayers` entries the
+ * Visibility tree toggles, through the store's `setLayerVisible`) */
 function useRibbonDispatch(): (command: RibbonCommand) => void {
   const setStage = useViewerStore((s) => s.setStage)
   const setViewMode = useViewerStore((s) => s.setViewMode)
   const requestCameraPreset = useViewerStore((s) => s.requestCameraPreset)
   const setPane = useViewerStore((s) => s.setPane)
   const setFlowDock = useViewerStore((s) => s.setFlowDock)
+  const setLayerVisible = useViewerStore((s) => s.setLayerVisible)
   const setAnalysisTab = useViewerStore((s) => s.setAnalysisTab)
   const setAnalysisShow3d = useViewerStore((s) => s.setAnalysisShow3d)
   const openResetDialog = useShellStore((s) => s.openResetDialog)
@@ -176,6 +183,9 @@ function useRibbonDispatch(): (command: RibbonCommand) => void {
         case 'FLOW_DOCK':
           setFlowDock(command.visible)
           return
+        case 'LAYERS':
+          for (const layer of command.layers) setLayerVisible(layer, command.visible)
+          return
         case 'ANALYSIS_TAB':
           setStage('ANALYSIS')
           setAnalysisTab(command.tab)
@@ -195,6 +205,7 @@ function useRibbonDispatch(): (command: RibbonCommand) => void {
       requestCameraPreset,
       setPane,
       setFlowDock,
+      setLayerVisible,
       setAnalysisTab,
       setAnalysisShow3d,
       openResetDialog,
@@ -235,11 +246,11 @@ interface BandProps {
 export function RibbonBandBody({ tab, groups, quick, onStage, onCommand }: BandProps) {
   return (
     <div
-      className="flex h-[68px] shrink-0 items-stretch gap-1 overflow-x-auto border-b border-rock-700 bg-rock-900 px-2"
+      className="flex h-[68px] shrink-0 items-stretch gap-1 overflow-x-auto border-b border-rock-700/70 bg-gradient-to-b from-rock-900 to-rock-900/90 px-2"
       data-testid="ribbon-band"
       data-tab={tab}
       role="toolbar"
-      aria-label={`${tab.toLowerCase()} tools`}
+      aria-label={tr('{tab} tools', { tab: tab.toLowerCase() })}
     >
       {groups.map((group) => (
         <div
@@ -247,14 +258,23 @@ export function RibbonBandBody({ tab, groups, quick, onStage, onCommand }: BandP
           role="group"
           aria-label={group.label}
           data-group={group.id}
-          className="mr-1 flex flex-col justify-between border-r border-rock-800 pr-1"
+          className="mr-1 flex flex-col justify-between border-r border-rock-700/50 pr-1"
         >
           <div className="flex gap-0.5">
             {group.tools.map((tool) => (
               <ToolButton key={tool.id} tool={tool} onStage={onStage} onCommand={onCommand} />
             ))}
           </div>
-          <div className="plate pb-0.5 text-center text-[9px] text-mute">{group.label}</div>
+          <div className="plate pb-0.5 text-center text-[9px] text-mute">
+            {group.template
+              ? tr(
+                  group.template.label,
+                  Object.fromEntries(
+                    Object.entries(group.template.vars).map(([k, v]) => [k, tr(v)]),
+                  ),
+                )
+              : tr(group.label)}
+          </div>
         </div>
       ))}
       {quick.length > 0 ? (
@@ -262,14 +282,14 @@ export function RibbonBandBody({ tab, groups, quick, onStage, onCommand }: BandP
           className="ml-auto flex flex-col justify-between border-l border-rock-700 pl-2"
           data-testid="ribbon-quick-access"
           role="group"
-          aria-label="Quick access"
+          aria-label={tr('Quick access')}
         >
           <div className="flex gap-0.5">
             {quick.map((tool) => (
               <ToolButton key={tool.id} tool={tool} onStage={onStage} onCommand={onCommand} />
             ))}
           </div>
-          <div className="plate pb-0.5 text-center text-[9px] text-mute">Reset</div>
+          <div className="plate pb-0.5 text-center text-[9px] text-mute">{tr('Reset')}</div>
         </div>
       ) : null}
     </div>
@@ -286,7 +306,7 @@ const GLYPH_TONE: Record<StageTool['glyph'], string> = {
 }
 
 const BASE =
-  'flex h-[52px] min-w-[64px] flex-col items-center justify-center gap-0.5 rounded-sm px-1 text-[10px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40'
+  'flex h-[52px] min-w-[64px] flex-col items-center justify-center gap-1 rounded-md px-1.5 text-[10px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40'
 
 function ToolButton({
   tool,
@@ -305,12 +325,12 @@ function ToolButton({
         aria-current={tool.current ? 'step' : undefined}
         data-stage={tool.stage}
         data-glyph={tool.glyph}
-        title={`${tool.hint} — ${tool.glyph.toLowerCase()}`}
+        title={`${tr(tool.hint)} — ${tr(tool.glyph.toLowerCase())}`}
         className={[
           BASE,
           tool.current
-            ? 'bg-rock-700 text-chalk shadow-[inset_0_-2px_0_0_var(--color-lamp)]'
-            : 'text-chalk-dim hover:bg-rock-800 hover:text-chalk',
+            ? 'bg-rock-700/80 text-chalk shadow-[inset_0_-2px_0_0_var(--color-lamp)]'
+            : 'text-chalk-dim hover:bg-rock-800/80 hover:text-chalk',
         ].join(' ')}
       >
         <span className="relative">
@@ -322,10 +342,16 @@ function ToolButton({
             {GLYPH_TEXT[tool.glyph]}
           </span>
         </span>
-        <span className="plate whitespace-nowrap">{tool.label}</span>
+        <span className="plate whitespace-nowrap">{tr(tool.label)}</span>
       </button>
     )
   }
+  // a composed label / hint is translated from its template (round 4)
+  const vars = tool.template
+    ? Object.fromEntries(Object.entries(tool.template.vars).map(([k, v]) => [k, tr(v)]))
+    : undefined
+  const label = tool.template ? tr(tool.template.label, vars) : tr(tool.label)
+  const hint = tool.template ? tr(tool.template.hint, vars) : tr(tool.hint)
   return (
     <button
       type="button"
@@ -333,18 +359,18 @@ function ToolButton({
       disabled={tool.disabled}
       aria-pressed={tool.active}
       data-tool={tool.id}
-      title={tool.reason ?? tool.hint}
+      title={tool.reason ? tr(tool.reason) : hint}
       className={[
         BASE,
         tool.active
-          ? 'bg-rock-700 text-lamp shadow-[inset_0_-2px_0_0_var(--color-lamp)]'
+          ? 'bg-rock-700/80 text-lamp shadow-[inset_0_-2px_0_0_var(--color-lamp)]'
           : tool.danger
-            ? 'text-chalk-dim hover:bg-rock-800 hover:text-danger'
-            : 'text-chalk-dim hover:bg-rock-800 hover:text-chalk',
+            ? 'text-chalk-dim hover:bg-rock-800/80 hover:text-danger'
+            : 'text-chalk-dim hover:bg-rock-800/80 hover:text-chalk',
       ].join(' ')}
     >
       <Icon name={tool.icon} size={20} />
-      <span className="plate whitespace-nowrap">{tool.label}</span>
+      <span className="plate whitespace-nowrap">{label}</span>
     </button>
   )
 }

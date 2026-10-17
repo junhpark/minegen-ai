@@ -45,6 +45,12 @@ export type IconName =
   | 'rules'
   | 'layouts'
   | 'simulation'
+  | 'terrain'
+  | 'orebody'
+  | 'faults'
+  | 'slice'
+  | 'ramp'
+  | 'systems'
 
 /** path data per glyph (stroke only; `fill` is added where a dot is drawn) */
 const GLYPHS: Record<IconName, ReactNode> = {
@@ -283,6 +289,47 @@ const GLYPHS: Record<IconName, ReactNode> = {
     <>
       <path d="M3 12c2-5 4-5 6 0s4 5 6 0 4-5 6 0" />
       <path d="M3 17h18" />
+    </>
+  ),
+  // PR-3 round 3 — the View › Layers tools
+  terrain: (
+    <>
+      <path d="M3 18l5-8 3.5 5 2.5-3.5L21 18z" />
+      <path d="M3 21h18" />
+    </>
+  ),
+  orebody: (
+    <>
+      <path d="M5 9l5-4 9 3-2 9-8 3-4-6z" />
+      <path d="M10 5l3 4 6-1M13 9l-2 11" />
+    </>
+  ),
+  faults: (
+    <>
+      <path d="M4 4v16M20 4v16" />
+      <path d="M4 10h6l4 4h6M4 15h5l4-4h7" strokeDasharray="2 1.5" />
+    </>
+  ),
+  slice: (
+    <>
+      <path d="M4 7l8-4 8 4-8 4z" />
+      <path d="M4 7v10l8 4 8-4V7" />
+      <path d="M4 12l8 4 8-4" />
+    </>
+  ),
+  ramp: (
+    <>
+      <path d="M4 5c0 4 3 5 8 5s8 1 8 5-3 5-8 5" />
+      <path d="M12 20l-3-1.5M12 20l-3 1.5" />
+      <circle cx="4" cy="5" r="1.4" fill="currentColor" />
+    </>
+  ),
+  systems: (
+    <>
+      <path d="M12 20V11" />
+      <circle cx="12" cy="9" r="2" />
+      <path d="M7.5 4.5a7 7 0 0 1 9 0M9 7a4 4 0 0 1 6 0" />
+      <path d="M5 20h14" />
     </>
   ),
 }

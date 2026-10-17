@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { api, ApiError } from '@/api/client'
 import { DialogButton, ModalDialog } from '@/components/ui/ModalDialog'
 import { methodChangeApplyEnabled } from './methodChangeGate'
+import { tr } from '@/i18n/t'
 
 interface Props<T> {
   scenarioId: string
@@ -75,11 +76,11 @@ export function ScenarioChangeDialog<T>({
       footer={
         <>
           <DialogButton kind="cancel" onClick={onCancel}>
-            Cancel
+            {tr('Cancel')}
           </DialogButton>
           {hasWorld && plan.isError && !plan.isFetching ? (
             <DialogButton kind="confirm" onClick={() => void plan.refetch()}>
-              Retry
+              {tr('Retry')}
             </DialogButton>
           ) : null}
           <DialogButton
@@ -111,10 +112,10 @@ export function ScenarioChangeDialog<T>({
             The reset plan could not be read — nothing is applied until it is: {errorText}
           </p>
         ) : (
-          <p className="text-mute">Reading the reset plan…</p>
+          <p className="text-mute">{tr('Reading the reset plan…')}</p>
         )
       ) : (
-        <p className="text-mute">No world is generated yet, so nothing is cleared.</p>
+        <p className="text-mute">{tr('No world is generated yet, so nothing is cleared.')}</p>
       )}
     </ModalDialog>
   )

@@ -3,7 +3,8 @@ import { Metrics } from '@/components/ui/MetricRow'
 import { chartRows, seriesHasValues } from '@/timeline/timeseriesView'
 import type { MineAnalysisPayload, TimeseriesPayload } from '@/types/analysis'
 import type { TimelinePayload } from '@/types/scene'
-import { cubic, days, fmt0, tonnes } from './analysisFormat'
+import { cubic, days, duration, fmt0, tonnes } from './analysisFormat'
+import { tr } from '@/i18n/t'
 
 const TASK_ROWS_SHOWN = 300
 
@@ -42,10 +43,10 @@ export function ScheduleBody({
   return (
     <>
       <section className="border-b border-rock-700 px-4 py-3">
-        <h3 className="plate mb-1.5 text-[12px] text-chalk">Baseline schedule</h3>
+        <h3 className="plate mb-1.5 text-[12px] text-chalk">{tr('Baseline schedule')}</h3>
         <Metrics
           rows={[
-            { label: 'Mine duration', value: days(sched.mineDurationDays) },
+            { label: 'Mine duration', value: duration(sched.mineDurationDays) },
             { label: 'Ramp complete', value: days(sched.rampCompletionDay) },
             { label: 'First production', value: days(sched.firstProductionDay) },
             { label: 'Tasks', value: fmt0(sched.taskCount) },
@@ -54,13 +55,14 @@ export function ScheduleBody({
           ]}
         />
         <p className="mt-1 text-[10px] text-mute">
-          Deterministic precedence-only baseline from typed schedule rates — a synthetic planning
-          baseline, never a production forecast.
+          {tr(
+            'Deterministic precedence-only baseline from typed schedule rates — a synthetic planning baseline, never a production forecast.',
+          )}
         </p>
       </section>
       <section className="border-b border-rock-700 px-4 py-3" data-testid="schedule-series">
         <h3 className="plate mb-1.5 text-[12px] text-chalk">
-          Quantities over time (backend series)
+          {tr('Quantities over time (backend series)')}
         </h3>
         {seriesError ? (
           <p role="alert" className="text-[11px] text-danger">
@@ -122,8 +124,9 @@ export function ScheduleBody({
             ) : null}
             {series.developmentTonnes.status === 'NOT_CONFIGURED' ? (
               <p className="text-[10px] text-mute">
-                Development tonnes: NOT_CONFIGURED — declare scenario.geology.hostRockDensity to
-                express excavated development rock as tonnes (no default density is assumed).
+                {tr(
+                  'Development tonnes: NOT_CONFIGURED — declare scenario.geology.hostRockDensity to express excavated development rock as tonnes (no default density is assumed).',
+                )}
               </p>
             ) : null}
           </div>
@@ -144,11 +147,11 @@ export function ScheduleBody({
             <table className="w-full border-collapse">
               <thead>
                 <tr className="text-mute">
-                  <th className="text-left font-normal">Task</th>
-                  <th className="text-left font-normal">Type</th>
-                  <th className="text-right font-normal">Start</th>
-                  <th className="text-right font-normal">End</th>
-                  <th className="text-right font-normal">Days</th>
+                  <th className="text-left font-normal">{tr('Task')}</th>
+                  <th className="text-left font-normal">{tr('Type')}</th>
+                  <th className="text-right font-normal">{tr('Start')}</th>
+                  <th className="text-right font-normal">{tr('End')}</th>
+                  <th className="text-right font-normal">{tr('Days')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -171,7 +174,9 @@ export function ScheduleBody({
             ) : null}
           </div>
         ) : (
-          <p className="text-[11px] text-mute">The timeline artifact is not in the scene.</p>
+          <p className="text-[11px] text-mute">
+            {tr('The timeline artifact is not in the scene.')}
+          </p>
         )}
       </section>
     </>

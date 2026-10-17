@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom'
 import { isDismissKey, isOutside, toggled } from './interaction'
 import { placePopover, type Placement } from './popoverPlacement'
+import { tr } from '@/i18n/t'
 
 interface Props {
   /** what the explanation is about; used for the accessible name */
@@ -107,7 +108,7 @@ export function InfoPopover({ label, children, defaultOpen = false }: Props) {
       data-placement={placement ? `${placement.vertical} ${placement.horizontal}` : undefined}
       style={style}
       className={[
-        'z-50 rounded-sm border border-rock-600 bg-rock-950 px-2 py-1.5 text-left text-[11px] leading-relaxed font-normal tracking-normal text-chalk-dim normal-case shadow-lg',
+        'z-50 rounded-md border border-rock-600/80 bg-rock-950/95 px-2.5 py-2 text-left text-[11px] leading-relaxed font-normal tracking-normal text-chalk-dim normal-case shadow-float backdrop-blur',
         canPortal ? 'block' : 'absolute top-5 right-0 w-56',
       ].join(' ')}
     >
@@ -120,7 +121,7 @@ export function InfoPopover({ label, children, defaultOpen = false }: Props) {
       <button
         ref={button}
         type="button"
-        aria-label={`About ${label}`}
+        aria-label={tr('About {label}', { label: tr(label) })}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen(toggled)}

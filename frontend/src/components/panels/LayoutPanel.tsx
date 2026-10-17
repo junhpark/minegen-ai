@@ -30,6 +30,7 @@ import type {
   RampSourceSummary,
   WorldScene,
 } from '@/types/scene'
+import { tr } from '@/i18n/t'
 
 /**
  * Parametric whole-mine layout (layout-v2): the PRIMARY design workflow.
@@ -230,7 +231,7 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
               or in the picked row, and the candidate id stays in Details */}
           <ul
             className="mt-1 flex max-h-[28rem] flex-col gap-1 overflow-y-auto"
-            aria-label="layout candidates"
+            aria-label={tr('layout candidates')}
           >
             {candidates.map((c) => {
               const isPicked = picked === c.candidateId
@@ -253,10 +254,10 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
                       aria-pressed={isPicked}
                       aria-expanded={isPicked}
                       data-candidate-id={c.candidateId}
-                      className={`flex w-full flex-col rounded-sm border px-2 py-1.5 text-left transition-colors ${
+                      className={`flex w-full flex-col rounded-md border px-2 py-1.5 text-left transition-colors ${
                         isPicked
-                          ? 'border-lamp bg-rock-900 text-chalk'
-                          : 'border-rock-700 text-chalk-dim hover:border-rock-600 hover:bg-rock-900/60'
+                          ? 'border-lamp/80 bg-rock-900 text-chalk shadow-glow'
+                          : 'border-rock-700/80 text-chalk-dim hover:border-rock-600 hover:bg-rock-900/60'
                       }`}
                     >
                       <span className="flex w-full items-baseline justify-between gap-2">
@@ -266,13 +267,13 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
                             {c.family}
                           </span>
                           {c.candidateId === catalogue.winnerId ? (
-                            <span className="text-[11px] text-lamp" title="ranking winner">
+                            <span className="text-[11px] text-lamp" title={tr('ranking winner')}>
                               ★
                             </span>
                           ) : null}
                           {state ? (
                             <span className="plate rounded-sm bg-lamp/15 px-1 text-[9px] text-lamp">
-                              {state}
+                              {tr(state)}
                             </span>
                           ) : null}
                         </span>
@@ -289,7 +290,7 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
                   </HoverDetail>
                   {isPicked ? (
                     <div
-                      className="mx-1 border-x border-b border-rock-700 bg-rock-900/60 px-2 py-1.5"
+                      className="mx-1 rounded-b-md border-x border-b border-rock-700/80 bg-rock-900/60 px-2 py-1.5"
                       data-testid="option-detail"
                     >
                       <OptionBrief candidate={c} />
@@ -305,7 +306,7 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
               checked={p.showAll}
               onChange={(e) => p.onShowAll(e.target.checked)}
             />
-            show infeasible candidates
+            {tr('show infeasible candidates')}
           </label>
           <div className="mt-2 flex gap-1">
             <button
@@ -314,7 +315,7 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
               onClick={() => picked && p.onSelect(picked)}
               className="plate flex-1 rounded-sm border border-lamp px-2 py-1 text-[12px] text-lamp hover:bg-lamp hover:text-rock-950 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {p.selecting ? 'Selecting…' : 'Select'}
+              {p.selecting ? tr('Selecting…') : tr('Select')}
             </button>
             <button
               type="button"
@@ -327,14 +328,15 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
                   : 'bg-lamp text-rock-950 hover:bg-lamp-deep hover:text-chalk'
               }`}
             >
-              {p.activating ? 'Activating…' : 'Activate'}
+              {p.activating ? tr('Activating…') : tr('Activate')}
             </button>
           </div>
         </div>
       ) : (
         <p className="mt-2 text-[11px] text-mute">
-          Generate candidate ramp layouts, then select or activate one to make it the design. Works
-          for every orebody type.
+          {tr(
+            'Generate candidate ramp layouts, then select or activate one to make it the design. Works for every orebody type.',
+          )}
         </p>
       )}
     </>
@@ -344,31 +346,36 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
     <>
       <WorkflowCard
         stage="LAYOUT"
-        title="Mine layout"
+        title={tr('Mine layout')}
         tone={artifactTone(catalogue, running)}
-        info="Enumerates a finite declared grid of ramp families (spiral, longitudinal, switchback) from the authoritative portal, validates every delivered centerline against every required level, and ranks the feasible ones. Hard constraints stay hard: a violated constraint makes a candidate infeasible and is never turned into a score penalty. The Development / Geology / Geometry scores are planning comparators, not a cost estimate and not an optimality claim."
+        info={tr(
+          'Enumerates a finite declared grid of ramp families (spiral, longitudinal, switchback) from the authoritative portal, validates every delivered centerline against every required level, and ranks the feasible ones. Hard constraints stay hard: a violated constraint makes a candidate infeasible and is never turned into a score penalty. The Development / Geology / Geometry scores are planning comparators, not a cost estimate and not an optimality claim.',
+        )}
         summary={
-          <div aria-label="current design">
+          <div aria-label={tr('current design')}>
             <div className="flex justify-between">
-              <span className="text-mute">Current design</span>
+              <span className="text-mute">{tr('Current design')}</span>
               <span className={layoutActive ? 'text-lamp' : 'text-chalk-dim'}>
                 {currentDesignLabel(catalogue, rampSource)}
               </span>
             </div>
             {rampSource && !rampSource.available ? (
               <div className="mt-1 text-mute">
-                generate candidates, then Select or Activate one to make it the design
+                {tr('generate candidates, then Select or Activate one to make it the design')}
               </div>
             ) : null}
             {catalogue ? (
               <>
                 <div className="mt-1 flex justify-between gap-2 text-chalk-dim">
                   <span className={catalogue.status === 'SUCCESS' ? 'text-lamp' : 'text-danger'}>
-                    {catalogue.status === 'SUCCESS' ? 'SUCCESS' : 'NO FEASIBLE CANDIDATE'}
+                    {catalogue.status === 'SUCCESS' ? tr('SUCCESS') : tr('NO FEASIBLE CANDIDATE')}
                   </span>
                   <span className="text-right">
-                    {catalogue.feasibleCount} feasible / {catalogue.candidateCount} enumerated ·{' '}
-                    {catalogueLevelSummary(catalogue)}
+                    {tr('{feasible} feasible / {total} enumerated', {
+                      feasible: catalogue.feasibleCount,
+                      total: catalogue.candidateCount,
+                    })}{' '}
+                    · {catalogueLevelSummary(catalogue)}
                   </span>
                 </div>
                 {catalogueExcludedLines(catalogue).map((line) => (
@@ -413,7 +420,7 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
                 ]}
               />
               {picked ? (
-                <Disclosure label="Candidate details" hint={shortPick(catalogue, picked)}>
+                <Disclosure label={tr('Candidate details')} hint={shortPick(catalogue, picked)}>
                   <CandidateDetail
                     candidate={catalogue.candidates.find((c) => c.candidateId === picked) ?? null}
                   />
@@ -422,7 +429,7 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
             </>
           ) : null
         }
-        detailsLabel="Search details"
+        detailsLabel={tr('Search details')}
       />
       {/* Phase 20D.3 (PR #43 correction): the assessment is shown for EVERY
           design — a LEGACY-only scene keeps its generic network / capability
@@ -430,10 +437,12 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
       {p.assessment || p.assessmentError ? (
         <WorkflowCard
           stage="LAYOUT"
-          title="Design assessment"
+          title={tr('Design assessment')}
           tone={p.assessment ? 'READY' : 'NOT_GENERATED'}
-          statusLabel={p.assessment ? 'Read-only' : 'Unavailable'}
-          info="A read-only projection of the persisted design: the layout ranking, the selection, the active ramp source and the capability graph as typed engineering checks and a candidate comparison. It never creates geometry, changes feasibility or re-ranks. Dual egress is a design advisory, not a statutory compliance determination."
+          statusLabel={p.assessment ? tr('Read-only') : tr('Unavailable')}
+          info={tr(
+            'A read-only projection of the persisted design: the layout ranking, the selection, the active ramp source and the capability graph as typed engineering checks and a candidate comparison. It never creates geometry, changes feasibility or re-ranks. Dual egress is a design advisory, not a statutory compliance determination.',
+          )}
           summary={
             p.assessment ? (
               <>
@@ -441,7 +450,7 @@ export function LayoutPanelBody(p: LayoutPanelBodyProps) {
                 <AlternativesTable assessment={p.assessment} />
               </>
             ) : (
-              <span aria-label="design assessment unavailable">
+              <span aria-label={tr('design assessment unavailable')}>
                 design assessment unavailable — {p.assessmentError}
               </span>
             )
@@ -458,11 +467,11 @@ function OptionBrief({ candidate }: { candidate: LayoutCandidateSummary }) {
   return (
     <div
       className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[11px] leading-snug"
-      aria-label="option detail"
+      aria-label={tr('option detail')}
     >
       {optionBriefRows(candidate).map((r) => (
         <Fragment key={r.label}>
-          <span className="text-mute">{r.label}</span>
+          <span className="text-mute">{tr(r.label)}</span>
           <span
             className={`readout break-words ${r.tone === 'danger' ? 'text-danger' : 'text-chalk-dim'}`}
           >
@@ -479,7 +488,10 @@ function CandidateDetail({ candidate }: { candidate: LayoutCandidateSummary | nu
   const d = candidate.diagnostics
   const cl = candidate.clearance
   return (
-    <div className="mt-1 border-t border-rock-700 pt-1 text-mute" aria-label="candidate detail">
+    <div
+      className="mt-1 border-t border-rock-700 pt-1 text-mute"
+      aria-label={tr('candidate detail')}
+    >
       <div className="text-chalk-dim">{candidate.candidateId}</div>
       {d ? (
         <div className="flex justify-between">
@@ -504,7 +516,7 @@ function CandidateDetail({ candidate }: { candidate: LayoutCandidateSummary | nu
         <div className="text-danger">{candidate.failureDetail}</div>
       ) : null}
       {candidate.access ? (
-        <div className="flex justify-between" aria-label="level access summary">
+        <div className="flex justify-between" aria-label={tr('level access summary')}>
           <span>
             {candidate.access.accessibleLevelCount}/{candidate.access.levelCount} levels accessed
           </span>
@@ -520,7 +532,7 @@ function CandidateDetail({ candidate }: { candidate: LayoutCandidateSummary | nu
         </div>
       ) : null}
       {candidate.access?.effectivePreferredAccessLength != null ? (
-        <div className="flex justify-between" aria-label="preferred access length">
+        <div className="flex justify-between" aria-label={tr('preferred access length')}>
           <span>
             preferred access {candidate.access.effectivePreferredAccessLength.toFixed(0)} m
             {candidate.access.preferredAccessSource === 'EXPLICIT' ? ' (scenario)' : ' (6 × width)'}

@@ -7,6 +7,7 @@ import { Disclosure } from './Disclosure'
 import { InfoPopover } from './InfoPopover'
 import { type StatusTone } from './presentation'
 import { StatusBadge } from './StatusBadge'
+import { tr } from '@/i18n/t'
 
 interface Props {
   title: string
@@ -51,6 +52,14 @@ interface Props {
  */
 export function WorkflowCard(p: Props) {
   const layout = useContext(CardLayoutContext)
+  // PR-3 round 4: the card's own strings are translated here, once, so every
+  // caller keeps passing the English source string (the dictionary key)
+  const title = tr(p.title)
+  const statusLabel = p.statusLabel === undefined ? undefined : tr(p.statusLabel)
+  const info = typeof p.info === 'string' ? tr(p.info) : p.info
+  const summary = typeof p.summary === 'string' ? tr(p.summary) : p.summary
+  const notice = typeof p.notice === 'string' ? tr(p.notice) : p.notice
+  const detailsLabel = tr(p.detailsLabel ?? 'Details')
   const reportTone = useShellStore((s) => s.reportTone)
   const { stage, tone } = p
   // the stepper's ↻ glyph: a mounted staged card reports the tone its badge
@@ -68,16 +77,16 @@ export function WorkflowCard(p: Props) {
     const controls =
       layout.stage === p.stage && layout.controlsHost && hasControls
         ? createPortal(
-            <section className="border-b border-rock-700 px-4 py-3" data-card-controls={p.stage}>
+            <section className="border-b border-rock-700/70 px-4 py-3" data-card-controls={p.stage}>
               <header className="mb-1.5 flex items-center gap-1.5">
                 <h3 className="plate flex items-center gap-1.5 text-[12px] text-chalk">
-                  {p.title}
-                  {p.info ? <InfoPopover label={p.title}>{p.info}</InfoPopover> : null}
+                  {title}
+                  {info ? <InfoPopover label={title}>{info}</InfoPopover> : null}
                 </h3>
               </header>
-              {p.notice ? (
-                <div className="mb-1.5 rounded-sm border border-rock-700 bg-rock-900/70 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
-                  {p.notice}
+              {notice ? (
+                <div className="mb-1.5 rounded-md border border-rock-700/70 bg-rock-900/70 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
+                  {notice}
                 </div>
               ) : null}
               {p.action}
@@ -89,20 +98,20 @@ export function WorkflowCard(p: Props) {
     const results =
       layout.stepStages.includes(p.stage) && layout.resultsHost
         ? createPortal(
-            <section className="border-b border-rock-700 px-4 py-3" data-card-results={p.stage}>
+            <section className="border-b border-rock-700/70 px-4 py-3" data-card-results={p.stage}>
               <header className="mb-1.5 flex items-center justify-between gap-2">
-                <h3 className="plate text-[12px] text-chalk">{p.title}</h3>
-                <StatusBadge tone={p.tone} label={p.statusLabel} />
+                <h3 className="plate text-[12px] text-chalk">{title}</h3>
+                <StatusBadge tone={p.tone} label={statusLabel} />
               </header>
-              {p.summary ? (
-                <div className="readout mb-1.5 text-[11px] text-chalk-dim">{p.summary}</div>
+              {summary ? (
+                <div className="figures mb-1.5 text-[11.5px] leading-relaxed text-chalk-dim">
+                  {summary}
+                </div>
               ) : null}
               {p.failure ? (
                 <p className="mb-1.5 break-words text-[11px] text-danger">{p.failure}</p>
               ) : null}
-              {p.details ? (
-                <Disclosure label={p.detailsLabel ?? 'Details'}>{p.details}</Disclosure>
-              ) : null}
+              {p.details ? <Disclosure label={detailsLabel}>{p.details}</Disclosure> : null}
             </section>,
             layout.resultsHost,
           )
@@ -115,26 +124,26 @@ export function WorkflowCard(p: Props) {
     )
   }
   return (
-    <section className="border-b border-rock-700 px-4 py-3">
+    <section className="border-b border-rock-700/70 px-4 py-3">
       <header className="mb-1.5 flex items-center justify-between gap-2">
         <h3 className="plate flex items-center gap-1.5 text-[12px] text-chalk">
-          {p.title}
-          {p.info ? <InfoPopover label={p.title}>{p.info}</InfoPopover> : null}
+          {title}
+          {info ? <InfoPopover label={title}>{info}</InfoPopover> : null}
         </h3>
-        <StatusBadge tone={p.tone} label={p.statusLabel} />
+        <StatusBadge tone={p.tone} label={statusLabel} />
       </header>
-      {p.summary ? (
-        <div className="readout mb-1.5 text-[11px] text-chalk-dim">{p.summary}</div>
+      {summary ? (
+        <div className="figures mb-1.5 text-[11.5px] leading-relaxed text-chalk-dim">{summary}</div>
       ) : null}
       {p.failure ? <p className="mb-1.5 break-words text-[11px] text-danger">{p.failure}</p> : null}
-      {p.notice ? (
-        <div className="mb-1.5 rounded-sm border border-rock-700 bg-rock-900/70 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
-          {p.notice}
+      {notice ? (
+        <div className="mb-1.5 rounded-md border border-rock-700/70 bg-rock-900/70 px-2 py-1.5 text-[11px] leading-relaxed text-chalk-dim">
+          {notice}
         </div>
       ) : null}
       {p.action}
       {p.progress}
-      {p.details ? <Disclosure label={p.detailsLabel ?? 'Details'}>{p.details}</Disclosure> : null}
+      {p.details ? <Disclosure label={detailsLabel}>{p.details}</Disclosure> : null}
     </section>
   )
 }

@@ -12,6 +12,7 @@ import { WorkflowCard } from '@/components/ui/WorkflowCard'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { saveFile } from '@/utils/download'
+import { tr } from '@/i18n/t'
 
 const INPUT =
   'w-full rounded-sm border border-rock-700 bg-rock-900 px-2 py-1 text-chalk focus:border-lamp focus:outline-none'
@@ -59,12 +60,14 @@ export function ExportPanel() {
   return (
     <WorkflowCard
       stage="EXPORT"
-      title="Export"
+      title={tr('Export')}
       tone={scene ? 'READY' : 'NOT_GENERATED'}
       statusLabel={
         scene ? `${String(included)} / ${String(exportLayers.length)} layers` : 'No world'
       }
-      info="MineExchange is a versioned, read-only projection of the current mine state; the Ventsim, AnyLogic, Unity and Unreal packages are built on the backend from that bundle and record their sources, assumptions and omissions in adapter_manifest.json. An export persists nothing and changes nothing."
+      info={tr(
+        'MineExchange is a versioned, read-only projection of the current mine state; the Ventsim, AnyLogic, Unity and Unreal packages are built on the backend from that bundle and record their sources, assumptions and omissions in adapter_manifest.json. An export persists nothing and changes nothing.',
+      )}
       summary={
         scene
           ? `${String(included)} of ${String(exportLayers.length)} layers available for export`
@@ -73,7 +76,7 @@ export function ExportPanel() {
       action={
         <div>
           <label className="mb-1 block text-[11px] text-chalk-dim">
-            Target
+            {tr('Target')}
             <select
               data-testid="export-target-select"
               className={`${INPUT} mt-1`}
@@ -114,7 +117,7 @@ export function ExportPanel() {
         </div>
       }
       details={<ExportContents layers={exportLayers} />}
-      detailsLabel="Export contents"
+      detailsLabel={tr('Export contents')}
     />
   )
 }

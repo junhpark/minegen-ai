@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import type { CashflowBucket, EconomicsSummary } from '@/types/analysis'
 import { fmt0 } from './analysisFormat'
+import { tr } from '@/i18n/t'
 
 /**
  * Phase 22B — the Planning Cashflow buckets as the backend emitted them
@@ -121,11 +122,11 @@ export function CashflowTable({ buckets, code }: { buckets: CashflowBucket[]; co
         <table className="w-full border-collapse">
           <thead>
             <tr className="text-mute">
-              <th className="text-left font-normal">Days</th>
-              <th className="text-right font-normal">Cost</th>
-              <th className="text-right font-normal">Revenue</th>
-              <th className="text-right font-normal">Net</th>
-              <th className="text-right font-normal">Cumulative</th>
+              <th className="text-left font-normal">{tr('Days')}</th>
+              <th className="text-right font-normal">{tr('Cost')}</th>
+              <th className="text-right font-normal">{tr('Revenue')}</th>
+              <th className="text-right font-normal">{tr('Net')}</th>
+              <th className="text-right font-normal">{tr('Cumulative')}</th>
             </tr>
           </thead>
           <tbody>

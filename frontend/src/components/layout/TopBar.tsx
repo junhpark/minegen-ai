@@ -5,6 +5,8 @@ import { RibbonTabs } from '@/components/layout/Ribbon'
 import { useShellStore } from '@/components/layout/shellStore'
 import { openDemo } from '@/scenario/demos'
 import { openScenario } from '@/scenario/openScenario'
+import { LOCALES, useLocaleStore } from '@/i18n/locale'
+import { tr } from '@/i18n/t'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
 
@@ -28,8 +30,8 @@ export function TopBar() {
   const health = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 15000 })
 
   return (
-    <header className="flex h-10 items-center border-b border-rock-700 bg-rock-800 px-3">
-      <div className="plate text-[16px] text-chalk">
+    <header className="flex h-10 items-center border-b border-rock-700/70 bg-gradient-to-b from-rock-800 to-rock-800/95 px-3 shadow-[0_1px_0_0_rgb(0_0_0/0.25)]">
+      <div className="plate text-[16px] tracking-[0.12em] text-chalk">
         MineGen<span className="text-lamp">-AI</span>
       </div>
       <FileMenu />
@@ -37,7 +39,7 @@ export function TopBar() {
         <span
           className="plate ml-2 rounded-sm border border-lamp/60 px-1.5 py-0.5 text-[10px] text-lamp"
           data-testid="demo-badge"
-          title={`${demo.title} — read-only demo; clone it to edit`}
+          title={tr('{title} — read-only demo; clone it to edit', { title: demo.title })}
         >
           {demo.labels.join(' · ')}
         </span>
@@ -46,6 +48,7 @@ export function TopBar() {
       <RibbonTabs />
 
       <div className="readout ml-auto flex items-center gap-2 text-[11px]">
+        <LocaleSwitch />
         <span
           className={[
             'inline-block h-2 w-2 rounded-full',
@@ -57,7 +60,7 @@ export function TopBar() {
           {health.isSuccess
             ? `backend ${health.data.version} · ${health.data.coordinateSystem}`
             : health.isError
-              ? 'backend unreachable'
+              ? tr('backend unreachable')
               : 'connecting…'}
         </span>
       </div>
@@ -66,6 +69,41 @@ export function TopBar() {
 }
 
 /** File ▾ — New mine / Open… / Demos / Export / Import results */
+/**
+ * PR-3 round 4 — the UI language (한국어 default, English). A presentation
+ * choice remembered per browser; it changes no request, artifact or stage
+ * (the app tree remounts, see `main.tsx`).
+ */
+function LocaleSwitch() {
+  const locale = useLocaleStore((s) => s.locale)
+  const setLocale = useLocaleStore((s) => s.setLocale)
+  return (
+    <div
+      role="group"
+      aria-label={tr('UI language')}
+      data-testid="locale-switch"
+      className="mr-2 flex rounded-sm border border-rock-700/80 p-px"
+    >
+      {LOCALES.map((l) => (
+        <button
+          key={l}
+          type="button"
+          onClick={() => setLocale(l)}
+          aria-pressed={locale === l}
+          data-locale={l}
+          title={l === 'ko' ? '한국어' : 'English'}
+          className={[
+            'plate rounded-sm px-1.5 py-0.5 text-[10px] transition-colors',
+            locale === l ? 'bg-rock-700 text-lamp' : 'text-mute hover:text-chalk',
+          ].join(' ')}
+        >
+          {l === 'ko' ? '한' : 'EN'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function FileMenu() {
   const [open, setOpen] = useState(false)
   const [openList, setOpenList] = useState(false)
@@ -149,7 +187,7 @@ function FileMenu() {
       }}
       className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[12px] text-chalk hover:bg-rock-700 disabled:cursor-not-allowed disabled:text-mute"
     >
-      <span>{label}</span>
+      <span>{tr(label)}</span>
       {hint ? <span className="readout text-[10px] text-mute">{hint}</span> : null}
     </button>
   )
@@ -163,7 +201,7 @@ function FileMenu() {
         onClick={() => setOpen((v) => !v)}
         className="plate rounded-sm px-2 py-1 text-[12px] text-chalk-dim hover:bg-rock-700/60 hover:text-chalk"
       >
-        File ▾
+        {tr('File ▾')}
       </button>
       {demoErrorText ? (
         <span
@@ -172,14 +210,14 @@ function FileMenu() {
           title={demoErrorText}
           data-testid="demo-open-error"
         >
-          demo did not open — {demoErrorText}
+          {tr('demo did not open — {error}', { error: demoErrorText })}
         </span>
       ) : null}
       {open ? (
         <div
           role="menu"
           aria-label="file"
-          className="absolute left-0 top-full z-40 mt-1 w-56 rounded-sm border border-rock-600 bg-rock-800 py-1 shadow-xl"
+          className="absolute left-0 top-full z-40 mt-1 w-56 rounded-md border border-rock-600/80 bg-rock-800/95 py-1 shadow-float backdrop-blur"
         >
           {item('New mine', () => {
             setStage('SCENARIO')
@@ -189,7 +227,7 @@ function FileMenu() {
           {openList ? (
             <ul className="max-h-48 overflow-y-auto border-y border-rock-700 bg-rock-900/60">
               {list.isSuccess && list.data.length === 0 ? (
-                <li className="px-4 py-1 text-[11px] text-mute">No saved mines</li>
+                <li className="px-4 py-1 text-[11px] text-mute">{tr('No saved mines')}</li>
               ) : null}
               {list.isSuccess
                 ? list.data.map((s) => (
@@ -213,7 +251,7 @@ function FileMenu() {
                   ))
                 : null}
               {list.isPending ? (
-                <li className="px-4 py-1 text-[11px] text-mute">Loading…</li>
+                <li className="px-4 py-1 text-[11px] text-mute">{tr('Loading…')}</li>
               ) : null}
             </ul>
           ) : null}
@@ -229,12 +267,12 @@ function FileMenu() {
                   data-testid="demo-baking"
                   role="status"
                 >
-                  Baking demos…{' '}
+                  {tr('Baking demos…')}{' '}
                   <span className="readout text-[10px] text-mute">
                     {baking.recipeId ?? ''}
                     {baking.stage ? ` · ${baking.stage}` : ''}
                     {baking.pendingRecipes.length > 0
-                      ? ` · ${String(baking.pendingRecipes.length)} more`
+                      ? ` · ${tr('{n} more', { n: baking.pendingRecipes.length })}`
                       : ''}
                   </span>
                 </li>
@@ -247,7 +285,7 @@ function FileMenu() {
                       data-testid="demo-bake-failed"
                       title={reason}
                     >
-                      {id} did not bake — {reason}
+                      {tr('{id} did not bake — {reason}', { id, reason })}
                     </li>
                   ))
                 : null}
@@ -256,8 +294,8 @@ function FileMenu() {
               baking?.status !== 'BAKING' ? (
                 <li className="px-4 py-1 text-[11px] text-mute">
                   {baking?.status === 'DISABLED'
-                    ? 'No demos baked on this backend (automatic baking is off)'
-                    : 'No demos baked on this backend'}
+                    ? tr('No demos baked on this backend (automatic baking is off)')
+                    : tr('No demos baked on this backend')}
                 </li>
               ) : null}
               {demos.isSuccess
@@ -267,7 +305,7 @@ function FileMenu() {
                         type="button"
                         role="menuitem"
                         disabled={!d.available || loadDemo.isPending}
-                        title={d.available ? d.description : (d.reason ?? 'unavailable')}
+                        title={d.available ? d.description : (d.reason ?? tr('unavailable'))}
                         onClick={() => {
                           loadDemo.mutate(d)
                           close()
@@ -280,20 +318,20 @@ function FileMenu() {
                         <span className="truncate">{d.title}</span>
                         <span className="readout text-[10px] text-mute">
                           {d.labels.join(' · ')} · {d.orebodyType} · {d.miningMethod}
-                          {d.available ? '' : ' · unavailable'}
+                          {d.available ? '' : ` · ${tr('unavailable')}`}
                         </span>
                       </button>
                     </li>
                   ))
                 : null}
               {demos.isPending ? (
-                <li className="px-4 py-1 text-[11px] text-mute">Loading…</li>
+                <li className="px-4 py-1 text-[11px] text-mute">{tr('Loading…')}</li>
               ) : null}
               {demos.isError ? (
                 <li className="px-4 py-1 text-[11px] text-danger">
                   {demos.error instanceof ApiError
                     ? `${demos.error.code}: ${demos.error.message}`
-                    : 'demo catalogue unavailable'}
+                    : tr('demo catalogue unavailable')}
                 </li>
               ) : null}
             </ul>

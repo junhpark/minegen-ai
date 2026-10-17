@@ -3,7 +3,16 @@ import { Disclosure } from '@/components/ui/Disclosure'
 import { Metrics } from '@/components/ui/MetricRow'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { WorkflowCard } from '@/components/ui/WorkflowCard'
-import { AVAILABILITY_LABEL, availabilityTone, fmt0, metres, money } from './analysisFormat'
+import {
+  AVAILABILITY_LABEL,
+  availabilityTone,
+  fmt0,
+  metres,
+  money,
+  signedMoney,
+} from './analysisFormat'
+import { optionLabel } from './candidateSummary'
+import { tr } from '@/i18n/t'
 
 /**
  * Phase 22C — Layout comparison (rules 204–206): pure presentation of
@@ -13,6 +22,14 @@ import { AVAILABILITY_LABEL, availabilityTone, fmt0, metres, money } from './ana
  * engineering rank and the comparable development cost are two separate
  * readouts: this view names no "economic winner", "best option" or
  * "recommended" candidate.
+ *
+ * PR-3 round 3 (Park: "비교표가 너무 이질적") — the rows share the Design ›
+ * Layout option grammar: `Option n` · family chip · ★ ranking winner ·
+ * active / selected chip, one sub-line (`engineering rank #n · comparable
+ * length`), fixed-width tabular number columns (nothing overlaps whatever
+ * the magnitude), and the comparable-cost BAR drawn inside the row (a
+ * display fraction of the largest comparable cost) instead of a separate
+ * stretched SVG. Same fields, same order, same vocabulary.
  */
 
 export const INCLUDED_BASIS_TEXT = 'Included cost basis: Main ramp + level access only'
@@ -27,21 +44,18 @@ export interface LayoutComparisonBodyProps {
   loading: boolean
 }
 
-function shortId(row: LayoutDevelopmentComparisonRow): string {
-  return row.candidateId.startsWith(`${row.family}-`)
-    ? row.candidateId.slice(row.family.length + 1)
-    : row.candidateId
-}
-
-function signedMoney(v: number | null, code: string | null): string {
-  if (v === null) return '—'
-  const sign = v > 0 ? '+' : v < 0 ? '−' : '±'
-  return `${sign}${money(Math.abs(v), code)}`
+/** the option identity of a comparison row (the persisted catalogue rank) */
+function rowOption(row: LayoutDevelopmentComparisonRow): string {
+  return optionLabel({ rank: row.catalogueRank, candidateId: row.candidateId, family: row.family })
 }
 
 function signedScore(v: number): string {
   return `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(3)}`
 }
+
+/** rank · option · family · marks, then the four number columns */
+const GRID = 'grid grid-cols-[minmax(0,1fr)_7.5rem_7.5rem_9rem_8rem] items-center gap-x-3'
+const SCORE_GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4.5rem_4.5rem_4.5rem] gap-x-3'
 
 export function LayoutComparisonBody({ payload, error, loading }: LayoutComparisonBodyProps) {
   if (error) {
@@ -65,6 +79,10 @@ export function LayoutComparisonBody({ payload, error, loading }: LayoutComparis
   const configured = payload.availability === 'AVAILABLE'
   const winner = payload.rows.find((r) => r.winner) ?? null
   const selected = payload.rows.find((r) => r.selected) ?? null
+  // the selection chip reads like the Layout card: the selected candidate IS
+  // the active design under ACTIVE_DESIGN scope, a dormant selection otherwise
+  const selectedState = payload.scope === 'ACTIVE_DESIGN' ? tr('active') : tr('selected')
+  const maxCost = Math.max(...payload.rows.map((r) => r.comparableDevelopmentCost ?? 0), 0)
   return (
     <>
       <div
@@ -74,7 +92,7 @@ export function LayoutComparisonBody({ payload, error, loading }: LayoutComparis
         {payload.disclaimer}
       </div>
       <WorkflowCard
-        title="Layout comparison"
+        title={tr('Layout comparison')}
         tone={availabilityTone(payload.availability)}
         statusLabel={AVAILABILITY_LABEL[payload.availability]}
         info="Comparable layout development cost = persisted main-ramp length × ramp rate + persisted level-access length × level-access rate, per ranked layout-v2 candidate. It compares only the development a candidate owns in the catalogue (main ramp and level accesses) and excludes drifts, crosscuts, shafts, production, processing, backfill, fixed operating cost, capital, revenue and NPV. Ranking, winner and selection are the layout authority's and are never changed by cost."
@@ -86,20 +104,34 @@ export function LayoutComparisonBody({ payload, error, loading }: LayoutComparis
               rows={[
                 {
                   label: 'Ranking winner (engineering rank #1)',
-                  value: winner ? shortId(winner) : (payload.winnerId ?? '—'),
+                  value: winner
+                    ? `${rowOption(winner)} · ${winner.family}`
+                    : (payload.winnerId ?? '—'),
                 },
                 {
                   label: 'Selected candidate',
                   value: selected
-                    ? `${shortId(selected)}${selected.winner ? ' (= winner)' : ` (engineering rank #${String(selected.catalogueRank ?? '—')})`}`
-                    : (payload.selectedCandidateId ?? 'none'),
+                    ? selected.winner
+                      ? tr('{option} · {family} (= winner)', {
+                          option: rowOption(selected),
+                          family: selected.family,
+                        })
+                      : tr('{option} · {family} (engineering rank #{rank})', {
+                          option: rowOption(selected),
+                          family: selected.family,
+                          rank: selected.catalogueRank ?? '—',
+                        })
+                    : (payload.selectedCandidateId ?? tr('none')),
                 },
                 { label: 'Comparable feasible candidates', value: fmt0(payload.rows.length) },
                 { label: 'Cost basis', value: 'Main ramp + level access only' },
                 configured
                   ? {
                       label: 'Rates',
-                      value: `${money(payload.rampRatePerM, code)}/m ramp · ${money(payload.levelAccessRatePerM, code)}/m access`,
+                      value: tr('{ramp}/m ramp · {access}/m access', {
+                        ramp: money(payload.rampRatePerM, code),
+                        access: money(payload.levelAccessRatePerM, code),
+                      }),
                     }
                   : null,
               ]}
@@ -110,13 +142,17 @@ export function LayoutComparisonBody({ payload, error, loading }: LayoutComparis
       {payload.availability !== 'NOT_AVAILABLE' ? (
         <section
           className="border-b border-rock-700 px-4 py-3"
-          aria-label="layout comparison table"
+          aria-label={tr('layout comparison table')}
         >
-          <div className="mb-1 flex items-center justify-between text-[11px] text-chalk-dim">
-            <span>{INCLUDED_BASIS_TEXT}</span>
+          <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] text-chalk-dim">
+            <span>{tr(INCLUDED_BASIS_TEXT)}</span>
             <StatusBadge
               tone={configured ? 'READY' : 'INACTIVE'}
-              label={configured ? `Cost in ${code ?? ''}`.trim() : 'Cost not configured'}
+              label={
+                configured
+                  ? tr('Cost in {code}', { code: code ?? '' }).trim()
+                  : 'Cost not configured'
+              }
             />
           </div>
           {!configured ? (
@@ -124,167 +160,189 @@ export function LayoutComparisonBody({ payload, error, loading }: LayoutComparis
               {COST_NOT_CONFIGURED_TEXT}
             </p>
           ) : null}
-          <table
-            className="w-full table-fixed border-collapse whitespace-nowrap text-[10px]"
+          <div
+            role="table"
+            aria-label={tr('comparable development cost per candidate (ranking order)')}
             data-testid="layout-comparison-table"
+            className="text-[11px]"
           >
-            <colgroup>
-              <col className="w-5" />
-              <col />
-              <col className="w-14" />
-              <col className="w-14" />
-              <col className="w-20" />
-              <col className="w-16" />
-            </colgroup>
-            <thead className="text-mute">
-              <tr>
-                <th className="text-left font-normal" title="engineering rank (layout authority)">
-                  Rank
-                </th>
-                <th className="truncate text-left font-normal">Candidate · Family</th>
-                <th className="text-right font-normal">Ramp</th>
-                <th className="text-right font-normal">Access</th>
-                <th className="text-right font-normal">Comparable cost</th>
-                <th className="text-right font-normal">Δ vs winner</th>
-              </tr>
-            </thead>
-            <tbody className="align-top">
-              {payload.rows.map((r) => (
-                <tr
+            <div
+              role="row"
+              className={`${GRID} plate border-b border-rock-700 pb-1 text-[9px] text-mute`}
+            >
+              <span role="columnheader" title={tr('engineering rank (layout authority)')}>
+                {tr('Option · family')}
+              </span>
+              <span role="columnheader" className="text-right">
+                {tr('Ramp')}
+              </span>
+              <span role="columnheader" className="text-right">
+                {tr('Access')}
+              </span>
+              <span role="columnheader" className="text-right">
+                {tr('Comparable cost')}
+              </span>
+              <span role="columnheader" className="text-right">
+                {tr('Δ vs winner')}
+              </span>
+            </div>
+            {payload.rows.map((r) => {
+              const cost = r.comparableDevelopmentCost
+              const pct = configured && cost !== null && maxCost > 0 ? (cost / maxCost) * 100 : null
+              return (
+                <div
                   key={r.candidateId}
+                  role="row"
                   data-candidate-id={r.candidateId}
                   data-winner={r.winner ? 'true' : 'false'}
                   data-selected={r.selected ? 'true' : 'false'}
-                  className={`border-t border-rock-800 ${
-                    r.selected ? 'text-lamp' : r.winner ? 'text-chalk' : 'text-chalk-dim'
+                  title={r.candidateId}
+                  className={`${GRID} border-b border-rock-800 py-1.5 ${
+                    r.selected ? 'text-chalk' : r.winner ? 'text-chalk' : 'text-chalk-dim'
                   }`}
                 >
-                  <td className="py-0.5 pr-1">
-                    {r.catalogueRank === null ? '—' : `#${String(r.catalogueRank)}`}
-                  </td>
-                  <td className="overflow-hidden py-0.5 pr-1" title={r.candidateId}>
-                    <div className="truncate">
-                      {r.winner ? '● ' : ''}
-                      {shortId(r)}
-                      {r.selected ? ' (selected)' : ''}
+                  <div role="cell" className="min-w-0">
+                    <div className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="text-[13px] font-semibold text-chalk">{rowOption(r)}</span>
+                      <span className="plate rounded-sm border border-rock-600 px-1 text-[9px] text-mute">
+                        {r.family}
+                      </span>
+                      {r.winner ? (
+                        <span className="text-[11px] text-lamp" title={tr('ranking winner')}>
+                          ★
+                        </span>
+                      ) : null}
+                      {r.selected ? (
+                        <span className="plate rounded-sm bg-lamp/15 px-1 text-[9px] text-lamp">
+                          {selectedState}
+                        </span>
+                      ) : null}
                     </div>
-                    <div className="text-mute">{r.family}</div>
-                  </td>
-                  <td className="py-0.5 pr-1 text-right">
+                    <div className="readout mt-0.5 text-[10px] text-mute">
+                      {tr('engineering rank {rank} · {length} comparable', {
+                        rank: r.catalogueRank === null ? '—' : `#${String(r.catalogueRank)}`,
+                        length: metres(r.comparableDevelopmentLengthM),
+                      })}
+                    </div>
+                    {pct !== null ? (
+                      <div
+                        className="mt-1 h-1 w-full rounded-full bg-rock-700"
+                        data-testid="cost-bars"
+                        aria-hidden
+                      >
+                        <div
+                          className={`h-1 rounded-full ${r.selected ? 'bg-lamp' : r.winner ? 'bg-chalk' : 'bg-chalk-dim/70'}`}
+                          data-testid="cost-bar"
+                          style={{ width: `${String(Math.max(pct, 1).toFixed(1))}%` }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                  <div role="cell" className="readout text-right whitespace-nowrap">
                     <div>{metres(r.mainRampLengthM)}</div>
-                    <div className="text-mute">{configured ? money(r.rampCost, code) : 'n/c'}</div>
-                  </td>
-                  <td className="py-0.5 pr-1 text-right">
+                    <div className="text-[10px] text-mute">
+                      {configured ? money(r.rampCost, code) : 'n/c'}
+                    </div>
+                  </div>
+                  <div role="cell" className="readout text-right whitespace-nowrap">
                     <div>{metres(r.levelAccessLengthM)}</div>
-                    <div className="text-mute">
+                    <div className="text-[10px] text-mute">
                       {configured ? money(r.levelAccessCost, code) : 'n/c'}
                     </div>
-                  </td>
-                  <td className="py-0.5 pr-1 text-right">
-                    <div>
-                      {configured ? money(r.comparableDevelopmentCost, code) : 'not configured'}
+                  </div>
+                  <div role="cell" className="readout text-right whitespace-nowrap">
+                    <div className="text-[12px]">
+                      {configured ? money(cost, code) : 'not configured'}
                     </div>
-                    <div className="text-mute">{metres(r.comparableDevelopmentLengthM)}</div>
-                  </td>
-                  <td className="py-0.5 text-right">
+                  </div>
+                  <div
+                    role="cell"
+                    className={`readout text-right whitespace-nowrap ${
+                      configured && (r.costDeltaFromWinner ?? 0) > 0
+                        ? 'text-danger'
+                        : configured && (r.costDeltaFromWinner ?? 0) < 0
+                          ? 'text-ore'
+                          : 'text-mute'
+                    }`}
+                  >
                     {configured ? signedMoney(r.costDeltaFromWinner, code) : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
           {payload.rows.length === 0 ? (
-            <p className="mt-1 text-[11px] text-mute">no feasible candidate in the catalogue</p>
+            <p className="mt-1 text-[11px] text-mute">
+              {tr('no feasible candidate in the catalogue')}
+            </p>
           ) : null}
-          <p className="mt-1 text-[10px] text-mute">
-            order = persisted engineering ranking · ● ranking winner · costs = persisted length ×
-            configured rate · Δ = candidate − winner (plain subtraction) · n/c = not configured
+          <p className="mt-1.5 text-[10px] leading-relaxed text-mute">
+            {tr(
+              'order = persisted engineering ranking · ★ ranking winner · bar = comparable cost as a fraction of the largest · costs = persisted length × configured rate · Δ = candidate − winner (plain subtraction) · n/c = not configured',
+            )}
           </p>
-          {configured && payload.rows.length > 0 ? <CostBars payload={payload} /> : null}
-          <Disclosure label="Details" hint="engineering scores per candidate">
-            <table className="w-full table-fixed border-collapse text-[10px]" aria-label="scores">
-              <thead className="text-mute">
-                <tr>
-                  <th className="text-left font-normal">Candidate</th>
-                  <th className="text-right font-normal">Total</th>
-                  <th className="text-right font-normal">Δ total</th>
-                  <th className="text-right font-normal">Dev</th>
-                  <th className="text-right font-normal">Geol</th>
-                  <th className="text-right font-normal">Geom</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payload.rows.map((r) => (
-                  <tr key={r.candidateId} className="border-t border-rock-800 text-chalk-dim">
-                    <td className="truncate pr-1" title={r.candidateId}>
-                      {shortId(r)}
-                    </td>
-                    <td className="text-right">{r.scores ? r.scores.total.toFixed(3) : '—'}</td>
-                    <td className="text-right">
-                      {r.scoreDeltaFromWinner
-                        ? signedScore(r.scoreDeltaFromWinner.totalScoreDeltaFromWinner)
-                        : '—'}
-                    </td>
-                    <td className="text-right">
-                      {r.scores ? r.scores.development.toFixed(3) : '—'}
-                    </td>
-                    <td className="text-right">{r.scores ? r.scores.geology.toFixed(3) : '—'}</td>
-                    <td className="text-right">{r.scores ? r.scores.geometry.toFixed(3) : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <Disclosure label={tr('Details')} hint={tr('engineering scores per candidate')}>
+            <div role="table" aria-label="scores" className="readout text-[11px]">
+              <div
+                role="row"
+                className={`${SCORE_GRID} plate border-b border-rock-700 pb-1 text-[9px] text-mute`}
+              >
+                <span role="columnheader">{tr('Option')}</span>
+                <span role="columnheader" className="text-right">
+                  {tr('Total')}
+                </span>
+                <span role="columnheader" className="text-right">
+                  Δ total
+                </span>
+                <span role="columnheader" className="text-right">
+                  {tr('Dev')}
+                </span>
+                <span role="columnheader" className="text-right">
+                  {tr('Geol')}
+                </span>
+                <span role="columnheader" className="text-right">
+                  {tr('Geom')}
+                </span>
+              </div>
+              {payload.rows.map((r) => (
+                <div
+                  key={r.candidateId}
+                  role="row"
+                  className={`${SCORE_GRID} border-b border-rock-800 py-0.5 text-chalk-dim`}
+                  title={r.candidateId}
+                >
+                  <span role="cell" className="truncate">
+                    {rowOption(r)} <span className="text-mute">{r.family}</span>
+                  </span>
+                  <span role="cell" className="text-right">
+                    {r.scores ? r.scores.total.toFixed(3) : '—'}
+                  </span>
+                  <span role="cell" className="text-right">
+                    {r.scoreDeltaFromWinner
+                      ? signedScore(r.scoreDeltaFromWinner.totalScoreDeltaFromWinner)
+                      : '—'}
+                  </span>
+                  <span role="cell" className="text-right">
+                    {r.scores ? r.scores.development.toFixed(3) : '—'}
+                  </span>
+                  <span role="cell" className="text-right">
+                    {r.scores ? r.scores.geology.toFixed(3) : '—'}
+                  </span>
+                  <span role="cell" className="text-right">
+                    {r.scores ? r.scores.geometry.toFixed(3) : '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
             <p className="mt-1 text-[10px] text-mute">
-              scores are the backend Layout v2 planning comparators (rule 148) · excluded from the
-              comparable cost: {payload.comparisonBasis.excluded.join(', ')}
+              {tr(
+                'scores are the backend Layout v2 planning comparators (rule 148) · excluded from the comparable cost: {excluded}',
+                { excluded: payload.comparisonBasis.excluded.join(', ') },
+              )}
             </p>
           </Disclosure>
         </section>
       ) : null}
     </>
-  )
-}
-
-/**
- * Optional bar chart (directive §12): one horizontal bar per candidate in the
- * persisted ranking order, length proportional to the comparable development
- * cost, the ranking winner (●) and the selection (◆) marked. No "optimal",
- * "recommended" or "best" marker exists.
- */
-export function CostBars({ payload }: { payload: LayoutComparisonPayload }) {
-  const rows = payload.rows.filter((r) => r.comparableDevelopmentCost !== null)
-  const max = Math.max(...rows.map((r) => r.comparableDevelopmentCost ?? 0), 0)
-  if (rows.length === 0 || max <= 0) return null
-  const rowH = 12
-  const labelW = 96
-  const width = 280
-  const barW = width - labelW - 8
-  return (
-    <svg
-      className="mt-1.5 w-full"
-      viewBox={`0 0 ${String(width)} ${String(rows.length * rowH + 4)}`}
-      role="img"
-      aria-label="comparable development cost per candidate (ranking order)"
-      data-testid="cost-bars"
-    >
-      {rows.map((r, i) => {
-        const y = i * rowH + 2
-        const w = ((r.comparableDevelopmentCost ?? 0) / max) * barW
-        return (
-          <g key={r.candidateId} data-candidate-id={r.candidateId}>
-            <text x={0} y={y + 8.5} className="fill-current text-[7px]" fill="currentColor">
-              {`#${String(r.catalogueRank ?? '—')} ${shortId(r).slice(0, 16)}${r.winner ? ' ●' : ''}${r.selected ? ' ◆' : ''}`}
-            </text>
-            <rect
-              x={labelW}
-              y={y + 1}
-              width={Math.max(w, 0.5)}
-              height={rowH - 4}
-              fill={r.selected ? '#e0b45c' : r.winner ? '#d8d2c4' : '#7a7468'}
-            />
-          </g>
-        )
-      })}
-    </svg>
   )
 }

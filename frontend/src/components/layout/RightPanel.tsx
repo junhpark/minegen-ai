@@ -6,6 +6,7 @@ import { InspectorPanel } from '@/components/panels/InspectorPanel'
 import { ViewPanel } from '@/components/panels/ViewPanel'
 import { FourDResults } from '@/components/timeline/FourDResults'
 import { useViewerStore } from '@/stores/viewerStore'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening H1 §4.2 — the STATUS & RESULTS column (the current step's stage
@@ -23,14 +24,16 @@ export function RightPanel({ visible = true }: { visible?: boolean }) {
   const step = stepSpec(stepOf(stage))
   return (
     <aside
-      className={`${visible ? 'flex' : 'hidden'} w-[340px] shrink-0 flex-col overflow-y-auto border-l border-rock-700 bg-rock-800`}
+      className={`${visible ? 'flex' : 'hidden'} w-[340px] shrink-0 flex-col overflow-y-auto border-l border-rock-700/70 bg-rock-800`}
       data-testid="results-column"
       data-visible={visible}
     >
-      <header className="flex items-center justify-between border-b border-rock-700 px-4 py-2">
-        <h2 className="plate text-[12px] text-chalk-dim">Status &amp; results</h2>
+      <header className="flex items-center justify-between border-b border-rock-700/70 bg-rock-900/40 px-4 py-2">
+        <h2 className="plate text-[11px] tracking-[0.14em] text-chalk-dim">
+          {tr('Status & results')}
+        </h2>
         <span className="readout text-[10px] text-mute">
-          {step.index} {step.label}
+          {step.index} {tr(step.label)}
         </span>
       </header>
       {/* PR #54 review B2: what the scene read migrated (normally nothing) */}

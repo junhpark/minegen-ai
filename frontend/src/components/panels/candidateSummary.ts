@@ -1,4 +1,5 @@
 import type { LayoutCandidateSummary, LayoutV2Catalogue, RampSourceSummary } from '@/types/scene'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening PR-3 round 2 — what an OPTION row says, and what its detail
@@ -15,9 +16,19 @@ import type { LayoutCandidateSummary, LayoutV2Catalogue, RampSourceSummary } fro
 
 const metres = (v: number): string => `${Math.round(v).toLocaleString('en-US')} m`
 
+/** the identity an option label needs — a catalogue candidate, or an
+ * analysis comparison row (`catalogueRank` is the same persisted rank) */
+export interface OptionIdentity {
+  rank: number | null
+  candidateId: string
+  family: string
+}
+
 /** "Option 1" for a ranked candidate, the id tail for an unranked one */
-export function optionLabel(c: LayoutCandidateSummary): string {
-  return c.rank !== null ? `Option ${String(c.rank)}` : c.candidateId.slice(c.family.length + 1)
+export function optionLabel(c: OptionIdentity): string {
+  return c.rank !== null
+    ? tr('Option {n}', { n: c.rank })
+    : c.candidateId.slice(c.family.length + 1)
 }
 
 /** the row's right-hand value: the total score, or the typed status */
@@ -30,11 +41,11 @@ export function optionValue(c: LayoutCandidateSummary): { text: string; feasible
 export function optionSummaryLine(c: LayoutCandidateSummary): string {
   const parts: string[] = [
     c.accessibleLevels !== null
-      ? `${String(c.accessibleLevels)}/${String(c.requiredLevels)} accessible`
-      : `${String(c.screenedLevels)}/${String(c.requiredLevels)} screened`,
+      ? tr('{a}/{r} accessible', { a: c.accessibleLevels, r: c.requiredLevels })
+      : tr('{s}/{r} screened', { s: c.screenedLevels, r: c.requiredLevels }),
   ]
-  if (c.diagnostics) parts.push(`ramp ${metres(c.diagnostics.length3d)}`)
-  if (c.access) parts.push(`access ${metres(c.access.totalAccessLength)}`)
+  if (c.diagnostics) parts.push(tr('ramp {m}', { m: metres(c.diagnostics.length3d) }))
+  if (c.access) parts.push(tr('access {m}', { m: metres(c.access.totalAccessLength) }))
   return parts.join(' · ')
 }
 
@@ -58,26 +69,31 @@ export function optionBriefRows(c: LayoutCandidateSummary): BriefRow[] {
     label: 'Levels',
     value:
       c.accessibleLevels !== null
-        ? `${String(c.accessibleLevels)} of ${String(c.requiredLevels)} accessible`
-        : `${String(c.screenedLevels)} of ${String(c.requiredLevels)} pass the screen`,
+        ? tr('{a} of {r} accessible', { a: c.accessibleLevels, r: c.requiredLevels })
+        : tr('{s} of {r} pass the screen', { s: c.screenedLevels, r: c.requiredLevels }),
   })
   const d = c.diagnostics
   if (d) {
     rows.push({
       label: 'Ramp',
-      value: `${metres(d.length3d)} · ${String(d.headingReversalCount)} hairpins`,
+      value: tr('{m} · {n} hairpins', { m: metres(d.length3d), n: d.headingReversalCount }),
     })
     rows.push({
       label: 'Geometry',
-      value: `grade ≤ ${d.maxAbsGradient.toFixed(3)} · R ≥ ${
-        d.minPlanRadius === null ? '—' : `${d.minPlanRadius.toFixed(1)} m`
-      }`,
+      value: tr('grade ≤ {g} · R ≥ {r}', {
+        g: d.maxAbsGradient.toFixed(3),
+        r: d.minPlanRadius === null ? '—' : `${d.minPlanRadius.toFixed(1)} m`,
+      }),
     })
   }
   if (c.access) {
     rows.push({
       label: 'Access',
-      value: `${metres(c.access.totalAccessLength)} · worst ${metres(c.access.worstAccessLength)} · g ≤ ${c.access.maxAccessGradient.toFixed(3)}`,
+      value: tr('{total} · worst {worst} · g ≤ {g}', {
+        total: metres(c.access.totalAccessLength),
+        worst: metres(c.access.worstAccessLength),
+        g: c.access.maxAccessGradient.toFixed(3),
+      }),
     })
   }
   if (c.clearance) {
@@ -103,9 +119,9 @@ export function currentDesignLabel(
   if (active === 'LAYOUT_V2' && available) {
     const id = rampSource?.candidateId ?? null
     const c = id ? catalogue?.candidates.find((x) => x.candidateId === id) : undefined
-    if (c) return `${optionLabel(c)} · ${c.family} (active)`
-    return `Layout v2 · ${id ?? '—'} (active)`
+    if (c) return tr('{option} · {family} (active)', { option: optionLabel(c), family: c.family })
+    return tr('Layout v2 · {id} (active)', { id: id ?? '—' })
   }
-  if (active === 'LEGACY' && available) return 'Legacy decline (Hybrid-A*) — advanced'
-  return 'none yet'
+  if (active === 'LEGACY' && available) return tr('Legacy decline (Hybrid-A*) — advanced')
+  return tr('none yet')
 }

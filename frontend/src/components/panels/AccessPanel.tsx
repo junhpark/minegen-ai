@@ -21,6 +21,7 @@ import { activateScenarioRevision } from '@/stores/scenarioSession'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import type { ScenarioCreate, ShaftPlanningConfig, ShaftSpec } from '@/types/api'
 import type { CollarSuggestion } from '@/types/scene'
+import { tr } from '@/i18n/t'
 
 /**
  * PR #54 review B3 — Setup › Access: the access strategy of the mine is
@@ -72,7 +73,7 @@ export function AccessPanel() {
           pending={pending?.config ?? null}
           attempt={pending?.attempt ?? 0}
           hasWorld={scene !== null}
-          title="Change access strategy"
+          title={tr('Change access strategy')}
           intro="The world is regenerated with the same seed; everything from Layout on is reset."
           confirmLabel="Apply access strategy"
           listTestId="access-will-delete"
@@ -154,9 +155,11 @@ export function AccessStrategyCard(p: CardProps) {
   return (
     <WorkflowCard
       stage="ACCESS"
-      title="Access strategy"
+      title={tr('Access strategy')}
       tone={p.hasWorld ? 'READY' : 'NOT_GENERATED'}
-      info="How the mine is accessed: the ramp always exists and stays the primary access; a declared shaft is additional vertical infrastructure (collar on the terrain, one station per required level, sump) the backend plans against the level development later, in Design › Shafts. The declaration is part of the scenario document, so changing it rewrites the scenario, regenerates the world from the same seed and clears everything from Layout on — decide it here, before the layout."
+      info={tr(
+        'How the mine is accessed: the ramp always exists and stays the primary access; a declared shaft is additional vertical infrastructure (collar on the terrain, one station per required level, sump) the backend plans against the level development later, in Design › Shafts. The declaration is part of the scenario document, so changing it rewrites the scenario, regenerates the world from the same seed and clears everything from Layout on — decide it here, before the layout.',
+      )}
       summary={
         persistedStrategy === 'RAMP_ONLY'
           ? 'Ramp only'
@@ -165,12 +168,12 @@ export function AccessStrategyCard(p: CardProps) {
       failure={p.error}
       notice={
         !p.hasScenario ? (
-          <>Create or open a mine first — the access strategy is part of its scenario.</>
+          <>{tr('Create or open a mine first — the access strategy is part of its scenario.')}</>
         ) : null
       }
       action={
         <div className="flex flex-col gap-1.5" data-testid="access-strategy">
-          <div className="flex gap-4" role="radiogroup" aria-label="access strategy">
+          <div className="flex gap-4" role="radiogroup" aria-label={tr('access strategy')}>
             {radio('RAMP_ONLY', 'Ramp only', 'access-ramp-only')}
             {radio('RAMP_AND_SHAFT', 'Ramp + Shaft', 'access-ramp-shaft')}
           </div>
@@ -196,7 +199,7 @@ export function AccessStrategyCard(p: CardProps) {
             disabled={!canApply}
             onClick={() => p.onApply(draft)}
           >
-            {p.pending ? 'Applying…' : 'Apply access strategy'}
+            {p.pending ? tr('Applying…') : tr('Apply access strategy')}
           </ActionButton>
           <p className="text-[10px] text-mute">
             {p.hasWorld

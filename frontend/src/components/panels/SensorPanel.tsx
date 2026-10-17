@@ -9,6 +9,7 @@ import { canGenerateSensors } from '@/infrastructure/view'
 import { afterSensorsRegen } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
+import { tr } from '@/i18n/t'
 
 /**
  * Sensor placement panel. Independent component by design: infrastructure
@@ -49,9 +50,11 @@ export function SensorPanel({ active = true }: { active?: boolean } = {}) {
   return (
     <WorkflowCard
       stage="SENSORS"
-      title="Sensors"
+      title={tr('Sensors')}
       tone={artifactTone(sensors, generate.isPending)}
-      info="Gas-sensor placement over the mine network: a deterministic greedy set-cover of monitoring demand along physical mine distance, never straight through rock. It is a monitoring-layout proxy — it does not represent gas transport, sensor response, detection probability or a calibrated sensing range, and communication, power and installation timing are not modelled."
+      info={tr(
+        'Gas-sensor placement over the mine network: a deterministic greedy set-cover of monitoring demand along physical mine distance, never straight through rock. It is a monitoring-layout proxy — it does not represent gas transport, sensor response, detection probability or a calibrated sensing range, and communication, power and installation timing are not modelled.',
+      )}
       summary={
         metrics ? (
           <>
@@ -61,14 +64,14 @@ export function SensorPanel({ active = true }: { active?: boolean } = {}) {
         ) : null
       }
       failure={sensors && sensors.status !== 'SUCCESS' ? sensors.failureReason : null}
-      notice={canGenerate ? null : <>Requires a successful mine network.</>}
+      notice={canGenerate ? null : <>{tr('Requires a successful mine network.')}</>}
       action={
         <ActionButton
           variant={nextActionVariant(sensors !== null, canGenerate && !generate.isPending)}
           disabled={!canGenerate || generate.isPending}
           onClick={() => generate.mutate()}
         >
-          {generate.isPending ? 'Placing…' : sensors ? 'Replace sensors' : 'Place sensors'}
+          {generate.isPending ? 'Placing…' : sensors ? tr('Replace sensors') : tr('Place sensors')}
         </ActionButton>
       }
       progress={
@@ -91,7 +94,7 @@ export function SensorPanel({ active = true }: { active?: boolean } = {}) {
             />
           ) : null}
           {config ? (
-            <Disclosure label="Planning inputs">
+            <Disclosure label={tr('Planning inputs')}>
               <Metrics
                 rows={[
                   { label: 'Asset', value: config.assetType },

@@ -174,9 +174,18 @@ describe('switching a stage is presentation only (§19, hardening H1 §4.2)', ()
     expect(analysis).toContain('onSelect={setTab}')
     for (const src of [design, systems, analysis, ribbon, flowDock]) {
       expect(src).not.toContain('mutate')
-      expect(src).not.toContain('setLayerVisible')
       expect(src).not.toContain('api.')
     }
+    // the workspaces and the dock never touch layer visibility; the ribbon's
+    // View › Layers tools (PR-3 round 3) write the SAME store entries the
+    // Visibility tree toggles, through the store's own setter and nothing else
+    for (const src of [design, systems, analysis, flowDock]) {
+      expect(src).not.toContain('setLayerVisible')
+    }
+    expect(ribbon).toContain(
+      'for (const layer of command.layers) setLayerVisible(layer, command.visible)',
+    )
+    expect(ribbon).not.toContain('visibleLayers:')
   })
 
   it('the stage keeps the panel tab in step (the panels keep their view contract)', () => {
