@@ -2839,3 +2839,19 @@ code, the code and the rule win and the map is corrected.
      (viewer-only, rule 222). The browser e2e reads the stage contract from
      `[data-testid="flow-graph"]` and exercises the ribbon tabs, a flow-dock
      node and "Reset mine".
+
+     Round 2 (readability): a layout OPTION row and a design-assessment
+     CHECK row are ONE readable line each (13 px option title · family chip
+     · ★ / active chip · total score · one summary line; 12 px check title ·
+     the backend readout · authority badge). Every other number — group
+     scores, geometry diagnostics, access and clearance of an option; the
+     backend summary, the long authority label, the source artifact / field
+     and the evidence of a check — lives in the detail, which opens on
+     hover / focus (`components/ui/HoverDetail.tsx`: a pointer-events-free
+     portal panel placed by the ⓘ `placePopover` rule, no control inside)
+     AND on click (the picked option expands under its row, a check row
+     expands) — never hover-only. `candidateSummary.ts` only FORMATS
+     backend catalogue fields (tested as data); the candidate id stays in
+     the card's Search details and the "Current design" readout names the
+     option (`Option n · FAMILY (active)`), never a bare id when the
+     catalogue knows it.

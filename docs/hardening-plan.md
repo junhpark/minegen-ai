@@ -481,3 +481,20 @@ Park 요청(PR #54 머지 뒤, 2026-10-16): "상단 탭을 누르면 다양한 �
 
 frontend 5종(typecheck · lint · prettier · vitest · build), FAST, FINAL FULL(e2e 포함), 브라우저 수락
 스크린샷(리본 탭별 밴드, Reset mine 대화상자, 플로우 독) — 결과는 PR 본문에 기록.
+
+### 14.4 라운드 2 — 가독성 (Park 스크린샷 리뷰)
+
+요청: "Design layout이나 assessment… 글씨가 주저리주저리 많고 정보가 너무 많다. 옵션 글씨를 키우고,
+누르거나 호버링하면 추가 정보가 뜨도록."
+
+| 대상 | 전 | 후 |
+|---|---|---|
+| 레이아웃 옵션 행 | 11px 모노 두 줄(Option n · family · ★ · (active) · 점수 / 13/13 accessible · ramp · access · D·G·M) | 13px 제목 + family 칩 + ★ + active/selected 칩 + 점수(13px) / 요약 한 줄(levels · ramp · access). D·G·M, 기하 진단(grade · R · hairpins), 접근(total · worst · g), clearance, 실패 이유는 **호버 패널**(`HoverDetail`) 또는 **클릭 시 행 아래 펼침**(`option-detail`) |
+| "Current design" | `Layout v2 · SPIRAL-n1-CW-e+0-g0.120 (active)` + `PARAMETRIC_V2 · 14 segments · layout_v2_selected.json` | `Option 1 · SPIRAL (active)`; 기술 줄은 Search details ▸ "Active ramp" 행으로 이동 |
+| 설계 평가 행 | 11px 모노, 제목 + 권위 배지 줄 + 수치 줄(2줄) | 12px 한 줄(마크 · 제목 · 수치 · 배지). 백엔드 summary, 긴 권위 라벨, source artifact · field, evidence는 호버 패널 또는 클릭 펼침(`check-detail`) |
+| 대안 표 | 10px | 11px |
+
+원칙: 새로 계산한 값 없음(`candidateSummary.ts`는 카탈로그 필드의 포맷만, 데이터 테스트), 후보 id는 여전히
+Search details에만(규칙 191), 호버 패널은 ⓘ와 같은 `placePopover` 배치·포인터 이벤트 없음·컨트롤 없음, 클릭으로도
+같은 내용이 열리므로 "hover-only" 아님. 테스트 계약(aria-label·data-* 속성·readout 문자열)은 유지, 바뀐 두 줄은
+표현 변경(천 단위 구분 `3,825 m`, 현재 설계 라벨)으로 명시 갱신.
