@@ -518,7 +518,7 @@ Search details에만(규칙 191), 호버 패널은 ⓘ와 같은 `placePopover` 
 
 | 결정 | 내용 |
 |---|---|
-| 방식 | gettext 식: 소스 문자열은 영어(테스트가 단언하는 키 그대로), 렌더 시 `tr(text, vars?)`(`i18n/t.ts`)가 한국어 사전(`i18n/ko.ts`, 809건)을 찾고 없으면 영어 그대로. 공용 프리미티브(WorkflowCard · StatusBadge · ActionButton · Disclosure · PanelSection · MetricRow · PanelTabs · ModalDialog · InfoPopover · 리본 ToolButton · 플로우 독)가 자기 라벨을 번역하므로 호출부는 영어 키를 그대로 넘긴다. 합성 문자열은 템플릿(`'Reset from {stage}'`, `'{n} levels'` → `'레벨 {n}개'`): 치환은 조회 뒤라 어순 재배치 가능 |
+| 방식 | gettext 식: 소스 문자열은 영어(테스트가 단언하는 키 그대로), 렌더 시 `tr(text, vars?)`(`i18n/t.ts`)가 한국어 사전(`i18n/ko.ts`, 873건)을 찾고 없으면 영어 그대로. 공용 프리미티브(WorkflowCard · StatusBadge · ActionButton · Disclosure · PanelSection · MetricRow · PanelTabs · ModalDialog · InfoPopover · 리본 ToolButton · 플로우 독)가 자기 라벨을 번역하므로 호출부는 영어 키를 그대로 넘긴다. 합성 문자열은 템플릿(`'Reset from {stage}'`, `'{n} levels'` → `'레벨 {n}개'`): 치환은 조회 뒤라 어순 재배치 가능 |
 | 기본값·전환 | `i18n/locale.ts`: 기본 **ko**, `VITE_DEFAULT_LOCALE=en`으로 빌드 고정, 브라우저별 선택은 `localStorage`(시나리오 필드 아님), `<html lang>` 동기. 상단 바 `한 / EN` 스위치(`locale-switch`). 전환 시 앱 트리를 `key={locale}`로 리마운트(`Root.tsx`) — 스토어·쿼리 캐시는 React 밖이라 유지, 열린 디스클로저 같은 일시 상태만 초기화. 요청·산출물·스테이지 불변 |
 | 서체 | `IBM Plex Sans KR`(Google Fonts)을 세 서체 패밀리의 폴백으로 추가(라틴은 Barlow/Plex 유지, 한글만 KR); `:lang(ko) .plate`는 자간 0.04em |
 | 테스트 | vitest `test.env.VITE_DEFAULT_LOCALE = 'en'`(기존 영어 단언 전부 유지), `i18n/i18n.test.tsx`(기본값 해석, 치환, 사전 건전성 — 빈 값 없음 · 키의 플레이스홀더 보존 · 한글 키 없음, 한국어 렌더), e2e 개발 서버 `en` 고정 + 한국어 전환(`설정` 탭, `html lang`) 후 영어 복귀 |
