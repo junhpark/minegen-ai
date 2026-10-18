@@ -3091,3 +3091,35 @@ code, the code and the rule win and the map is corrected.
          and the ≤ 2 × tol chord sag are the recorded residual; a banked
          junction floor and a watertight all-development union stay
          Phase 20D.
+     (f) CAPPED ENDS AND JUMP-ROBUST FIDELITY (PR-5 round 2 — found by the
+         PR-6 acceptance tour on the default "Create mine" scenario, 13
+         levels / 247 declared junctions, whose development mesh FAILED:
+         `JUNCTION_CLIP_TOPOLOGY: JUNCTION:L01:S-08: floor quad (1, 10)
+         boundary not representable after 10 subdivisions`; the TABULAR
+         fixture's 8 extremity stations had read one side by luck, and the
+         guided-workflow e2e builds that mesh, so FULL would have failed
+         there). A crosscut on a drift EXTREMITY has its floor centre line
+         IN the drift's end plane; the judging envelope reported every point
+         beyond its span as +inf, so the plane itself read "5 m inside" or
+         "outside" at floating-point whim and a quad EDGE lying in it never
+         converged. Two contracts: a judging envelope DECLARES the real ends
+         that are surfaces of the solid it stands for
+         (`TubeEnvelope.with_end_planes`) — the PARENT's two ends on the
+         child side (an end cap, the ramp's portal / terminal cap, an access's
+         open end: where the parent void stops) and the CHILD's far end on
+         the parent side, never the child's OPEN junction end (the parent's
+         own void continues through it; a −tol lip there would stand a fin of
+         parent cap in the mouth) — and a declared end plane joins the
+         profile's half-planes, so the field is continuous and exactly 0 ON
+         the plane. Beyond an undeclared span end (a window edge, an open
+         end) a point stays +inf, and a chord-fidelity sample that fails ON
+         such a jump is re-judged one vertex-merge distance (1e-6 m) toward
+         the loop's own interior (`_edges_stay`); a genuine intrusion keeps
+         failing. The measurement instruments keep the plain +inf envelope.
+         Measured after: the default scenario's development mesh SUCCEEDS
+         (247 junctions opened; 4,015 parent wall quads clipped / 0
+         unclipped; 703 child floor quads and 4,788 child wall quads clipped
+         / 0 unclipped; 150 s on the 4-CPU session box), the ramp tunnel mesh
+         is unchanged to the triangle (4,570 removed · 597 clipped · 1,248
+         replacement) and the TABULAR seam probe keeps 0 escapes and the
+         0.167 m deepest intrusion.

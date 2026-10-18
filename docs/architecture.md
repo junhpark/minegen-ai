@@ -1041,8 +1041,15 @@ clip and sill is cleaned at render scale (1 mm merge, degenerate fans,
 1e-6 m²). After the fix: 0 of 67,840 rays,
 0 triangles beyond the 3 × tol construction bound
 (deepest 0.167 m), doorway probe 0
-hits with the ramp caps included. Residual: the −tol lip and the chord sag;
-a banked junction floor and a watertight union stay Phase 20D.
+hits with the ramp caps included. Round 2 (rule 227 f): the PR-6 acceptance
+tour found the default scenario's development mesh failing on an extremity
+crosscut whose floor centre line lies IN the drift's end plane — the judging
+envelope now declares its capped real ends and judges them as continuous
+planes (`TubeEnvelope.with_end_planes`), and a fidelity sample on a remaining
++inf jump is re-judged a vertex-merge distance inside the loop; the ramp
+tunnel mesh and the seam probe are unchanged to the triangle. Residual: the
+−tol lip and the chord sag; a banked junction floor and a watertight union
+stay Phase 20D.
 
 **Temporal development traversal (W1a, `walkthrough/temporalDevelopmentPlan.ts`).**
 A TIMELINE_SNAPSHOT now mounts the LEVEL_ACCESS / DRIFT / CROSSCUT pieces

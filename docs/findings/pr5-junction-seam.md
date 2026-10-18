@@ -63,3 +63,36 @@ every remainder (`_clean_render_loop`).
 Residual, recorded: the parent's one-tolerance lip at every jamb (0.1 m for
 the 5 m tunnel) and the chord sag inside the clip band (≤ 2 × tol); a banked
 junction floor and a watertight all-development union remain Phase 20D.
+
+## Round 2 — the default scenario failed (found by the PR-6 acceptance tour)
+
+The default "Create mine" scenario (13 levels, 247 declared junctions — 13
+RAMP_ACCESS, 13 ACCESS_DRIFT, 221 DRIFT_CROSSCUT) built its ramp tunnel mesh
+but FAILED its development mesh under the PR-5 commit `4b6236e`:
+`JUNCTION_CLIP_TOPOLOGY: JUNCTION:L01:S-08: floor quad (1, 10) boundary not
+representable after 10 subdivisions (… corner sd [inf, inf, inf, inf] …)`.
+The guided-workflow e2e builds that mesh, so FULL would have failed at its
+e2e component; the TABULAR fixture's 8 extremity stations had passed by
+luck.
+
+Cause: a crosscut on a drift EXTREMITY has its floor centre line IN the
+drift's end plane. The judging envelope reported every point beyond its
+ring span as +inf, so points ON the plane read "5 m inside" (the
+floor-lowered drift) or "outside" at floating-point whim, and a quad EDGE
+lying in the plane never converged under subdivision.
+
+Fix (PR-5 round 2): (1) `TubeEnvelope.with_end_planes` — a judging envelope
+declares the REAL ends that are surfaces of the solid it stands for (the
+parent's two ends on the child side; the child's far end on the parent
+side; never the child's OPEN junction end, where a lip would stand a fin of
+parent cap in the mouth), and a declared end plane joins the profile's
+half-planes so the field is continuous and exactly 0 on the plane; (2) a
+chord-fidelity sample that fails ON a remaining jump (a window edge, an open
+end) is re-judged one vertex-merge distance toward the loop interior.
+
+| measurement | before round 2 | after |
+| --- | --- | --- |
+| default scenario development mesh | FAILED at L01:S-08 | SUCCESS: 247 junctions opened; parent wall quads clipped 4,015 / unclipped 0 / replacement 8,472; child floor quads clipped 703, child wall quads clipped 4,788 / unclipped 0 / replacement 12,131; 150.3 s on the 4-CPU session box |
+| default scenario ramp tunnel mesh | SUCCESS (4,570 removed · 597 clipped · 1,248 replacement) | identical |
+| TABULAR seam probe | 0 escapes / 0.1674 m deepest intrusion | identical |
+| typed-junction · RT-42 · doorway probe tests | 45 passed | 45 passed |

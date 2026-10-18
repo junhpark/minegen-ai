@@ -1849,6 +1849,16 @@ branch walkthrough remain Phase 20D follow-ups.
 
 ## Hardening PR-5 — exact junction seam
 
+Round 2 (default-scenario regression, rule 227 f): the judging envelope's
+REAL ends that are surfaces of its solid are declared capped
+(`TubeEnvelope.with_end_planes`) and judged as continuous planes (0 on the
+plane) — the parent's two ends on the child side, the child's far end on the
+parent side, never the child's open junction end — and a chord-fidelity
+sample failing on a remaining +inf jump is re-judged 1e-6 m toward the loop
+interior. A crosscut whose floor centre line lies in the drift's end plane
+(an extremity station) had read that plane at floating-point whim and
+failed the default scenario's development mesh.
+
 Park's Walk screenshot of a level entry (seen from inside the access) showed
 wedge-shaped fragments of the drift wall standing into the access and black
 slivers along the rim. Two instruments were written before the fix

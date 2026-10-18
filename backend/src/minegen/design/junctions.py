@@ -336,6 +336,11 @@ class TubeEnvelope:
     #: outward unit normals + offsets of the convex CCW profile edges
     edge_normals: FloatArray = field(repr=False)  # (K, 2)
     edge_offsets: FloatArray = field(repr=False)  # (K,)
+    #: hardening PR-5 round 2 — which REAL ends (ring 0, the last ring) are
+    #: judged as CAPPED planes (a continuous field, see ``signed_distance``
+    #: and ``with_end_planes``); the default declares neither, the
+    #: +inf-beyond-the-span semantics every measurement instrument uses
+    end_planes: tuple[bool, bool] = (False, False)
 
     @classmethod
     def build(cls, centers: FloatArray, tangents: FloatArray, shape: ProfileShape) -> TubeEnvelope:
@@ -365,6 +370,27 @@ class TubeEnvelope:
         offsets[fe] += float(drop)
         return replace(self, edge_offsets=offsets)
 
+    def with_end_planes(self, start: bool, end: bool) -> TubeEnvelope:
+        """The same tube judged with its REAL start / end (ring 0 / the last
+        ring) treated as a CAPPED PLANE (hardening PR-5 round 2): the end
+        plane's half-space joins the profile's half-planes in
+        ``signed_distance``, so the field is continuous across it — 0 ON the
+        plane — instead of jumping from a finite inside value to +inf. A
+        judging envelope declares the ends that are surfaces of the solid it
+        stands for: the PARENT's two ends on the child side (a drift's end
+        cap, the ramp's portal / terminal cap, an access's open end — where
+        the parent void stops and the child beyond it is kept) and the
+        CHILD's far end on the parent side — never the child's OPEN junction
+        end, where the parent's own void continues and the −tol lip rule
+        would leave a fin of parent cap standing in the mouth. Measured on
+        the default scenario (13 levels, 221 crosscut stations): a crosscut
+        whose floor centre line lies IN the drift's end plane (an L-junction —
+        the drift ends AT the station) read that plane at floating-point whim
+        and its floor quad never converged (JUNCTION_CLIP_TOPOLOGY after 10
+        subdivisions); the TABULAR verification fixture's 8 extremity stations
+        happened to read one side."""
+        return replace(self, end_planes=(bool(start), bool(end)))
+
     def ring_window(self, point: FloatArray, radius: float) -> tuple[int, int]:
         """Ring index range ``[lo, hi)`` whose centers lie within ``radius``
         of ``point`` along the chainage of the nearest ring (a contiguous
@@ -380,7 +406,9 @@ class TubeEnvelope:
         """Signed distance of ``points`` (N, 3) to the tube envelope, using
         the nearest ring INTERVAL among rings ``window`` (negative inside).
         Points that project beyond the windowed centerline span are reported
-        as outside (+inf): the tube does not extend past its rings."""
+        as outside (+inf): the tube does not extend past its rings — except
+        past a REAL end declared CAPPED (``end_planes``), where the end plane
+        is a surface of the solid and the distance stays continuous."""
         lo, hi = window
         n = int(points.shape[0])
         if hi - lo < 2 or n == 0:
@@ -398,8 +426,16 @@ class TubeEnvelope:
         m = np.argmin(dist2, axis=1)  # nearest interval per point
         rows = np.arange(n)
         tt = t[rows, m]
-        # beyond the span (only possible at the two window ends): outside
-        beyond = ((m == 0) & (tt < 0.0)) | ((m == a.shape[0] - 1) & (tt > 1.0))
+        last = a.shape[0] - 1
+        # hardening PR-5 round 2: a REAL end declared CAPPED is judged as a
+        # plane of the solid (below); beyond an UNCAPPED span end — a window
+        # edge the tube continues past, or an OPEN end — the point is
+        # unjudged and reported outside
+        cap_start = bool(self.end_planes[0]) and lo == 0
+        cap_end = bool(self.end_planes[1]) and hi == int(self.centers.shape[0])
+        beyond = ((m == 0) & (tt < 0.0) & (not cap_start)) | (
+            (m == last) & (tt > 1.0) & (not cap_end)
+        )
         tt = np.clip(tt, 0.0, 1.0)
         center = a[m] + tt[:, None] * ab[m]
         tan = self.tangents[lo + m] * (1.0 - tt)[:, None] + self.tangents[lo + m + 1] * tt[:, None]
@@ -413,6 +449,13 @@ class TubeEnvelope:
         # distance (exact outside near an edge, exact inside everywhere)
         d = local @ self.edge_normals.T - self.edge_offsets[None, :]  # (N, K)
         sd = d.max(axis=1)
+        # a capped end plane is one more half-plane of the convex solid: the
+        # signed distance to the plane (outward normal = −tangent at the
+        # start, +tangent at the end) joins the max — continuous, 0 on it
+        if cap_start:
+            sd = np.maximum(sd, -np.einsum("ij,j->i", points - self.centers[0], self.tangents[0]))
+        if cap_end:
+            sd = np.maximum(sd, np.einsum("ij,j->i", points - self.centers[-1], self.tangents[-1]))
         sd[beyond] = np.inf
         return sd
 
@@ -752,7 +795,24 @@ def _edges_stay(
     samples = (a[:, None, :] + fr[None, :, :] * (b - a)[:, None, :]).reshape(-1, 3)
     lvl = tol if level is None else level
     sd = other.signed_distance(samples, window)
-    return bool(np.all(sd >= lvl - 2.0 * tol)) if outside else bool(np.all(sd <= lvl))
+    ok = (sd >= lvl - 2.0 * tol) if outside else (sd <= lvl)
+    if not bool(ok.all()):
+        # hardening PR-5 round 2: a sample ON a jump of the judging field (the
+        # plane where the tube's window or an OPEN end stops — the profile
+        # value inside, +inf beyond) reads either side at floating-point whim,
+        # and a loop edge lying IN that plane (a cap fan edge on the child's
+        # start plane, a quad edge on a drift's end plane) never converged
+        # under subdivision. The failing samples are re-judged one
+        # vertex-merge distance toward the loop's own interior, where the
+        # field is single-valued; a genuine intrusion or pocket keeps failing
+        # and the surface change is below the merge distance.
+        bad = np.flatnonzero(~ok)
+        toward = loop.mean(axis=0)[None, :] - samples[bad]
+        norm = np.linalg.norm(toward, axis=1, keepdims=True)
+        nudged = samples[bad] + toward / np.maximum(norm, 1e-18) * CLIP_VERTEX_MERGE_DISTANCE
+        sd2 = other.signed_distance(nudged, window)
+        ok[bad] = (sd2 >= lvl - 2.0 * tol) if outside else (sd2 <= lvl)
+    return bool(ok.all())
 
 
 def _floor_quad_kind(
@@ -1063,10 +1123,16 @@ def cut_cap(
     radius = JUNCTION_WINDOW_WIDTHS * width
     tol = JUNCTION_SURFACE_TOLERANCE_FRACTION * width
     if side == "PARENT":
-        judge = other.floor_lowered(PARENT_JUDGE_FLOOR_DROP_TOLERANCES * tol)
+        # hardening PR-5 round 2: the same end-plane declaration as
+        # ``cut_tube`` — the child's far end capped, its junction end open
+        judge = other.floor_lowered(PARENT_JUDGE_FLOOR_DROP_TOLERANCES * tol).with_end_planes(
+            junction.child_end != "start", junction.child_end != "end"
+        )
         level = -tol
     else:
-        judge = other.floor_lowered(CHILD_JUDGE_FLOOR_DROP_WIDTHS * width)
+        judge = other.floor_lowered(CHILD_JUDGE_FLOOR_DROP_WIDTHS * width).with_end_planes(
+            True, True
+        )
         level = CHILD_JUDGE_LEVEL
     k = int(corners.shape[0])
     omit = np.zeros(k, dtype=bool)
@@ -1524,7 +1590,12 @@ def cut_tube(
     judge: TubeEnvelope | None = None
     level = tol
     if side == "PARENT":
-        judge = other.floor_lowered(PARENT_JUDGE_FLOOR_DROP_TOLERANCES * tol)
+        # hardening PR-5 round 2: the child's FAR end is a surface of the child
+        # (a crosscut face, a drift end); its OPEN junction end is not — the
+        # parent's own void continues through it (``with_end_planes``)
+        judge = other.floor_lowered(PARENT_JUDGE_FLOOR_DROP_TOLERANCES * tol).with_end_planes(
+            junction.child_end != "start", junction.child_end != "end"
+        )
         level = -tol
         omit = np.zeros((len(intervals), k), dtype=bool)
         for idx in range(len(intervals)):
@@ -1559,7 +1630,14 @@ def cut_tube(
         # corner outside was kept whole even when the boundary crossed its
         # interior). A floor boundary the chord clip cannot represent stays
         # fatal; a wall / roof one keeps the quad whole and is counted.
-        child_judge = other.floor_lowered(CHILD_JUDGE_FLOOR_DROP_WIDTHS * width)
+        # hardening PR-5 round 2: both ends of the PARENT are surfaces where its
+        # void stops (an end cap, the ramp's portal / terminal cap, an access's
+        # open end into the ramp or the drift) — judged as capped planes, so a
+        # child surface lying IN such a plane (the L-junction crosscut) is
+        # classified continuously (``with_end_planes``)
+        child_judge = other.floor_lowered(CHILD_JUDGE_FLOOR_DROP_WIDTHS * width).with_end_planes(
+            True, True
+        )
         level = CHILD_JUDGE_LEVEL
         sd = child_judge.signed_distance(v.reshape(-1, 3), other_window)
         inside_v = sd.reshape(len(intervals), k, 4) <= level
@@ -1615,7 +1693,9 @@ def cut_tube(
         # hardening PR-5: the sill foot is the parent's riser top under the
         # chord, judged on THIS child's judging envelope exactly as the parent
         # clip judges it (the parent builder sweeps the same centerline)
-        own_judge = own.floor_lowered(PARENT_JUDGE_FLOOR_DROP_TOLERANCES * tol)
+        own_judge = own.floor_lowered(PARENT_JUDGE_FLOOR_DROP_TOLERANCES * tol).with_end_planes(
+            junction.child_end != "start", junction.child_end != "end"
+        )
         own_window = own.ring_window(junction.point, radius + width)
         clips = [
             _with_sills(c, other, sill_window, width, riser=(own_judge, own_window, -tol))
