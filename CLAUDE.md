@@ -2938,7 +2938,8 @@ code, the code and the rule win and the map is corrected.
          of `cut_tube` now continues interval by interval past the window
          in both directions while an interval still loses a quad
          (`_extend_parent_pass`, bounded by `PARENT_EXTENSION_MAX_WIDTHS`
-         = 6, the same `PARENT_QUAD_OVERLAP_MIN` rule, the floor never cut)
+         = 6, the same per-quad judgement as the window — since hardening
+         PR-5 the exact clip of rule 227, the floor never cut)
          and every junction opening reports `parentCutChainage` (the
          doorway's chainage footprint on the parent) and
          `parentExtensionIntervals`. CHILD cuts, the clip / sill rules and
@@ -3017,3 +3018,76 @@ code, the code and the rule win and the map is corrected.
          every level. In a snapshot only the ACTIVE ramp prefix / ACTIVE
          pieces are drawn. Nothing is computed from screen coordinates and
          nothing is persisted (rule 99).
+
+227. Exact junction seam (hardening PR-5, Park: "쐐기 모양으로 마감이 덜 된
+     부분 · 결합부에서 구멍"). The typed junction union (rules 166 / 187 /
+     226 a) is cut EXACTLY on both sides; nothing is a whole-quad vote any
+     more, and the frontend still patches no seam:
+     (a) PARENT side (`cut_tube` PARENT, `_judge_parent_interval`, the
+         extension pass, `cut_cap` for a drift's end caps AND the ramp's
+         PORTAL / TERMINAL caps): every non-floor quad / cap fan is judged
+         against the child's JUDGING ENVELOPE — the child with its floor
+         lowered by `PARENT_JUDGE_FLOOR_DROP_TOLERANCES` (2) × tol — at the
+         `−tol` level: inside omitted, outside kept, straddling CLIPPED by
+         the same bilinear chord clip the child floor receives. A parent
+         point counts as blocked only when it is inside the child by MORE
+         than one tolerance, so a surface coincident with the child's (the
+         tangential start of a turnout, the crown of a T-junction) stays
+         with the parent; the lowered floor opens the wall down to the
+         parent's own floor edge, which is never cut. The parent therefore
+         keeps a one-tolerance LIP into the child void at every doorway
+         (the jamb); the PR-4 whole-quad rule (`PARENT_QUAD_OVERLAP_MIN`,
+         removed) left wedges up to 0.37 m in the mouth.
+     (b) CHILD side (`cut_tube` CHILD, `_extend_child_floor_pass`,
+         `cut_mouth_cap`): every quad — floor, walls, roof — is judged at
+         the parent's EXACT surface, `CHILD_JUDGE_LEVEL` = 1e-7 m (a
+         numerical tie-break toward inside, one tenth of the vertex merge
+         distance, so a coincident child surface is omitted
+         deterministically and a crossing next to an on-surface vertex
+         merges into it), against the parent with its floor lowered by
+         `CHILD_JUDGE_FLOOR_DROP_WIDTHS` (1) widths: a child surface under
+         the parent floor between the parent's walls is hidden under a floor
+         that is never cut, so the floor clip chord lies ON the parent's wall
+         plane (or its terminal plane) whatever the rule-188 floor mismatch.
+         Before PR-5 the child was cut at `+tol`: its remainder began tol
+         OUTSIDE the parent wall while the parent ended tol INSIDE the child
+         wall — a tol-wide slit along every seam.
+     (c) SILLS are RISERS (`_with_sills`, `_riser_top`): the strip between a
+         floor clip chord and the parent wall's riser top (tol below the
+         chord where the child floor is above the parent floor, the parent
+         floor edge where it is at or below it, the chord height within tol
+         of the chord ends — the jamb lip), measured every
+         `SILL_STATION_FRACTION_OF_TOL` (0.5) × tol along the chord from the
+         parent floor BOUNDARY under each station (a side edge, or the
+         floor's END edge where the chord lies on a terminal plane: a ramp
+         ending inside a turnout), one quad per contiguous run of stations
+         with a riser ≥ `RENDER_VERTEX_MERGE_M`, widened by one station to
+         the standing jamb. Orientation is INTO THE ROCK by the step
+         direction (step up → away from the parent centerline, step down →
+         toward it, flat → down); PR-2's single quad between the chord ENDS,
+         oriented away from the parent, collapsed whenever the jambs stood
+         to the chord height and left the whole tol-high strip open.
+     (d) RENDER-SCALE CLEANING of every clip remainder (`_clean_render_loop`:
+         1 mm vertex merge, degenerate fan vertices dropped, 1e-6 m² floor —
+         the Phase 20D.2.1 mouth-cap rule, now for floor / wall clips, cap
+         clips and sills alike; chords are read from the CLEANED loop). A
+         float32-degenerate sliver covers no surface, so dropping it opens
+         nothing.
+     (e) MEASURED on the TABULAR verification fixture by
+         `tests/test_junction_seam.py` (eye points 1 m apart along the child
+         to 1.5 widths and along the parent, at 1.0 / 1.6 m, 64 Fibonacci
+         directions, 15 m cap; HOLE = a ray reaching rock — more than tol
+         outside EVERY nearby excavation envelope, sampled every 0.25 m —
+         before its first front-face hit; WEDGE = a parent render triangle
+         centroid inside the child envelope beyond the construction bound
+         3 × tol): before PR-5 149 of 67,840
+         rays left the union and 94 parent triangles stood
+         in the mouth up to 1.923 m; after PR-5
+         0 of 67,840 rays and
+         0 triangles beyond the bound (deepest
+         0.167 m: the lip plus chord sag, ≤ 3 × tol by
+         construction). The doorway probe (rule 226 a, now including the
+         ramp caps) reports 0 hits. The parent's −tol lip
+         and the ≤ 2 × tol chord sag are the recorded residual; a banked
+         junction floor and a watertight all-development union stay
+         Phase 20D.

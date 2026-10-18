@@ -314,7 +314,18 @@ def test_t4_unrelated_endpoints_keep_their_cap_contract(tabular_meshes: dict[str
     names = [p["name"] for p in tprims]
     k_main = int(m["sc"].tunnel_profile.arch_segments) + 3
     assert names[-2:] == ["PORTAL_CAP", "TERMINAL_CAP"]
-    assert tprims[-2]["indices"].shape[0] == k_main and tprims[-1]["indices"].shape[0] == k_main
+    # hardening PR-5: a ramp cap a declared turnout reaches is cut like a
+    # drift cap (omitted / clipped fans + remainders, reported in its extras);
+    # every other cap keeps its K fan triangles
+    for cap_prim in tprims[-2:]:
+        ex = cap_prim["extras"]
+        expected = (
+            k_main
+            - int(ex.get("omittedTriangles", 0))
+            - int(ex.get("clippedTriangles", 0))
+            + int(ex.get("replacementTriangles", 0))
+        )
+        assert cap_prim["indices"].shape[0] == expected, (cap_prim["name"], ex)
     _, _, dprims = _glb(m["dev"].glb)
     by_name = {p["name"]: p for p in dprims}
     k_dev = int(m["dev"].report["profile"]["archSegments"]) + 3
@@ -499,6 +510,7 @@ def test_t7_warped_junctions_generate_on_the_curved_drift(warped_meshes: dict[st
 from minegen.core.models import RampConstraints, TunnelProfile  # noqa: E402
 from minegen.design import development_mesh as dev_mod  # noqa: E402
 from minegen.design import junctions as junction_mod  # noqa: E402
+from minegen.design import profile as profile_mod  # noqa: E402
 from minegen.design.junctions import Junction, JunctionCut, TubeEnvelope, cut_tube  # noqa: E402
 from minegen.design.profile import ProfileShape, secondary_profile  # noqa: E402
 from minegen.design.tunnel_mesh import (  # noqa: E402
@@ -535,9 +547,19 @@ def _wall_edge_on_side(shape: ProfileShape, sign: float) -> int:
 
 
 def _parent_mouth(cut: JunctionCut, shape: ProfileShape) -> tuple[int, int, int]:
-    """(wall quads removed, floor quads removed, quads removed) of a PARENT cut."""
+    """(wall quads OPENED, floor quads touched, quads touched) of a PARENT cut.
+    Hardening PR-5: the exact parent clip opens a wall quad either by omitting
+    it whole or by clipping it at the child's judging surface (a riser stays
+    under a lifted child floor), so "opened" counts both; the floor edge must
+    never be omitted nor clipped."""
     f, walls = _edge_roles(shape)
-    return int(cut.mask[:, list(walls)].sum()), int(cut.mask[:, f].sum()), cut.removed_quads
+    wall_clipped = sum(1 for c in cut.wall_clips if c.edge in walls)
+    floor_clipped = sum(1 for c in cut.clips if c.edge == f)
+    return (
+        int(cut.mask[:, list(walls)].sum()) + wall_clipped,
+        int(cut.mask[:, f].sum()) + floor_clipped,
+        cut.removed_quads + len(cut.clips),
+    )
 
 
 def _capture(run: Any) -> list[JunctionCut]:
@@ -632,12 +654,15 @@ def test_t3b_every_drift_crosscut_opens_the_drift_wall_and_keeps_the_drift_floor
 
 def test_child_side_semantics_unchanged(tabular_cuts: dict[str, Any]) -> None:
     """The child still loses its intruding shell INCLUDING its floor and both
-    walls inside the parent (inside-or-on rule); the hotfix touches the
-    parent side only."""
+    walls inside the parent. Hardening PR-5 judges the child at the parent's
+    EXACT surface: an access floor quad whose outer edge already stands a
+    few millimetres beyond the ramp wall is CLIPPED (its inside part removed,
+    the millimetres outside kept) instead of omitted whole, so the floor's
+    removal shows as omitted quads OR floor clips."""
     m = tabular_cuts
     f, walls = _edge_roles(m["dev_shape"])
     for c in [x for x in m["dev_cuts"] if x.side == "CHILD" and x.junction.type == "RAMP_ACCESS"]:
-        assert c.mask[:, f].any(), c.junction.node_id
+        assert c.mask[:, f].any() or any(fc.edge == f for fc in c.floor_clips), c.junction.node_id
         assert c.mask[:, list(walls)].any(), c.junction.node_id
 
 
@@ -651,18 +676,24 @@ def _straight_tube(
 
 
 @pytest.mark.parametrize(
-    ("side_sign", "floor_lift", "expect_open"),
+    ("side_sign", "floor_lift", "expect_omitted"),
     [
         (+1.0, 0.0, True),  # T-junction, coincident floors, child to the right
         (-1.0, 0.0, True),  # …and to the left (no hard-coded wall edge)
-        (+1.0, 0.3, True),  # child floor a sill above the parent floor (turnout case)
-        (-1.0, 0.6, True),  # bottom sample row below the child floor: 2/3 of the wall still inside
-        (+1.0, 2.0, False),  # child floor at chest height: no meaningful wall overlap → wall kept
+        (+1.0, 0.3, False),  # child floor a sill above the parent floor: a riser stays
+        (-1.0, 0.6, False),  # …higher: the riser stays, the wall above it is clipped away
+        (+1.0, 2.0, False),  # child floor at chest height: the wall opens only above it
     ],
 )
 def test_synthetic_parent_wall_opens_on_the_child_side_floor_stays(
-    side_sign: float, floor_lift: float, expect_open: bool
+    side_sign: float, floor_lift: float, expect_omitted: bool
 ) -> None:
+    """Hardening PR-5 (exact parent clip): the child-side wall OPENS at every
+    lift — whole quads omitted where the child floor is flush with the
+    parent floor (the lowered judging floor reaches the parent floor edge),
+    clipped otherwise so that the parent wall stands under the child floor
+    as a riser whose top is ``tol`` below the child floor; the far wall and
+    the parent floor are never touched."""
     shape = build_profile(RampConstraints(), TunnelProfile())
     width = float(RampConstraints().tunnel_width)
     parent_env, parent_rings, chain = _straight_tube((0.0, -30.0, 0.0), (0.0, 30.0, 0.0), shape)
@@ -682,11 +713,27 @@ def test_synthetic_parent_wall_opens_on_the_child_side_floor_stays(
     f, _ = _edge_roles(shape)
     near = _wall_edge_on_side(shape, side_sign)
     far = _wall_edge_on_side(shape, -side_sign)
-    assert bool(cut.mask[:, near].any()) is expect_open
+    tol = JUNCTION_SURFACE_TOLERANCE_FRACTION * width
+    near_clips = [c for c in cut.wall_clips if c.edge == near]
+    assert bool(cut.mask[:, near].any()) is expect_omitted
+    assert bool(cut.mask[:, near].any()) or near_clips, "the child-side wall never opened"
     assert not cut.mask[:, far].any()  # the opposite wall is never touched
+    assert not any(c.edge == far for c in cut.wall_clips)
     assert not cut.mask[:, f].any()  # the parent floor is never removed
+    assert not any(c.edge == f for c in cut.wall_clips)
+    # the riser: inside the child's plan footprint every kept piece of the
+    # near wall tops out ``tol`` below the child floor (never a curb above it)
+    for clip in near_clips:
+        for poly in clip.polygons:
+            inside_footprint = np.abs(poly[:, 1]) < width / 2 - 2 * tol
+            if inside_footprint.any():
+                assert float(poly[inside_footprint, 2].max()) <= floor_lift - tol + 1e-6, (
+                    floor_lift,
+                    poly.round(3).tolist(),
+                )
     # locality (M5): only intervals under the child's footprint (± one ring)
     rows = np.where(cut.mask.any(axis=1))[0]
+    rows = np.union1d(rows, np.array([c.interval for c in near_clips], dtype=int))
     ys = chain.centers[:, 1]
     if rows.size:
         assert np.all(np.abs(ys[rows]) <= width / 2 + 1.0)
@@ -1059,11 +1106,12 @@ def test_p20d12_b_straddling_child_floor_quad_is_clipped_not_decided_whole(
 ) -> None:
     """Contract B: a child (along ±X, rings at |x| = 0.2 + 0.5 n) crosses the
     parent wall (|x| = w/2) so the floor quad between |x| = 2.2 and 2.7
-    straddles the tolerance boundary |x| = w/2 + tol = 2.6. Required: the
-    inside portion is absent and ONLY the outside remainder (0.1 m × w) is
-    emitted — M1 (keep whole → a slab inside) and M2 (drop whole → a hole
-    outside) both fail this test; the far side and the window bounds are
-    untouched (M4 / M5)."""
+    straddles the boundary. Hardening PR-5: the boundary is the parent's
+    EXACT wall plane |x| = w/2 = 2.5 (``CHILD_JUDGE_LEVEL`` above it), no
+    longer the +tol surface at 2.6. Required: the inside portion is absent
+    and ONLY the outside remainder (0.2 m × w) is emitted — M1 (keep whole →
+    a slab inside) and M2 (drop whole → a hole outside) both fail this test;
+    the far side and the window bounds are untouched (M4 / M5)."""
     shape = build_profile(RampConstraints(), TunnelProfile())
     width = float(RampConstraints().tunnel_width)
     tol = JUNCTION_SURFACE_TOLERANCE_FRACTION * width
@@ -1082,7 +1130,7 @@ def test_p20d12_b_straddling_child_floor_quad_is_clipped_not_decided_whole(
     )
     cut = cut_tube(child_env, child_rings, parent_env, j, "CHILD", width)
     f, _ = _edge_roles(shape)
-    boundary = width / 2 + tol  # |x| of the tolerance surface
+    boundary = width / 2 + junction_mod.CHILD_JUDGE_LEVEL  # |x| of the judging surface
     xs = np.abs(child_chain.centers[:, 0])
     # both ends inside-or-on: omitted; both ends outside: kept; straddling: clipped
     for i in range(child_rings.shape[0] - 1):
@@ -1100,7 +1148,7 @@ def test_p20d12_b_straddling_child_floor_quad_is_clipped_not_decided_whole(
     poly = clip.polygons[0]
     window = parent_env.ring_window(j.point, JUNCTION_WINDOW_WIDTHS * width + width)
     sd = parent_env.signed_distance(poly, window)
-    assert np.all(sd >= tol - 1e-6), sd  # nothing of the remainder inside the parent
+    assert np.all(sd >= -1e-6), sd  # nothing of the remainder inside the parent
     expected = (xs[clip.interval + 1] - boundary) * width
     assert abs(_polygon_area(poly) - expected) < 1e-3, (_polygon_area(poly), expected)
     # the remainder is emitted: replacement triangles, exact reveal offsets,
@@ -1137,7 +1185,7 @@ def test_p20d12_b_straddling_child_floor_quad_is_clipped_not_decided_whole(
         )
         + expected
     )
-    assert abs(float(areas[floor][sd_c > tol].sum()) - outside_expected) < 1e-2
+    assert abs(float(areas[floor][sd_c > -1e-6].sum()) - outside_expected) < 1e-2
 
 
 def test_p20d12_b_uncut_render_is_bit_identical_without_clips() -> None:
@@ -1297,8 +1345,13 @@ def test_p20d2_drift_cap_never_stands_inside_a_declared_crosscut_junction_tabula
             ]
         )
         sd = child.signed_distance(samples, window)
-        assert not np.any(sd < -tol), (
-            f"{j.node_id}: {int((sd < -tol).sum())} DRIFT_CAP samples inside the crosscut"
+        # hardening PR-5: the parent cap is cut at the −tol level of the
+        # floor-lowered crosscut (a one-tolerance lip, like every parent
+        # surface) and a remainder edge may sag up to the clip band below
+        # that level — the construction bound is 3 × tol
+        assert not np.any(sd < -3.0 * tol), (
+            f"{j.node_id}: {int((sd < -3.0 * tol).sum())} DRIFT_CAP samples inside the "
+            "crosscut beyond the construction bound"
         )
         # (2) the drift → crosscut traffic line is not obstructed by the cap
         cc = next(d for d in m["levels"]["developments"] if d["id"] == j.child_id)
@@ -1585,68 +1638,172 @@ def _parent_floor_edges(env: TubeEnvelope, window: tuple[int, int]) -> tuple[np.
     lo, hi = window
     rings = boundary_points(env.centers[lo:hi], env.tangents[lo:hi], env.shape)
     fe = floor_edge_index(env.shape)
-    return rings[:, fe, :], rings[:, (fe + 1) % env.shape.k, :]
+    fn = (fe + 1) % env.shape.k
+    edges: list[np.ndarray] = [rings[:, fe, :], rings[:, fn, :]]
+    # hardening PR-5: a chord on the parent's terminal plane (a ramp ending
+    # inside a turnout) meets the floor's END edge, not a side
+    if lo == 0:
+        edges.append(rings[0, [fe, fn], :])
+    if hi == int(env.centers.shape[0]):
+        edges.append(rings[-1, [fe, fn], :])
+    return tuple(edges)
 
 
-def _dist_to_polyline(poly: np.ndarray, p: np.ndarray) -> float:
+def _nearest_point_on_polyline(poly: np.ndarray, p: np.ndarray) -> np.ndarray:
     a, b = poly[:-1], poly[1:]
     ab = b - a
     ab2 = np.maximum(np.einsum("ij,ij->i", ab, ab), 1e-18)
     t = np.clip(np.einsum("ij,ij->i", p[None, :] - a, ab) / ab2, 0.0, 1.0)
     feet = a + t[:, None] * ab
-    return float(np.linalg.norm(feet - p[None, :], axis=1).min())
+    foot: np.ndarray = feet[int(np.argmin(np.linalg.norm(feet - p[None, :], axis=1)))]
+    return foot
+
+
+def _dist_to_polyline(poly: np.ndarray, p: np.ndarray) -> float:
+    return float(np.linalg.norm(_nearest_point_on_polyline(poly, p) - p))
 
 
 def _seam_audit(
     cuts: list[JunctionCut], envs: dict[str, TubeEnvelope], width: float
 ) -> dict[str, Any]:
-    """Every CHILD floor clip chord at a RAMP_ACCESS junction is bridged by a
-    sill whose far edge lies ON the parent floor edge, or the chord already
-    lies on that edge; measured plan gap / rise the sills close."""
-    chords = sills = on_edge = skipped = 0
+    """Every CHILD floor clip chord at a RAMP_ACCESS junction is accounted for
+    (hardening PR-5): it carries sills whose far vertices stand straight
+    above a parent floor-boundary foot along the parent's local up by no more
+    than the chord's own rise (the riser top), with their chord-side vertices
+    ON the chord; or it is flush — on the parent floor edge, or on a parent
+    wall the exact parent clip leaves standing to the chord height (the jamb
+    lip; re-evaluated here with the child's judging envelope exactly as the
+    builder does); or the builder classified it as NOT a floor seam
+    (``chords_without_sill``). Measured plan gap / rise the sills close."""
+    from minegen.design.junctions import (
+        PARENT_JUDGE_FLOOR_DROP_TOLERANCES,
+        RENDER_VERTEX_MERGE_M,
+        _nearest_on_polyline,
+        _riser_top,
+    )
+
+    tol = JUNCTION_SURFACE_TOLERANCE_FRACTION * width
+    chords = with_sills = sill_quads = on_edge = on_wall = skipped = 0
     max_gap = max_rise = 0.0
     for c in cuts:
         if c.side != "CHILD" or c.junction.type != "RAMP_ACCESS":
             continue
         parent = envs[c.junction.parent_id]
+        child = envs[c.junction.child_id]
         window = parent.ring_window(c.junction.point, JUNCTION_WINDOW_WIDTHS * width + 3 * width)
         sides = _parent_floor_edges(parent, window)
+        lo, hi = window
+        _, ups = profile_mod.gravity_frames(parent.tangents[lo:hi])
+        centers = parent.centers[lo:hi]
+        judge = child.floor_lowered(PARENT_JUDGE_FLOOR_DROP_TOLERANCES * tol)
+        judge_window = child.ring_window(c.junction.point, JUNCTION_WINDOW_WIDTHS * width + width)
+
+        def chord_side(chord: np.ndarray, edges: tuple[np.ndarray, ...] = sides) -> np.ndarray:
+            """The floor boundary the builder bridges this chord to: the one
+            with the smallest PLAN distance of the chord ENDS (the builder's
+            own rule); feet are then PLAN-nearest points on it
+            (``_nearest_on_polyline``) — a 3-D-nearest foot on an inclined
+            floor edge sits millimetres away and would fail the exactness
+            checks below."""
+            return min(
+                edges,
+                key=lambda edge: max(
+                    _nearest_on_polyline(edge, chord[0])[1], _nearest_on_polyline(edge, chord[1])[1]
+                ),
+            )
+
         for clip in c.floor_clips:
             assert clip.floor
             skipped += clip.chords_without_sill
-            for chord in clip.chords:
+            assert len(clip.sill_chords) == len(clip.sills)
+            for index, chord in enumerate(clip.chords):
                 chords += 1
-                d = min(max(_dist_to_polyline(side, q) for q in chord) for side in sides)
-                if d <= 1e-6:
-                    on_edge += 1
-                    continue
-                # a sill contains both chord points — or the chord is one the
-                # builder classified as NOT a floor seam (counted, below)
-                hit = [
-                    s_
-                    for s_ in clip.sills
-                    if all(np.linalg.norm(s_ - q[None, :], axis=1).min() <= 1e-9 for q in chord)
+                mine = [
+                    s_ for s_, k in zip(clip.sills, clip.sill_chords, strict=True) if k == index
                 ]
-                if not hit:
+                if not mine:
+                    d = min(max(_dist_to_polyline(side, q) for q in chord) for side in sides)
+                    if d <= RENDER_VERTEX_MERGE_M:
+                        on_edge += 1
+                        continue
+                    # flush with a standing parent wall: the riser top is the
+                    # chord itself at every station (the jamb lip)
+                    flush = True
+                    side = chord_side(chord)
+                    for s_ in np.linspace(0.0, 1.0, 5):
+                        q = chord[0] + s_ * (chord[1] - chord[0])
+                        foot = _nearest_on_polyline(side, q)[0]
+                        up = ups[int(np.argmin(np.linalg.norm(centers - q[None, :], axis=1)))]
+                        top = _riser_top(foot, q, up, judge, judge_window, -tol)
+                        if float(np.linalg.norm(top - q)) > RENDER_VERTEX_MERGE_M:
+                            flush = False
+                            break
+                    if flush:
+                        on_wall += 1
+                        continue
+                    # a chord the builder skipped is counted through
+                    # ``chords_without_sill``; anything else is unexplained
+                    assert clip.chords_without_sill > 0, (c.junction.node_id, clip.interval, index)
                     continue
-                sill = hit[0]
-                far = [v for v in sill if all(np.linalg.norm(v - q) > 1e-9 for q in chord)]
-                assert far, (c.junction.node_id, clip.interval)
-                for v in far:
-                    assert min(_dist_to_polyline(side, v) for side in sides) <= 1e-6, (
-                        c.junction.node_id,
-                        clip.interval,
-                        v.round(3).tolist(),
-                    )
-                    plan = min(float(np.linalg.norm(v[:2] - q[:2])) for q in chord)
-                    rise = min(abs(float(v[2] - q[2])) for q in chord)
-                    max_gap = max(max_gap, plan)
-                    max_rise = max(max_rise, rise)
-                sills += 1
+                with_sills += 1
+                side = chord_side(chord)
+                axis = chord[1] - chord[0]
+                length = float(np.linalg.norm(axis))
+                axis = axis / length
+                for sill in mine:
+                    sill_quads += 1
+                    far = []
+                    for v in sill:
+                        t_ = float(np.dot(v - chord[0], axis))
+                        perp = float(np.linalg.norm(v - chord[0] - t_ * axis))
+                        if perp <= 1e-6 and -1e-6 <= t_ / length <= 1.0 + 1e-6:
+                            continue  # a chord-side vertex (on the chord)
+                        far.append(v)
+                    assert far, (c.junction.node_id, clip.interval)
+                    for v in far:
+                        # the riser top sits under a chord STATION (PR-5):
+                        # v = foot(station) + up · t, so the station is the
+                        # chord point reached from v ALONG the parent's up (a
+                        # perpendicular projection would land up to the riser
+                        # height × the chord's grade away: 5 mm on a 10 % ramp)
+                        up = ups[int(np.argmin(np.linalg.norm(centers - v[None, :], axis=1)))]
+                        lam, _tau = np.linalg.lstsq(
+                            np.stack([axis, -up], axis=1), v - chord[0], rcond=None
+                        )[0]
+                        q = chord[0] + min(max(float(lam), 0.0), length) * axis
+                        up = ups[int(np.argmin(np.linalg.norm(centers - q[None, :], axis=1)))]
+                        foot, d_station = _nearest_on_polyline(side, q)
+                        delta = v - foot
+                        rise_t = float(np.dot(delta, up))
+                        perp_v = delta - up * rise_t
+                        # the riser top stands straight above the foot under
+                        # the station; where the station lies beyond the floor
+                        # boundary's extent (a chord running past the ramp's
+                        # end corner) the foot is the boundary's end point and
+                        # the sill leans by exactly that plan distance
+                        assert float(np.linalg.norm(perp_v)) <= 1e-3 + d_station, (
+                            c.junction.node_id,
+                            clip.interval,
+                            v.round(3).tolist(),
+                        )
+                        # the riser top is found by bisection on the judging
+                        # envelope from a foot the builder computed in its own
+                        # frame; re-deriving it here agrees to hundredths of a
+                        # millimetre (measured −1.4e-5 m on the curved RT-42
+                        # L02 turnout) — 0.1 mm is a thousandth of tol
+                        assert (
+                            -1e-4
+                            <= rise_t
+                            <= max(abs(float(p_[2] - foot[2])) for p_ in chord) + 1e-3
+                        )
+                        max_gap = max(max_gap, float(np.linalg.norm(v[:2] - q[:2])))
+                        max_rise = max(max_rise, abs(float(v[2] - q[2])))
     return {
         "chords": chords,
-        "sills": sills,
+        "sills": with_sills,
+        "sillQuads": sill_quads,
         "chordsOnFloorEdge": on_edge,
+        "chordsOnStandingWall": on_wall,
         "chordsWithoutSill": skipped,
         "maxPlanGapClosedM": round(max_gap, 4),
         "maxRiseClosedM": round(max_rise, 4),
@@ -1667,13 +1824,17 @@ def test_h0_34_every_ramp_access_floor_chord_is_bridged_by_a_sill_tabular(
     record_property("h0_34_seam_audit_tabular", audit)
     assert audit["chords"] > 0 and audit["sills"] > 0
     assert (
-        audit["sills"] + audit["chordsOnFloorEdge"] + audit["chordsWithoutSill"]
+        audit["sills"]
+        + audit["chordsOnFloorEdge"]
+        + audit["chordsOnStandingWall"]
+        + audit["chordsWithoutSill"]
         == (audit["chords"])
     )
-    assert audit["maxPlanGapClosedM"] > 0.0
-    # the seam the sills close is the documented one: within the union
-    # tolerance band in plan, below the parent wall-removal height in rise
+    # hardening PR-5: the chord lies on the parent's wall plane, so a sill
+    # closes a RISE (the rule-188 floor mismatch), not a plan gap; the plan
+    # offset of a riser top from its chord is the sampled jamb margin only
     width = float(tabular_cuts["sc"].ramp.tunnel_width)
+    assert audit["maxRiseClosedM"] > 0.0
     assert audit["maxPlanGapClosedM"] <= 0.1 * width + 1e-6
     assert audit["maxRiseClosedM"] <= 0.5 * float(tabular_cuts["sc"].tunnel_profile.wall_height)
 
@@ -1684,8 +1845,11 @@ def test_h0_34_chord_edges_are_no_longer_boundary_edges_of_the_child_tabular(
     tabular_envelopes: tuple[dict[str, TubeEnvelope], list[Junction]],
 ) -> None:
     """Render-level proof on the emitted development GLB: inside the junction
-    window every chord edge of a clipped child floor is shared by TWO emitted
-    triangles (the floor remainder and its sill) — it is not a hole edge."""
+    window every sill of a clipped child floor stands on its chord — the
+    sill's top edge is a collinear SUB-SEGMENT of the chord (hardening PR-5:
+    the jamb lips at the chord ends stand to the chord height and need no
+    sill, so the chord is a T-edge shared with the sill, never a hole edge)
+    and every chord vertex is an emitted render vertex."""
     m = tabular_meshes
     _envs, junctions = tabular_envelopes
     width = float(m["sc"].ramp.tunnel_width)
@@ -1719,6 +1883,7 @@ def test_h0_34_chord_edges_are_no_longer_boundary_edges_of_the_child_tabular(
                 uses[e] = uses.get(e, 0) + 1
         inv = {v: k for k, v in ids.items()}
         boundary_vertices = {inv[u] for (u, v), n in uses.items() if n == 1 for u in (u, v)}
+        welded = np.asarray(list(ids.keys()), dtype=np.float64) / 1e4
         # chord points of this junction's child floor clips
         cuts = [
             c
@@ -1735,13 +1900,27 @@ def test_h0_34_chord_edges_are_no_longer_boundary_edges_of_the_child_tabular(
                 for sill, chord_index in zip(clip.sills, clip.sill_chords, strict=True):
                     chord = clip.chords[chord_index]
                     assert sill.shape[0] >= 3
-                    k0 = tuple(np.round(chord[0] * 1e4).astype(np.int64))
-                    k1 = tuple(np.round(chord[1] * 1e4).astype(np.int64))
-                    if k0 in ids and k1 in ids:
-                        e = (min(ids[k0], ids[k1]), max(ids[k0], ids[k1]))
-                        if e in uses:
-                            assert uses[e] == 2, (j.node_id, clip.interval, uses[e])
-                            checked += 1
+                    for q in chord:  # every chord vertex is an emitted render vertex
+                        assert float(np.linalg.norm(welded - q[None, :], axis=1).min()) <= 1e-3, (
+                            j.node_id,
+                            clip.interval,
+                        )
+                    axis = chord[1] - chord[0]
+                    length = float(np.linalg.norm(axis))
+                    axis = axis / length
+                    on_chord = []
+                    for v in sill:
+                        t_ = float(np.dot(v - chord[0], axis))
+                        perp = float(np.linalg.norm(v - chord[0] - t_ * axis))
+                        if perp <= 1e-6:
+                            on_chord.append(t_ / length)
+                    assert len(on_chord) >= 2, (j.node_id, clip.interval)
+                    assert min(on_chord) >= -1e-6 and max(on_chord) <= 1.0 + 1e-6, (
+                        j.node_id,
+                        clip.interval,
+                        on_chord,
+                    )
+                    checked += 1
         assert boundary_vertices is not None
     assert checked > 0
 

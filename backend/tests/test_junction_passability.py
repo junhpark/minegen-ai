@@ -137,8 +137,16 @@ def doorway_probe(tabular_meshes: dict[str, Any]) -> dict[str, Any]:  # noqa: F8
     reach = PROBE_REACH_WIDTHS * width
     t_pos, _, t_prims = _glb(m["tunnel"].glb)
     d_pos, _, d_prims = _glb(m["dev"].glb)
+    # hardening PR-5: the ramp's PORTAL / TERMINAL caps are parent surfaces too
+    # — a ramp ending inside a turnout's body stood its terminal cap across
+    # the access (L04 of this fixture: 1.9 m after the junction) and the
+    # SEGMENT-only triangle set of PR-4 never saw it
     ramp_tris = np.concatenate(
-        [_triangles(t_pos, p["indices"]) for p in t_prims if p["extras"].get("role") == "SEGMENT"]
+        [
+            _triangles(t_pos, p["indices"])
+            for p in t_prims
+            if p["extras"].get("role") in ("SEGMENT", "PORTAL_CAP", "TERMINAL_CAP")
+        ]
     )
     by_name = {p["name"]: p for p in d_prims}
 

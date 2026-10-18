@@ -1702,26 +1702,45 @@ CSG, voxel remesh or global SDF:
   junction point, rings are refined to `JUNCTION_RING_SPACING_FRACTION`
   (0.1) × width (every refinement ring still lies on the validated polyline)
   and quads (ring interval × profile edge) are decided by three typed rules:
-  - **PARENT** (Phase 20D.1.1): a NON-FLOOR quad whose surface the child
-    excavation occupies over a meaningful area is omitted whole — at least
-    `PARENT_QUAD_OVERLAP_MIN` = 6 of the 3 × 3 deterministic bilinear surface
-    samples at `PARENT_QUAD_SAMPLE_FRACTIONS` = (1/6, 1/2, 5/6) lie strictly
-    inside the child (a sample-count threshold, not a measured area
-    fraction). The parent FLOOR edge (identified from the profile geometry by
-    `profile.floor_edge_index`, never a hard-coded index) is never a
-    parent-side cut: it is the doorway's supporting floor. Hardening PR-4
-    (rule 226a): the parent quads are judged PAST the window too — interval
-    by interval in both directions while an interval still loses a quad
-    (`_extend_parent_pass`, bounded by `PARENT_EXTENSION_MAX_WIDTHS` = 6) —
-    because the 2-width window was sized for the child's inner wall and the
-    doorway probe (`tests/test_junction_passability.py`) found a ramp wall
-    slab standing across the outer half of every shallow-angle TABULAR
-    access from 10 m to ≈ 13.7 m; each opening now reports
-    `parentCutChainage` and `parentExtensionIntervals`.
-  - **CHILD non-floor**: the 20D.1 containment rule — a quad whose four
-    vertices are inside-or-on the parent's swept envelope (the intruding tube
-    and the coincident roof; the parent keeps those surfaces) is omitted
-    whole.
+  - **PARENT** (hardening PR-5, rule 227 — replacing the Phase 20D.1.1
+    whole-quad vote `PARENT_QUAD_OVERLAP_MIN` = 6 of 3 × 3 surface samples,
+    which kept every quad the child covered less than two thirds and left
+    wedges up to 0.37 m in the mouth): every NON-FLOOR quad is judged EXACTLY
+    against the child's JUDGING ENVELOPE — the child with its floor lowered
+    by `PARENT_JUDGE_FLOOR_DROP_TOLERANCES` (2) × tol — at the `−tol` level
+    (`_judge_parent_interval`): inside omitted, outside kept, straddling
+    CLIPPED by the same bilinear chord clip the child floor receives (its
+    remainder reaches the render as `wall_clips`; two turnouts sharing a
+    quad re-clip it, `merge_parent_cut`). A parent point counts as blocked
+    only when it is inside the child by MORE than one tolerance, so a
+    surface coincident with the child's (the tangential start of a turnout,
+    the crown of a T-junction) stays with the parent and the parent keeps a
+    one-tolerance lip into the child void at every doorway (the jamb); the
+    lowered judging floor opens the wall down to the parent's own FLOOR
+    edge (identified from the profile geometry by `profile.floor_edge_index`,
+    never a hard-coded index), which is never a parent-side cut: it is the
+    doorway's supporting floor. Hardening PR-4 (rule 226a): the parent quads
+    are judged PAST the window too — interval by interval in both directions
+    while an interval still loses a quad (`_extend_parent_pass`, bounded by
+    `PARENT_EXTENSION_MAX_WIDTHS` = 6, the same judgement) — because the
+    2-width window was sized for the child's inner wall and the doorway
+    probe (`tests/test_junction_passability.py`) found a ramp wall slab
+    standing across the outer half of every shallow-angle TABULAR access
+    from 10 m to ≈ 13.7 m; each opening reports `parentCutChainage`,
+    `parentExtensionIntervals` and (PR-5) `parentClippedWallQuads` /
+    `parentUnclippedWallQuads` / `parentReplacementTriangles`.
+  - **CHILD non-floor** (hardening PR-5): every wall / roof quad is judged
+    at the parent's EXACT surface — `CHILD_JUDGE_LEVEL` = 1e-7 m, a
+    numerical tie-break toward inside (one tenth of the vertex merge
+    distance) so a coincident child surface is omitted deterministically and
+    a crossing next to an on-surface vertex merges into it — against the
+    parent with its floor lowered by `CHILD_JUDGE_FLOOR_DROP_WIDTHS` (1)
+    widths: INSIDE omitted, OUTSIDE kept, straddling clipped (PR-2 clipped
+    only quads with an inside corner; a quad whose four corners were outside
+    was kept whole even when the boundary crossed its interior). Before PR-5
+    the child was cut at `+tol`: its remainder began tol OUTSIDE the parent
+    wall while the parent's rim ended tol INSIDE the child wall, a tol-wide
+    slit along every seam.
   - **CHILD floor** (Phase 20D.1.2, typed local child-floor boundary
     clipping): a floor quad fully inside-or-on the parent is omitted; fully
     outside it is emitted unchanged; STRADDLING the parent boundary it is
@@ -1734,8 +1753,13 @@ CSG, voxel remesh or global SDF:
     WARPED-301 L03 / L04 1.00 m above the descending ramp floor at the
     slab's far edge, blocking the ramp uphill and hiding it downhill), while
     deleting the whole quad would open a hole in the legitimate child floor
-    outside the parent. The boundary is the SAME tolerance surface the
-    vertex rule uses (`sd == tol`), located by `CLIP_BISECTION_ITERATIONS`
+    outside the parent. The boundary is the SAME surface the vertex rule
+    uses (since hardening PR-5 the parent's exact surface at
+    `CHILD_JUDGE_LEVEL` on the floor-lowered parent — a child floor under
+    the parent floor between its walls is hidden under a floor that is never
+    cut, so the chord lies ON the parent's wall or terminal plane whatever
+    the rule-188 floor mismatch; before PR-5 the `+tol` surface), located by
+    `CLIP_BISECTION_ITERATIONS`
     (40) deterministic bisection steps on the quad's own edges — no player
     radius, step height, doorway size or mesh-proximity heuristic; the
     remainder (a convex polygon: a quad cut by one chord, or two corner
@@ -1815,13 +1839,51 @@ development mesh 14,058 → 36,478 triangles (2,550 omitted, 653 → 1,788
 rings, 467 KB → 1.23 MB, 0.61 s → 3.38 s; re-measured after the junction-local
 refinement correction: see the review-correction figures in the PR) — the
 growth is the junction-window ring refinement, bounded by junctions × (window
-+ one coarse interval) per touched tube. Recorded limitations: the
-aperture rim is jagged at the refined ring spacing (0.5 m); straddling quads
-are kept, so the neighbour overlaps by at most one quad at the doorway sill
-(possible thin coplanar strip); no transition patch; the tunnel builder
++ one coarse interval) per touched tube. Recorded limitations (as of 20D.1; hardening PR-5 cuts both sides exactly —
+see "Hardening PR-5 — exact junction seam" below): the
+aperture rim is jagged at the refined ring spacing (0.5 m); no transition
+patch; the tunnel builder
 sweeps the access ENVELOPE at the secondary tessellation for its containment
 query only. An all-development watertight union, exact junction CSG and the
 branch walkthrough remain Phase 20D follow-ups.
+
+## Hardening PR-5 — exact junction seam
+
+Park's Walk screenshot of a level entry (seen from inside the access) showed
+wedge-shaped fragments of the drift wall standing into the access and black
+slivers along the rim. Two instruments were written before the fix
+(`tests/test_junction_seam.py`, TABULAR verification fixture):
+
+* **WEDGE** — a parent render triangle whose centroid lies inside the child's
+  swept envelope deeper than the construction bound (3 × tol: the `−tol`
+  lip plus the ≤ 2 × tol chord band of `_edges_stay`);
+* **HOLE** — a ray from an eye point inside the union (1 m apart along the
+  child to 1.5 widths and along the parent, at 1.0 / 1.6 m above the floor
+  centerline, 64 Fibonacci directions, 15 m cap) that reaches ROCK — a
+  sample every 0.25 m more than tol outside EVERY nearby excavation envelope
+  — before its first front-face hit. A back-face hit alone is not a hole
+  (the parent's −tol lip is struck from behind legitimately) and is recorded
+  as a diagnostic. Eyes within half a step of an L-junction corner are
+  dropped (an eye standing on two caps at once is a probe artefact).
+
+| | before PR-5 | after PR-5 |
+| --- | --- | --- |
+| rays / escapes to rock | 67,840 / 149 | 67,840 / 0 |
+| back-face hits (diagnostic) | 171 | 26 (all the parent's −tol lip, role DRIFT) |
+| parent triangles beyond 1 × tol / beyond 3 × tol | 94 / ≥ 5 (3 junctions) | 44 / 0 |
+| deepest parent intrusion into the child | 1.923 m | 0.167 m |
+| doorway probe hits (rule 226 a, ramp caps included) | 0 (caps excluded) | 0 |
+
+The fix is rule 227: the parent judged exactly at `−tol` on the
+floor-lowered child (replacing the whole-quad vote), the child at the
+parent's exact surface on the floor-lowered parent (replacing `+tol`), caps
+on both sides by the same rules (the ramp's own caps included), sills as
+sampled risers from the parent floor boundary (side edges and the floor's
+end edges), render-scale cleaning of every remainder. Residual: the parent's
+one-tolerance lip at every jamb (0.1 m for the 5 m tunnel) and the chord sag
+inside the clip band; a banked junction floor and a watertight
+all-development union stay Phase 20D scope. The finding record is
+`docs/findings/pr5-junction-seam.md`.
 
 ## Phase 20D.2 — static branch walkthrough runtime and the typed cap cut
 
@@ -1928,7 +1990,16 @@ per drift cap 5 fans omitted, 6 clipped, 6–7 replacement fans; DRIFT_CAP
 bit-identical). Two junctions clipping one fan triangle are an explicit
 `JunctionClipConflictError`. This is not a general CSG: a cap at a
 declared junction is judged against ONE child envelope with the existing
-containment query.
+containment query. Hardening PR-5: a parent cap is judged like the parent's
+quads (the floor-lowered child at `−tol`, `cut_cap(side="PARENT")`), a
+child mouth cap like the child's (`CHILD_JUDGE_LEVEL` on the floor-lowered
+parent, `side="CHILD"`); the query window grows with the cap's distance so
+every cap within `PARENT_EXTENSION_MAX_WIDTHS` of a junction is judged —
+the ramp's PORTAL / TERMINAL caps included (`TunnelMeshBuilder`, the
+shared `merge_cap_cut`): the TABULAR fixture's ramp ends 1.9 m after its
+L04 turnout and stood its whole terminal cap across the access. The
+pre-PR-5 cap at `+tol` left a tol-wide ring notch around a crosscut
+piercing a drift end cap.
 
 ### Post-fix audit and the L-junction residual (§10 closeout)
 
