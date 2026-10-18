@@ -6,10 +6,11 @@ import { type WalkthroughNavigationMode } from './navigation'
 /**
  * Keyboard-only walkthrough input lifecycle (hotfix §2/§5, PR-4 third
  * person): WASD moves, J/L/I/K orbit the chase camera, R resets, E inspects
- * (STATIC_FINAL only), 1/2/3 switch the mode and V cycles the truck class.
- * No pointer lock and no mouse involvement — listeners are active for the
- * whole runtime mount. R, E and V are edge-triggered (one physical press →
- * one action; auto-repeat never re-fires). Shortcuts are ignored while an
+ * (STATIC_FINAL only), 1/2/3 switch the mode, V cycles the truck class and
+ * F toggles the chase / cab camera view (PR-6). No pointer lock and no mouse
+ * involvement — listeners are active for the whole runtime mount. R, E, V
+ * and F are edge-triggered (one physical press → one action; auto-repeat
+ * never re-fires). Shortcuts are ignored while an
  * input/textarea/select/contenteditable is focused. Window blur, unmount,
  * mode switch and scenario invalidation clear every transient key state.
  */
@@ -21,6 +22,7 @@ export function WalkthroughControls({
   onInspect,
   onNavigationMode,
   onCycleVehiclePreset,
+  onToggleCameraView,
 }: {
   keyState: KeyState
   inspectTrigger: InspectTrigger
@@ -29,11 +31,14 @@ export function WalkthroughControls({
   onInspect: () => void
   onNavigationMode: (mode: WalkthroughNavigationMode) => void
   onCycleVehiclePreset?: () => void
+  /** PR-6: F — chase ⇄ cab (first-person) camera view */
+  onToggleCameraView?: () => void
 }) {
   useEffect(() => {
     const inspect = inspectTrigger
     const reset = createInspectTrigger() // same edge-trigger mechanism for R
     const cycle = createInspectTrigger() // …and for V
+    const view = createInspectTrigger() // …and for F
     const down = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target)) return
       if (e.code === 'KeyR') {
@@ -42,6 +47,10 @@ export function WalkthroughControls({
       }
       if (e.code === 'KeyV') {
         if (!e.repeat && cycle.press()) onCycleVehiclePreset?.()
+        return
+      }
+      if (e.code === 'KeyF') {
+        if (!e.repeat && view.press()) onToggleCameraView?.()
         return
       }
       if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
@@ -71,12 +80,17 @@ export function WalkthroughControls({
         cycle.release()
         return
       }
+      if (e.code === 'KeyF') {
+        view.release()
+        return
+      }
       keyState.handleKey(e.code, false)
     }
     const blur = () => {
       clearTransientInput(keyState, inspect)
       reset.clear()
       cycle.clear()
+      view.clear()
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -88,6 +102,7 @@ export function WalkthroughControls({
       clearTransientInput(keyState, inspect)
       reset.clear()
       cycle.clear()
+      view.clear()
     }
   }, [
     allowInspect,
@@ -97,6 +112,7 @@ export function WalkthroughControls({
     onInspect,
     onNavigationMode,
     onReset,
+    onToggleCameraView,
   ])
   return null
 }

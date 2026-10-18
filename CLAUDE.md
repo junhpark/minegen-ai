@@ -730,7 +730,9 @@ observation only. Raw logs and `verification-summary.json` live under
     documented truck class (`walkthrough/vehicle.ts`), DRONE a sphere
     without gravity. No noclip, no normal-movement teleport, no jump; the
     camera is a chase camera orbiting the avatar's eye point and its pitch
-    affects the view only — walking stays gravity-horizontal. Autostep is
+    affects the view only — walking stays gravity-horizontal; in the CAB
+    view (F, hardening PR-6, rule 228) the camera sits at the body's own
+    eye point instead and the body contract is the same. Autostep is
     sized for the documented floor residuals (rule 188's ≈ 0.2 m wall-line
     offset, the sill strips) and is never a substitute for an open doorway
     (rule 226's probe proves the doorways open without it).
@@ -766,11 +768,13 @@ observation only. Raw logs and `verification-summary.json` live under
     candidate/network references. Frontend may not invent devices or
     placements.
 
-107. **Center-ray line-of-sight** (amended by PR-4): interaction uses the
-    ray from the AVATAR's eye point along the exact camera-forward
-    direction (the chase camera looks through the avatar; the crosshair
-    marks the line), bounded runtime interaction distance and
-    authoritative tunnel occlusion. Through-rock or distance-only
+107. **Center-ray line-of-sight** (amended by PR-4 / PR-6): interaction
+    uses the ray from the AVATAR's eye point — the chase anchor in the
+    CHASE view, the first-person eye (driver's seat, miner's eye, drone
+    front) in the CAB view, rule 228 — along the exact camera-forward
+    direction (the chase camera looks through the avatar, the cab camera
+    sits at the eye; the crosshair marks the line), bounded runtime
+    interaction distance and authoritative tunnel occlusion. Through-rock or distance-only
     interaction is forbidden.
 
 108. **Static planned-asset semantics**:
@@ -2992,7 +2996,9 @@ code, the code and the rule win and the map is corrected.
          distance the camera is cramped at the longest clear line's clear
          point (`resolveChase`, floored just past the near plane: a
          close-up, never a view from inside the rock); the eye point feeds
-         the interaction ray (rule 107) and the headlamp. Each body spawns
+         the interaction ray (rule 107) and — until hardening PR-6 moved the
+         beam to the body's lamp point, rule 228 — the headlamp. Each body
+         spawns
          its chase line INSIDE the tunnel: the rule 102 entry reference
          (6 m) plus `anchorBackM + distanceM` (`bodySpawnChainageM` —
          person 10.5 m, drone 9.5 m, 45 t truck ≈ 16 m; measured: a truck
@@ -3007,6 +3013,8 @@ code, the code and the rule win and the map is corrected.
          envelope never exceeds the collider box (the truck's bin and cab
          top ARE the preset height: measured on tour 6, a bin 0.5 m above
          the box put the chase anchor below the bin and filled the frame).
+         Hardening PR-6 (rule 228) adds the CAB view and the translucent
+         chased truck ON TOP of this contract without changing it.
      (d) LEVEL-AWARE MINIMAP (`walkthrough/levelMap.ts`, `MinimapOverlay.tsx`).
          The avatar's RL picks the nearest required level inside half the
          median level spacing (levels from the level accesses, else the
@@ -3123,3 +3131,51 @@ code, the code and the rule win and the map is corrected.
          is unchanged to the triangle (4,570 removed · 597 clipped · 1,248
          replacement) and the TABULAR seam probe keeps 0 escapes and the
          0.167 m deepest intrusion.
+
+228. Truck views (hardening PR-6, Park: "트럭이 앞을 너무 가려서 … 투명도를
+     높여서 표현하거나 3/1인칭 전환"). Two VISUALIZATION contracts over the
+     unchanged PR-4 body / physics / spawn / chase-resolution rules (101 /
+     102 / 226 c); nothing is persisted (rule 99):
+     (a) GHOST BODY — in the CHASE view the VEHICLE avatar is drawn
+         translucent (`cameraView.ts::GHOST_OPACITY` 0.32, depth write off
+         so overlapping parts never punch holes in each other) with its
+         planning-box edges outlined (`avatars.tsx`), so the drive ahead is
+         read through the truck while its envelope stays legible; person
+         and drone stay solid. Measured BEFORE the change
+         (`cameraView.test.ts`, the frame-coverage instrument: 320 × 190
+         pixel-centre rays through the 45° / 1600 × 950 camera at the
+         unobstructed default tail line): the 45 t body covers 18.0 % of
+         the frame, 24.9 % of its central third and 50.9 % of the forward
+         lane (the central quarter of the width between 20 % and 60 % of
+         the height); 60 t 21.3 / 27.6 / 58.3 %, RDT 40 t 22.3 / 31.7 /
+         61.9 %. The ghost changes no geometry — the same coverage, drawn
+         at 32 % opacity.
+     (b) CAB VIEW — F (and the HUD toggle) switches
+         `viewerStore.walkCameraView` between CHASE and CAB (ephemeral,
+         kept across a body change, reset to CHASE on leaving Walk). In CAB
+         the camera sits AT the body's first-person eye
+         (`cameraView.ts::firstPersonEyeOffset`: VEHICLE the driver's seat
+         inside the cab box of `vehicle.ts::truckLayout` — the ONE layout
+         authority the avatar is also built from — ≈ 2.41 / 2.80 / 2.75 m
+         above the floor for the 45 t / 60 t / RDT; PERSON its 1.6 m eye;
+         DRONE the body front), rotated by the body yaw, looking along the
+         orbit yaw / pitch (IJKL; pitch clamped to [−60°, +45°], level at
+         the switch); the cab shell and windscreen are not drawn from inside,
+         the rest of the truck stays the ghost of (a) — looking down shows
+         the own hood as an outline over the floor; measured on the
+         acceptance tour, a solid hood filled the lower half of the frame
+         with one flat lamp-lit plane — and the person / drone avatars are
+         hidden. Measured: no body part in the frame at level pitch for
+         every preset (0 %); looking 20° down the 45 t / 60 t show their
+         own bumper at the frame bottom (17.2 / 11.9 %, forward lane 0 %),
+         as a real cab does. The eye
+         point of either view feeds the interaction ray (rule 107); the
+         headlamp BEAM leaves the body's LAMP point in either view
+         (`cameraView.ts::lampOffset` — the truck's headlights on its
+         bumper, the miner's cap lamp at its eye, the drone's front;
+         measured on the acceptance tour: a beam leaving the cab seat lit
+         the own hood from 0.9 m when the cab view looked down and the
+         frame blew out to the lamp colour). Locomotion, colliders,
+         autostep, spawn (`bodySpawnChainageM`) and the chase occlusion
+         resolution are untouched, and a view change never remounts the
+         body.

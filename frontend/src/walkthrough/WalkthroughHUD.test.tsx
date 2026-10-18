@@ -95,3 +95,50 @@ describe('level teleport select (hotfix 2)', () => {
     expect(html).not.toContain('Go to')
   })
 })
+
+describe('chase / cab view toggle (PR-6)', () => {
+  it('offers the F toggle with the body-specific label and legend; the truck note says the chased body is translucent', () => {
+    const chase = renderToStaticMarkup(
+      <WalkthroughHUD
+        {...BASE}
+        navigationMode="VEHICLE"
+        vehiclePreset="UG_ADT_45T"
+        onVehiclePreset={() => {}}
+        cameraView="CHASE"
+        onCameraView={() => {}}
+        focusedKind={null}
+      />,
+    )
+    expect(chase).toContain('F Cab view')
+    expect(chase).toContain('aria-pressed="false"')
+    expect(chase).toContain('Cab / Chase')
+    expect(chase).toContain('body drawn translucent in the chase view')
+    const cab = renderToStaticMarkup(
+      <WalkthroughHUD
+        {...BASE}
+        navigationMode="VEHICLE"
+        vehiclePreset="UG_ADT_45T"
+        onVehiclePreset={() => {}}
+        cameraView="CAB"
+        onCameraView={() => {}}
+        focusedKind={null}
+      />,
+    )
+    expect(cab).toContain('F Cab view')
+    expect(cab).toContain('aria-pressed="true"')
+    expect(cab).not.toContain('translucent')
+    const person = renderToStaticMarkup(
+      <WalkthroughHUD {...BASE} cameraView="CHASE" onCameraView={() => {}} focusedKind={null} />,
+    )
+    expect(person).toContain('F First person')
+    expect(person).toContain('First person / Chase')
+    expect(person).not.toContain('Cab view')
+  })
+
+  it('renders no view toggle without a handler (the legend keeps no F row either)', () => {
+    const html = renderToStaticMarkup(<WalkthroughHUD {...BASE} focusedKind={null} />)
+    expect(html).not.toContain('F First person')
+    // the legend still teaches F: the key is wired by the runtime
+    expect(html).toContain('First person / Chase')
+  })
+})

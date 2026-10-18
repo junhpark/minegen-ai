@@ -51,6 +51,8 @@ export function MineCanvas() {
   const setNavigationMode = useViewerStore((s) => s.setNavigationMode)
   const vehiclePreset = useViewerStore((s) => s.vehiclePreset)
   const setVehiclePreset = useViewerStore((s) => s.setVehiclePreset)
+  const walkCameraView = useViewerStore((s) => s.walkCameraView)
+  const setWalkCameraView = useViewerStore((s) => s.setWalkCameraView)
   const walkthroughContext = useViewerStore((s) => s.walkthroughContext)
   const walkthroughSnapshotDay = useViewerStore((s) => s.walkthroughSnapshotDay)
   const walkthroughReturnMode = useViewerStore((s) => s.walkthroughReturnMode)
@@ -217,6 +219,8 @@ export function MineCanvas() {
                 onNavigationMode={setNavigationMode}
                 vehiclePreset={vehiclePreset}
                 onVehiclePreset={setVehiclePreset}
+                cameraView={walkCameraView}
+                onCameraView={setWalkCameraView}
                 teleportTargets={teleportTargets}
                 onTeleport={(t) => teleportFn.current?.(t)}
                 perfRef={perfRef}

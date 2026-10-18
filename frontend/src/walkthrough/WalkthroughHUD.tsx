@@ -1,3 +1,4 @@
+import { cabViewLabel, cabViewLegend, toggleCameraView, type WalkCameraView } from './cameraView'
 import { NAVIGATION_MODES, type WalkthroughNavigationMode } from './navigation'
 import type { TeleportTarget } from './teleport'
 import { VEHICLE_PRESETS, isVehiclePresetId, type VehiclePresetId } from './vehicle'
@@ -6,10 +7,11 @@ import { tr } from '@/i18n/t'
 /**
  * Compact walkthrough overlay (Phase 16 §31–34, PR-4 third person): center
  * crosshair (the avatar's eye-ray), a pointer-enabled mode selector (1/2/3
- * keys mirror it) with the truck-class select in VEHICLE mode (V cycles it),
- * a per-mode keyboard legend bottom-left, temporal snapshot info top-right
- * and the DEV perf readout bottom-right. Mode/speed and the minimap live in
- * the separate MinimapOverlay (top-left).
+ * keys mirror it) with the chase ⇄ cab view toggle (F mirrors it, PR-6) and
+ * the truck-class select in VEHICLE mode (V cycles it), a per-mode keyboard
+ * legend bottom-left, temporal snapshot info top-right and the DEV perf
+ * readout bottom-right. Mode/speed and the minimap live in the separate
+ * MinimapOverlay (top-left).
  */
 const LEGENDS: Record<WalkthroughNavigationMode, [string, string][]> = {
   PERSON: [
@@ -48,6 +50,8 @@ export function WalkthroughHUD({
   onNavigationMode,
   vehiclePreset,
   onVehiclePreset,
+  cameraView = 'CHASE',
+  onCameraView,
   teleportTargets = [],
   onTeleport,
   perfRef,
@@ -59,6 +63,9 @@ export function WalkthroughHUD({
   /** PR-4 W2: the truck class driven in VEHICLE mode */
   vehiclePreset?: VehiclePresetId
   onVehiclePreset?: (preset: VehiclePresetId) => void
+  /** PR-6: the camera view — CHASE (third person) or CAB (first person) */
+  cameraView?: WalkCameraView
+  onCameraView?: (view: WalkCameraView) => void
   /** ramp stations and level entries for the teleport select */
   teleportTargets?: readonly TeleportTarget[]
   onTeleport?: (target: TeleportTarget) => void
@@ -67,6 +74,12 @@ export function WalkthroughHUD({
   const temporal = snapshotDay !== null
   const cross = focusedKind ? 'bg-lamp' : 'bg-chalk/50'
   const preset = VEHICLE_PRESETS.find((p) => p.id === vehiclePreset) ?? null
+  // the F row sits with the camera row of the legend
+  const legend: [string, string][] = []
+  for (const row of LEGENDS[navigationMode]) {
+    legend.push(row)
+    if (row[0] === 'IJKL') legend.push(['F', cabViewLegend(navigationMode)])
+  }
   return (
     <div className="pointer-events-none absolute inset-0">
       <div className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2">
@@ -119,6 +132,21 @@ export function WalkthroughHUD({
             {i + 1} {tr(MODE_LABEL[m])}
           </button>
         ))}
+        {onCameraView ? (
+          <button
+            type="button"
+            onClick={() => onCameraView(toggleCameraView(cameraView))}
+            aria-pressed={cameraView === 'CAB'}
+            className={[
+              'plate rounded-sm px-2 py-0.5 text-[11px]',
+              cameraView === 'CAB'
+                ? 'bg-rock-700 text-lamp shadow-[inset_0_-2px_0_0_var(--color-lamp)]'
+                : 'bg-rock-900/70 text-chalk-dim hover:bg-rock-700/60',
+            ].join(' ')}
+          >
+            F {tr(cabViewLabel(navigationMode))}
+          </button>
+        ) : null}
         {navigationMode === 'VEHICLE' && onVehiclePreset ? (
           <select
             aria-label={tr('Truck class')}
@@ -139,6 +167,7 @@ export function WalkthroughHUD({
       {navigationMode === 'VEHICLE' && preset ? (
         <div className="readout absolute bottom-11 left-1/2 -translate-x-1/2 rounded-sm bg-rock-900/70 px-2 py-0.5 text-[10px] text-mute">
           {tr(preset.classNote)} · {tr('representative class dimensions, not a specification')}
+          {cameraView === 'CHASE' ? ` · ${tr('body drawn translucent in the chase view')}` : ''}
         </div>
       ) : null}
       {temporal ? (
@@ -156,7 +185,7 @@ export function WalkthroughHUD({
         />
       ) : null}
       <div className="readout absolute bottom-3 left-3 rounded-sm bg-rock-900/70 px-3 py-2 text-[11px] leading-relaxed text-chalk-dim">
-        {LEGENDS[navigationMode].map(([k, v]) => (
+        {legend.map(([k, v]) => (
           <div key={k}>
             {k}&ensp;{tr(v)}
           </div>

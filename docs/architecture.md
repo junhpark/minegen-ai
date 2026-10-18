@@ -1051,6 +1051,31 @@ tunnel mesh and the seam probe are unchanged to the triangle. Residual: the
 −tol lip and the chord sag; a banked junction floor and a watertight union
 stay Phase 20D.
 
+**Truck views (hardening PR-6, rule 228, `walkthrough/cameraView.ts`).**
+Park's second remark on the same screenshot: the chased truck hides the way
+ahead. Measured first (`cameraView.test.ts`: 320 × 190 pixel-centre rays
+through the 45° / 1600 × 950 camera at the default tail line): the 45 t
+body covers 18.0 % of the frame, 24.9 % of its central third and 50.9 % of
+the forward lane (60 t 21.3 / 27.6 / 58.3 %, RDT 22.3 / 31.7 / 61.9 %). Two
+presentation changes, both over the unchanged PR-4 body / physics / spawn /
+chase-resolution contracts: the chased VEHICLE avatar is a GHOST (translucent
+at `GHOST_OPACITY` 0.32, depth write off, planning-box edges outlined —
+`avatars.tsx`), and the F key / HUD toggle switches the ephemeral
+`viewerStore.walkCameraView` to the CAB view, where the camera sits AT the
+body's first-person eye (`firstPersonEyeOffset`: the driver's seat inside the
+cab box of `vehicle.ts::truckLayout`, the one layout authority the avatar is
+built from — ≈ 2.41 / 2.80 / 2.75 m above the floor; the miner's 1.6 m eye;
+the drone front), looks along the orbit yaw / pitch (clamped to [−60°,
++45°], level at the switch), the cab shell is not drawn from inside and the
+rest of the truck stays the ghost (looking down shows the own hood as an
+outline over the floor; person / drone avatars hidden). Measured after: 0 % body in the frame at
+level pitch for every preset; 20° down shows the own bumper at the bottom
+(17.2 / 11.9 / 0 %). Either view's eye point feeds the interaction ray
+(rule 107); the headlamp beam leaves the body's lamp point (`lampOffset`:
+the truck's headlights, the cap lamp, the drone's front — a beam from the
+cab seat lit the own hood when the cab view looked down); a view change
+never remounts the body.
+
 **Temporal development traversal (W1a, `walkthrough/temporalDevelopmentPlan.ts`).**
 A TIMELINE_SNAPSHOT now mounts the LEVEL_ACCESS / DRIFT / CROSSCUT pieces
 whose Phase 10 state is ACTIVE (fully completed, rule 114) — each
@@ -1086,7 +1111,9 @@ representative class dimensions, never a specification) steered by the
 bicycle rule `yaw rate = speed / turning radius` (floored at 2 m/s, capped
 at 60°/s, sense flipped in reverse), DRONE a sphere without gravity flying
 horizontally along the camera yaw. The chase camera (`chaseCamera.ts`)
-orbits the avatar's eye point (IJKL, pitch clamped per mode) — the truck
+orbits the avatar's eye point (IJKL, pitch clamped per mode; since hardening
+PR-6 the F key swaps it for the CAB view at the body's own eye,
+`cameraView.ts`, rule 228) — the truck
 from a tail line anchored just behind its dump body (`anchorBackM`), 0.9 m
 right, 5 m back at 18° elevation, aimed one body length ahead
 (`lookAheadM`; a person 1.5 m over its head, a drone 1 m ahead) so the bin

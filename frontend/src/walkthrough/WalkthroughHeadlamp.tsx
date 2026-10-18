@@ -9,17 +9,21 @@ const FORWARD = new Vector3()
  * Walkthrough lighting rig (hotfix §9–10, PR-4 third person): navigation
  * visualization, not illumination engineering. (a) A broad camera-following
  * point fill keeps floor / walls / roof around the camera readable in every
- * direction; (b) a WIDE, soft, moderate beam leaves the AVATAR's eye point
- * (the cap lamp / truck lights) along the camera forward so depth reads
- * ahead of the avatar. No shadows, no postprocessing.
+ * direction; (b) a WIDE, soft, moderate beam leaves the body's LAMP point
+ * (``beamRef``: the truck's headlights, the cap lamp, the drone's front —
+ * hardening PR-6; the eye point when absent) along the camera forward so
+ * depth reads ahead of the avatar. No shadows, no postprocessing.
  */
 export function WalkthroughHeadlamp({
   config,
   eyeRef,
+  beamRef,
 }: {
   config: WalkthroughConfig
   /** avatar eye point (Three coordinates); the camera when absent */
   eyeRef?: { current: Vector3 }
+  /** the body's lamp point (Three coordinates); the eye point when absent */
+  beamRef?: { current: Vector3 }
 }) {
   const fill = useRef<PointLight>(null)
   const beam = useRef<SpotLight>(null)
@@ -28,9 +32,10 @@ export function WalkthroughHeadlamp({
   useFrame(() => {
     camera.getWorldDirection(FORWARD)
     const eye = eyeRef?.current ?? camera.position
+    const lamp = beamRef?.current ?? eye
     if (fill.current) fill.current.position.copy(camera.position)
-    if (beam.current) beam.current.position.copy(eye)
-    target.position.copy(eye).addScaledVector(FORWARD, 12)
+    if (beam.current) beam.current.position.copy(lamp)
+    target.position.copy(lamp).addScaledVector(FORWARD, 12)
   })
   return (
     <>

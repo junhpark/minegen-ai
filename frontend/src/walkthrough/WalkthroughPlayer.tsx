@@ -12,6 +12,16 @@ import {
 } from '@react-three/rapier'
 import { Group, Vector3 } from 'three'
 import { DroneAvatar, PersonAvatar, TruckAvatar } from './avatars'
+import {
+  avatarPresentation,
+  cabPose,
+  defaultPitchDegFor,
+  firstPersonEyeOffset,
+  lampOffset,
+  orbitConfigFor,
+  rotateOffsetByYaw,
+  type WalkCameraView,
+} from './cameraView'
 import { applyOrbit, resolveChase, type OrbitState, type Vec3 } from './chaseCamera'
 import type { WalkthroughConfig } from './config'
 import { desiredHorizontalVelocity, yawForForward, type KeyState } from './movement'
@@ -61,11 +71,16 @@ const CAST_START_EPSILON_M = 0.05
  * The camera is a chase camera orbiting the avatar's EYE point (IJKL orbit,
  * dt-scaled, pitch clamped) and is pulled in along the view line when an
  * authoritative collider stands between the eye and the desired position
- * (`world.castRay`, the avatar's own collider excluded). The eye point is
- * published through `eyeRef` for the interaction ray and the headlamp.
- * Remounted per mode / preset (key) at the deterministic spawn — the
- * documented safe switch behaviour (§29): no collider morphing inside
- * geometry, never a world-origin teleport.
+ * (`world.castRay`, the avatar's own collider excluded). Hardening PR-6
+ * (rule 228): the F key switches to the CAB view — the camera sits AT the
+ * body's first-person eye (`cameraView.ts`: the truck's driver seat, the
+ * miner's eye, the drone front) and looks along the same orbit yaw /
+ * pitch; the chased truck is drawn as a translucent outlined ghost. Either
+ * view's eye point is published through `eyeRef` for the interaction ray
+ * and the headlamp. Locomotion, collider, spawn and chase resolution are
+ * the PR-4 contracts unchanged. Remounted per mode / preset (key) at the
+ * deterministic spawn — the documented safe switch behaviour (§29): no
+ * collider morphing inside geometry, never a world-origin teleport.
  */
 export function WalkthroughPlayer({
   mode,
@@ -77,9 +92,13 @@ export function WalkthroughPlayer({
   teleportRef,
   telemetry,
   eyeRef,
+  lampRef,
+  cameraView,
 }: {
   mode: WalkthroughNavigationMode
   vehiclePresetId: VehiclePresetId
+  /** PR-6: CHASE (third person) or CAB (first person at the body's eye) */
+  cameraView: WalkCameraView
   config: WalkthroughConfig
   spawn: WalkthroughSpawn
   keyState: KeyState
@@ -90,6 +109,9 @@ export function WalkthroughPlayer({
   telemetry: WalkthroughTelemetry
   /** the avatar's eye point in Three coordinates, updated every frame */
   eyeRef: { current: Vector3 }
+  /** PR-6: the body's lamp point (truck headlights, cap lamp, drone front)
+   * in Three coordinates, updated every frame — the headlamp beam origin */
+  lampRef: { current: Vector3 }
 }) {
   const body = useRef<RapierRigidBody>(null)
   const colliderRef = useRef<RapierCollider>(null)
@@ -101,6 +123,13 @@ export function WalkthroughPlayer({
   const chase = chaseFor(mode, vehiclePresetId)
   const preset = vehiclePreset(vehiclePresetId)
   const eyeOffset = nav.eyeHeightM - nav.bodyHeightM / 2
+  // PR-6 view contract: what the avatar shows, which pitch clamp applies
+  // and where the first-person eye sits in the body frame
+  const presentation = avatarPresentation(mode, cameraView)
+  const orbitCfg = orbitConfigFor(cameraView, chase)
+  const defaultPitch = (defaultPitchDegFor(cameraView, chase) * Math.PI) / 180
+  const firstPersonOffset = useMemo(() => firstPersonEyeOffset(mode, preset), [mode, preset])
+  const lampBodyOffset = useMemo(() => lampOffset(mode, preset), [mode, preset])
 
   const controller = useMemo(() => {
     const c = world.createCharacterController(0.05)
@@ -119,17 +148,23 @@ export function WalkthroughPlayer({
 
   const appliedReset = useRef(-1)
   const heading = useRef(spawn.yaw)
-  const orbit = useRef<OrbitState>({
-    yaw: spawn.yaw,
-    pitch: (chase.defaultPitchDeg * Math.PI) / 180,
-  })
+  const orbit = useRef<OrbitState>({ yaw: spawn.yaw, pitch: defaultPitch })
   const verticalSpeed = useRef(0)
   const speed = useRef(0)
 
+  // a NEW spawn re-aims heading and orbit; a view change (the default pitch
+  // differs: the chase looks down at the avatar, the cab starts level)
+  // re-levels the pitch only and keeps the yaw
+  const spawnSeen = useRef<WalkthroughSpawn | null>(null)
   useEffect(() => {
-    heading.current = spawn.yaw
-    orbit.current = { yaw: spawn.yaw, pitch: (chase.defaultPitchDeg * Math.PI) / 180 }
-  }, [spawn, chase.defaultPitchDeg])
+    if (spawnSeen.current !== spawn) {
+      spawnSeen.current = spawn
+      heading.current = spawn.yaw
+      orbit.current = { yaw: spawn.yaw, pitch: defaultPitch }
+    } else {
+      orbit.current = { yaw: orbit.current.yaw, pitch: defaultPitch }
+    }
+  }, [spawn, defaultPitch])
 
   // the vehicle body at its current translation with a candidate heading,
   // tested against every other non-sensor collider (walls, caps, barriers)
@@ -172,7 +207,7 @@ export function WalkthroughPlayer({
       rb.setTranslation({ x: p[0], y: p[1], z: p[2] }, true)
       rb.setNextKinematicTranslation({ x: p[0], y: p[1], z: p[2] })
       heading.current = target.yaw
-      orbit.current = { yaw: target.yaw, pitch: (chase.defaultPitchDeg * Math.PI) / 180 }
+      orbit.current = { yaw: target.yaw, pitch: defaultPitch }
       verticalSpeed.current = 0
       keyState.clear()
       if (mode === 'VEHICLE') {
@@ -182,7 +217,7 @@ export function WalkthroughPlayer({
       }
     }
     const prevYaw = orbit.current.yaw
-    orbit.current = applyOrbit(orbit.current, keyState.look, dt, config, chase)
+    orbit.current = applyOrbit(orbit.current, keyState.look, dt, config, orbitCfg)
     let vx = 0
     let vy = 0
     let vz = 0
@@ -254,10 +289,28 @@ export function WalkthroughPlayer({
     const rb = body.current
     if (!rb) return
     const t = rb.translation()
-    anchor.set(t.x, t.y + eyeOffset, t.z)
-    eyeRef.current.copy(anchor)
     if (avatar.current && mode !== 'VEHICLE') avatar.current.rotation.y = heading.current
     const { yaw, pitch } = orbit.current
+    // the lamp point rides the body in either view (the truck's headlights
+    // on its bumper, never the seat — a beam from the seat lit the own hood)
+    const lamp = rotateOffsetByYaw(lampBodyOffset, heading.current)
+    lampRef.current.set(t.x + lamp[0], t.y + lamp[1], t.z + lamp[2])
+    if (cameraView === 'CAB') {
+      // first person (PR-6): the camera AT the body's own eye — the offset
+      // rotated by the body yaw — looking along the orbit; nothing to
+      // resolve, the eye is inside the body and the body inside the tunnel
+      const off = rotateOffsetByYaw(firstPersonOffset, heading.current)
+      const eye: Vec3 = [t.x + off[0], t.y + off[1], t.z + off[2]]
+      eyeRef.current.set(eye[0], eye[1], eye[2])
+      const pose = cabPose(eye, yaw, pitch)
+      camera.position.set(pose.position[0], pose.position[1], pose.position[2])
+      lookTarget.set(pose.lookAt[0], pose.lookAt[1], pose.lookAt[2])
+      camera.lookAt(lookTarget)
+      telemetry.write(t.x, t.y, t.z, heading.current, speed.current, mode)
+      return
+    }
+    anchor.set(t.x, t.y + eyeOffset, t.z)
+    eyeRef.current.copy(anchor)
     // occlusion: cast from the (shifted) eye toward each candidate camera
     // position; the avatar's own collider is excluded
     // the line starts ON the avatar's own collider (eye / roof point), so the
@@ -308,11 +361,15 @@ export function WalkthroughPlayer({
       ) : (
         <BallCollider ref={colliderRef} args={[nav.bodyRadiusM]} />
       )}
-      <group ref={avatar}>
+      <group ref={avatar} visible={presentation.visible}>
         {mode === 'PERSON' ? (
           <PersonAvatar bodyHeightM={nav.bodyHeightM} />
         ) : mode === 'VEHICLE' ? (
-          <TruckAvatar preset={preset} />
+          <TruckAvatar
+            preset={preset}
+            ghost={presentation.ghost}
+            cabVisible={presentation.cabVisible}
+          />
         ) : (
           <DroneAvatar />
         )}

@@ -5,6 +5,11 @@ import { useScenarioStore } from './scenarioStore'
 import { temporalSessionIdentity } from '@/walkthrough/temporalPlan'
 import type { WalkthroughNavigationMode } from '@/walkthrough/navigation'
 import { DEFAULT_VEHICLE_PRESET, type VehiclePresetId } from '@/walkthrough/vehicle'
+import {
+  DEFAULT_WALK_CAMERA_VIEW,
+  toggleCameraView,
+  type WalkCameraView,
+} from '@/walkthrough/cameraView'
 import type { AnalysisTab, DesignTab, SystemsTab } from '@/components/panels/workflowTabs'
 import {
   analysisTabFor,
@@ -38,6 +43,12 @@ export interface ViewerState {
   /** PR-4 W2: the VEHICLE body class driven in Walk (ephemeral, never persisted) */
   vehiclePreset: VehiclePresetId
   setVehiclePreset: (preset: VehiclePresetId) => void
+  /** PR-6: CHASE (third person) | CAB (first person at the body's eye) —
+   * a camera presentation choice for the Walk session (ephemeral, reset to
+   * CHASE on leaving Walk, never persisted) */
+  walkCameraView: WalkCameraView
+  setWalkCameraView: (view: WalkCameraView) => void
+  toggleWalkCameraView: () => void
   /**
    * Phase 20E §19/§20 — which secondary workflow tab the left panel shows.
    * Presentation state only: it is frontend-local, survives panel rerenders
@@ -178,6 +189,7 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   walkthroughReturnMode: 'DESIGN',
   navigationMode: 'PERSON',
   vehiclePreset: DEFAULT_VEHICLE_PRESET,
+  walkCameraView: DEFAULT_WALK_CAMERA_VIEW,
   selectedObjectId: null,
   visibleLayers: new Set(DEFAULT_VISIBLE),
   walkthroughEnabled: false,
@@ -265,6 +277,8 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
 
   setNavigationMode: (navigationMode) => set({ navigationMode }),
   setVehiclePreset: (vehiclePreset) => set({ vehiclePreset }),
+  setWalkCameraView: (walkCameraView) => set({ walkCameraView }),
+  toggleWalkCameraView: () => set((s) => ({ walkCameraView: toggleCameraView(s.walkCameraView) })),
   setMode: (mode) =>
     set((s) => {
       if (mode === 'WALKTHROUGH') {
@@ -285,10 +299,11 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
         }
       }
       // leaving WALKTHROUGH clears the temporal snapshot state (rule 112)
-      // and returns navigation to the PERSON default
+      // and returns navigation to the PERSON default (and the chase view)
       return {
         navigationMode: 'PERSON' as WalkthroughNavigationMode,
         vehiclePreset: DEFAULT_VEHICLE_PRESET,
+        walkCameraView: DEFAULT_WALK_CAMERA_VIEW,
         mode,
         cameraMode: 'orbit' as CameraMode,
         walkthroughContext: null,
