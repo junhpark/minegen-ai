@@ -30,6 +30,23 @@ export function tonnes(v: number | null | undefined): string {
 export function days(v: number | null | undefined): string {
   return v === null || v === undefined ? '—' : `${F1.format(v)} d`
 }
+/** days per year of the DURATION readout — the Julian year the Planning NPV
+ * timing already uses (`midDay / 365.25`, rule 201); presentation only */
+export const DAYS_PER_YEAR = 365.25
+/** a mine DURATION read in years with the backend days beside it:
+ * `8.9 yr (3,254 d)` (PR-3 round 3 — Park: "year 단위, 괄호로 day"). The
+ * backend field stays in days; milestones ("day 298") keep `days()`. */
+export function duration(v: number | null | undefined): string {
+  if (v === null || v === undefined) return '—'
+  return `${F1.format(v / DAYS_PER_YEAR)} yr (${F0.format(v)} d)`
+}
+/** the two halves of `duration()` for a KPI tile (years large, days small) */
+export function durationParts(
+  v: number | null | undefined,
+): { years: string; days: string } | null {
+  if (v === null || v === undefined) return null
+  return { years: `${F1.format(v / DAYS_PER_YEAR)} yr`, days: `${F0.format(v)} d` }
+}
 /** currency readout: `USD 1,234,567` (no conversion, no symbol lookup) */
 export function money(v: number | null | undefined, code: string | null): string {
   if (v === null || v === undefined) return '—'

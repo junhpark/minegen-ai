@@ -4,6 +4,7 @@ import type { ShaftPlanningConfig, ShaftSpec } from '@/types/api'
 import { CAPABILITIES, type Capability } from '@/types/enums'
 import type { CollarSuggestion } from '@/types/scene'
 import { SHAFT_SPEC_DEFAULTS, nextShaftId } from './shaftDraft'
+import { tr } from '@/i18n/t'
 
 const FIELD =
   'w-full rounded-sm border border-rock-700 bg-rock-900 px-1.5 py-0.5 text-[11px] text-chalk focus:border-lamp focus:outline-none'
@@ -120,7 +121,7 @@ export function ShaftSpecEditor({
         >
           <div className="grid grid-cols-2 gap-1.5">
             <label className="block">
-              <span className="mb-0.5 block text-[10px] text-mute">Shaft id</span>
+              <span className="mb-0.5 block text-[10px] text-mute">{tr('Shaft id')}</span>
               <input
                 type="text"
                 className={FIELD}
@@ -130,7 +131,7 @@ export function ShaftSpecEditor({
               />
             </label>
             <label className="block">
-              <span className="mb-0.5 block text-[10px] text-mute">Role</span>
+              <span className="mb-0.5 block text-[10px] text-mute">{tr('Role')}</span>
               <select
                 className={FIELD}
                 value={spec.role}
@@ -187,7 +188,7 @@ export function ShaftSpecEditor({
                 disabled={!enabled || pending || suggesting !== null}
                 onClick={() => void suggest(index)}
               >
-                {suggesting === spec.shaftId ? 'Asking the planner…' : 'Suggest collar'}
+                {suggesting === spec.shaftId ? tr('Asking the planner…') : tr('Suggest collar')}
               </ActionButton>
             ) : null}
             <span className="text-[10px] text-mute">
@@ -204,7 +205,9 @@ export function ShaftSpecEditor({
             </span>
             <div className="flex flex-wrap gap-x-2 gap-y-0.5">
               {levelIds.length === 0 ? (
-                <span className="text-[10px] text-mute">generate levels to pick stations</span>
+                <span className="text-[10px] text-mute">
+                  {tr('generate levels to pick stations')}
+                </span>
               ) : null}
               {levelIds.map((lid) => (
                 <label key={lid} className="flex items-center gap-1 text-[10px] text-chalk-dim">
@@ -291,7 +294,7 @@ export function ShaftSpecEditor({
             }))
           }
         >
-          Add shaft
+          {tr('Add shaft')}
         </ActionButton>
       </div>
       <p className="text-[10px] text-mute">

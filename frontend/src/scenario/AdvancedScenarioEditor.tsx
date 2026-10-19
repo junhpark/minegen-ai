@@ -11,6 +11,7 @@ import {
   orebodyTypeOptions,
   removeFault,
 } from './builder'
+import { tr } from '@/i18n/t'
 
 /**
  * Explicit scenario-parameter editor (Phase 17 acceptance, rule 124): every
@@ -69,9 +70,9 @@ export function AdvancedScenarioEditor({
   const nominal = vein ? 'Nominal ' : ''
   return (
     <div className="mt-2 rounded-sm border border-rock-700 bg-rock-900/40 p-2">
-      <Group title="Orebody">
+      <Group title={tr('Orebody')}>
         <label className="mb-2 block">
-          <span className="mb-0.5 block text-[10px] text-mute">Type</span>
+          <span className="mb-0.5 block text-[10px] text-mute">{tr('Type')}</span>
           <select
             value={ob.orebodyType}
             onChange={(e) => onChange(editOrebodyType(draft, e.target.value as OrebodyType))}
@@ -92,29 +93,29 @@ export function AdvancedScenarioEditor({
         ) : null}
         <div className="mb-2 grid grid-cols-3 gap-1.5">
           <Num
-            label="Center E"
+            label={tr('Center E')}
             value={ob.center.x}
             onChange={(x) => onChange(editOrebody(draft, { center: { x } }))}
           />
           <Num
-            label="Center N"
+            label={tr('Center N')}
             value={ob.center.y}
             onChange={(y) => onChange(editOrebody(draft, { center: { y } }))}
           />
           <Num
-            label="Center RL"
+            label={tr('Center RL')}
             value={ob.center.z}
             onChange={(z) => onChange(editOrebody(draft, { center: { z } }))}
           />
         </div>
         <div className="grid grid-cols-3 gap-1.5">
           <Num
-            label="Strike °"
+            label={tr('Strike °')}
             value={ob.strikeDeg}
             onChange={(strikeDeg) => onChange(editOrebody(draft, { strikeDeg }))}
           />
           <Num
-            label="Dip °"
+            label={tr('Dip °')}
             value={ob.dipDeg}
             onChange={(dipDeg) => onChange(editOrebody(draft, { dipDeg }))}
           />
@@ -142,22 +143,22 @@ export function AdvancedScenarioEditor({
       </Group>
 
       {vein ? (
-        <Group title="Irregular morphology (synthetic, backend-resolved)">
+        <Group title={tr('Irregular morphology (synthetic, backend-resolved)')}>
           <div className="grid grid-cols-3 gap-1.5">
             <Num
-              label="Warp amp. m"
+              label={tr('Warp amp. m')}
               value={vein.warpAmplitude}
               onChange={(warpAmplitude) => onChange(editWarpedVein(draft, { warpAmplitude }))}
             />
             <Num
-              label="Centre dev. m"
+              label={tr('Centre dev. m')}
               value={vein.centerlineDeviation}
               onChange={(centerlineDeviation) =>
                 onChange(editWarpedVein(draft, { centerlineDeviation }))
               }
             />
             <Num
-              label="Outline irreg."
+              label={tr('Outline irreg.')}
               value={vein.outlineIrregularity}
               step={0.05}
               onChange={(outlineIrregularity) =>
@@ -165,7 +166,7 @@ export function AdvancedScenarioEditor({
               }
             />
             <Num
-              label="Thickness var."
+              label={tr('Thickness var.')}
               value={vein.thicknessVariability}
               step={0.05}
               onChange={(thicknessVariability) =>
@@ -173,21 +174,22 @@ export function AdvancedScenarioEditor({
               }
             />
             <Num
-              label="Pinch floor"
+              label={tr('Pinch floor')}
               value={vein.pinchFloorRatio}
               step={0.05}
               onChange={(pinchFloorRatio) => onChange(editWarpedVein(draft, { pinchFloorRatio }))}
             />
             <Num
-              label="Edge taper"
+              label={tr('Edge taper')}
               value={vein.edgeTaper}
               step={0.05}
               onChange={(edgeTaper) => onChange(editWarpedVein(draft, { edgeTaper }))}
             />
           </div>
           <p className="mt-1 text-[10px] text-mute">
-            Thickness variability must stay ≤ 1 − pinch floor. Geologically plausible synthetic
-            morphology — not a measured or estimated orebody.
+            {tr(
+              'Thickness variability must stay ≤ 1 − pinch floor. Geologically plausible synthetic morphology — not a measured or estimated orebody.',
+            )}
           </p>
           <details className="mt-1">
             <summary className="cursor-pointer text-[10px] text-chalk-dim">
@@ -210,35 +212,35 @@ export function AdvancedScenarioEditor({
         </Group>
       ) : null}
 
-      <Group title="Grade">
+      <Group title={tr('Grade')}>
         <div className="grid grid-cols-3 gap-1.5">
           <Num
-            label="Mean g/t"
+            label={tr('Mean g/t')}
             value={ob.meanGrade}
             step={0.1}
             onChange={(meanGrade) => onChange(editOrebody(draft, { meanGrade }))}
           />
           <Num
-            label="Variability"
+            label={tr('Variability')}
             value={ob.gradeVariability}
             step={0.05}
             onChange={(gradeVariability) => onChange(editOrebody(draft, { gradeVariability }))}
           />
           <Num
-            label="Density t/m³"
+            label={tr('Density t/m³')}
             value={ob.density}
             step={0.1}
             onChange={(density) => onChange(editOrebody(draft, { density }))}
           />
           <Num
-            label="Corr. XY m"
+            label={tr('Corr. XY m')}
             value={ob.gradeCorrelationLengthXy}
             onChange={(gradeCorrelationLengthXy) =>
               onChange(editOrebody(draft, { gradeCorrelationLengthXy }))
             }
           />
           <Num
-            label="Corr. Z m"
+            label={tr('Corr. Z m')}
             value={ob.gradeCorrelationLengthZ}
             onChange={(gradeCorrelationLengthZ) =>
               onChange(editOrebody(draft, { gradeCorrelationLengthZ }))
@@ -247,37 +249,37 @@ export function AdvancedScenarioEditor({
         </div>
       </Group>
 
-      <Group title="Rock quality (synthetic RMR-like, 0-100)">
+      <Group title={tr('Rock quality (synthetic RMR-like, 0-100)')}>
         <div className="grid grid-cols-3 gap-1.5">
           <Num
-            label="Mean"
+            label={tr('Mean')}
             value={rq.mean}
             onChange={(mean) => onChange(editRockQuality(draft, { mean }))}
           />
           <Num
-            label="Std"
+            label={tr('Std')}
             value={rq.std}
             onChange={(std) => onChange(editRockQuality(draft, { std }))}
           />
           <Num
-            label="Minimum"
+            label={tr('Minimum')}
             value={rq.minimum}
             onChange={(minimum) => onChange(editRockQuality(draft, { minimum }))}
           />
           <Num
-            label="Maximum"
+            label={tr('Maximum')}
             value={rq.maximum}
             onChange={(maximum) => onChange(editRockQuality(draft, { maximum }))}
           />
           <Num
-            label="Corr. XY m"
+            label={tr('Corr. XY m')}
             value={rq.correlationLengthXy}
             onChange={(correlationLengthXy) =>
               onChange(editRockQuality(draft, { correlationLengthXy }))
             }
           />
           <Num
-            label="Corr. Z m"
+            label={tr('Corr. Z m')}
             value={rq.correlationLengthZ}
             onChange={(correlationLengthZ) =>
               onChange(editRockQuality(draft, { correlationLengthZ }))
@@ -299,55 +301,55 @@ export function AdvancedScenarioEditor({
                 onClick={() => onChange(removeFault(draft, i))}
                 className="rounded-sm border border-rock-600 px-1.5 text-[10px] text-chalk-dim hover:bg-rock-700"
               >
-                Remove
+                {tr('Remove')}
               </button>
             </div>
             <div className="grid grid-cols-3 gap-1.5">
               <Num
-                label="Origin E"
+                label={tr('Origin E')}
                 value={f.origin.x}
                 onChange={(x) => onChange(editFault(draft, i, { origin: { x } }))}
               />
               <Num
-                label="Origin N"
+                label={tr('Origin N')}
                 value={f.origin.y}
                 onChange={(y) => onChange(editFault(draft, i, { origin: { y } }))}
               />
               <Num
-                label="Origin RL"
+                label={tr('Origin RL')}
                 value={f.origin.z}
                 onChange={(z) => onChange(editFault(draft, i, { origin: { z } }))}
               />
               <Num
-                label="Strike °"
+                label={tr('Strike °')}
                 value={f.strikeDeg}
                 onChange={(strikeDeg) => onChange(editFault(draft, i, { strikeDeg }))}
               />
               <Num
-                label="Dip °"
+                label={tr('Dip °')}
                 value={f.dipDeg}
                 onChange={(dipDeg) => onChange(editFault(draft, i, { dipDeg }))}
               />
               <Num
-                label="Core ½w m"
+                label={tr('Core ½w m')}
                 value={f.coreHalfWidth}
                 step={0.5}
                 onChange={(coreHalfWidth) => onChange(editFault(draft, i, { coreHalfWidth }))}
               />
               <Num
-                label="Infl. ½w m"
+                label={tr('Infl. ½w m')}
                 value={f.influenceHalfWidth}
                 onChange={(influenceHalfWidth) =>
                   onChange(editFault(draft, i, { influenceHalfWidth }))
                 }
               />
               <Num
-                label="Core pen."
+                label={tr('Core pen.')}
                 value={f.corePenalty}
                 onChange={(corePenalty) => onChange(editFault(draft, i, { corePenalty }))}
               />
               <Num
-                label="Damage pen."
+                label={tr('Damage pen.')}
                 value={f.damageZonePenalty}
                 onChange={(damageZonePenalty) =>
                   onChange(editFault(draft, i, { damageZonePenalty }))
@@ -362,7 +364,7 @@ export function AdvancedScenarioEditor({
           disabled={draft.geology.faults.length >= MAX_FAULTS}
           className="plate w-full rounded-sm border border-rock-600 px-2 py-1 text-[11px] text-chalk-dim hover:bg-rock-700 disabled:opacity-40"
         >
-          Add fault
+          {tr('Add fault')}
         </button>
       </Group>
     </div>

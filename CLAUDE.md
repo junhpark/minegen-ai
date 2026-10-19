@@ -1939,13 +1939,14 @@ code, the code and the rule win and the map is corrected.
 
 191. Guided workflow shell (hardening H1 §4, replaces the Phase 20E left-
      panel structure; its principles are inherited). ORDER IS THE SCREEN:
-     the ribbon lists the seven steps `1 Setup · 2 Design · 3 Network ·
-     4 Mining · 5 Systems · 6 Analysis · 7 Export`, the stepper under it
-     lists every stage (`Scenario · Method · Access | Layout · Levels ·
-     Excavation · Shafts | Network · Capability | Production · Schedule |
-     Communication · Sensors | Analysis | Export`) with one glyph each (✓ done · ● next ·
-     ○ waiting · ✗ failed · ↻ running · – optional), and at most ONE stage
-     is NEXT: the first stage whose prerequisite is done (Excavation waits
+     the ribbon tabs list the seven steps `1 Setup · 2 Design · 3 Network ·
+     4 Mining · 5 Systems · 6 Analysis · 7 Export` and every stage
+     (`Scenario · Method · Access | Layout · Levels · Excavation · Shafts |
+     Network · Capability | Production · Schedule | Communication · Sensors
+     | Analysis | Export`) carries one glyph (✓ done · ● next · ○ waiting ·
+     ✗ failed · ↻ running · – optional) — shown in the ribbon band of its
+     step and in the flow dock (hardening PR-3, rule 224; the PR-1 stepper
+     row is retired) — and at most ONE stage is NEXT: the first stage whose prerequisite is done (Excavation waits
      for Levels; Analysis follows the last Systems stage and Export follows
      Analysis, so the guided flow has no dead end); when a FAILED stage
      blocks the chain no stage is NEXT and the failed stage is the focus.
@@ -2794,3 +2795,105 @@ code, the code and the rule win and the map is corrected.
      own routes (`scripts/h2cf_capture_legacy_cut_fill_fixture.py`, which
      refuses any other HEAD; `stat.json` restores the size / mtime_ns
      identities rule 60 binds to) and is never regenerated from newer code.
+
+224. Workspace ribbon, "Reset mine" and the flow dock (hardening PR-3 —
+     replaces the PR-1 ribbon + stepper rows of rule 191; every other
+     rule-191 invariant is inherited unchanged). The top bar carries the
+     ribbon TABS — the seven steps plus a VIEW tab — and under it ONE tool
+     BAND shows the active tab's grouped tools
+     (`components/layout/ribbonModel.ts`, a pure function of viewer state,
+     tested as data). A step tab's band carries that step's STAGES as
+     navigation tools with the rule-191 stage glyph (`data-stage` /
+     `data-glyph` / `aria-current` — the same backend-status presentation,
+     no new vocabulary) plus the step's commands (Setup: New mine · Open… ·
+     Demos, which open the File menu on that section; Analysis: the
+     workspace tabs and the 3D-context toggle; Export: Import results…).
+     The VIEW tab's band (3D · 4D · Walk under the unchanged readiness gate,
+     camera presets, Controls / Results / Flow toggles) is a viewport tab,
+     not a step: selecting it changes no stage (`viewerStore.ribbonTab`,
+     cleared by every stage change). The band's QUICK ACCESS is the same on
+     every tab — the two ways back: "Reset from <stage>" (rule 219, the
+     backend plan of the current stage) and "Reset mine", the way back to
+     the generated world: the from=WORLD plan is read per opening and
+     listed verbatim, confirming regenerates the world from the persisted
+     document (`POST …/world/generate`, rules 40 / 46 / 119 — same seed,
+     same world, every derived artifact cleared, the scenario document
+     untouched) and the shell opens Layout, the first decision to make
+     again; no new backend route and no frontend dependency graph. Both
+     confirmations live in ONE dialog host (`ResetDialogs`, mounted once in
+     `App`, opened by a shell-store request from the band, the flow dock or
+     the controls column's "Reset from here"). The FLOW DOCK draws every
+     stage as a node of the development flow under the viewport
+     (`components/layout/flowGraph.ts`: nodes = the stages, edges = the
+     rule-191 prerequisite chain the NEXT decision already uses, column =
+     longest path from Scenario, row = prerequisite row then stage order —
+     deterministic, tested as data; one backend-reported metric line per
+     node — names and counts echoed from the scene manifest, nothing
+     computed on the client); clicking a node goes to that stage and
+     nothing else. The band and the dock run no generation, mutation or
+     request and carry no `data-variant`, so a stage's ONE
+     primary action stays in the controls column and the single enabled
+     primary invariant holds; hiding a column (View › Controls / Results)
+     is display-only — every feature panel stays mounted. Walk hides the
+     band, the dock and the columns (immersive); a demo has no quick access
+     (viewer-only, rule 222). The browser e2e reads the stage contract from
+     `[data-testid="flow-graph"]` and exercises the ribbon tabs, a flow-dock
+     node and "Reset mine".
+
+     Round 2 (readability): a layout OPTION row and a design-assessment
+     CHECK row are ONE readable line each (13 px option title · family chip
+     · ★ / active chip · total score · one summary line; 12 px check title ·
+     the backend readout · authority badge). Every other number — group
+     scores, geometry diagnostics, access and clearance of an option; the
+     backend summary, the long authority label, the source artifact / field
+     and the evidence of a check — lives in the detail, which opens on
+     hover / focus (`components/ui/HoverDetail.tsx`: a pointer-events-free
+     portal panel placed by the ⓘ `placePopover` rule, no control inside)
+     AND on click (the picked option expands under its row, a check row
+     expands) — never hover-only. `candidateSummary.ts` only FORMATS
+     backend catalogue fields (tested as data); the candidate id stays in
+     the card's Search details and the "Current design" readout names the
+     option (`Option n · FAMILY (active)`), never a bare id when the
+     catalogue knows it.
+
+     Round 3 (Park's second screenshot review): the View tab's band gains
+     the LAYERS group (`VIEW_LAYER_TOOLS`, tested as data) — the coarse
+     form of the Visibility tree: one tool = one group of tree layers
+     (Terrain · Orebody · Faults · Slice · Ramp · Levels · Shafts · Network ·
+     Production · Systems), pressed when every member is visible, setting
+     every member through the store's own `setLayerVisible`; the rule-187
+     walkthrough authority set still bypasses the stored toggles. Every
+     Visibility-tree row toggles a layer the scene READS
+     (`layerGroups.ts`, scanned against `MineScene.tsx`); a dead checkbox
+     is a defect. Analysis › Layouts is written in the option-row grammar
+     (`Option n` · family chip · ★ winner · active / selected chip ·
+     `engineering rank #n` sub-line, fixed-width tabular number columns,
+     the comparable-cost bar inside the row) with rules 204–206 untouched.
+     A mine DURATION reads in Julian years with the backend days beside it
+     (`duration()`: `3.1 yr (1,133 d)`, 365.25 d/yr — the Planning NPV
+     timing); milestones stay day counts. The polish tokens (`warn`,
+     `shadow-card / float / glow`, `.figures`) are presentation only.
+
+225. UI locale (PR-3 round 4 — Park: Korean by default, mine-site
+     terminology). The UI is authored in ENGLISH source strings, which stay
+     the keys the tests assert; `tr(text, vars?)` (`i18n/t.ts`) renders them
+     through the Korean dictionary (`i18n/ko.ts`) and falls back to the
+     English text — a missing entry is visible, never empty. The shared
+     primitives (WorkflowCard, StatusBadge, ActionButton, Disclosure,
+     PanelSection, MetricRow, PanelTabs, ModalDialog, InfoPopover, the
+     ribbon tools, the flow dock) translate their own labels, so callers
+     keep passing the English key; composed strings are templates whose
+     placeholders are substituted AFTER the lookup (`'{n} levels'` →
+     `'레벨 {n}개'`). The default locale is `ko`; `VITE_DEFAULT_LOCALE=en`
+     pins a build (vitest and the browser e2e are pinned, so every English
+     assertion keeps its meaning, and the e2e exercises the Korean switch
+     explicitly); the person's choice is per browser (`localStorage`,
+     `<html lang>`), never a scenario field, and switching remounts the app
+     tree (`Root.tsx`, `key={locale}`) — stores and the query cache
+     survive, no request, artifact or stage changes. Terminology follows
+     Korean mine-site usage and is recorded with its reasoning in
+     `docs/i18n/terminology.json`; `scripts/i18n_glossary.py` builds the
+     reviewable `docs/i18n/glossary-ko-en.xlsx` from the dictionary.
+     Backend-authored strings (failure reasons, candidate ids, demo text)
+     and 3D labels stay as the backend wrote them. `IBM Plex Sans KR` is the
+     Hangul fallback of the three font families; no i18n library is added.

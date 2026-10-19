@@ -5,82 +5,10 @@ import { PanelSection } from '@/components/layout/PanelSection'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useSliceStore } from '@/stores/sliceStore'
 import { useViewerStore } from '@/stores/viewerStore'
-import type { LayerId } from '@/types/enums'
 import type { SliceAxis, SliceField } from '@/types/scene'
+import { LAYER_GROUPS } from './layerGroups'
 import { rampForField } from '@/utils/colormap'
-
-interface LayerRow {
-  id: LayerId
-  label: string
-  /** phase in which the layer gets content; disabled until then */
-  phase: number
-}
-
-const LAYER_GROUPS: { title: string; rows: LayerRow[] }[] = [
-  {
-    title: 'World',
-    rows: [
-      { id: 'terrain', label: 'Terrain', phase: 2 },
-      { id: 'orebody', label: 'Orebody', phase: 2 },
-      { id: 'faults', label: 'Faults', phase: 2 },
-      // §3: explicit opt-in viewer layer, default OFF
-      { id: 'rockQuality', label: 'Field slice', phase: 2 },
-    ],
-  },
-  {
-    title: 'Design',
-    rows: [
-      { id: 'smoothedDecline', label: 'Effective ramp (active design)', phase: 5 },
-      { id: 'layoutV2', label: 'Layout candidate', phase: 20 },
-      { id: 'levelAccesses', label: 'Ramp junctions & level accesses', phase: 20 },
-      { id: 'levels', label: 'Level drifts (centerline)', phase: 8 },
-      { id: 'crosscuts', label: 'Crosscuts (centerline)', phase: 8 },
-      { id: 'tunnelMesh', label: 'Ramp tunnel mesh', phase: 6 },
-      { id: 'developmentMesh', label: 'Development mesh (access · drift · crosscut)', phase: 20 },
-      { id: 'ramp', label: 'Ramp', phase: 6 },
-      { id: 'shafts', label: 'Shafts (axis · stations · station drives)', phase: 20 },
-      { id: 'shaftMesh', label: 'Shaft excavation mesh (barrel · caps · drives)', phase: 20 },
-    ],
-  },
-  {
-    title: 'Network',
-    rows: [{ id: 'networkGraph', label: 'Network graph', phase: 7 }],
-  },
-  {
-    title: 'Production',
-    rows: [
-      { id: 'stopes', label: 'Production (stopes · cuts · rooms)', phase: 9 },
-      { id: 'backfill', label: 'Backfill', phase: 10 },
-    ],
-  },
-  {
-    title: 'Systems',
-    rows: [
-      { id: 'routers', label: 'Routers', phase: 11 },
-      { id: 'coverage', label: 'Communication coverage', phase: 11 },
-      { id: 'sensors', label: 'Sensors', phase: 12 },
-      { id: 'sensorCoverage', label: 'Monitoring coverage', phase: 12 },
-    ],
-  },
-  {
-    // Phase 23C: external simulation results (MineResult overlays)
-    title: 'Results',
-    rows: [
-      { id: 'ventilationResult', label: 'Ventilation overlay (active result)', phase: 20 },
-      { id: 'operationsHeatmap', label: 'Operations edge heatmap', phase: 20 },
-      { id: 'operationsVehicles', label: 'Operations vehicles', phase: 20 },
-    ],
-  },
-  {
-    // closeout v3 §1.C: legacy diagnostic layers, default OFF
-    title: 'Legacy decline (advanced)',
-    rows: [
-      { id: 'accessTargets', label: 'Access targets (legacy)', phase: 3 },
-      // §2: default OFF, and suppressed outright in 4D / TIMELINE_SNAPSHOT
-      { id: 'rawSearchPath', label: 'Raw Hybrid-A* search path', phase: 4 },
-    ],
-  },
-]
+import { tr } from '@/i18n/t'
 
 // every listed layer has backend content by now (Phase 20B closeout v3 §4:
 // the excavation meshes and their centerline overlays must toggle
@@ -108,7 +36,7 @@ export function LayerTree() {
     <>
       {LAYER_GROUPS.map((g) => (
         <div key={g.title} className="mb-3 last:mb-0">
-          <div className="readout mb-1 text-[10px] text-mute">{g.title}</div>
+          <div className="readout mb-1 text-[10px] text-mute">{tr(g.title)}</div>
           <ul className="flex flex-col">
             {g.rows.map((r) => {
               const available = r.phase <= CURRENT_PHASE
@@ -127,7 +55,7 @@ export function LayerTree() {
                       disabled={!available}
                       className="accent-lamp"
                     />
-                    <span className="flex-1">{r.label}</span>
+                    <span className="flex-1">{tr(r.label)}</span>
                     {!available ? (
                       <span className="readout text-[10px]">
                         P{String(r.phase).padStart(2, '0')}
@@ -192,7 +120,10 @@ export function SliceControls({ active }: { active: boolean }) {
     'readout rounded-sm border border-rock-700 bg-rock-900 px-1.5 py-1 text-[11px] text-chalk focus:border-lamp focus:outline-none'
 
   return (
-    <PanelSection title="Field slice" tag={`${shown.axis} = ${shown.coordinate.toFixed(0)} m`}>
+    <PanelSection
+      title={tr('Field slice')}
+      tag={`${shown.axis} = ${shown.coordinate.toFixed(0)} m`}
+    >
       <div className="mb-2 grid grid-cols-[1fr_auto] gap-2">
         <select
           value={field}
@@ -224,7 +155,7 @@ export function SliceControls({ active }: { active: boolean }) {
         value={Math.min(index, Math.max(0, count - 1))}
         onChange={(e) => setIndex(Number(e.target.value))}
         className="w-full accent-lamp"
-        aria-label="slice index"
+        aria-label={tr('slice index')}
       />
       <div className="mt-2 h-2 w-full rounded-sm" style={{ background: gradient }} aria-hidden />
       <div className="readout mt-1 flex justify-between text-[10px] text-chalk-dim">

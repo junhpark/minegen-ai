@@ -1,5 +1,6 @@
 import { useScenarioStore } from '@/stores/scenarioStore'
 import type { SceneMigration } from '@/types/scene'
+import { tr } from '@/i18n/t'
 
 /**
  * PR #54 review B2 — the notice of a scene read that MIGRATED legacy derived
@@ -28,7 +29,7 @@ export function SceneMigrationNoticeBody({ migrations }: { migrations: SceneMigr
       data-testid="scene-migration-notice"
       className="border-b border-lamp/50 bg-rock-900/70 px-4 py-3 text-[11px] leading-relaxed text-chalk-dim"
     >
-      <h3 className="plate mb-1 text-[12px] text-lamp">Migration</h3>
+      <h3 className="plate mb-1 text-[12px] text-lamp">{tr('Migration')}</h3>
       {migrations.map((m) => (
         <div key={m.code} data-migration={m.code}>
           <p>{CODE_TEXT[m.code]}</p>

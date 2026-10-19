@@ -11,6 +11,7 @@ import { ExportPanel } from '@/components/panels/ExportPanel'
 import { SetupPanel } from '@/components/panels/ScenarioPanel'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening H1 §4.2 — the CONTROLS column: the current stage's parameters
@@ -29,8 +30,12 @@ import { useViewerStore } from '@/stores/viewerStore'
  * here") instead of the controls host, except on the Export stage, whose
  * action stays available for a demo. The feature panels stay MOUNTED: their
  * results halves keep rendering into the right column.
+ *
+ * Hardening PR-3 — the column can be hidden from the ribbon's View tab
+ * (`visible`): it is display-only hiding, never an unmount, so every mounted
+ * feature panel keeps its job poll, query and effect lifetime.
  */
-export function LeftPanel() {
+export function LeftPanel({ visible = true }: { visible?: boolean }) {
   const stage = useViewerStore((s) => s.stage)
   const demo = useScenarioStore((s) => s.demo !== null)
   const demoControls = demo && stage !== 'EXPORT'
@@ -40,10 +45,16 @@ export function LeftPanel() {
   const setControlsHost = useShellStore((s) => s.setControlsHost)
   const host = useCallback((el: HTMLElement | null) => setControlsHost(el), [setControlsHost])
   return (
-    <aside className="flex w-[320px] shrink-0 flex-col overflow-y-auto border-r border-rock-700 bg-rock-800">
-      <header className="flex items-center justify-between border-b border-rock-700 px-4 py-2">
-        <h2 className="plate text-[12px] text-chalk-dim">{demo ? 'Demo' : 'Controls'}</h2>
-        <span className="readout text-[10px] text-mute">{STAGE_LABEL[stage]}</span>
+    <aside
+      className={`${visible ? 'flex' : 'hidden'} w-[320px] shrink-0 flex-col overflow-y-auto border-r border-rock-700/70 bg-rock-800`}
+      data-testid="controls-column"
+      data-visible={visible}
+    >
+      <header className="flex items-center justify-between border-b border-rock-700/70 bg-rock-900/40 px-4 py-2">
+        <h2 className="plate text-[11px] tracking-[0.14em] text-chalk-dim">
+          {demo ? tr('Demo') : tr('Controls')}
+        </h2>
+        <span className="readout text-[10px] text-mute">{tr(STAGE_LABEL[stage])}</span>
       </header>
       {demoControls ? (
         <DemoPanel />
@@ -52,8 +63,9 @@ export function LeftPanel() {
       )}
       {stage === 'ANALYSIS' && !demo ? (
         <p className="px-4 py-3 text-[11px] leading-relaxed text-mute">
-          Analysis is a read-only projection of the generated mine — there is nothing to generate
-          here. The workspace opens in the centre.
+          {tr(
+            'Analysis is a read-only projection of the generated mine — there is nothing to generate here. The workspace opens in the centre.',
+          )}
         </p>
       ) : null}
       {demo ? null : <ResetFromHere />}

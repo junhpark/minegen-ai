@@ -97,8 +97,11 @@ describe('KPI tiles (hardening PR-2 H3 §8.1)', () => {
       expect(html).toContain('data-kpi="Planning IRR"')
       expect(html).toContain('12.3 %')
       expect(html).toContain('data-kpi="Mine life"')
-      expect(html).toContain('120 d')
+      // round 3: a DURATION reads in years with the backend days beside it
+      expect(html).toContain('0.3 yr')
+      expect(html).toContain('(120 d)')
       expect(html).toContain('data-kpi="First production day"')
+      // a MILESTONE stays a day count
       expect(html).toContain('50 d')
     }
     // Rules / Layouts keep their bodies and gain the tiles

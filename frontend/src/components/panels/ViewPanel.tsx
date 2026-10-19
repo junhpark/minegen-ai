@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { PanelSection } from '@/components/layout/PanelSection'
 import { LayerTree, SliceControls } from '@/components/panels/LayerPanel'
 import { useViewerStore } from '@/stores/viewerStore'
+import { tr } from '@/i18n/t'
 
 const PRESETS = [
   { kind: 'ISO', label: 'Iso', title: 'Isometric view of the orebody' },
@@ -23,22 +24,22 @@ export function ViewPanel() {
   return (
     <>
       <PanelSection
-        title="View"
+        title={tr('View')}
         collapsible
         open={open}
         onToggle={() => setOpen((v) => !v)}
         actions={
-          <div className="flex gap-0.5" aria-label="camera presets">
+          <div className="flex gap-0.5" aria-label={tr('camera presets')}>
             {PRESETS.map((p) => (
               <button
                 key={p.kind}
                 type="button"
                 disabled={walkthrough}
-                title={p.title}
+                title={tr(p.title)}
                 onClick={() => requestCameraPreset(p.kind)}
                 className="readout rounded-sm border border-rock-700 px-1.5 py-0.5 text-[10px] text-chalk-dim hover:border-lamp hover:text-chalk disabled:opacity-40"
               >
-                {p.label}
+                {tr(p.label)}
               </button>
             ))}
           </div>

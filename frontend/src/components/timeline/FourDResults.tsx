@@ -23,6 +23,7 @@ import {
   type ChartRow,
 } from '@/timeline/timeseriesView'
 import type { TimeseriesPayload } from '@/types/analysis'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening PR-2 H3 §7 — the 4D STATUS & RESULTS card: the current day, the
@@ -142,10 +143,10 @@ export function FourDResultsBody({
         Cumulative at the end of the last complete {fmt0(payload.bucketDays)}-day bucket; backend
         series, linear over each task window.
       </p>
-      <Chart title="Development excavation (m³ per bucket)" rows={rows} day={currentDay}>
+      <Chart title={tr('Development excavation (m³ per bucket)')} rows={rows} day={currentDay}>
         <Bar dataKey="developmentExcavationM3" fill="#8f99a3" isAnimationActive={false} />
       </Chart>
-      <Chart title="Production (t per bucket)" rows={rows} day={currentDay}>
+      <Chart title={tr('Production (t per bucket)')} rows={rows} day={currentDay}>
         <Bar dataKey="productionTonnes" fill="#f2c14e" isAnimationActive={false} />
       </Chart>
       {seriesHasValues(rows, 'cost') ? (
@@ -185,7 +186,7 @@ export function FourDResultsBody({
         </>
       ) : (
         <p className="text-[10px] text-mute">
-          Cost, revenue and cashflow charts need planning economics (Analysis › Economics).
+          {tr('Cost, revenue and cashflow charts need planning economics (Analysis › Economics).')}
         </p>
       )}
       <p className="text-[10px] text-mute">{payload.disclaimer}</p>

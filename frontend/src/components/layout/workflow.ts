@@ -257,7 +257,7 @@ const VIEWER_COMPLETED: ReadonlySet<StageId> = new Set<StageId>(['ANALYSIS', 'EX
  * last Systems stage and Export follows Analysis (S2 — the guided flow has
  * no dead end: once the mine is built, Analysis is next, then Export).
  */
-const PREREQUISITE: Partial<Record<StageId, StageId>> = {
+export const PREREQUISITE: Partial<Record<StageId, StageId>> = {
   METHOD: 'SCENARIO',
   ACCESS: 'METHOD',
   LAYOUT: 'ACCESS',

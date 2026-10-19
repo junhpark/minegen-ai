@@ -9,6 +9,7 @@ import { canGenerateCommunication } from '@/infrastructure/view'
 import { afterCommunicationRegen } from '@/scene/invalidation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
+import { tr } from '@/i18n/t'
 
 /**
  * Communication planning panel. Independent component by design:
@@ -49,9 +50,11 @@ export function CommunicationPanel({ active = true }: { active?: boolean } = {})
   return (
     <WorkflowCard
       stage="COMMUNICATION"
-      title="Communication"
+      title={tr('Communication')}
       tone={artifactTone(communication, generate.isPending)}
-      info="Underground mesh-router placement and backhaul planning. Coverage and backhaul are measured along the physical mine network, never straight through rock, and every selected router is connected back to the portal. It is an explicit planning proxy — not a calibrated radio prediction, not a globally optimal design, and router installation timing is not modelled."
+      info={tr(
+        'Underground mesh-router placement and backhaul planning. Coverage and backhaul are measured along the physical mine network, never straight through rock, and every selected router is connected back to the portal. It is an explicit planning proxy — not a calibrated radio prediction, not a globally optimal design, and router installation timing is not modelled.',
+      )}
       summary={
         metrics ? (
           <>
@@ -63,7 +66,7 @@ export function CommunicationPanel({ active = true }: { active?: boolean } = {})
       failure={
         communication && communication.status !== 'SUCCESS' ? communication.failureReason : null
       }
-      notice={canGenerate ? null : <>Requires a successful mine network.</>}
+      notice={canGenerate ? null : <>{tr('Requires a successful mine network.')}</>}
       action={
         <ActionButton
           variant={nextActionVariant(communication !== null, canGenerate && !generate.isPending)}
@@ -98,7 +101,7 @@ export function CommunicationPanel({ active = true }: { active?: boolean } = {})
             />
           ) : null}
           {config ? (
-            <Disclosure label="Planning inputs">
+            <Disclosure label={tr('Planning inputs')}>
               <Metrics
                 rows={[
                   { label: 'Asset', value: config.assetType },

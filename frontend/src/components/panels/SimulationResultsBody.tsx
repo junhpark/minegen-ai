@@ -37,6 +37,7 @@ import {
   type VentilationFrame,
   type VentilationMetric,
 } from '@/types/results'
+import { tr } from '@/i18n/t'
 
 export const NO_RESULTS_TEXT = 'No simulation results imported for this scenario.'
 export const IMPORT_INFO =
@@ -149,10 +150,12 @@ function Legend({
           ))}
         </div>
       ) : (
-        <div className="text-[10px] text-mute">no value in this frame — edges stay neutral</div>
+        <div className="text-[10px] text-mute">
+          {tr('no value in this frame — edges stay neutral')}
+        </div>
       )}
       <div className="mt-1 flex items-center gap-1 text-[10px] text-mute">
-        <span>display range</span>
+        <span>{tr('display range')}</span>
         <input
           type="number"
           className="w-16 rounded-sm border border-rock-700 bg-rock-900 px-1 text-chalk"
@@ -218,7 +221,7 @@ function Clock({
           value={time}
           onChange={(e) => onTime(Number(e.target.value))}
           className="min-w-0 flex-1 accent-[#f2c14e]"
-          aria-label="result clock"
+          aria-label={tr('result clock')}
         />
       </div>
       <div className="mt-0.5 flex justify-between text-[10px] text-mute">
@@ -237,7 +240,7 @@ function VentilationOverlayControls({ c }: { c: VentilationControls }) {
   return (
     <div className="mt-1.5 border-t border-rock-700 pt-1.5" data-testid="ventilation-controls">
       <label className="flex items-center gap-2 text-[11px] text-chalk-dim">
-        <span className="w-14 text-mute">Metric</span>
+        <span className="w-14 text-mute">{tr('Metric')}</span>
         <select
           className="flex-1 rounded-sm border border-rock-700 bg-rock-900 px-1 py-0.5 text-chalk"
           value={c.metric}
@@ -281,7 +284,7 @@ function VentilationOverlayControls({ c }: { c: VentilationControls }) {
           </div>
         </>
       ) : c.error ? null : (
-        <div className="mt-1 text-[10px] text-mute">Loading frame…</div>
+        <div className="mt-1 text-[10px] text-mute">{tr('Loading frame…')}</div>
       )}
     </div>
   )
@@ -297,7 +300,7 @@ function OperationsOverlayControls({ c }: { c: OperationsControls }) {
   return (
     <div className="mt-1.5 border-t border-rock-700 pt-1.5" data-testid="operations-controls">
       <label className="flex items-center gap-2 text-[11px] text-chalk-dim">
-        <span className="w-14 text-mute">Heatmap</span>
+        <span className="w-14 text-mute">{tr('Heatmap')}</span>
         <select
           className="flex-1 rounded-sm border border-rock-700 bg-rock-900 px-1 py-0.5 text-chalk"
           value={c.metric}
@@ -316,7 +319,7 @@ function OperationsOverlayControls({ c }: { c: OperationsControls }) {
           className="plate rounded-sm border border-edge px-2 py-0.5 text-[11px] hover:border-lamp"
           onClick={() => (c.playing ? c.onPause() : c.onPlay())}
         >
-          {c.playing ? 'Pause' : 'Play'}
+          {c.playing ? tr('Pause') : tr('Play')}
         </button>
         {SPEEDS.map((sp) => (
           <button
@@ -349,7 +352,7 @@ function OperationsOverlayControls({ c }: { c: OperationsControls }) {
           </div>
         </>
       ) : c.error ? null : (
-        <div className="mt-1 text-[10px] text-mute">Loading frame…</div>
+        <div className="mt-1 text-[10px] text-mute">{tr('Loading frame…')}</div>
       )}
     </div>
   )
@@ -400,7 +403,7 @@ function ResultCard({
         <div className="min-w-0 flex-1">
           {active ? (
             <ActionButton variant="secondary" onClick={onDeactivate}>
-              Hide overlay
+              {tr('Hide overlay')}
             </ActionButton>
           ) : (
             <ActionButton
@@ -409,7 +412,7 @@ function ResultCard({
               disabled={stale}
               title={stale ? STALE_TEXT : undefined}
             >
-              Show overlay
+              {tr('Show overlay')}
             </ActionButton>
           )}
         </div>
@@ -417,9 +420,9 @@ function ResultCard({
           type="button"
           className="plate shrink-0 rounded-sm border border-edge px-2 text-[11px] text-chalk-dim hover:border-lamp"
           onClick={onExport}
-          title="Download the canonical MineResult 1.0 ZIP"
+          title={tr('Download the canonical MineResult 1.0 ZIP')}
         >
-          Export
+          {tr('Export')}
         </button>
         <button
           type="button"
@@ -427,11 +430,11 @@ function ResultCard({
           onClick={onDelete}
           disabled={deleting}
         >
-          {deleting ? 'Deleting…' : 'Delete'}
+          {deleting ? tr('Deleting…') : tr('Delete')}
         </button>
       </div>
       {active ? children : null}
-      <Disclosure label="Details">
+      <Disclosure label={tr('Details')}>
         <Metrics
           rows={[
             { label: 'Result id', value: r.resultId },
@@ -476,28 +479,28 @@ export function SimulationResultsBody(p: SimulationResultsBodyProps) {
       <section className="border-b border-rock-700 px-4 py-3">
         <header className="mb-1.5 flex items-center justify-between gap-2">
           <h3 className="plate flex items-center gap-1.5 text-[12px] text-chalk">
-            Import result
-            <InfoPopover label="Import result">{IMPORT_INFO}</InfoPopover>
+            {tr('Import result')}
+            <InfoPopover label={tr('Import result')}>{IMPORT_INFO}</InfoPopover>
           </h3>
           <StatusBadge
             tone={p.importing ? 'RUNNING' : 'INACTIVE'}
-            label={p.importing ? 'Importing' : 'MineResult 1.0'}
+            label={p.importing ? tr('Importing') : tr('MineResult 1.0')}
           />
         </header>
         <label className="flex items-center gap-2 text-[11px] text-chalk-dim">
-          <span className="w-14 text-mute">Source</span>
+          <span className="w-14 text-mute">{tr('Source')}</span>
           <select
             className="flex-1 rounded-sm border border-rock-700 bg-rock-900 px-1 py-0.5 text-chalk"
             value={p.importTarget}
             onChange={(e) => p.onImportTarget(e.target.value as SourceApplication)}
             disabled={p.importing}
           >
-            <option value="VENTSIM">Ventsim — ventilation</option>
-            <option value="ANYLOGIC">AnyLogic — operations</option>
+            <option value="VENTSIM">{tr('Ventsim — ventilation')}</option>
+            <option value="ANYLOGIC">{tr('AnyLogic — operations')}</option>
           </select>
         </label>
         <label className="mt-1.5 block text-[11px] text-chalk-dim">
-          <span className="text-mute">Package (.zip)</span>
+          <span className="text-mute">{tr('Package (.zip)')}</span>
           <input
             type="file"
             accept=".zip,application/zip"
@@ -508,7 +511,7 @@ export function SimulationResultsBody(p: SimulationResultsBodyProps) {
           />
         </label>
         {p.importing ? (
-          <p className="mt-1 text-[11px] text-mute">Importing and binding the package…</p>
+          <p className="mt-1 text-[11px] text-mute">{tr('Importing and binding the package…')}</p>
         ) : null}
         {p.importError ? (
           <p className="mt-1 break-words text-[11px] text-danger">{p.importError}</p>

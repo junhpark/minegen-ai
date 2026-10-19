@@ -3,6 +3,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { artifactTone } from '@/components/ui/presentation'
 import { useScenarioStore } from '@/stores/scenarioStore'
 import { useViewerStore } from '@/stores/viewerStore'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening H1 §4.2 — the status bar: World · Ramp · Levels · Network ·
@@ -17,16 +18,16 @@ export function BottomBar() {
     {
       label: 'World',
       tone: scene ? ('READY' as const) : ('NOT_GENERATED' as const),
-      text: scene ? 'ready' : scenario ? 'not generated' : 'no mine',
+      text: scene ? tr('ready') : scenario ? tr('not generated') : tr('no mine'),
     },
     {
       label: 'Ramp',
       tone: scene?.rampSource.available ? ('READY' as const) : ('NOT_GENERATED' as const),
       text: scene?.rampSource.available
         ? scene.rampSource.activeSource === 'LAYOUT_V2'
-          ? (scene.rampSource.candidateId ?? 'layout')
-          : 'legacy'
-        : 'none',
+          ? (scene.rampSource.candidateId ?? tr('layout'))
+          : tr('legacy')
+        : tr('none'),
     },
     { label: 'Levels', tone: artifactTone(scene?.levels), text: chipText(scene?.levels) },
     { label: 'Network', tone: artifactTone(scene?.network), text: chipText(scene?.network) },
@@ -34,21 +35,21 @@ export function BottomBar() {
   ]
   return (
     <footer
-      className={`shrink-0 border-t border-rock-700 bg-rock-800 ${fourD ? 'h-24' : 'h-8'}`}
+      className={`shrink-0 border-t border-rock-700/70 bg-rock-900 ${fourD ? 'h-24' : 'h-8'}`}
       data-testid="status-bar"
     >
       <div className="flex h-8 items-center gap-4 px-3">
         {chips.map((c) => (
           <div key={c.label} className="flex items-center gap-1.5 text-[11px]" data-chip={c.label}>
-            <span className="readout text-[10px] text-mute">{c.label}</span>
+            <span className="readout text-[10px] text-mute">{tr(c.label)}</span>
             <StatusBadge tone={c.tone} label={c.text} />
           </div>
         ))}
         {!fourD ? (
           <span className="ml-auto text-[11px] text-mute">
             {scene?.timeline?.status === 'SUCCESS'
-              ? 'Switch to the 4D view to play the schedule'
-              : 'Schedule the mine development to enable 4D playback'}
+              ? tr('Switch to the 4D view to play the schedule')
+              : tr('Schedule the mine development to enable 4D playback')}
           </span>
         ) : null}
       </div>
@@ -62,6 +63,6 @@ export function BottomBar() {
 }
 
 function chipText(a: { status: string } | null | undefined): string {
-  if (a == null) return 'none'
-  return a.status === 'SUCCESS' ? 'ready' : 'failed'
+  if (a == null) return tr('none')
+  return a.status === 'SUCCESS' ? tr('ready') : tr('failed')
 }

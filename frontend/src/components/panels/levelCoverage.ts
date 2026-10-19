@@ -6,6 +6,7 @@ import type {
   LevelsPayload,
   UnservedInterval,
 } from '@/types/scene'
+import { tr } from '@/i18n/t'
 
 /**
  * Hardening H0 §3.1 — presentation of the backend's level-coverage report
@@ -64,7 +65,10 @@ export function isServiceable(lv: LayoutRequiredLevel): boolean {
 
 /** "12/13 levels serviceable" — the catalogue's own count, never recounted */
 export function catalogueLevelSummary(c: LayoutV2Catalogue): string {
-  return `${String(c.serviceableLevelCount)}/${String(c.requiredLevels.length)} levels serviceable`
+  return tr('{n}/{total} levels serviceable', {
+    n: c.serviceableLevelCount,
+    total: c.requiredLevels.length,
+  })
 }
 
 /** one line per required level the catalogue marks without an orebody section */

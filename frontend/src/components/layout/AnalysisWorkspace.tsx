@@ -3,6 +3,7 @@ import { SimulationResultsPanel } from '@/components/panels/SimulationResultsPan
 import { ANALYSIS_PANEL_ID, ANALYSIS_TABS } from '@/components/panels/workflowTabs'
 import { PanelTabs } from '@/components/ui/PanelTabs'
 import { useViewerStore } from '@/stores/viewerStore'
+import { tr } from '@/i18n/t'
 
 /**
  * Phase 22A/B — the Analysis workspace as secondary tabs: Overview
@@ -21,7 +22,7 @@ export function AnalysisWorkspace() {
   return (
     <>
       <header className="flex items-center justify-between border-b border-rock-700 px-4 py-2">
-        <h2 className="plate text-[13px] text-chalk">Analysis</h2>
+        <h2 className="plate text-[13px] text-chalk">{tr('Analysis')}</h2>
         <label className="flex items-center gap-1.5 text-[11px] text-chalk-dim">
           <input
             type="checkbox"
@@ -29,7 +30,7 @@ export function AnalysisWorkspace() {
             onChange={(e) => setShow3d(e.target.checked)}
             data-testid="analysis-show-3d"
           />
-          Show 3D context
+          {tr('Show 3D context')}
         </label>
       </header>
       <PanelTabs

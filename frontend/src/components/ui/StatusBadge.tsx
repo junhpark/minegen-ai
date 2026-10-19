@@ -1,4 +1,5 @@
 import { type StatusTone } from './presentation'
+import { tr } from '@/i18n/t'
 
 /**
  * Phase 20E §13 — one status presentation for every feature. The tone comes
@@ -24,22 +25,22 @@ const TONE: Record<StatusTone, string> = {
 }
 
 const DOT: Record<StatusTone, string> = {
-  READY: 'bg-lamp',
-  RUNNING: 'bg-chalk-dim',
-  FAILED: 'bg-danger',
+  READY: 'bg-lamp shadow-[0_0_6px_var(--color-lamp)]',
+  RUNNING: 'bg-chalk-dim animate-pulse',
+  FAILED: 'bg-danger shadow-[0_0_6px_var(--color-danger)]',
   NOT_GENERATED: 'bg-mute',
-  ACTIVE: 'bg-lamp',
+  ACTIVE: 'bg-lamp shadow-[0_0_6px_var(--color-lamp)]',
   INACTIVE: 'bg-mute',
 }
 
 export function StatusBadge({ tone, label }: { tone: StatusTone; label?: string | undefined }) {
   return (
     <span
-      className={`plate inline-flex items-center gap-1 text-[11px] ${TONE[tone]}`}
+      className={`plate inline-flex items-center gap-1.5 text-[10.5px] tracking-[0.12em] ${TONE[tone]}`}
       data-status={tone}
     >
       <span aria-hidden className={`inline-block h-1.5 w-1.5 rounded-full ${DOT[tone]}`} />
-      {label ?? TEXT[tone]}
+      {tr(label ?? TEXT[tone])}
     </span>
   )
 }

@@ -4,6 +4,7 @@ import {
   PLANNED_LAYOUT_LABEL,
   SENSOR_PROXY_DISCLAIMER,
 } from './selectionResolver'
+import { tr } from '@/i18n/t'
 
 /**
  * Compact walkthrough inspection card (§17, rule 108): backend-authored
@@ -36,7 +37,7 @@ export function WalkthroughInspector({
     <div className="pointer-events-auto absolute bottom-3 right-3 w-72 rounded-sm border border-rock-700 bg-rock-900/90 p-3">
       <div className="mb-2 flex items-center justify-between">
         <span className="plate text-[12px] text-lamp">
-          {isRouter ? 'Mesh router' : 'Gas sensor'}
+          {isRouter ? tr('Mesh router') : tr('Gas sensor')}
         </span>
         <button
           type="button"

@@ -173,7 +173,10 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
             "--strictPort",
         ],
         cwd=FRONTEND,
-        env={**os.environ, "VITE_API_BASE_URL": api},
+        # PR-3 round 4: the UI defaults to Korean; this test reads the ENGLISH
+        # source strings, so the dev server is pinned to `en` and the Korean
+        # default is exercised explicitly through the language switch below
+        env={**os.environ, "VITE_API_BASE_URL": api, "VITE_DEFAULT_LOCALE": "en"},
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
     )
@@ -224,7 +227,7 @@ def browser(stack: dict[str, Any]) -> Iterator[tuple[Any, list[str]]]:
         errors: list[str] = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
         pg.goto(stack["web"])
-        pg.wait_for_selector('[data-testid="stepper"]', timeout=60_000)
+        pg.wait_for_selector('[data-testid="flow-graph"]', timeout=60_000)
         yield pg, errors
         browser.close()
 
@@ -239,7 +242,7 @@ def _primaries(page: Any) -> int:
 
 
 def _current_stage(page: Any) -> str | None:
-    loc = page.locator('[data-testid="stepper"] [aria-current="step"]')
+    loc = page.locator('[data-testid="flow-graph"] [aria-current="step"]')
     return str(loc.get_attribute("data-stage")) if loc.count() else None
 
 
@@ -251,24 +254,26 @@ def _assert_single_primary(page: Any, where: str) -> None:
 def _glyphs(page: Any) -> dict[str, str]:
     return {
         str(e.get_attribute("data-stage")): str(e.get_attribute("data-glyph"))
-        for e in page.locator('[data-testid="stepper"] button').all()
+        for e in page.locator('[data-testid="flow-graph"] button').all()
     }
 
 
 def _wait_glyph(page: Any, stage: str, glyph: str, timeout: int = JOB_TIMEOUT_MS) -> None:
     try:
         page.wait_for_selector(
-            f'[data-testid="stepper"] [data-stage="{stage}"][data-glyph="{glyph}"]',
+            f'[data-testid="flow-graph"] [data-stage="{stage}"][data-glyph="{glyph}"]',
             timeout=timeout,
         )
     except playwright.TimeoutError as e:
-        # the failure names the stepper as it IS, not only the glyph it waited for
-        raise AssertionError(f"{stage} never became {glyph}; stepper = {_glyphs(page)}") from e
+        # the failure names the flow graph as it IS, not only the glyph it waited for
+        raise AssertionError(f"{stage} never became {glyph}; flow = {_glyphs(page)}") from e
 
 
 def _click_stage(page: Any, stage: str) -> None:
-    page.click(f'[data-testid="stepper"] [data-stage="{stage}"]')
-    page.wait_for_selector(f'[data-testid="stepper"] [data-stage="{stage}"][aria-current="step"]')
+    page.click(f'[data-testid="flow-graph"] [data-stage="{stage}"]')
+    page.wait_for_selector(
+        f'[data-testid="flow-graph"] [data-stage="{stage}"][aria-current="step"]'
+    )
     _assert_single_primary(page, f"stage {stage}")
 
 
@@ -297,7 +302,7 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     assert _primaries(page) == 1
     _controls(page, "Create mine").click()
     _wait_glyph(page, "SCENARIO", "DONE", 180_000)
-    page.wait_for_selector('[data-testid="stepper"] [data-stage="METHOD"][aria-current="step"]')
+    page.wait_for_selector('[data-testid="flow-graph"] [data-stage="METHOD"][aria-current="step"]')
     _assert_single_primary(page, "Method")
     # the mine exists on disk under the temporary data dir
     scenarios = list((stack["data_dir"] / "scenarios").iterdir())
@@ -379,7 +384,7 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     _wait_glyph(page, "ANALYSIS", "NEXT")
     _wait_glyph(page, "EXPORT", "WAITING")
     page.click('[data-testid="view-switcher"] button:has-text("4D")')
-    page.wait_for_selector('[data-testid="stepper"]')
+    page.wait_for_selector('[data-testid="flow-graph"]')
     assert page.locator('[data-testid="analysis-center"]').count() == 0
     # PR-2 H3 §7: the 4D view carries Restart / Play / Loop / speed and the
     # backend time-series results card in the right column
@@ -463,6 +468,49 @@ def test_baseline_setup_to_export_single_primary_and_reset(
     page.wait_for_selector('[data-testid="analysis-center"]')
     _wait_glyph(page, "ANALYSIS", "DONE")
     _wait_glyph(page, "EXPORT", "NEXT")
+
+    # PR-3 — the ribbon: the Analysis tab's band carries the workspace tabs and
+    # the band's quick access carries the two ways back on every tab
+    assert page.locator('[data-testid="ribbon-band"][data-tab="ANALYSIS"]').count() == 1
+    assert page.locator('[data-tool="analysis-ECONOMICS"]').count() == 1
+    assert page.locator('[data-testid="ribbon-quick-access"] [data-tool="reset-mine"]').count() == 1
+    # the View tab changes no stage (the band shows the viewport tools)
+    page.click('[data-testid="ribbon-tabs"] [data-step="VIEW"]')
+    page.wait_for_selector('[data-testid="ribbon-band"][data-tab="VIEW"]')
+    assert _current_stage(page) == "ANALYSIS"
+    # PR-3 round 4 — the UI language: Korean renders the same contract (the
+    # app tree remounts, stage and artifacts untouched), English comes back
+    page.click('[data-testid="locale-switch"] [data-locale="ko"]')
+    page.wait_for_selector('[data-testid="ribbon-tabs"] [data-step="SETUP"]:has-text("설정")')
+    assert page.locator("html").get_attribute("lang") == "ko"
+    assert _current_stage(page) == "ANALYSIS"
+    page.click('[data-testid="locale-switch"] [data-locale="en"]')
+    page.wait_for_selector('[data-testid="ribbon-tabs"] [data-step="SETUP"]:has-text("Setup")')
+    assert page.locator("html").get_attribute("lang") == "en"
+    # a flow-dock node is the way back to a stage: Design › Layout
+    page.click('[data-testid="flow-graph"] [data-stage="LAYOUT"]')
+    page.wait_for_selector('[data-testid="ribbon-band"][data-tab="DESIGN"]')
+    assert _current_stage(page) == "LAYOUT"
+    _assert_single_primary(page, "Layout from the flow dock")
+
+    # PR-3 — "Reset mine": the backend from=WORLD plan is listed, confirming
+    # regenerates the world from the same seed and clears every design
+    # artifact (rules 40 / 46 / 119); the world itself stays, Layout is NEXT
+    assert (scenarios[0] / "arrays.npz").exists()
+    page.click('[data-tool="reset-mine"]')
+    page.wait_for_selector('[data-testid="reset-mine-will-delete"]')
+    listed = page.locator('[data-testid="reset-mine-will-delete"] li').all_inner_texts()
+    assert "layout_v2.json" in listed and "levels.json" in listed and "timeline.json" in listed
+    page.click('[role="dialog"] button:has-text("Clear design & regenerate world")')
+    _wait_glyph(page, "LAYOUT", "NEXT", timeout=JOB_TIMEOUT_MS)
+    page.wait_for_selector('[role="dialog"]', state="detached")
+    _wait_glyph(page, "SCENARIO", "DONE")
+    _wait_glyph(page, "LEVELS", "WAITING")
+    assert not (derived / "layout_v2.json").exists()
+    assert not (derived / "levels.json").exists()
+    assert (scenarios[0] / "arrays.npz").exists()
+    assert _current_stage(page) == "LAYOUT"
+    _assert_single_primary(page, "after Reset mine")
     assert errors == []
 
 
@@ -488,12 +536,16 @@ def test_cut_fill_demo_opens_read_only_then_analysis_and_export(
     page.wait_for_selector('[data-testid="demo-panel"]')
     assert page.locator('[data-testid="controls-host"]').count() == 0
     assert page.locator('[data-testid="reset-from-here"]').count() == 0
+    # PR-3: the ribbon band is there, its quick-access reset tools are not (viewer-only)
+    page.wait_for_selector('[data-testid="ribbon-band"]')
+    assert page.locator('[data-testid="ribbon-quick-access"]').count() == 0
+    assert page.locator('[data-tool="reset-mine"]').count() == 0
     assert _primaries(page) == 1
     # text_content, not inner_text: the button's `plate` style upper-cases its rendering
     primary = page.locator('button[data-variant="primary"]:enabled').text_content() or ""
     assert primary.strip() == "Clone to edit", primary
     assert page.locator('[data-testid="demo-auto-tour"]').is_checked()
-    # every baked stage reads DONE in the stepper (the demo's artifacts)
+    # every baked stage reads DONE in the flow graph (the demo's artifacts)
     for stage in ("SCENARIO", "LAYOUT", "LEVELS", "NETWORK", "PRODUCTION", "SCHEDULE"):
         _wait_glyph(page, stage, "DONE")
     # 4D: Loop is on for a demo; the results card reads the backend series

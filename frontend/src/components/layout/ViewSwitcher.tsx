@@ -7,6 +7,7 @@ import {
   temporalWalkthroughReadiness,
   walkthroughReadiness,
 } from '@/walkthrough/readiness'
+import { tr } from '@/i18n/t'
 
 const VIEWS: { id: ViewMode; label: string }[] = [
   { id: '3D', label: '3D' },
@@ -35,9 +36,9 @@ export function ViewSwitcher() {
   const walkTooltip = temporalReadinessMessage(readiness)
   return (
     <div
-      className="pointer-events-auto absolute right-3 top-3 z-20 flex rounded-sm border border-rock-600 bg-rock-800/90 p-0.5 shadow"
+      className="pointer-events-auto absolute right-3 top-3 z-20 flex rounded-md border border-rock-600/80 bg-rock-800/85 p-0.5 shadow-float backdrop-blur"
       role="group"
-      aria-label="view mode"
+      aria-label={tr('view mode')}
       data-testid="view-switcher"
     >
       {VIEWS.map((v) => {
@@ -50,7 +51,7 @@ export function ViewSwitcher() {
             onClick={() => setViewMode(v.id)}
             aria-pressed={active}
             disabled={walkDisabled}
-            title={v.id === 'WALK' ? walkTooltip : undefined}
+            title={v.id === 'WALK' && walkTooltip ? tr(walkTooltip) : undefined}
             data-view={v.id}
             className={[
               'plate rounded-sm px-2.5 py-0.5 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40',
@@ -59,7 +60,7 @@ export function ViewSwitcher() {
                 : 'text-chalk-dim hover:bg-rock-700/60 hover:text-chalk',
             ].join(' ')}
           >
-            {v.label}
+            {tr(v.label)}
           </button>
         )
       })}

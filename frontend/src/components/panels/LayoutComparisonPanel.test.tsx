@@ -29,7 +29,7 @@ const render = (payload = CONFIGURED, error: string | null = null) =>
 
 function rowsInOrder(html: string): string[] {
   const start = html.indexOf('data-testid="layout-comparison-table"')
-  const table = html.slice(start, html.indexOf('</table>', start))
+  const table = html.slice(start, html.indexOf('aria-label="scores"', start))
   return [...table.matchAll(/data-candidate-id="([^"]+)"/g)].map((m) => m[1] ?? '')
 }
 
@@ -87,9 +87,16 @@ describe('Layout comparison — configured', () => {
     expect(html).toContain('Main ramp + level access only')
     expect(html).toContain('data-winner="true"')
     expect(html).toContain('data-selected="true"')
-    // the winner row is marked ●, the selected row "(selected)", never a verdict
-    expect(html).toContain('● ')
-    expect(html).toContain('(selected)')
+    // round 3: the rows share the Layout option grammar — "Option n", the
+    // family chip, ★ for the ranking winner and the active / selected chip;
+    // the engineering rank stays an explicit readout; never a verdict
+    expect(html).toContain('Option 1')
+    expect(html).toContain('Option 2')
+    expect(html).toContain('title="ranking winner"')
+    expect(html).toContain('engineering rank #2')
+    expect(html).toContain('>active<')
+    expect(render(INACTIVE)).toContain('>selected<')
+    expect(html).not.toContain('>k1-p+20-CW-g0.120<')
   })
 
   it('carries the backend disclaimer and the excluded cost kinds, and no forbidden vocabulary', () => {
@@ -105,8 +112,12 @@ describe('Layout comparison — configured', () => {
     expect(html).toContain('aria-label="scores"')
     expect(html).toContain('4.521')
     expect(html).toContain('+0.107')
+    // the comparable-cost bar is drawn inside each row, as a fraction of the
+    // largest cost (rank 2, USD 16,500 → 100 %; rank 3 → 51.5 %)
     expect(html).toContain('data-testid="cost-bars"')
-    expect((html.match(/<rect/g) ?? []).length).toBe(3)
+    expect((html.match(/data-testid="cost-bar"/g) ?? []).length).toBe(3)
+    expect(html).toContain('width:100.0%')
+    expect(html).toContain('width:51.5%')
   })
 })
 

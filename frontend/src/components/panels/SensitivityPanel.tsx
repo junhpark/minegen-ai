@@ -9,7 +9,8 @@ import type {
   WhatIfOutcome,
 } from '@/types/analysis'
 import { WHAT_IF_LABEL } from '@/types/analysis'
-import { days, fmt0, irrText, money, signedMoney } from './analysisFormat'
+import { days, duration, fmt0, irrText, money, signedMoney } from './analysisFormat'
+import { tr } from '@/i18n/t'
 
 const FIELD =
   'w-full rounded-sm border border-rock-700 bg-rock-900 px-1.5 py-0.5 text-[11px] text-chalk focus:border-lamp focus:outline-none'
@@ -73,12 +74,12 @@ export function SensitivityBody({
             <p className="px-4 py-2 text-[11px] text-mute">{payload.reason}</p>
           ) : null}
           <section className="border-b border-rock-700 px-4 py-3">
-            <h3 className="plate mb-1.5 text-[12px] text-chalk">Base (unperturbed)</h3>
+            <h3 className="plate mb-1.5 text-[12px] text-chalk">{tr('Base (unperturbed)')}</h3>
             <OutcomeMetrics outcome={payload.base} code={code} withDeltas={false} />
           </section>
           <Tornado payload={payload} code={code} />
           <section className="border-b border-rock-700 px-4 py-3">
-            <h3 className="plate mb-1.5 text-[12px] text-chalk">All cases</h3>
+            <h3 className="plate mb-1.5 text-[12px] text-chalk">{tr('All cases')}</h3>
             <CaseTable payload={payload} code={code} />
           </section>
         </>
@@ -128,11 +129,11 @@ function OutcomeMetrics({
       rows={[
         { label: 'Planning NPV', value: money(outcome.planningNpv, code) },
         { label: 'Planning IRR', value: irrText(outcome.planningIrr) },
-        { label: 'Mine duration', value: days(outcome.mineDurationDays) },
+        { label: 'Mine duration', value: duration(outcome.mineDurationDays) },
         { label: 'First production day', value: days(outcome.firstProductionDay) },
         {
           label: 'Schedule',
-          value: outcome.scheduleRebuilt ? 'rerun in memory' : 'authoritative timeline',
+          value: outcome.scheduleRebuilt ? tr('rerun in memory') : tr('authoritative timeline'),
         },
         withDeltas ? { label: 'Δ Planning NPV', value: signedMoney(outcome.npvDelta, code) } : null,
       ]}
@@ -159,7 +160,7 @@ function Tornado({ payload, code }: { payload: SensitivityPayload; code: string 
   if (rows.length === 0) {
     return (
       <p className="px-4 py-2 text-[11px] text-mute">
-        No Planning NPV deltas are available (planning economics not configured).
+        {tr('No Planning NPV deltas are available (planning economics not configured).')}
       </p>
     )
   }
@@ -207,13 +208,13 @@ function CaseTable({ payload, code }: { payload: SensitivityPayload; code: strin
       <table className="w-full border-collapse">
         <thead>
           <tr className="text-mute">
-            <th className="text-left font-normal">Parameter</th>
+            <th className="text-left font-normal">{tr('Parameter')}</th>
             <th className="text-right font-normal">%</th>
-            <th className="text-right font-normal">Planning NPV</th>
+            <th className="text-right font-normal">{tr('Planning NPV')}</th>
             <th className="text-right font-normal">Δ NPV</th>
-            <th className="text-right font-normal">Planning IRR</th>
-            <th className="text-right font-normal">Duration</th>
-            <th className="text-right font-normal">First production</th>
+            <th className="text-right font-normal">{tr('Planning IRR')}</th>
+            <th className="text-right font-normal">{tr('Duration')}</th>
+            <th className="text-right font-normal">{tr('First production')}</th>
           </tr>
         </thead>
         <tbody>
@@ -238,7 +239,7 @@ function CaseTable({ payload, code }: { payload: SensitivityPayload; code: strin
                     {signedMoney(c.outcome.npvDelta, code)}
                   </td>
                   <td className="text-right">{irrText(c.outcome.planningIrr)}</td>
-                  <td className="text-right">{days(c.outcome.mineDurationDays)}</td>
+                  <td className="text-right">{duration(c.outcome.mineDurationDays)}</td>
                   <td className="text-right">{days(c.outcome.firstProductionDay)}</td>
                 </>
               ) : (
@@ -315,15 +316,16 @@ function WhatIfForm({
           disabled={!enabled || pending || !dirty}
           onClick={() => onSubmit(factors)}
         >
-          {pending ? 'Evaluating…' : 'Evaluate what-if (not saved)'}
+          {pending ? tr('Evaluating…') : tr('Evaluate what-if (not saved)')}
         </ActionButton>
         <ActionButton variant="secondary" disabled={pending || !dirty} onClick={() => setPct({})}>
-          Reset to scenario values
+          {tr('Reset to scenario values')}
         </ActionButton>
       </div>
       <p className="text-[10px] text-mute">
-        Percent changes are applied as multiplicative factors to the configured assumption or
-        schedule rate for this evaluation only. Nothing is saved.
+        {tr(
+          'Percent changes are applied as multiplicative factors to the configured assumption or schedule rate for this evaluation only. Nothing is saved.',
+        )}
       </p>
     </div>
   )

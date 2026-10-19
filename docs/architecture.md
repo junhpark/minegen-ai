@@ -174,14 +174,15 @@ implements numerics.
 The frontend never computes mine engineering quantities
 (CLAUDE.md rule 17, 32).
 
-## UI information architecture (hardening H1 — guided workflow shell)
+## UI information architecture (hardening H1 shell, PR-3 workspace ribbon)
 
 The Phase 20E consolidation (one card layout, ⓘ popovers, `StatusBadge` as a
 presentation mapping, tabs as presentation events) is inherited; the panel
-STRUCTURE is the guided workflow shell of rule 191:
+STRUCTURE is the guided workflow shell of rule 191 under the PR-3 ribbon,
+"Reset mine" and flow dock of rule 224:
 
-    ┌ MineGen-AI · File ▾ · 1 Setup · 2 Design · 3 Network · 4 Mining · 5 Systems · 6 Analysis · 7 Export ┐
-    │ [Scenario ✓][Method ✓][Access ✓] │ [Layout ●][Levels ○][Excavation ○][Shafts –] │ … ← stepper │
+    ┌ MineGen-AI · File ▾ · 1 Setup · 2 Design · 3 Network · 4 Mining · 5 Systems · 6 Analysis · 7 Export · View ┐ ← ribbon tabs
+    │ [New][Open…][Demos] │ [Scenario ✓][Method ✓][Access ●] │            ↺ Reset from Access  ⟳ Reset mine │ ← ribbon band
     ├────────────┬───────────────────────────────────────┬─────────────────────────────────────────┤
     │ CONTROLS   │  3D / 4D / Walk viewport (switcher)   │ STATUS & RESULTS — the current step's   │
     │ one stage  │  Analysis: centre workspace           │ stage statuses · key metrics ·          │
@@ -189,11 +190,39 @@ STRUCTURE is the guided workflow shell of rule 191:
     │ Reset from │                                       ├─────────────────────────────────────────┤
     │ here…      │                                       │ VIEW: presets · Visibility tree · slice │
     ├────────────┴───────────────────────────────────────┴─────────────────────────────────────────┤
+    │ FLOW: [Scenario ✓]→[Method ✓]→[Access ●]→[Layout ○]→[Levels ○]→{Excavation, Shafts, Network, Production}→… │ ← flow dock
+    ├──────────────────────────────────────────────────────────────────────────────────────────────┤
     │ status bar: World · Ramp · Levels · Network · Timeline │ 4D control (4D view only)          │
     └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
-Vocabulary (`types/workflow.ts`): a STEP is a ribbon entry, a STAGE is a
-stepper chip and the unit of "Reset from here"; both are frontend-local
+The ribbon (`components/layout/Ribbon.tsx`, model `ribbonModel.ts`): a step
+tab opens its NEXT / failed stage and its band lists that step's stages as
+navigation tools (each with the stage glyph) plus the step's commands; the
+View tab's band holds the viewport tools (3D · 4D · Walk, camera presets,
+the scene Layers — the coarse form of the Visibility tree, each tool setting
+the same `viewerStore.visibleLayers` entries the tree's checkboxes toggle —
+and the Controls / Results / Flow toggles) and changes no stage. The band's quick
+access carries the two ways back on every tab — "Reset from <stage>" (the
+backend plan of the current stage, rule 219) and "Reset mine" (the
+from=WORLD plan, then world regeneration from the persisted document —
+rules 40 / 46 / 119); both confirmations are served by the one dialog host
+`ResetDialogs`. The flow dock (`FlowDock.tsx`, model `flowGraph.ts`) draws
+the stages as nodes of the development flow with the prerequisite chain as
+edges and one backend-reported metric per node; a node click is a stage
+change and nothing else. Neither the band nor the dock runs a request or a
+mutation; the only layer write is the View › Layers tools' store setter
+(`workflowPreservation.test.ts`).
+
+UI locale (PR-3 round 4, rule 225): components render English source
+strings through `tr()` (`src/i18n/t.ts`); the Korean dictionary
+(`src/i18n/ko.ts`) is the lookup, `src/i18n/locale.ts` the default (`ko`,
+`VITE_DEFAULT_LOCALE` pins a build, `localStorage` remembers a choice) and
+`Root.tsx` remounts the tree on a switch. The glossary workbook is generated
+by `scripts/i18n_glossary.py` from the dictionary and
+`docs/i18n/terminology.json`.
+
+Vocabulary (`types/workflow.ts`): a STEP is a ribbon tab, a STAGE is a
+ribbon-band tool / flow-dock node and the unit of "Reset from here"; both are frontend-local
 viewer state (`viewerStore.stage`), never persisted. The pure model lives in
 `components/layout/workflow.ts` (`WORKFLOW_STEPS`, `stageStatuses` — exactly
 one NEXT stage, glyphs read from the scene manifest, `entryStageOf`,
@@ -243,7 +272,7 @@ host when its stage belongs to the current step — portals through
 `CardLayoutContext` (`components/ui/cardLayout.ts`, hosts in
 `components/layout/shellStore.ts`); without the context (tests, static
 markup) the card renders whole. Mounted cards report their badge tone to
-the shell store so the stepper can show ↻ for a running job (withdrawn on
+the shell store so the ribbon band and the flow dock can show ↻ for a running job (withdrawn on
 unmount — never a second status source). Inline notices of a stage
 (`StageSlot`) follow the same rule.
 

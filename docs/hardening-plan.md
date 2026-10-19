@@ -371,7 +371,7 @@ rule 78/192 방식: 스키마는 두 축으로 열어 두고, 구현은 OVERHAND
 | 4 | 차트 라이브러리 | `recharts` |
 | 5 | `hostRockDensity` | `scenario.geology.hostRockDensity` optional, 기본값 없음 |
 | 6 | 데모 | 3개(§9) |
-| 7 | UI 언어 | 영문 유지 |
+| 7 | UI 언어 | ~~영문 유지~~ → PR-3 라운드 4(§14.6)에서 뒤집음: 한국어 기본, 영어 전환 |
 | 8 | MineExchange | 1.3.1 additive; 1.4는 수락 후 |
 | 9 | Shaft 기본값 조정 | 센서스 기록만, 조정은 수락 후 |
 | 10 | `topMarginReference` 옵션 | 수락 후 별도 |
@@ -418,6 +418,8 @@ rule 78/192 방식: 스키마는 두 축으로 열어 두고, 구현은 OVERHAND
 | 201 | 2 | Planning IRR(typed 비존재)·민감도·공정 what-if 허용, 금속가격 모델 여전히 없음 |
 | 신규 | 2 | timeseries 프로젝션(rule 197 계열), `hostRockDensity` optional·무기본값 |
 | 신규 | 2 | 데모 = 읽기 전용 baked 시나리오, 생성 API 비노출 |
+| 191 | 3 | 리본·스테퍼 행 → 리본 탭 + 도구 밴드 + 플로우 독(규칙 224)으로 대체, 나머지 불변 조건 승계 |
+| 신규 224 | 3 | 워크스페이스 리본(탭 → 그룹 도구 밴드, View 탭), 퀵 액세스 "Reset from <stage>"·"Reset mine"(from=WORLD 플랜 → 월드 재생성), 플로우 독(스테이지 노드 그래프, 클릭 = 스테이지 이동) |
 
 ---
 
@@ -440,3 +442,85 @@ docs/hardening-plan.md를 읽어라. §5 헤더대로 브랜치 hardening-2-engi
 롱홀 baseline은 BLOCKING, C&F 픽스처는 의도적 재생성 + 비교 문서. §5의 폴백 분할점은
 full 종료가 막힐 때만 쓴다. 규칙 개정은 §12의 PR-2 행만. 끝나면 rule 126 보고 형식으로 push 승인을 요청하라.
 ```
+
+---
+
+## 14. PR-3 — 워크스페이스 UI (리본 · 초기화 · 플로우 독)
+
+Park 요청(PR #54 머지 뒤, 2026-10-16): "상단 탭을 누르면 다양한 기능이 나오도록(MS·CAD처럼),
+언제든 돌아갈 수 있는 초기화 버튼, 광산 개발 단계를 노드 아래에 표기해 언제든 되돌아가
+재설계·변경". 브랜치 `hardening-3-workspace-ui`(머지된 main 기준), 프런트엔드 전용, 새 의존성 없음.
+
+### 14.1 결정과 가정
+
+| 요청 | 구현 | 가정(Park가 바꿀 수 있음) |
+|---|---|---|
+| 탭 → 기능 리본 | 상단 바의 리본 탭(1 Setup … 7 Export + **View**)과 그 아래 ONE 도구 밴드. 스텝 탭의 밴드 = 그 스텝의 스테이지 도구(글리프 배지, 클릭 = 이동) + 명령(Setup: New mine·Open…·Demos / Analysis: 워크스페이스 탭·3D context / Export: Import results…). View 탭 = 3D·4D·Walk(준비 게이트 동일)·카메라 프리셋·Controls/Results/Flow 토글, 스테이지 불변 | 스테이지의 ONE primary 액션은 Controls 열에 남는다(리본은 `data-variant` 없음 — e2e의 단일 primary 불변 조건 유지). PR-1 스테퍼 행은 퇴역(밴드 + 플로우 독이 글리프를 보임) |
+| 초기화 버튼 | 밴드 우측 퀵 액세스(모든 탭 동일): **Reset from \<stage\>**(규칙 219, 현재 스테이지의 백엔드 플랜) · **Reset mine**(from=WORLD 플랜을 열 때마다 읽어 verbatim 나열 → 확인 시 `POST …/world/generate`: 같은 시드 같은 월드, 파생물 전부 삭제, 시나리오 문서 불변 → Layout 스테이지로 이동). 두 확인은 `ResetDialogs` 하나가 서비스 | 새 백엔드 라우트 없음, 프런트 의존 그래프 없음. "초기화" = 생성된 월드로 되돌림(Setup 결정은 유지). 데모에서는 퀵 액세스 없음(뷰어 전용), 잡 실행 중 비활성 |
+| 개발 단계 노드 그래프 | 뷰포트 아래 **플로우 독**: 15 스테이지 = 노드(글리프 + 백엔드 지표 한 줄), 간선 = 규칙 191 선행관계(NEXT 판정에 이미 쓰는 체인), 열 = Scenario로부터 최장 경로, 행 = 선행 행 → 스테이지 순(결정적, 데이터로 테스트). 노드 클릭 = 그 스테이지로 이동(Controls에서 재생성 / Reset from here) | 레이아웃은 9열 × 최대 4행(≈ 1,318 × 190 px, 가로 스크롤), View › Flow로 숨김/표시, Walk에서는 숨김. 지표는 scene manifest의 이름·개수 echo뿐(클라이언트 계산 없음) |
+
+### 14.2 파일
+
+- 신규: `frontend/src/components/layout/ribbonModel.ts`(+ `.test.ts`), `Ribbon.tsx`(+ `.test.tsx`),
+  `flowGraph.ts`(+ `.test.ts`), `FlowDock.tsx`(+ `.test.tsx`), `ResetDialogs.tsx`,
+  `shellStore.requests.test.ts`, `stores/viewerStore.ribbon.test.ts`, `components/ui/icons.tsx`(인라인 SVG).
+- 변경: `App.tsx`(밴드·독·다이얼로그 호스트), `TopBar.tsx`(리본 탭, File 메뉴 섹션 요청),
+  `LeftPanel.tsx`/`RightPanel.tsx`(`visible` — display-only), `ResetFromHere.tsx`(요청만),
+  `shellStore.ts`(resetDialog·fileMenuRequest), `viewerStore.ts`(ribbonTab·flowDock·panes),
+  `workflow.ts`(`PREREQUISITE` export), `workflowPreservation.test.ts`; 삭제: `StepperBar.tsx`.
+- e2e `backend/tests/test_shell_e2e.py`: 스테이지 계약 셀렉터 `[data-testid="stepper"]` →
+  `[data-testid="flow-graph"]`(8곳), 리본 탭·View 탭·플로우 독 노드 클릭·**Reset mine**
+  (플랜 나열 → 월드 재생성 → LAYOUT NEXT, `derived/` 비움, `arrays.npz` 유지) 추가; 데모 = 퀵 액세스 없음.
+- 규칙: 191 수정(스테퍼 행 퇴역), 224 신규. `docs/architecture.md` 셸 절 갱신.
+- 발견(e2e가 잡음): 첫 구현의 "Reset from <stage>" 대화상자는 mount effect에서 `useMutation`으로 플랜을
+  읽었는데, Vite dev의 React StrictMode 이중 마운트에서 MutationObserver가 mutation에서 분리되어
+  `isPending`이 영원히 true(목록은 그려지지만 확인 버튼이 "Reading plan…"에 고정). 두 대화상자 모두
+  열람 nonce를 키로 하는 `useQuery`(staleTime 0 · gcTime 0 · retry false)로 읽도록 고쳐 e2e가 통과.
+
+### 14.3 수락
+
+frontend 5종(typecheck · lint · prettier · vitest · build), FAST, FINAL FULL(e2e 포함), 브라우저 수락
+스크린샷(리본 탭별 밴드, Reset mine 대화상자, 플로우 독) — 결과는 PR 본문에 기록.
+
+### 14.4 라운드 2 — 가독성 (Park 스크린샷 리뷰)
+
+요청: "Design layout이나 assessment… 글씨가 주저리주저리 많고 정보가 너무 많다. 옵션 글씨를 키우고,
+누르거나 호버링하면 추가 정보가 뜨도록."
+
+| 대상 | 전 | 후 |
+|---|---|---|
+| 레이아웃 옵션 행 | 11px 모노 두 줄(Option n · family · ★ · (active) · 점수 / 13/13 accessible · ramp · access · D·G·M) | 13px 제목 + family 칩 + ★ + active/selected 칩 + 점수(13px) / 요약 한 줄(levels · ramp · access). D·G·M, 기하 진단(grade · R · hairpins), 접근(total · worst · g), clearance, 실패 이유는 **호버 패널**(`HoverDetail`) 또는 **클릭 시 행 아래 펼침**(`option-detail`) |
+| "Current design" | `Layout v2 · SPIRAL-n1-CW-e+0-g0.120 (active)` + `PARAMETRIC_V2 · 14 segments · layout_v2_selected.json` | `Option 1 · SPIRAL (active)`; 기술 줄은 Search details ▸ "Active ramp" 행으로 이동 |
+| 설계 평가 행 | 11px 모노, 제목 + 권위 배지 줄 + 수치 줄(2줄) | 12px 한 줄(마크 · 제목 · 수치 · 배지). 백엔드 summary, 긴 권위 라벨, source artifact · field, evidence는 호버 패널 또는 클릭 펼침(`check-detail`) |
+| 대안 표 | 10px | 11px |
+
+원칙: 새로 계산한 값 없음(`candidateSummary.ts`는 카탈로그 필드의 포맷만, 데이터 테스트), 후보 id는 여전히
+Search details에만(규칙 191), 호버 패널은 ⓘ와 같은 `placePopover` 배치·포인터 이벤트 없음·컨트롤 없음, 클릭으로도
+같은 내용이 열리므로 "hover-only" 아님. 테스트 계약(aria-label·data-* 속성·readout 문자열)은 유지, 바뀐 두 줄은
+표현 변경(천 단위 구분 `3,825 m`, 현재 설계 라벨)으로 명시 갱신.
+
+### 14.5 라운드 3 — View 레이어 · 비교표 · 년(일) · 시각 다듬기 (Park 스크린샷 리뷰 2)
+
+요청: "VIEW 탭을 눌러도 지형 같은 걸 끄고 켤 수 있는 게 아니라 오른쪽 패널 일부만 나온다", "Analysis의 Layout
+비교표가 너무 이질적", "mine duration은 년 단위로, 괄호에 일", "조금 더 고급져 보이게".
+
+| 대상 | 전 | 후 |
+|---|---|---|
+| View 탭 밴드 | 3D·4D·Walk / 카메라 / 패널 토글만 | **Layers** 그룹 추가(`VIEW_LAYER_TOOLS`, 데이터로 테스트): Terrain · Orebody · Faults · Slice · Ramp(터널 메시 + 유효 중심선) · Levels(개발 메시 + 접근 · 드리프트 · 크로스컷 중심선) · Shafts · Network · Production · Systems. 도구 하나 = Visibility 트리의 레이어 한 묶음, 모든 멤버가 보일 때 pressed, 클릭 시 멤버 전부 set. 같은 `viewerStore.visibleLayers`, 같은 `setLayerVisible` — 규칙 187 워크스루 권위 집합은 그대로 우회(Walk에서는 비활성) |
+| Visibility 트리 | "Network graph" 행이 `networkGraph`(장면이 읽지 않음)를 토글해 네트워크를 끌 수 없었고, `ramp`·`backfill` 행은 아무것도 토글하지 않음 | 행 = 장면이 `visible.has(id)`로 읽는 레이어만(`layerGroups.ts`, `LayerPanel.test.ts`가 `MineScene.tsx`를 스캔). Network 행은 `network`, 죽은 두 행 삭제 |
+| Analysis › Layouts 비교표 | `table-fixed` + 20/56/56/80/64 px 열에 두 줄 숫자 셀이 넘쳐 겹침, 라벨은 후보 id 꼬리, 막대 차트는 280 단위 viewBox SVG를 컨테이너 폭으로 늘려 글자가 29 px | Design › Layout 옵션 행 문법으로 재작성: `Option n` · 패밀리 칩 · ★ 1순위 · active/selected 칩 · 서브라인 `engineering rank #n · 비교 연장`, 고정 폭 숫자 열 그리드(`minmax(0,1fr)_7.5rem_7.5rem_9rem_8rem`, `readout`, 넘침 없음), 비교 비용 막대는 행 안에서 최대 비용 대비 비율로 그림(`cost-bar`). 규칙 204–206 불변: 순위 순서, 백엔드 수치 그대로, Δ = 후보 − 1순위, 금지 어휘 없음, 공학 순위와 비교 비용은 별도 readout |
+| 광산 수명 | `1,132.9 d` | `duration()` / `durationParts()`(`analysisFormat.ts`): `3.1 yr (1,133 d)`, 365.25 d/yr(규칙 201의 NPV 타이밍과 같은 율리우스년). KPI 타일은 년을 크게, 일을 작게. 적용: KPI Mine life, Overview Baseline duration, Economics Mine duration, Schedule Mine duration, Sensitivity Base/what-if/케이스 표. 마일스톤("day 298", 최초 생산일, 램프 완료)은 `days()` 유지 |
+| 시각 다듬기 | 평면 슬레이트, 모노 요약, 굵은 보더 | 토큰(`index.css`): `warn` 색(ResetDialogs의 `text-warn` 버그 수정), `shadow-card`/`shadow-float`/`shadow-glow`, 얇은 스크롤바, 선택색, 버튼 커서; 카드 요약은 sans + tabular-nums(`.figures`), 지표 값만 mono; 카드·타일·노드·팝오버 `rounded-md` + 헤어라인(`border-rock-700/70`); primary 버튼 그라디언트 + glow; 상태 점 glow; 리본 탭/도구·플로우 독 노드 그라디언트와 현재 노드 glow; KPI 타일 디스플레이 서체 24 px(유형화 상태 문자열 `NOT_CONFIGURED`는 13 px) |
+
+수락: `shots_r3.py`(프로덕션 빌드 + `vite preview`, 소스 편집과 독립) 16장, 페이지 오류 0 — View 밴드 도구 21개 중 레이어 10개 pressed 상태 정확, Terrain 토글 시 트리 체크박스 동기, 비교표 12행 + 막대 12개, KPI `3.1 yr (1,133 d)`.
+
+### 14.6 라운드 4 — 한국어 기본 UI (Park: "한국어가 default, 용어는 현장 용어로")
+
+| 결정 | 내용 |
+|---|---|
+| 방식 | gettext 식: 소스 문자열은 영어(테스트가 단언하는 키 그대로), 렌더 시 `tr(text, vars?)`(`i18n/t.ts`)가 한국어 사전(`i18n/ko.ts`, 873건)을 찾고 없으면 영어 그대로. 공용 프리미티브(WorkflowCard · StatusBadge · ActionButton · Disclosure · PanelSection · MetricRow · PanelTabs · ModalDialog · InfoPopover · 리본 ToolButton · 플로우 독)가 자기 라벨을 번역하므로 호출부는 영어 키를 그대로 넘긴다. 합성 문자열은 템플릿(`'Reset from {stage}'`, `'{n} levels'` → `'레벨 {n}개'`): 치환은 조회 뒤라 어순 재배치 가능 |
+| 기본값·전환 | `i18n/locale.ts`: 기본 **ko**, `VITE_DEFAULT_LOCALE=en`으로 빌드 고정, 브라우저별 선택은 `localStorage`(시나리오 필드 아님), `<html lang>` 동기. 상단 바 `한 / EN` 스위치(`locale-switch`). 전환 시 앱 트리를 `key={locale}`로 리마운트(`Root.tsx`) — 스토어·쿼리 캐시는 React 밖이라 유지, 열린 디스클로저 같은 일시 상태만 초기화. 요청·산출물·스테이지 불변 |
+| 서체 | `IBM Plex Sans KR`(Google Fonts)을 세 서체 패밀리의 폴백으로 추가(라틴은 Barlow/Plex 유지, 한글만 KR); `:lang(ko) .plate`는 자간 0.04em |
+| 테스트 | vitest `test.env.VITE_DEFAULT_LOCALE = 'en'`(기존 영어 단언 전부 유지), `i18n/i18n.test.tsx`(기본값 해석, 치환, 사전 건전성 — 빈 값 없음 · 키의 플레이스홀더 보존 · 한글 키 없음, 한국어 렌더), e2e 개발 서버 `en` 고정 + 한국어 전환(`설정` 탭, `html lang`) 후 영어 복귀 |
+| 용어집 | `docs/i18n/terminology.json`(117 용어: 광체 · 하반 · 주향 · 경사 · 램프(사갱) · 갱구 · 수갱 · 레벨 · 드리프트 · 크로스컷 · 광주 · 충전 · 채광법 …, 채택 이유 포함) + `scripts/i18n_glossary.py` → `docs/i18n/glossary-ko-en.xlsx`(UI strings 시트: 영어 → 한국어 + 검토 열; Terminology 시트). Park 검증 후 수정 반영 |
+| 남은 것 | 백엔드가 만드는 문자열(실패 사유, 데모 설명, 후보 id)은 그대로; 설계 평가 제목 9개는 사전으로 번역. drei `<Text>` 3D 라벨(L01 등)은 영어/ID 유지 |
