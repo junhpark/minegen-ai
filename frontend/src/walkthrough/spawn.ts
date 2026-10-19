@@ -7,6 +7,7 @@
  */
 import { mineToThree } from '@/geometry/coordinateTransform'
 import type { SmoothedDeclinePayload } from '@/types/scene'
+import type { ChaseConfig } from './chaseCamera'
 import type { WalkthroughConfig } from './config'
 import { yawForForward } from './movement'
 
@@ -33,6 +34,27 @@ export function resolveWalkthroughSpawn(
 }
 
 /**
+ * Spawn chainage of a third-person BODY (PR-4 W2): the entry reference
+ * `spawnChainageM` plus the body's chase line (`anchorBackM + distanceM`),
+ * so the avatar AND its camera start inside the tunnel. Measured on the
+ * acceptance tour: a truck spawned at the 6 m reference had its tail on
+ * the portal plane and its camera line through the portal cap, giving a
+ * cramped close-up of the bin instead of the drive ahead.
+ */
+export function bodySpawnChainageM(config: WalkthroughConfig, chase: ChaseConfig): number {
+  return config.spawnChainageM + chase.anchorBackM + chase.distanceM
+}
+
+/** The entry spawn of a body: the chainage form at `bodySpawnChainageM`. */
+export function resolveBodySpawn(
+  smoothed: SmoothedDeclinePayload | null | undefined,
+  config: WalkthroughConfig,
+  chase: ChaseConfig,
+): WalkthroughSpawn | null {
+  return resolveSpawnAtChainage(smoothed, config, bodySpawnChainageM(config, chase))
+}
+
+/**
  * Deterministic body pose at an arbitrary decline chainage (hotfix 2 —
  * level teleport). Walks the CONCATENATED effective centerlines from the
  * portal; identical rules to the entry spawn (floor reference, inward
@@ -55,7 +77,35 @@ export function resolveSpawnAtChainage(
     const start = flat.length > 0 ? 3 : 0
     for (let i = start; i < pts.length; i++) flat.push(pts[i]!)
   }
-  if (flat.length < 6) return null
+  return resolveSpawnOnPolyline(flat, config, chainageM)
+}
+
+/** 3-D length of a flat [x, y, z, …] mine-space polyline. */
+export function polylineLength(flat: readonly number[]): number {
+  let acc = 0
+  for (let i = 3; i + 2 < flat.length; i += 3) {
+    acc += Math.hypot(
+      flat[i]! - flat[i - 3]!,
+      flat[i + 1]! - flat[i - 2]!,
+      flat[i + 2]! - flat[i - 1]!,
+    )
+  }
+  return acc
+}
+
+/**
+ * PR-4 W3: the same deterministic pose on ANY authoritative floor
+ * centerline (a level access, a drift) at a chainage from its first point —
+ * the ramp form above is this function over the concatenated ramp. Pure,
+ * no fallback: malformed input or a chainage beyond the polyline is null.
+ */
+export function resolveSpawnOnPolyline(
+  flat: readonly number[],
+  config: WalkthroughConfig,
+  chainageM: number,
+): WalkthroughSpawn | null {
+  if (!Number.isFinite(chainageM) || chainageM < 0) return null
+  if (flat.length < 6 || flat.length % 3 !== 0) return null
   const n = flat.length / 3
   const pts: [number, number, number][] = []
   for (let i = 0; i < n; i++) {

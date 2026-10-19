@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { WorldScene } from '@/types/scene'
 import { buildMinimapModel } from './minimap'
-import { chainageExtent, resolveTeleportAuthority, resolveTeleportTargets } from './teleport'
+import {
+  chainageExtent,
+  levelEntryTargets,
+  resolveTeleportAuthority,
+  resolveTeleportTargets,
+} from './teleport'
 
 // straight north ramp: segment A 0..50 m, segment B 50..90 m (chainage = y)
 const SEG_A = [0, 0, 0, 0, 50, -6]
@@ -38,8 +43,20 @@ function parametricScene(over: Partial<WorldScene> = {}, activeIds: string[] | n
     levelAccesses: {
       status: 'SUCCESS',
       accesses: [
-        { levelId: 'L01', status: 'OK', rampJunctionChainage: chA },
-        { levelId: 'L02', status: 'OK', rampJunctionChainage: chB },
+        {
+          levelId: 'L01',
+          elevation: -6,
+          status: 'OK',
+          rampJunctionChainage: chA,
+          centerline: { points: [0, 50, -6, 30, 55, -6], pointCount: 2 },
+        },
+        {
+          levelId: 'L02',
+          elevation: -11,
+          status: 'OK',
+          rampJunctionChainage: chB,
+          centerline: { points: [0, 90, -11, 30, 95, -11], pointCount: 2 },
+        },
       ],
     },
     network: {
@@ -179,7 +196,38 @@ describe('ramp teleport targets (hardening H0 §3.2)', () => {
         { smoothedDecline: { segments: [] }, network: null } as unknown as WorldScene,
         [0, 0, 0, 1, 1, 1],
       ),
-    ).toEqual([{ id: 'PORTAL', label: 'Portal', chainageM: 0 }])
+    ).toEqual([{ kind: 'RAMP', id: 'PORTAL', label: 'Portal', chainageM: 0 }])
+  })
+
+  it('PR-4 W3: level entries are offered only for mounted levels, after their turnout, with the RL', () => {
+    const { scene, chainagePoints } = parametricScene()
+    const none = resolveTeleportTargets(scene, chainagePoints)
+    expect(none.every((t) => t.kind === 'RAMP')).toBe(true)
+    const all = resolveTeleportTargets(scene, chainagePoints, new Set(['L01', 'L02']))
+    const entries = all.filter((t) => t.kind === 'LEVEL_ENTRY')
+    expect(entries.map((t) => t.id)).toEqual(['LEVEL_ENTRY:L01', 'LEVEL_ENTRY:L02'])
+    for (const e of entries) {
+      if (e.kind !== 'LEVEL_ENTRY') continue
+      expect(Number.isFinite(e.elevation)).toBe(true)
+      // the entry follows its own turnout in the list
+      const turnoutIndex = all.findIndex((t) => t.kind === 'RAMP' && t.id.endsWith(e.levelId))
+      expect(all.indexOf(e)).toBeGreaterThan(turnoutIndex)
+    }
+    // a level whose turnout lies beyond the walkable extent is not offered either
+    const prefix = parametricScene({}, ['RAMP_JUNCTION:L01'])
+    const partial = resolveTeleportTargets(
+      prefix.scene,
+      prefix.chainagePoints,
+      new Set(['L01', 'L02']),
+    )
+    expect(partial.filter((t) => t.kind === 'LEVEL_ENTRY').map((t) => t.id)).toEqual([
+      'LEVEL_ENTRY:L01',
+    ])
+    // only OK accesses with a centerline, elevation and junction chainage qualify
+    expect(levelEntryTargets(null, new Set(['L01']))).toEqual([])
+    expect(
+      levelEntryTargets({ status: 'FAILED', accesses: [] } as never, new Set(['L01'])),
+    ).toEqual([])
   })
 
   it('never offers a target whose backend chainage is missing, negative or duplicated', () => {

@@ -14,6 +14,8 @@ import {
   DevelopmentGeometryError,
   developmentCapColliderId,
   developmentColliderId,
+  developmentPieceColliderId,
+  developmentPieceIdentities,
   extractDevelopmentRuntimeGeometry,
   readDevelopmentRanges,
 } from './developmentRuntimeGeometry'
@@ -377,5 +379,41 @@ describe('development runtime-geometry adapter fails closed on malformed input',
     )
     expect(g.tubes[0]!.indices).toBeInstanceOf(Uint32Array)
     expect(Array.from(g.tubes[0]!.indices)).toEqual([0, 1, 2, 1, 3, 2])
+  })
+})
+
+describe('PR-4 W1a: temporal per-piece collider selection', () => {
+  it('mounts one trimesh per SELECTED piece over the same buffers plus the caps of the selected kinds', () => {
+    const g = extractDevelopmentRuntimeGeometry(gltf.scene)
+    const ids = developmentPieceIdentities(g)
+    expect(ids.map((p) => p.kind)).toEqual(['LEVEL_ACCESS', 'DRIFT', 'CROSSCUT'])
+    const access = ids[0]!.pieceId
+    const drift = ids[1]!.pieceId
+    const units = buildDevelopmentColliderUnits(g, {
+      pieceIds: new Set([access, drift]),
+      capKinds: new Set(['DRIFT']),
+    })
+    expect(units.map((u) => u.id)).toEqual([
+      developmentPieceColliderId(access),
+      developmentPieceColliderId(drift),
+      developmentCapColliderId('DRIFT'),
+    ])
+    // the piece's indices are exactly its validated range window (no copy, no re-index)
+    const driftTube = g.tubes[1]!
+    const r = driftTube.ranges[0]!
+    expect(units[1]!.indices.length).toBe(r.indexCount)
+    expect(units[1]!.indices.buffer).toBe(driftTube.indices.buffer)
+    expect(units[1]!.indices.byteOffset).toBe(driftTube.indices.byteOffset + r.indexOffset * 4)
+    // a selected piece the GLB does not carry fails closed
+    expect(() =>
+      buildDevelopmentColliderUnits(g, {
+        pieceIds: new Set(['DRIFT:L99:01']),
+        capKinds: new Set(),
+      }),
+    ).toThrow(DevelopmentGeometryError)
+    // the static (null) selection is unchanged
+    expect(buildDevelopmentColliderUnits(g, null).map((u) => u.id)).toEqual(
+      buildDevelopmentColliderUnits(g).map((u) => u.id),
+    )
   })
 })

@@ -22,6 +22,8 @@ import { buildMinimapModel } from '@/walkthrough/minimap'
 import { resolveTeleportTargets } from '@/walkthrough/teleport'
 import { temporalActiveSegmentIds } from '@/walkthrough/temporalPlan'
 import { resolveDevelopmentPhysics } from '@/walkthrough/colliderPolicy'
+import { temporalActiveDevelopment } from '@/walkthrough/temporalDevelopmentPlan'
+import type { TeleportTarget } from '@/walkthrough/teleport'
 
 /**
  * R3F canvas host. Camera positions are specified in mine coordinates and
@@ -41,12 +43,14 @@ export function MineCanvas() {
   const [target, setTarget] = useState<[number, number, number]>(mineToThree(0, 0, baseZ))
   const perfRef = useRef<HTMLDivElement | null>(null)
   const telemetry = useMemo(() => createTelemetry(), [])
-  const teleportFn = useRef<((chainageM: number) => void) | null>(null)
-  const registerTeleport = useCallback((fn: ((chainageM: number) => void) | null) => {
+  const teleportFn = useRef<((target: TeleportTarget) => void) | null>(null)
+  const registerTeleport = useCallback((fn: ((target: TeleportTarget) => void) | null) => {
     teleportFn.current = fn
   }, [])
   const navigationMode = useViewerStore((s) => s.navigationMode)
   const setNavigationMode = useViewerStore((s) => s.setNavigationMode)
+  const vehiclePreset = useViewerStore((s) => s.vehiclePreset)
+  const setVehiclePreset = useViewerStore((s) => s.setVehiclePreset)
   const walkthroughContext = useViewerStore((s) => s.walkthroughContext)
   const walkthroughSnapshotDay = useViewerStore((s) => s.walkthroughSnapshotDay)
   const walkthroughReturnMode = useViewerStore((s) => s.walkthroughReturnMode)
@@ -100,24 +104,55 @@ export function MineCanvas() {
     temporal && walkthroughSnapshotDay !== null && scene?.smoothedDecline
       ? temporalActiveSegmentIds(scene.timeline, scene.smoothedDecline, walkthroughSnapshotDay)
       : null
-  // level teleport targets over the currently walkable centerline
+  // Phase 20D.2 (rule 187): STATIC_FINAL walks the emitted development GLB;
+  // a TIMELINE_SNAPSHOT (PR-4 W1a) walks its ACTIVE pieces
+  const developmentPhysics = resolveDevelopmentPhysics(
+    temporal ? 'TIMELINE_SNAPSHOT' : 'STATIC_FINAL',
+    scene?.developmentMesh ?? null,
+  )
+  // PR-4 W1a / W3: the ACTIVE development pieces and open accesses of the
+  // snapshot day (GLB-free projection of the runtime's plan) for the minimap
+  // and the level-entry teleports
+  const temporalDevelopment = useMemo(
+    () =>
+      temporal && walkthroughSnapshotDay !== null && scene
+        ? temporalActiveDevelopment(
+            scene.timeline,
+            scene.levels,
+            scene.levelAccesses,
+            walkthroughSnapshotDay,
+          )
+        : null,
+    [temporal, walkthroughSnapshotDay, scene],
+  )
+  const walkActivePieceIds = useMemo(
+    () => (temporal ? new Set(temporalDevelopment?.activePieceIds ?? []) : null),
+    [temporal, temporalDevelopment],
+  )
+  // levels whose access excavation is collided: every OK access in a
+  // STATIC_FINAL walk with the development mesh, the ACTIVE accesses of a
+  // snapshot (rule 220 branch teleport)
+  const mountedLevelIds = useMemo(() => {
+    if (!developmentPhysics.mount) return new Set<string>()
+    if (temporal) return new Set(temporalDevelopment?.openAccessLevelIds ?? [])
+    return new Set(
+      (scene?.levelAccesses?.status === 'SUCCESS' ? scene.levelAccesses.accesses : [])
+        .filter((a) => a.status === 'OK')
+        .map((a) => a.levelId),
+    )
+  }, [developmentPhysics.mount, temporal, temporalDevelopment, scene])
+  // teleport targets over the currently walkable centerline + mounted levels
   const teleportTargets = useMemo(() => {
     if (!scene?.smoothedDecline) return []
     const model = buildMinimapModel(scene.smoothedDecline, walkActiveIds)
-    return resolveTeleportTargets(scene, model.chainagePoints)
+    return resolveTeleportTargets(scene, model.chainagePoints, mountedLevelIds)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene, temporal, walkthroughSnapshotDay])
+  }, [scene, temporal, walkthroughSnapshotDay, mountedLevelIds])
   const walkable =
     cameraMode === 'walkthrough' &&
     readiness === 'READY' &&
     scene?.tunnelMesh?.meshUrl &&
     scene.smoothedDecline
-  // Phase 20D.2 (rule 187): STATIC_FINAL walks the emitted development
-  // GLB too; TIMELINE_SNAPSHOT stays on the ramp-only temporal contract
-  const developmentPhysics = resolveDevelopmentPhysics(
-    temporal ? 'TIMELINE_SNAPSHOT' : 'STATIC_FINAL',
-    scene?.developmentMesh ?? null,
-  )
 
   return (
     <MineViewportShell
@@ -180,14 +215,17 @@ export function MineCanvas() {
                 snapshotDay={temporal ? walkthroughSnapshotDay : null}
                 navigationMode={navigationMode}
                 onNavigationMode={setNavigationMode}
+                vehiclePreset={vehiclePreset}
+                onVehiclePreset={setVehiclePreset}
                 teleportTargets={teleportTargets}
-                onTeleport={(ch) => teleportFn.current?.(ch)}
+                onTeleport={(t) => teleportFn.current?.(t)}
                 perfRef={perfRef}
               />
               {scene?.smoothedDecline ? (
                 <MinimapOverlay
-                  smoothed={scene.smoothedDecline}
+                  scene={scene}
                   activeSegmentIds={walkActiveIds}
+                  activePieceIds={walkActivePieceIds}
                   telemetry={telemetry}
                 />
               ) : null}

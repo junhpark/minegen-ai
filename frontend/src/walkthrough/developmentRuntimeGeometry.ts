@@ -215,16 +215,31 @@ export function developmentCapColliderId(kind: DevelopmentKind): string {
   return `WALK:COLLIDER:DEVELOPMENT_CAP:${kind}`
 }
 
+export function developmentPieceColliderId(pieceId: string): string {
+  return `WALK:COLLIDER:DEVELOPMENT_PIECE:${pieceId}`
+}
+
+/** PR-4 W1a: which pieces / cap kinds a TEMPORAL walkthrough mounts. */
+export interface DevelopmentColliderSelection {
+  pieceIds: ReadonlySet<string>
+  capKinds: ReadonlySet<DevelopmentKind>
+}
+
 /**
- * Fixed collider units for the STATIC_FINAL walkthrough: one trimesh per
- * emitted batched tube primitive and one per emitted cap primitive — the
- * source index arrays as-is, the shared vertex buffer transformed exactly
- * once. No piece-level split (the validated `ranges` keep piece identity
- * for a later time-aware activation), no fake cap for an OPEN endpoint, no
- * collision-only geometry.
+ * Fixed collider units for the walkthrough: without a selection
+ * (STATIC_FINAL) one trimesh per emitted batched tube primitive and one per
+ * emitted cap primitive — the source index arrays as-is, the shared vertex
+ * buffer transformed exactly once; no fake cap for an OPEN endpoint, no
+ * collision-only geometry. With a selection (TIMELINE_SNAPSHOT, PR-4 W1a)
+ * one trimesh per SELECTED piece — the piece's validated `ranges` window of
+ * the SAME index array over the same vertex buffer (a sub-range, never a
+ * re-index or a copy of geometry) — plus the batched cap primitive of every
+ * selected kind (caps carry no piece identity; a cap of a not-yet-active
+ * extremity stands in void no plug lets the player reach).
  */
 export function buildDevelopmentColliderUnits(
   geometry: DevelopmentRuntimeGeometry,
+  selection: DevelopmentColliderSelection | null = null,
 ): ColliderUnit[] {
   const cache = new Map<Float32Array, Float32Array>()
   const three = (src: Float32Array): Float32Array => {
@@ -235,21 +250,59 @@ export function buildDevelopmentColliderUnits(
     }
     return out
   }
-  const units: ColliderUnit[] = [
-    ...geometry.tubes.map((t) => ({
-      id: developmentColliderId(t.kind),
-      vertices: three(t.positions),
-      indices: t.indices,
-      segmentId: null,
-    })),
-    ...geometry.caps.map((c) => ({
-      id: developmentCapColliderId(c.kind),
-      vertices: three(c.positions),
-      indices: c.indices,
-      segmentId: null,
-    })),
-  ]
+  const units: ColliderUnit[] = []
+  if (selection === null) {
+    for (const t of geometry.tubes) {
+      units.push({
+        id: developmentColliderId(t.kind),
+        vertices: three(t.positions),
+        indices: t.indices,
+        segmentId: null,
+      })
+    }
+    for (const c of geometry.caps) {
+      units.push({
+        id: developmentCapColliderId(c.kind),
+        vertices: three(c.positions),
+        indices: c.indices,
+        segmentId: null,
+      })
+    }
+  } else {
+    const wanted = new Set(selection.pieceIds)
+    for (const t of geometry.tubes) {
+      for (const r of t.ranges) {
+        if (!wanted.has(r.pieceId)) continue
+        wanted.delete(r.pieceId)
+        units.push({
+          id: developmentPieceColliderId(r.pieceId),
+          vertices: three(t.positions),
+          indices: t.indices.subarray(r.indexOffset, r.indexOffset + r.indexCount),
+          segmentId: null,
+        })
+      }
+    }
+    if (wanted.size > 0) {
+      fail(`selected development pieces have no GLB range: ${[...wanted].sort().join(', ')}`)
+    }
+    for (const c of geometry.caps) {
+      if (!selection.capKinds.has(c.kind)) continue
+      units.push({
+        id: developmentCapColliderId(c.kind),
+        vertices: three(c.positions),
+        indices: c.indices,
+        segmentId: null,
+      })
+    }
+  }
   const ids = units.map((u) => u.id)
   if (new Set(ids).size !== ids.length) fail('development collider unit ids are not unique')
   return units
+}
+
+/** Piece identities of every tube (the plan's mapping input). */
+export function developmentPieceIdentities(
+  geometry: DevelopmentRuntimeGeometry,
+): { pieceId: string; kind: DevelopmentKind }[] {
+  return geometry.tubes.flatMap((t) => t.ranges.map((r) => ({ pieceId: r.pieceId, kind: t.kind })))
 }

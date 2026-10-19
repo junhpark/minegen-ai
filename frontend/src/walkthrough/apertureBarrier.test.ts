@@ -186,6 +186,77 @@ describe('temporal aperture containment (Phase 20D.2, rule 187)', () => {
     ).toBe('INVALID')
   })
 
+  it('PR-4 W1a: a level whose access is ACTIVE gets no barrier — its turnout is a real doorway', () => {
+    const c = resolveApertureContainment(JUNCTIONS, ACCESSES, SMOOTHED, ALL, RAMP, new Set(['L01']))
+    expect(c.status).toBe('VALID')
+    expect(c.expectedApertures).toBe(2)
+    expect(c.pieces.length).toBeGreaterThan(0)
+    expect(c.pieces.every((p) => p.levelId === 'L02')).toBe(true)
+    const both = resolveApertureContainment(
+      JUNCTIONS,
+      ACCESSES,
+      SMOOTHED,
+      ALL,
+      RAMP,
+      new Set(['L01', 'L02']),
+    )
+    expect(both).toMatchObject({ status: 'VALID', pieces: [] })
+  })
+
+  it('PR-4 W1b: the barrier spans the backend-reported doorway footprint (+ margin), not the nominal window', () => {
+    const sJ = 40 * Math.hypot(1, 0.1) // ramp chainage of the L01 junction
+    const span: [number, number] = [sJ - 2, sJ + 14] // the parent extension ran 14 m past J
+    const reported: TunnelJunctionSummary = {
+      ...JUNCTIONS,
+      openings: [
+        {
+          type: 'RAMP_ACCESS',
+          nodeId: 'RAMP_JUNCTION:L01',
+          parentId: 'RAMP',
+          childId: 'LEVEL_ACCESS:L01',
+          levelId: 'L01',
+          point: [0, 40, -4],
+          childEnd: 'start',
+          removedTriangles: 20,
+          parentCutChainage: span,
+        },
+      ],
+    }
+    const c = resolveApertureContainment(reported, ACCESSES, SMOOTHED, ALL, RAMP)
+    expect(c.status).toBe('VALID')
+    const margin = APERTURE_MARGIN_WIDTHS * RAMP.tunnelWidth
+    const l01 = c.pieces.filter((p) => p.levelId === 'L01')
+    const ys = l01.flatMap((p) => [p.wallStartMine[1], p.wallEndMine[1]])
+    const perM = 1 / Math.hypot(1, 0.1)
+    expect(Math.min(...ys)).toBeCloseTo((span[0] - margin) * perM, 6)
+    expect(Math.max(...ys)).toBeCloseTo((span[1] + margin) * perM, 6)
+    // L02 has no reported span: the nominal window still applies
+    const l02 = c.pieces.filter((p) => p.levelId === 'L02')
+    const ys2 = l02.flatMap((p) => [p.wallStartMine[1], p.wallEndMine[1]])
+    expect(Math.min(...ys2)).toBeCloseTo(80 - HALF_WINDOW_Y, 6)
+    // a footprint that starts more than a width from its junction (or ends
+    // beyond the extension bound) contradicts the ramp read here
+    for (const bad of [
+      [sJ + 20, sJ + 30],
+      [sJ - 9, sJ + 4],
+      [sJ, sJ + 60],
+    ] as [number, number][]) {
+      const wrong: TunnelJunctionSummary = {
+        ...reported,
+        openings: [{ ...reported.openings![0]!, parentCutChainage: bad }],
+      }
+      expect(resolveApertureContainment(wrong, ACCESSES, SMOOTHED, ALL, RAMP).status).toBe(
+        'INVALID',
+      )
+    }
+    // the measured shape — a footprint starting ≈ 1 m AFTER the junction — is accepted
+    const measured: TunnelJunctionSummary = {
+      ...reported,
+      openings: [{ ...reported.openings![0]!, parentCutChainage: [sJ + 1.05, sJ + 10.3] }],
+    }
+    expect(resolveApertureContainment(measured, ACCESSES, SMOOTHED, ALL, RAMP).status).toBe('VALID')
+  })
+
   it('polyline: shared boundary points are de-duplicated and intervals belong to the later segment', () => {
     const poly = rampPolyline(SMOOTHED)!
     expect(poly.points.length).toBe(25)

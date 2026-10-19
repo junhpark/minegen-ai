@@ -4,6 +4,7 @@ import { useTimelineStore } from './timelineStore'
 import { useScenarioStore } from './scenarioStore'
 import { temporalSessionIdentity } from '@/walkthrough/temporalPlan'
 import type { WalkthroughNavigationMode } from '@/walkthrough/navigation'
+import { DEFAULT_VEHICLE_PRESET, type VehiclePresetId } from '@/walkthrough/vehicle'
 import type { AnalysisTab, DesignTab, SystemsTab } from '@/components/panels/workflowTabs'
 import {
   analysisTabFor,
@@ -34,6 +35,9 @@ export interface ViewerState {
   /** ephemeral navigation proxy (Phase 16 §3); never persisted */
   navigationMode: WalkthroughNavigationMode
   setNavigationMode: (mode: WalkthroughNavigationMode) => void
+  /** PR-4 W2: the VEHICLE body class driven in Walk (ephemeral, never persisted) */
+  vehiclePreset: VehiclePresetId
+  setVehiclePreset: (preset: VehiclePresetId) => void
   /**
    * Phase 20E §19/§20 — which secondary workflow tab the left panel shows.
    * Presentation state only: it is frontend-local, survives panel rerenders
@@ -173,6 +177,7 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   walkthroughSnapshotIdentity: null,
   walkthroughReturnMode: 'DESIGN',
   navigationMode: 'PERSON',
+  vehiclePreset: DEFAULT_VEHICLE_PRESET,
   selectedObjectId: null,
   visibleLayers: new Set(DEFAULT_VISIBLE),
   walkthroughEnabled: false,
@@ -259,6 +264,7 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
   setPane: (pane, visible) => set((s) => ({ panes: { ...s.panes, [pane]: visible } })),
 
   setNavigationMode: (navigationMode) => set({ navigationMode }),
+  setVehiclePreset: (vehiclePreset) => set({ vehiclePreset }),
   setMode: (mode) =>
     set((s) => {
       if (mode === 'WALKTHROUGH') {
@@ -282,6 +288,7 @@ export const useViewerStore = create<ViewerState>()((set, get) => ({
       // and returns navigation to the PERSON default
       return {
         navigationMode: 'PERSON' as WalkthroughNavigationMode,
+        vehiclePreset: DEFAULT_VEHICLE_PRESET,
         mode,
         cameraMode: 'orbit' as CameraMode,
         walkthroughContext: null,

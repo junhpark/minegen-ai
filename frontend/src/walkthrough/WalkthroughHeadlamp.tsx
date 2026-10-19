@@ -6,24 +6,31 @@ import type { WalkthroughConfig } from './config'
 const FORWARD = new Vector3()
 
 /**
- * Walkthrough lighting rig (hotfix §9–10): navigation visualization, not
- * illumination engineering. The browser test showed a single narrow
- * high-intensity spot producing a circular "tunnel vision" hotspot with
- * black periphery — replaced by (a) a broad camera-following point fill
- * so floor/walls/roof around the player stay readable in every direction,
- * plus (b) a WIDE, soft, moderate forward beam for depth cueing. No
- * shadows, no postprocessing.
+ * Walkthrough lighting rig (hotfix §9–10, PR-4 third person): navigation
+ * visualization, not illumination engineering. (a) A broad camera-following
+ * point fill keeps floor / walls / roof around the camera readable in every
+ * direction; (b) a WIDE, soft, moderate beam leaves the AVATAR's eye point
+ * (the cap lamp / truck lights) along the camera forward so depth reads
+ * ahead of the avatar. No shadows, no postprocessing.
  */
-export function WalkthroughHeadlamp({ config }: { config: WalkthroughConfig }) {
+export function WalkthroughHeadlamp({
+  config,
+  eyeRef,
+}: {
+  config: WalkthroughConfig
+  /** avatar eye point (Three coordinates); the camera when absent */
+  eyeRef?: { current: Vector3 }
+}) {
   const fill = useRef<PointLight>(null)
   const beam = useRef<SpotLight>(null)
   const target = useMemo(() => new Object3D(), [])
   const camera = useThree((s) => s.camera)
   useFrame(() => {
     camera.getWorldDirection(FORWARD)
+    const eye = eyeRef?.current ?? camera.position
     if (fill.current) fill.current.position.copy(camera.position)
-    if (beam.current) beam.current.position.copy(camera.position)
-    target.position.copy(camera.position).addScaledVector(FORWARD, 12)
+    if (beam.current) beam.current.position.copy(eye)
+    target.position.copy(eye).addScaledVector(FORWARD, 12)
   })
   return (
     <>
