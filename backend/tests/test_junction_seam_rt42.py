@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
 from minegen.core.models import Scenario
@@ -25,13 +26,19 @@ from minegen.design.constraints import DesignContext
 from minegen.design.cost_field import DesignCostEvaluator, clearance_policy_for
 from minegen.design.development_mesh import DevelopmentMeshBuilder
 from minegen.design.junctions import (
+    JUNCTION_RING_SPACING_FRACTION,
     JUNCTION_WINDOW_WIDTHS,
     JunctionCut,
     TubeEnvelope,
     find_junctions,
 )
 from minegen.design.profile import build_profile, secondary_profile
-from minegen.design.tunnel_mesh import TunnelMeshBuilder, ramp_logical_sweep
+from minegen.design.tunnel_mesh import (
+    TunnelMeshBuilder,
+    _envelope_segment,
+    build_ring_chain,
+    ramp_logical_sweep,
+)
 from minegen.world.synthetic_world import generate_world
 from tests.test_typed_junctions import _capture, _seam_audit
 
@@ -60,9 +67,26 @@ def rt42() -> dict[str, Any]:
     builder = DevelopmentMeshBuilder(drift_ev, cross_ev, sc.ramp, sc.tunnel_profile)
     cuts = _capture(lambda: builder.build(only, None, ramp_payload=ramp))
     dev = builder.build(only, None, ramp_payload=ramp)
-    # the SAME envelopes the builder judges against
+    # the SAME envelopes the builder judges against (the ramp as the parent,
+    # the L02 access as the child — hardening PR-5's audit re-evaluates the
+    # riser top on the child's judging envelope)
     sweep = ramp_logical_sweep(ramp, accesses, sc.ramp, sc.tunnel_profile)
     envs = {"RAMP": TubeEnvelope.build(sweep.chain.centers, sweep.chain.tangents, sweep.shape)}
+    junctions = find_junctions(ramp, accesses, None)
+    width = float(sc.ramp.tunnel_width)
+    dev_profile = secondary_profile(sc.tunnel_profile)
+    dev_shape = build_profile(sc.ramp, dev_profile)
+    for a in only["accesses"]:
+        child_id = f"LEVEL_ACCESS:{a['levelId']}"
+        near = [j.point for j in junctions if j.child_id == child_id or j.parent_id == child_id]
+        chain = build_ring_chain(
+            [_envelope_segment(a["centerline"]["points"])],
+            dev_profile.ring_max_spacing,
+            refine_near=np.asarray(near, dtype=np.float64) if near else None,
+            refine_radius=JUNCTION_WINDOW_WIDTHS * width,
+            refine_spacing=JUNCTION_RING_SPACING_FRACTION * width,
+        )
+        envs[child_id] = TubeEnvelope.build(chain.centers, chain.tangents, dev_shape)
     return {
         "sc": sc,
         "ramp": ramp,
@@ -71,7 +95,7 @@ def rt42() -> dict[str, Any]:
         "dev": dev,
         "cuts": cuts,
         "envs": envs,
-        "junctions": find_junctions(ramp, accesses, None),
+        "junctions": junctions,
         "dev_shape": build_profile(sc.ramp, secondary_profile(sc.tunnel_profile)),
     }
 
@@ -91,10 +115,24 @@ def test_rt42_l02_floor_seam_is_closed_by_sills(rt42: dict[str, Any], record_pro
     audit = _seam_audit(cuts, rt42["envs"], float(rt42["sc"].ramp.tunnel_width))
     record_property("h0_34_seam_audit_rt42_L02", audit)
     assert audit["chords"] > 0 and audit["sills"] > 0
-    assert audit["sills"] + audit["chordsOnFloorEdge"] == audit["chords"]
-    # the measured seam the sills close (plan gap ≥ the union tolerance,
-    # rise within the rule-188 honesty bound)
-    assert audit["maxPlanGapClosedM"] >= 0.1 - 1e-6
+    assert (
+        audit["sills"]
+        + audit["chordsOnFloorEdge"]
+        + audit["chordsOnStandingWall"]
+        + audit["chordsWithoutSill"]
+        == audit["chords"]
+    )
+    # hardening PR-5: the child floor is clipped at the ramp's EXACT wall
+    # plane, so a sill no longer bridges a plan gap (PR-2 measured the +tol
+    # strip at ≥ 0.1 m); it is the RISER between the two floors — the
+    # rule-188 vertical mismatch — and stays within the honesty bound
+    # a riser stands along the ramp's gravity up, which is not perpendicular
+    # to a chord on an inclined wall plane: its top leans from the chord
+    # station by at most rise × gradient (measured 0.0101 m for a 0.1015 m
+    # riser on this 10 % turnout)
+    g_max = float(rt42["sc"].ramp.max_gradient)
+    assert audit["maxPlanGapClosedM"] <= audit["maxRiseClosedM"] * g_max + 1e-3
+    assert audit["maxRiseClosedM"] > 0.0
     assert audit["maxRiseClosedM"] <= 0.3 * float(
         rt42["sc"].ramp.ramp_width
         if hasattr(rt42["sc"].ramp, "ramp_width")

@@ -41,10 +41,12 @@ from minegen.design.cost_field import DesignCostEvaluator
 from minegen.design.junctions import (
     JUNCTION_RING_SPACING_FRACTION,
     JUNCTION_WINDOW_WIDTHS,
+    PARENT_EXTENSION_MAX_WIDTHS,
     RAMP_TUBE_ID,
     CapCut,
     FloorClip,
     Junction,
+    JunctionClipConflictError,
     JunctionClipTopologyError,
     JunctionCut,
     TubeEnvelope,
@@ -53,6 +55,8 @@ from minegen.design.junctions import (
     cut_tube,
     find_junctions,
     junction_report,
+    merge_cap_cut,
+    merge_parent_cut,
 )
 from minegen.design.profile import (
     SECONDARY_ARCH_DIVISOR,
@@ -445,13 +449,6 @@ def closed_sweep(
     return chain, build_logical_mesh(chain, shape)
 
 
-class JunctionClipConflictError(ValueError):
-    """Two typed junctions ask to clip the SAME child floor quad (their
-    windows overlap on one tube). The union cannot represent the
-    intersection of two remainders without a general Boolean, so the build
-    fails explicitly instead of approximating (Phase 20D.1.2)."""
-
-
 class DevelopmentMeshBuilder:
     """Sweeps every development of the owning artifacts with the shared
     profile frame; batches the render geometry per kind (one primitive per
@@ -678,7 +675,9 @@ class DevelopmentMeshBuilder:
             child = by_id.get(j.child_id)
             if parent is not None and parent.rings is not None and parent.quad_mask is not None:
                 cut = cut_tube(parent_env, parent.rings, child_env, j, "PARENT", width)
-                parent.quad_mask |= cut.mask
+                # hardening PR-5: omissions win, clips are kept for the render,
+                # a quad two junctions clip is re-clipped (never refused)
+                merge_parent_cut(cut, parent.quad_mask, parent.floor_clips, width)
                 touched.add(j.parent_id)
                 cuts.append(cut)
                 for cap_cut in self._cut_parent_caps(parent, child_env, j, width):
@@ -740,10 +739,12 @@ class DevelopmentMeshBuilder:
     def _cut_parent_caps(
         parent: _Swept, child_env: TubeEnvelope, junction: Junction, width: float
     ) -> list[CapCut]:
-        """Phase 20D.2: the parent's CAP ends whose ring lies inside the
-        junction window are judged against the child envelope; a cap the
-        child does not reach yields nothing (every cap outside a declared
-        junction's window is bit-identical to Phase 20D.1.2)."""
+        """Phase 20D.2: the parent's CAP ends whose ring lies within the
+        parent-extension bound of the junction (``PARENT_EXTENSION_MAX_WIDTHS``,
+        hardening PR-5 — the window alone missed a ramp ending within a
+        turnout's body) are judged against the child envelope; a cap the
+        child does not reach yields nothing (every cap no declared junction
+        reaches is bit-identical to Phase 20D.1.2)."""
         assert parent.rings is not None and parent.closed is not None
         r, k = parent.closed.ring_count, parent.closed.k
         out: list[CapCut] = []
@@ -755,7 +756,7 @@ class DevelopmentMeshBuilder:
             if getattr(parent.spec, end) != "CAP":
                 continue
             center = parent.chain.centers[ring_i]
-            if float(np.linalg.norm(center - junction.point)) > JUNCTION_WINDOW_WIDTHS * width:
+            if float(np.linalg.norm(center - junction.point)) > PARENT_EXTENSION_MAX_WIDTHS * width:
                 continue
             corners = cap_fan_corners(
                 parent.rings[ring_i], parent.closed.positions[apex_i], end == "start"
@@ -767,28 +768,12 @@ class DevelopmentMeshBuilder:
 
     @staticmethod
     def _merge_cap_cut(parent: _Swept, cap_cut: CapCut) -> None:
-        """Merge one junction's cap cut into the parent's per-end cut: a whole
-        omission (by any junction) is a superset of a clip; two junctions
-        clipping one fan triangle are an explicit conflict, never an
-        approximation (same contract as the child floor clips)."""
-        existing = parent.cap_cuts.get(cap_cut.end)
-        if existing is None:
-            parent.cap_cuts[cap_cut.end] = CapCut(
-                cap_cut.junction, cap_cut.end, cap_cut.omit.copy(), dict(cap_cut.clips)
-            )
-            return
-        existing.omit |= cap_cut.omit
-        for t, clip in cap_cut.clips.items():
-            if existing.omit[t]:
-                continue
-            if t in existing.clips and existing.clips[t].junction_node_id != clip.junction_node_id:
-                raise JunctionClipConflictError(
-                    f"{parent.spec.development_id}: cap triangle {t} ({cap_cut.end}) clipped by "
-                    f"both {existing.clips[t].junction_node_id} and {clip.junction_node_id}"
-                )
-            existing.clips[t] = clip
-        for t in [t for t in existing.clips if existing.omit[t]]:
-            del existing.clips[t]
+        """Merge one junction's cap cut into the parent's per-end cut through
+        the shared ``merge_cap_cut`` (conflicts are explicit, never an
+        approximation — same contract as the child floor clips)."""
+        parent.cap_cuts[cap_cut.end] = merge_cap_cut(
+            parent.cap_cuts.get(cap_cut.end), cap_cut, parent.spec.development_id
+        )
 
     def _report(self, swept: list[_Swept], shape: ProfileShape) -> dict[str, Any]:
         per_kind: dict[str, dict[str, Any]] = {}

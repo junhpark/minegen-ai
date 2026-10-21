@@ -119,6 +119,11 @@ MODULE_MARKERS: dict[str, tuple[str, ...]] = {
     # Hardening PR-2 H2-SH / H0 §3.4: the RT-42 turnout seam regression
     # rebuilds the whole RANDOM_TABULAR seed-42 ramp sweep (≈ 1 min)
     "test_junction_seam_rt42": ("slow",),
+    # Hardening PR-5 (rule 227): the junction SEAM probe — 67,840 eye rays
+    # against the TABULAR render meshes with rock-reach sampling (≈ 1–2 min);
+    # the traffic-section doorway probe (``test_junction_passability``) stays
+    # in the FAST loop
+    "test_junction_seam": ("slow",),
 }
 #: test function name (any module) → markers
 TEST_MARKERS: dict[str, tuple[str, ...]] = {

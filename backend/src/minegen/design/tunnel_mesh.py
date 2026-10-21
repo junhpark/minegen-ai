@@ -21,7 +21,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from itertools import pairwise
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -32,7 +32,10 @@ from minegen.design.constraints import RejectionReason
 from minegen.design.cost_field import DesignCostEvaluator
 
 if TYPE_CHECKING:
-    from minegen.design.junctions import CapCut, FloorClip
+    from minegen.design.junctions import (
+        CapCut,
+        FloorClip,
+    )
 from minegen.design.profile import (
     ProfileShape,
     boundary_points,
@@ -1034,9 +1037,14 @@ class TunnelMeshBuilder:
         from minegen.design.junctions import (
             JUNCTION_RING_SPACING_FRACTION,
             JUNCTION_WINDOW_WIDTHS,
+            PARENT_EXTENSION_MAX_WIDTHS,
+            JunctionClipConflictError,
             TubeEnvelope,
+            cut_cap,
             cut_tube,
             junction_report,
+            merge_cap_cut,
+            merge_parent_cut,
         )
         from minegen.design.profile import secondary_profile
 
@@ -1143,6 +1151,8 @@ class TunnelMeshBuilder:
         # mesh lives in the development artifact) at the secondary
         # tessellation it is rendered with
         quad_mask = np.zeros((mesh.ring_count - 1, mesh.k), dtype=bool)
+        parent_clips: dict[tuple[int, int], FloorClip] = {}
+        ramp_cap_cuts: dict[str, CapCut] = {}
         cuts = []
         if junctions:
             child_shape = build_profile(self.ramp, secondary_profile(self.profile))
@@ -1169,8 +1179,41 @@ class TunnelMeshBuilder:
                     child_chain.centers, child_chain.tangents, child_shape
                 )
                 cut = cut_tube(ramp_env, ramp_rings, child_env, j, "PARENT", width)
-                quad_mask |= cut.mask
+                # hardening PR-5: the exact parent clip's remainders reach the
+                # render; two turnouts sharing a ramp quad re-clip it
+                merge_parent_cut(cut, quad_mask, parent_clips, width)
                 cuts.append(cut)
+                # hardening PR-5: the ramp's PORTAL / TERMINAL cap is a parent
+                # surface like a drift's end cap — a ramp ending inside a
+                # turnout's body (the TABULAR fixture's L04: 1.9 m after the
+                # junction) stood its whole terminal cap across the access.
+                # Same judgement as the ramp quads (``cut_cap``, PARENT side)
+                # for every cap within the parent-extension bound.
+                ramp_ends: tuple[tuple[Literal["start", "end"], int, int], ...] = (
+                    ("start", 0, mesh.ring_count * mesh.k),
+                    ("end", mesh.ring_count - 1, mesh.ring_count * mesh.k + 1),
+                )
+                for end_key, ring_i, apex_i in ramp_ends:
+                    center = chain.centers[ring_i]
+                    if (
+                        float(np.linalg.norm(center - j.point))
+                        > PARENT_EXTENSION_MAX_WIDTHS * width
+                    ):
+                        continue
+                    corners = cap_fan_corners(
+                        ramp_rings[ring_i], mesh.positions[apex_i], end_key == "start"
+                    )
+                    cap_cut = cut_cap(corners, child_env, j, end_key, width)
+                    if cap_cut.empty:
+                        continue
+                    try:
+                        ramp_cap_cuts[end_key] = merge_cap_cut(
+                            ramp_cap_cuts.get(end_key), cap_cut, "RAMP"
+                        )
+                    except JunctionClipConflictError as exc:
+                        report["status"] = "FAILED"
+                        report["failureReason"] = f"JUNCTION_CLIP_CONFLICT: {exc}"
+                        return TunnelMeshResult(status="FAILED", report=report, glb=None)
         render = build_render_mesh(
             mesh,
             chain,
@@ -1178,8 +1221,10 @@ class TunnelMeshBuilder:
             self.profile.crease_angle_deg,
             segments_meta,
             quad_mask=quad_mask if junctions else None,
+            floor_clips=parent_clips if parent_clips else None,
+            cap_cuts=ramp_cap_cuts if ramp_cap_cuts else None,
         )
-        report["junctions"] = junction_report(junctions, cuts)
+        report["junctions"] = junction_report(junctions, cuts, list(ramp_cap_cuts.values()))
         report["renderVertexCount"] = render.render_vertex_count
         # public contract: geometricallyClosed describes the EMITTED render
         # mesh (open once a typed junction aperture exists);

@@ -1016,12 +1016,40 @@ leaves the parent wall line only at `R·acos(1 − 2w/R)` ≈ 2.8 w. The PARENT
 side of `design/junctions.py::cut_tube` now continues interval by interval
 past the window in both directions while an interval still loses a quad
 (`_extend_parent_pass`, bounded by `PARENT_EXTENSION_MAX_WIDTHS` = 6 widths,
-the same `PARENT_QUAD_OVERLAP_MIN` surface rule, the floor edge never cut),
+the same per-quad judgement as the window, the floor edge never cut),
 and every junction opening reports `parentCutChainage` — the doorway's
-chainage footprint on the parent — plus `parentExtensionIntervals`. Child
-cuts, floor / wall clipping, sills, caps and the logical mesh are unchanged;
-the probe is a verification instrument and the frontend still patches no
+chainage footprint on the parent — plus `parentExtensionIntervals`. The
+probe is a verification instrument and the frontend still patches no
 geometry.
+
+**Exact junction seam (hardening PR-5, rule 227, `design/junctions.py`).**
+Park's level-entry screenshot showed wedges of drift wall standing into the
+access and black slivers along the rim; `tests/test_junction_seam.py`
+measured them before the fix (94 parent triangles up to
+1.923 m inside the child, 149 of
+67,840 eye rays leaving the union through the rim). Both sides
+of the typed union are now cut exactly: the PARENT (walls, roof, a drift's
+end caps and the ramp's own portal / terminal caps) against the child's
+floor-lowered judging envelope at `−tol` — inside omitted, outside kept,
+straddling clipped, the parent keeping a one-tolerance lip at every jamb and
+its floor edge never cut; the CHILD against the floor-lowered parent at the
+parent's exact surface (`CHILD_JUDGE_LEVEL`), so its floor chord lies on the
+parent's wall or terminal plane and the sill is the RISER between the two
+floors (sampled along the chord from the parent floor's side or end edge,
+oriented into the rock by the step direction). Every clip remainder, cap
+clip and sill is cleaned at render scale (1 mm merge, degenerate fans,
+1e-6 m²). After the fix: 0 of 67,840 rays,
+0 triangles beyond the 3 × tol construction bound
+(deepest 0.167 m), doorway probe 0
+hits with the ramp caps included. Round 2 (rule 227 f): the PR-6 acceptance
+tour found the default scenario's development mesh failing on an extremity
+crosscut whose floor centre line lies IN the drift's end plane — the judging
+envelope now declares its capped real ends and judges them as continuous
+planes (`TubeEnvelope.with_end_planes`), and a fidelity sample on a remaining
++inf jump is re-judged a vertex-merge distance inside the loop; the ramp
+tunnel mesh and the seam probe are unchanged to the triangle. Residual: the
+−tol lip and the chord sag; a banked junction floor and a watertight union
+stay Phase 20D.
 
 **Temporal development traversal (W1a, `walkthrough/temporalDevelopmentPlan.ts`).**
 A TIMELINE_SNAPSHOT now mounts the LEVEL_ACCESS / DRIFT / CROSSCUT pieces
