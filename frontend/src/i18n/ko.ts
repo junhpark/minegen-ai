@@ -998,4 +998,9 @@ export const KO: Record<string, string> = {
     '리지드 덤프트럭(RDT), 40 t 등급 (노천용 차체, 비교용)',
   Speed: '속도',
   'Level ladder': '레벨 사다리',
+  'Cab view': '운전석 시점',
+  'First person': '1인칭 시점',
+  'Cab / Chase': '운전석 / 추적 시점',
+  'First person / Chase': '1인칭 / 추적 시점',
+  'body drawn translucent in the chase view': '추적 시점에서는 차체를 반투명으로 표시',
 }

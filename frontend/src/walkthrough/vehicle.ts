@@ -152,3 +152,121 @@ export function vehicleClearance(
     headM: tunnel.tunnelHeight - preset.heightM,
   }
 }
+
+/** Axis-aligned box of the procedural truck in the BODY frame (origin at
+ * the collider centre, +Y up, −Z forward): centre and full size. */
+export interface TruckBox {
+  id: 'FRONT_CHASSIS' | 'HOOD' | 'CAB' | 'CAB_GLASS' | 'REAR_CHASSIS' | 'BIN' | 'HINGE'
+  center: [number, number, number]
+  size: [number, number, number]
+}
+
+/**
+ * The procedural truck's layout on the preset's planning box (hardening
+ * PR-6 — one authority for `avatars.tsx::TruckAvatar` and the cab eye of
+ * `cameraView.ts`). Articulated: front power unit + rear dump body on
+ * separate chassis; rigid: one chassis. The cab is the left-hand box at
+ * the very front (an underground truck's operator sits ahead of the
+ * engine), the hood sits behind it, the bin top is EXACTLY the preset
+ * height (the visual envelope never exceeds the collider box). `cabEye`
+ * is the driver's eye inside the cab box — the first-person camera point
+ * of the CAB view: cab centre line, window height, seat depth.
+ */
+export interface TruckLayout {
+  floor: number
+  axleY: number
+  chassisH: number
+  chassisY: number
+  frontL: number
+  rearL: number
+  frontZ: number
+  rearZ: number
+  binH: number
+  cabH: number
+  boxes: readonly TruckBox[]
+  /** wheel centres (x, z) at `axleY`, radius `wheelRadiusM` */
+  wheels: readonly [number, number][]
+  headlights: readonly [number, number, number][]
+  cabEye: [number, number, number]
+}
+
+export function truckLayout(preset: VehiclePreset): TruckLayout {
+  const L = preset.lengthM
+  const W = preset.widthM
+  const H = preset.heightM
+  const floor = -H / 2
+  const r = preset.wheelRadiusM
+  const axleY = floor + r
+  const frontL = preset.articulated ? L * 0.42 : L * 0.3
+  const rearL = preset.articulated ? L * 0.52 : L * 0.68
+  const frontZ = -L / 2 + frontL / 2
+  const rearZ = L / 2 - rearL / 2
+  const chassisH = Math.max(0.5, H * 0.22)
+  const chassisY = axleY + chassisH / 2
+  const binH = H - r - chassisH
+  const cabH = H - r - chassisH
+  const cabCenter: [number, number, number] = [
+    -W * 0.18,
+    chassisY + chassisH / 2 + cabH / 2,
+    -L / 2 + frontL * 0.3,
+  ]
+  const boxes: TruckBox[] = [
+    { id: 'FRONT_CHASSIS', center: [0, chassisY, frontZ], size: [W * 0.92, chassisH, frontL] },
+    {
+      id: 'HOOD',
+      center: [0, chassisY + chassisH / 2 + H * 0.17, -L / 2 + frontL * 0.72],
+      size: [W * 0.78, H * 0.34, frontL * 0.5],
+    },
+    { id: 'CAB', center: cabCenter, size: [W * 0.5, cabH, frontL * 0.42] },
+    {
+      id: 'CAB_GLASS',
+      center: [cabCenter[0], cabCenter[1] + cabH * 0.15, cabCenter[2] - frontL * 0.215],
+      size: [W * 0.42, cabH * 0.5, 0.02],
+    },
+    { id: 'REAR_CHASSIS', center: [0, chassisY, rearZ], size: [W * 0.92, chassisH, rearL] },
+    {
+      id: 'BIN',
+      center: [0, chassisY + chassisH / 2 + binH / 2, rearZ + rearL * 0.02],
+      size: [W, binH, rearL * 0.96],
+    },
+  ]
+  if (preset.articulated) {
+    boxes.push({
+      id: 'HINGE',
+      center: [0, chassisY, -L / 2 + frontL + (L - frontL - rearL) / 2],
+      size: [W * 0.4, chassisH * 0.8, L - frontL - rearL + 0.2],
+    })
+  }
+  const wheels: [number, number][] = [
+    [-(W / 2 - 0.3), -L / 2 + frontL * 0.55],
+    [W / 2 - 0.3, -L / 2 + frontL * 0.55],
+    [-(W / 2 - 0.3), L / 2 - rearL * 0.45],
+    [W / 2 - 0.3, L / 2 - rearL * 0.45],
+  ]
+  if (!preset.articulated) {
+    wheels.push([-(W / 2 - 0.3), L / 2 - rearL * 0.15], [W / 2 - 0.3, L / 2 - rearL * 0.15])
+  }
+  const headlights: [number, number, number][] = [
+    [-W * 0.3, chassisY + chassisH * 0.3, -L / 2 - 0.02],
+    [W * 0.3, chassisY + chassisH * 0.3, -L / 2 - 0.02],
+  ]
+  // driver's eye: the cab's centre line, at the window band (the glass
+  // pane's centre height), one seat depth behind the cab's centre plane
+  const cabEye: [number, number, number] = [cabCenter[0], cabCenter[1] + cabH * 0.15, cabCenter[2]]
+  return {
+    floor,
+    axleY,
+    chassisH,
+    chassisY,
+    frontL,
+    rearL,
+    frontZ,
+    rearZ,
+    binH,
+    cabH,
+    boxes,
+    wheels,
+    headlights,
+    cabEye,
+  }
+}

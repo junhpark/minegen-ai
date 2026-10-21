@@ -176,6 +176,10 @@ function WalkthroughRuntimeCore({
   const navigationMode = useViewerStoreNav((s) => s.navigationMode)
   const vehiclePreset = useViewerStoreNav((s) => s.vehiclePreset)
   const setVehiclePreset = useViewerStoreNav((s) => s.setVehiclePreset)
+  // PR-6: chase ⇄ cab view — a camera presentation choice, never a body
+  // change (no remount, no spawn, no collider change)
+  const cameraView = useViewerStoreNav((s) => s.walkCameraView)
+  const toggleCameraView = useViewerStoreNav((s) => s.toggleWalkCameraView)
   // PR-4 W2: a preset change is a body change — same remount-at-spawn
   // contract as a mode change (§29), one key for both
   const bodyKey = `${navigationMode}:${vehiclePreset}`
@@ -188,6 +192,9 @@ function WalkthroughRuntimeCore({
   // the avatar's eye point (Three coordinates), written by the player each
   // frame and read by the interaction ray and the headlamp (rule 107)
   const eyeRef = useRef(new Vector3())
+  // PR-6: the body's lamp point (the headlamp beam origin) — the truck's
+  // headlights, the miner's cap lamp, the drone's front
+  const lampRef = useRef(new Vector3())
   // owned here so EVERY lifecycle exit can reach it (PR #11 blocker 1)
   const inspectTrigger = useMemo(() => createInspectTrigger(), [])
   const resetSignal = useRef(0)
@@ -411,6 +418,7 @@ function WalkthroughRuntimeCore({
         onInspect={inspect}
         onNavigationMode={setNavigationMode}
         onCycleVehiclePreset={cycleVehiclePreset}
+        onToggleCameraView={toggleCameraView}
       />
       <WalkthroughDiagnostics targetRef={perfRef} />
       <WalkthroughAssetLayer assets={interactables} focusedId={focusedId} selectedId={selectedId} />
@@ -421,7 +429,7 @@ function WalkthroughRuntimeCore({
         onFocusChange={handleFocusChange}
         eyeRef={eyeRef}
       />
-      <WalkthroughHeadlamp config={WALKTHROUGH_CONFIG} eyeRef={eyeRef} />
+      <WalkthroughHeadlamp config={WALKTHROUGH_CONFIG} eyeRef={eyeRef} beamRef={lampRef} />
       <Physics gravity={[0, -WALKTHROUGH_CONFIG.gravityMps2, 0]}>
         <TunnelColliderSet
           geometry={runtime}
@@ -459,6 +467,8 @@ function WalkthroughRuntimeCore({
           teleportRef={teleportRef}
           telemetry={telemetry}
           eyeRef={eyeRef}
+          lampRef={lampRef}
+          cameraView={cameraView}
         />
       </Physics>
     </>

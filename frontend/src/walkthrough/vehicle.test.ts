@@ -7,6 +7,7 @@ import {
   integrateHeading,
   isVehiclePresetId,
   nextVehiclePreset,
+  truckLayout,
   vehicleBoxHalfExtents,
   vehicleClearance,
   vehiclePreset,
@@ -83,5 +84,63 @@ describe('bicycle-rule heading (PR-4 W2)', () => {
     let h = 0
     for (let i = 0; i < 10; i++) h = integrateHeading(h, left, 8.5, 0.05, p)
     expect(h).toBeCloseTo(fwd, 9)
+  })
+})
+
+describe('truck layout (PR-6 — one geometry authority for the avatar and the cab eye)', () => {
+  it('every box stays inside the planning box and the bin top IS the preset height', () => {
+    for (const p of VEHICLE_PRESETS) {
+      const layout = truckLayout(p)
+      const half = vehicleBoxHalfExtents(p)
+      for (const b of layout.boxes) {
+        for (const k of [0, 1, 2] as const) {
+          expect(Math.abs(b.center[k]) + b.size[k] / 2).toBeLessThanOrEqual(half[k] + 1e-9)
+        }
+      }
+      const bin = layout.boxes.find((b) => b.id === 'BIN')!
+      expect(bin.center[1] + bin.size[1] / 2).toBeCloseTo(p.heightM / 2, 12)
+      const cab = layout.boxes.find((b) => b.id === 'CAB')!
+      expect(cab.center[1] + cab.size[1] / 2).toBeCloseTo(p.heightM / 2, 12)
+      // the cab sits at the front, left-hand side; the hood behind it
+      const hood = layout.boxes.find((b) => b.id === 'HOOD')!
+      expect(cab.center[2]).toBeLessThan(hood.center[2])
+      expect(cab.center[0]).toBeLessThan(0)
+      expect(layout.floor).toBe(-p.heightM / 2)
+      expect(layout.axleY).toBeCloseTo(layout.floor + p.wheelRadiusM, 12)
+      expect(layout.headlights).toHaveLength(2)
+    }
+  })
+
+  it('articulated trucks carry a hinge and four wheels, the rigid body six wheels and no hinge', () => {
+    const adt = truckLayout(vehiclePreset('UG_ADT_45T'))
+    expect(adt.boxes.some((b) => b.id === 'HINGE')).toBe(true)
+    expect(adt.wheels).toHaveLength(4)
+    const rdt = truckLayout(vehiclePreset('RDT_40T'))
+    expect(rdt.boxes.some((b) => b.id === 'HINGE')).toBe(false)
+    expect(rdt.wheels).toHaveLength(6)
+  })
+
+  it('reproduces the PR-4 avatar numbers for the 45 t class (visual parity)', () => {
+    // L 10.5, W 3.0, H 2.9, r 0.85: floor −1.45, chassis 0.638 high,
+    // cab at (−0.54, 0.744, −3.927) and the driver's eye 0.212 above its centre
+    const l = truckLayout(vehiclePreset('UG_ADT_45T'))
+    expect(l.floor).toBeCloseTo(-1.45, 12)
+    expect(l.chassisH).toBeCloseTo(0.638, 12)
+    expect(l.frontL).toBeCloseTo(4.41, 12)
+    expect(l.rearL).toBeCloseTo(5.46, 12)
+    const cab = l.boxes.find((b) => b.id === 'CAB')!
+    expect(cab.center[0]).toBeCloseTo(-0.54, 12)
+    expect(cab.center[1]).toBeCloseTo(0.744, 9)
+    expect(cab.center[2]).toBeCloseTo(-3.927, 9)
+    expect(cab.size).toEqual([
+      1.5,
+      expect.closeTo(1.412, 9) as unknown as number,
+      expect.closeTo(1.8522, 9) as unknown as number,
+    ])
+    expect(l.cabEye[0]).toBeCloseTo(-0.54, 12)
+    expect(l.cabEye[1]).toBeCloseTo(0.744 + 0.15 * 1.412, 9)
+    expect(l.cabEye[2]).toBeCloseTo(-3.927, 9)
+    // ≈ 2.41 m above the floor
+    expect(l.cabEye[1] - l.floor).toBeCloseTo(2.4058, 3)
   })
 })

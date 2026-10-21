@@ -1,16 +1,34 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Group, MeshStandardMaterial } from 'three'
-import type { VehiclePreset } from './vehicle'
+import {
+  BoxGeometry,
+  EdgesGeometry,
+  Group,
+  LineBasicMaterial,
+  type Material,
+  MeshStandardMaterial,
+} from 'three'
+import { GHOST_OPACITY } from './cameraView'
+import { truckLayout, type VehiclePreset } from './vehicle'
 
 /**
- * Procedural third-person avatars (hardening PR-4 W2). Low-poly primitives
- * assembled from three.js geometries — no external asset, no animation rig,
- * no physics of their own (the kinematic body / collider is the player's).
- * Every avatar is authored in the body frame of its RigidBody: origin at
- * the body centre (`bodyHeightM / 2` above the floor), +Y up, −Z forward
- * (the camera convention `movement.ts` uses). Visualization only — a truck
- * avatar is the preset's planning box dressed up, never a product model.
+ * Procedural third-person avatars (hardening PR-4 W2, PR-6 ghost / cab).
+ * Low-poly primitives assembled from three.js geometries — no external
+ * asset, no animation rig, no physics of their own (the kinematic body /
+ * collider is the player's). Every avatar is authored in the body frame of
+ * its RigidBody: origin at the body centre (`bodyHeightM / 2` above the
+ * floor), +Y up, −Z forward (the camera convention `movement.ts` uses).
+ * Visualization only — a truck avatar is the preset's planning box dressed
+ * up (`vehicle.ts::truckLayout`, the one layout authority), never a
+ * product model.
+ *
+ * PR-6: the truck is drawn as a GHOST in either view (translucent body,
+ * depth write off, planning-box edges outlined so the envelope stays
+ * legible while the drive ahead shows through) and without its cab shell
+ * in the CAB view (the camera sits inside the cab box, so the shell and its
+ * windscreen are not drawn from inside; the hood below the seat reads as
+ * an outline over the floor when the driver looks down). Materials are module constants
+ * shared by every instance; the ghost set is a one-time clone.
  */
 
 const M = {
@@ -47,6 +65,27 @@ const M = {
     emissiveIntensity: 1.5,
   }),
 }
+
+type TruckMaterialKey = 'truck' | 'bin' | 'tyre' | 'rim' | 'glass' | 'headlight' | 'dark'
+
+/** Ghost variants of the truck materials (PR-6): translucent, no depth
+ * write (overlapping parts never punch holes into each other), otherwise
+ * the same colour / roughness. Cloned once. */
+const GHOST: Record<TruckMaterialKey, MeshStandardMaterial> = (() => {
+  const keys: TruckMaterialKey[] = ['truck', 'bin', 'tyre', 'rim', 'glass', 'headlight', 'dark']
+  const out = {} as Record<TruckMaterialKey, MeshStandardMaterial>
+  for (const k of keys) {
+    const m = M[k].clone()
+    m.transparent = true
+    m.opacity = GHOST_OPACITY
+    m.depthWrite = false
+    out[k] = m
+  }
+  return out
+})()
+
+/** Outline of the ghost's planning boxes. */
+const GHOST_EDGE = new LineBasicMaterial({ color: '#f5d27a', transparent: true, opacity: 0.85 })
 
 /** Upright miner: body 1.7 m (capsule centre at the origin), hi-vis torso,
  * helmet with a forward cap lamp. */
@@ -86,101 +125,115 @@ export function PersonAvatar({ bodyHeightM }: { bodyHeightM: number }) {
   )
 }
 
-function Wheel({ x, z, y, r }: { x: number; z: number; y: number; r: number }) {
+function Wheel({
+  x,
+  z,
+  y,
+  r,
+  ghost,
+}: {
+  x: number
+  z: number
+  y: number
+  r: number
+  ghost: boolean
+}) {
+  const mat = ghost ? GHOST : M
   return (
     <group position={[x, y, z]} rotation={[0, 0, Math.PI / 2]}>
-      <mesh material={M.tyre}>
+      <mesh material={mat.tyre}>
         <cylinderGeometry args={[r, r, 0.6, 16]} />
       </mesh>
-      <mesh material={M.rim}>
+      <mesh material={mat.rim}>
         <cylinderGeometry args={[r * 0.55, r * 0.55, 0.62, 12]} />
       </mesh>
     </group>
   )
 }
 
+/** One planning box of the truck: the mesh, plus its outlined edges when
+ * drawn as a ghost (the geometry is owned here and disposed on unmount). */
+function TruckBoxMesh({
+  center,
+  size,
+  material,
+  ghost,
+}: {
+  center: readonly [number, number, number]
+  size: readonly [number, number, number]
+  material: Material
+  ghost: boolean
+}) {
+  const geometry = useMemo(() => new BoxGeometry(size[0], size[1], size[2]), [size])
+  const edges = useMemo(() => (ghost ? new EdgesGeometry(geometry) : null), [geometry, ghost])
+  useEffect(
+    () => () => {
+      geometry.dispose()
+      edges?.dispose()
+    },
+    [geometry, edges],
+  )
+  return (
+    <group position={[center[0], center[1], center[2]]}>
+      <mesh geometry={geometry} material={material} />
+      {edges ? <lineSegments geometry={edges} material={GHOST_EDGE} /> : null}
+    </group>
+  )
+}
+
 /**
- * Truck dressed on the preset's planning box: articulated (front power unit
- * + rear dump body on separate chassis) or rigid (one chassis). Length along
- * −Z (front at negative z), width along X, height along Y; the box floor is
- * at −heightM / 2.
+ * Truck dressed on the preset's planning box (`truckLayout`): articulated
+ * (front power unit + rear dump body on separate chassis) or rigid (one
+ * chassis). Length along −Z (front at negative z), width along X, height
+ * along Y; the box floor is at −heightM / 2. `ghost` draws the translucent
+ * outlined body of the chase view; `cabVisible = false` omits the cab shell
+ * and its windscreen (the CAB view sits inside them).
  */
-export function TruckAvatar({ preset }: { preset: VehiclePreset }) {
-  const L = preset.lengthM
-  const W = preset.widthM
-  const H = preset.heightM
-  const floor = -H / 2
-  const r = preset.wheelRadiusM
-  const axleY = floor + r
-  const frontL = preset.articulated ? L * 0.42 : L * 0.3
-  const rearL = preset.articulated ? L * 0.52 : L * 0.68
-  const frontZ = -L / 2 + frontL / 2
-  const rearZ = L / 2 - rearL / 2
-  const chassisH = Math.max(0.5, H * 0.22)
-  const chassisY = axleY + chassisH / 2
-  // the bin top is EXACTLY the preset height: the visual envelope never
-  // exceeds the collider box (the chase anchor sits on that roof)
-  const binH = H - r - chassisH
-  const cabH = H - r - chassisH
+export function TruckAvatar({
+  preset,
+  ghost = false,
+  cabVisible = true,
+}: {
+  preset: VehiclePreset
+  ghost?: boolean
+  cabVisible?: boolean
+}) {
+  const layout = useMemo(() => truckLayout(preset), [preset])
+  const mat = ghost ? GHOST : M
+  const materialOf = (id: (typeof layout.boxes)[number]['id']): Material => {
+    if (id === 'BIN') return mat.bin
+    if (id === 'CAB_GLASS') return mat.glass
+    if (id === 'HINGE') return mat.dark
+    return mat.truck
+  }
   return (
     <group>
-      {/* front power unit / rigid front */}
-      <mesh position={[0, chassisY, frontZ]} material={M.truck}>
-        <boxGeometry args={[W * 0.92, chassisH, frontL]} />
-      </mesh>
-      {/* engine hood */}
-      <mesh
-        position={[0, chassisY + chassisH / 2 + H * 0.17, -L / 2 + frontL * 0.72]}
-        material={M.truck}
-      >
-        <boxGeometry args={[W * 0.78, H * 0.34, frontL * 0.5]} />
-      </mesh>
-      {/* cab, left-hand side */}
-      <group position={[-W * 0.18, chassisY + chassisH / 2 + cabH / 2, -L / 2 + frontL * 0.3]}>
-        <mesh material={M.truck}>
-          <boxGeometry args={[W * 0.5, cabH, frontL * 0.42]} />
+      {layout.boxes.map((b) =>
+        !cabVisible && (b.id === 'CAB' || b.id === 'CAB_GLASS') ? null : (
+          <TruckBoxMesh
+            key={b.id}
+            center={b.center}
+            size={b.size}
+            material={materialOf(b.id)}
+            ghost={ghost && b.id !== 'CAB_GLASS'}
+          />
+        ),
+      )}
+      {layout.wheels.map(([x, z]) => (
+        <Wheel
+          key={`${x},${z}`}
+          x={x}
+          z={z}
+          y={layout.axleY}
+          r={preset.wheelRadiusM}
+          ghost={ghost}
+        />
+      ))}
+      {layout.headlights.map((p) => (
+        <mesh key={`h${p[0]}`} position={[p[0], p[1], p[2]]} material={mat.headlight}>
+          <boxGeometry args={[0.3, 0.16, 0.05]} />
         </mesh>
-        <mesh position={[0, cabH * 0.15, -frontL * 0.215]} material={M.glass}>
-          <boxGeometry args={[W * 0.42, cabH * 0.5, 0.02]} />
-        </mesh>
-      </group>
-      {/* rear chassis + dump body */}
-      <mesh position={[0, chassisY, rearZ]} material={M.truck}>
-        <boxGeometry args={[W * 0.92, chassisH, rearL]} />
-      </mesh>
-      <mesh
-        position={[0, chassisY + chassisH / 2 + binH / 2, rearZ + rearL * 0.02]}
-        material={M.bin}
-      >
-        <boxGeometry args={[W, binH, rearL * 0.96]} />
-      </mesh>
-      {/* articulation hinge */}
-      {preset.articulated ? (
-        <mesh
-          position={[0, chassisY, -L / 2 + frontL + (L - frontL - rearL) / 2]}
-          material={M.dark}
-        >
-          <boxGeometry args={[W * 0.4, chassisH * 0.8, L - frontL - rearL + 0.2]} />
-        </mesh>
-      ) : null}
-      {/* wheels */}
-      <Wheel x={-(W / 2 - 0.3)} z={-L / 2 + frontL * 0.55} y={axleY} r={r} />
-      <Wheel x={W / 2 - 0.3} z={-L / 2 + frontL * 0.55} y={axleY} r={r} />
-      <Wheel x={-(W / 2 - 0.3)} z={L / 2 - rearL * 0.45} y={axleY} r={r} />
-      <Wheel x={W / 2 - 0.3} z={L / 2 - rearL * 0.45} y={axleY} r={r} />
-      {!preset.articulated ? (
-        <>
-          <Wheel x={-(W / 2 - 0.3)} z={L / 2 - rearL * 0.15} y={axleY} r={r} />
-          <Wheel x={W / 2 - 0.3} z={L / 2 - rearL * 0.15} y={axleY} r={r} />
-        </>
-      ) : null}
-      {/* headlights */}
-      <mesh position={[-W * 0.3, chassisY + chassisH * 0.3, -L / 2 - 0.02]} material={M.headlight}>
-        <boxGeometry args={[0.3, 0.16, 0.05]} />
-      </mesh>
-      <mesh position={[W * 0.3, chassisY + chassisH * 0.3, -L / 2 - 0.02]} material={M.headlight}>
-        <boxGeometry args={[0.3, 0.16, 0.05]} />
-      </mesh>
+      ))}
     </group>
   )
 }
